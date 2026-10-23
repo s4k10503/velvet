@@ -62,6 +62,7 @@ namespace Velvet.Tests
             ["StyleAnimateClass.IsAnimateClass"] = "animate-pulse",
             ["StyleBorderStyleClass.IsBorderStyleClass"] = "border-dashed",
             ["StyleRingClass.IsRingClass"] = "ring-2",
+            ["StyleBackdropClass.IsBackdropClass"] = "backdrop-blur-sm",
             ["StyleFontClass.IsFontToken"] = "italic",
             ["StyleTextEffectClass.IsTextEffectToken"] = "uppercase",
             ["StyleCustomPropertyClass.IsCustomPropertyToken"] = "[width:120px]",
@@ -165,7 +166,7 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-        // GREEN_ON_BASE(characterization): this branch adds a declared family and changes neither the family reader nor the gate strings below.
+        // GREEN_ON_BASE(characterization): the gate strings below are literals fed to the family reader, which this branch leaves as it was; adding the backdrop family to the declared set touches neither.
         [TestCase("StyleGapClass.IsGapToken(core)", "StyleGapClass.IsGapToken")]
         [TestCase("StyleGapClass.IsGapToken(core) && !StyleGapClass.IsSpaceToken(core)",
             "StyleGapClass.IsGapToken")]

@@ -3329,6 +3329,10 @@ namespace Velvet
             }
             if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
+                if (FilterMeasures(map))
+                {
+                    map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
+                }
                 ApplyCombinedFilter(element, map);
                 return;
             }
@@ -3376,12 +3380,13 @@ namespace Velvet
             s_relativeWinners.Clear();
             foreach (var property in map.Keys)
             {
-                if (TryWinningLayer(map, property, out var style) && style.Expression != null)
+                if (!IsFilter(property) && TryWinningLayer(map, property, out var style) && style.Expression != null)
                 {
                     s_relativeWinners.Add(property);
                 }
             }
-            if (s_relativeWinners.Count == 0)
+            var filter = FilterMeasures(map);
+            if (s_relativeWinners.Count == 0 && !filter)
             {
                 map.RelativePoll.Stop();
                 map.RelativePoll = null;
@@ -3402,6 +3407,14 @@ namespace Velvet
             finally
             {
                 hold.Release();
+            }
+            // Composed once for every filter layer, and landed at once as the lengths above are.
+            if (filter)
+            {
+                using (StyleFilterEngineWrite.WithoutTransition())
+                {
+                    ApplyCombinedFilter(element, map);
+                }
             }
         }
 
@@ -3853,7 +3866,8 @@ namespace Velvet
                     }
                     // A keyword layer is the function at its initial value, which Tailwind composes as no function.
                     var winner = layers.Values[layers.Count - 1];
-                    if (winner.Keyword == StyleKeyword.Undefined && BuildFilter(prop, winner.Value) is { } fn)
+                    if (winner.Keyword == StyleKeyword.Undefined && TryMeasureFilter(element, winner, out var value)
+                        && BuildFilter(prop, value) is { } fn)
                     {
                         (functions ??= new List<FilterFunction>()).Add(fn);
                     }
@@ -3888,6 +3902,67 @@ namespace Velvet
                 (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
             }
             return functions;
+        }
+
+        // A filter amount, a length the element measures taken as it measures now and clamped at 0, as CSS clamps a
+        // math function to the range blur() takes. False until the element can be measured: the function is left out
+        // until RelativeLengthPoll finds it laid out.
+        private static bool TryMeasureFilter(VisualElement element, in ArbitraryStyle layer, out float value)
+        {
+            value = layer.Value;
+            if (layer.Expression == null)
+            {
+                return true;
+            }
+            if (!StyleRelativeLengths.TryMeasure(element, layer.Expression, out value))
+            {
+                return false;
+            }
+            value = Mathf.Max(0f, value);
+            return true;
+        }
+
+        // The offsets and deviation of a shadow, those the element measures taken as it measures now, the deviation
+        // clamped at 0. False until the element can be measured, which leaves the shadow out.
+        private static bool TryMeasureShadow(VisualElement element, in DropShadowLayer shadow, out float x, out float y,
+            out float deviation)
+        {
+            (x, y, deviation) = (shadow.X, shadow.Y, shadow.Deviation);
+            if (shadow.Measured is not { } measured)
+            {
+                return true;
+            }
+            if ((measured[0] != null && !StyleRelativeLengths.TryMeasure(element, measured[0]!, out x))
+                || (measured[1] != null && !StyleRelativeLengths.TryMeasure(element, measured[1]!, out y))
+                || (measured[2] != null && !StyleRelativeLengths.TryMeasure(element, measured[2]!, out deviation)))
+            {
+                return false;
+            }
+            deviation = Mathf.Max(0f, deviation);
+            return true;
+        }
+
+        // Whether a filter layer holds a length the element measures, which RelativeLengthPoll measures again.
+        private static bool FilterMeasures(LayerMap map)
+        {
+            if (map.TryGetValue(ArbitraryProperty.FilterBlur, out var blurs) && blurs.Count > 0
+                && blurs.Values[blurs.Count - 1].Expression != null)
+            {
+                return true;
+            }
+            if (!map.TryGetValue(ArbitraryProperty.FilterDropShadow, out var sizes))
+            {
+                return false;
+            }
+            // Indexed, as the poll asks this on every tick.
+            for (var i = 0; i < sizes.Count; i++)
+            {
+                if (sizes.Values[i].DropShadow is { Measured: true })
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static int TopAcceptedLayer(SortedList<long, ArbitraryStyle> stack)
@@ -3956,10 +4031,14 @@ namespace Velvet
                     current.a *= color.a;
                     color = current;
                 }
+                if (!TryMeasureShadow(element, shadow, out var x, out var y, out var deviation))
+                {
+                    continue;
+                }
                 var function = new FilterFunction(definition!);
-                function.AddParameter(new FilterParameter(shadow.X));
-                function.AddParameter(new FilterParameter(shadow.Y));
-                function.AddParameter(new FilterParameter(shadow.Deviation));
+                function.AddParameter(new FilterParameter(x));
+                function.AddParameter(new FilterParameter(y));
+                function.AddParameter(new FilterParameter(deviation));
                 function.AddParameter(new FilterParameter(color));
                 (functions ??= new List<FilterFunction>()).Add(function);
             }

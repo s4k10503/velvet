@@ -29,7 +29,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.SetPanelTimeFunction(_window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
             _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "flex flex-row", children: new VNode[]
             {
-                Driven("b", "-skew-x-6"),
+                Driven("b", "-skew-x-6 rotate-0"),
                 Driven("c", string.Empty),
             }));
             var skewed = _window.rootVisualElement.Q("b");
@@ -50,6 +50,7 @@ namespace Velvet.Tests
             return red > 0.05f && red < 0.95f ? red : float.NaN;
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedMotionDrivingItsBackground_When_ThePlayIsPartWay_Then_TheSkewFaceShowsTheDrivenColor()
         {
@@ -62,6 +63,7 @@ namespace Velvet.Tests
                 : -1f, Is.EqualTo(PartWay(twin)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedMotionDrivingItsBackground_When_ThePlayIsPartWay_Then_TheSuppressionStaysInTheSlot()
         {

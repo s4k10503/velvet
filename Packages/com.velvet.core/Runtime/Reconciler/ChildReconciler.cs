@@ -190,6 +190,22 @@ namespace Velvet
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
+            var enclosing = _ctx.ReconcileParent;
+            _ctx.ReconcileParent = parent;
+            try
+            {
+                using var host = _ctx.OpenChildVariantHost(_ctx.HostsChildVariant(parent));
+                ReconcileUnder(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+            }
+            finally
+            {
+                _ctx.ReconcileParent = enclosing;
+            }
+        }
+
+        private void ReconcileUnder(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
+            double frameBudgetMs, int slotStart, int slotLimit)
+        {
             if (_ctx.IsAborted) return;
             FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
 
@@ -494,6 +510,7 @@ namespace Velvet
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
+                _ctx.PortalState.Anchor(placeholder);
                 // A Portal a render created inside children its Suspense hides was hidden with them before this
                 // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
                 // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are
@@ -552,8 +569,7 @@ namespace Velvet
             {
                 // Also lands here when a scene unload killed a previously created host:
                 // the dead record is replaced so new portals mount into a live panel.
-                layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel, _ctx);
-                _ctx.LayerHosts[layer] = layerHost;
+                layerHost = PanelHostFactory.ReplaceLayerHost(layer, placeholder.panel, _ctx);
             }
             else
             {

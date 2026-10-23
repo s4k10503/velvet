@@ -93,13 +93,15 @@ namespace Velvet
 
         // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child), a ring
         // overlay (RingOverlay's band, hosted beside the element it rings rather than wrapped around it), a face
-        // border overlay (FaceBorderOverlay, hosted the same way), or one of FiberZLayerCoordinator's internal
-        // children (an anchor, or a retired placeholder awaiting removal).
+        // border overlay (FaceBorderOverlay, hosted the same way), a backdrop layer (BackdropFilterLayer, hosted
+        // before its element), or one of FiberZLayerCoordinator's internal children (an anchor, or a retired
+        // placeholder awaiting removal).
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
                     || child.ClassListContains(RingOverlay.MarkerClass)
                     || child.ClassListContains(FaceBorderOverlay.MarkerClass)
+                    || child.ClassListContains(BackdropFilterLayer.MarkerClass)
                     || FiberZLayerCoordinator.IsInternal(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement

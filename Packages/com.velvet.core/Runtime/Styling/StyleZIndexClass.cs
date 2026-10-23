@@ -19,6 +19,13 @@ namespace Velvet
             return StyleIntegerUtility.HasToken(classNames, Prefix);
         }
 
+        // Whether cls is one HasZIndexClass counts as a z-* utility.
+        public static bool IsZIndexClass(string cls)
+        {
+            return !string.IsNullOrEmpty(cls)
+                && StyleIntegerUtility.IsToken(StyleArbitraryValueResolver.StripImportant(cls, out _), Prefix);
+        }
+
         // Resolves the z-* value the cascade would: an important token (!z-10 / z-10!) beats every plain one
         // wherever it sits, and within either group the later class wins. Returns false when no z utility is
         // present, when every z-looking token failed to parse (e.g. a user class that merely starts with

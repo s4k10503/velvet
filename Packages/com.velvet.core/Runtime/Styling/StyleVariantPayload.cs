@@ -327,7 +327,7 @@ namespace Velvet
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
         // the three layout manipulators and the pointer-events scope (FiberNodePatcher.ApplyLayoutManipulators),
-        // the six wrapper-less paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
+        // the seven wrapper-less paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
         // (FiberNodePatcher.ApplyFontLayer), the text-effect cascade (FiberNodePatcher.ApplyTextEffects) and the
         // sibling stacking (FiberZLayerCoordinator.OnResolved).
         // Each family answers for its own prefix set so this gate cannot drift from the array scans those
@@ -348,6 +348,7 @@ namespace Velvet
                 || StyleAnimateClass.IsAnimateClass(core)
                 || StyleBorderStyleClass.IsBorderStyleClass(core)
                 || StyleRingClass.IsRingClass(core)
+                || StyleBackdropClass.IsBackdropClass(core)
                 || StyleFontClass.IsFontToken(core)
                 || StyleTextEffectClass.IsTextEffectToken(core)
                 || IsStackingToken(core);

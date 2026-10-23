@@ -21,9 +21,155 @@ namespace Velvet
     // for the layer, world-space and caller-held-element flavors, which no registration addresses.
     // DeclaringFiber is the component that rendered the node — the one whose re-render carries the
     // registered element into a patch — and is null for a Portal rendered outside any component body.
+    // First and Last are the first and last rows of the range, held once the Portal has mounted or patched:
+    // PortalRangeTable reads the range from where those rows are, so a row that other code, another tree or
+    // a sibling's render put ahead of the range does not leave SlotStart pointing at somebody else's row.
+    // SlotStart and SlotLength remain what a range with no rows to read — an empty one, or one whose rows
+    // have left the target — is addressed by, which the shifts in PortalSlotTracker keep.
     internal readonly record struct PortalSlotInfo(
         VisualElement? Target, int SlotStart, int SlotLength,
-        string? TargetId = null, ComponentFiber? DeclaringFiber = null);
+        string? TargetId = null, ComponentFiber? DeclaringFiber = null,
+        VisualElement? First = null, VisualElement? Last = null);
+
+    // ReconcilerContext.PortalState: the ranges as Portals recorded them, read back as their rows place them.
+    // Every read answers from the rows, the way a range with no rows to read answers from what was recorded;
+    // Stored is the recording itself, which the shifts in PortalSlotTracker and FiberCommitWork move and
+    // measure, since a read there would count a row once as moved and once as shifted.
+    internal sealed class PortalRangeTable : IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>
+    {
+        private readonly Dictionary<VisualElement, PortalSlotInfo> _stored = new();
+
+        internal Dictionary<VisualElement, PortalSlotInfo> Stored => _stored;
+
+        public int Count => _stored.Count;
+
+        public Dictionary<VisualElement, PortalSlotInfo>.KeyCollection Keys => _stored.Keys;
+
+        public ValueView Values => new(this);
+
+        public bool ContainsKey(VisualElement placeholder) => _stored.ContainsKey(placeholder);
+
+        public bool Remove(VisualElement placeholder) => _stored.Remove(placeholder);
+
+        public void Clear() => _stored.Clear();
+
+        public PortalSlotInfo this[VisualElement placeholder]
+        {
+            get => Resolve(_stored[placeholder]);
+            set => _stored[placeholder] = value;
+        }
+
+        public bool TryGetValue(VisualElement placeholder, out PortalSlotInfo info)
+        {
+            var found = _stored.TryGetValue(placeholder, out info);
+            info = found ? Resolve(info) : default;
+            return found;
+        }
+
+        // Records which rows the range holds now, so later reads follow them. Called where a Portal's range
+        // is final: the end of its mount and of each patch.
+        internal void Anchor(VisualElement placeholder)
+        {
+            if (!_stored.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            VisualElement? first = null;
+            VisualElement? last = null;
+            if (info.Target != null && info.SlotLength > 0)
+            {
+                first = RowAt(info.Target, info.SlotStart);
+                last = RowAt(info.Target, info.SlotStart + info.SlotLength - 1);
+            }
+            _stored[placeholder] = info with { First = first, Last = last };
+        }
+
+        // The range as it stands for a patch that is about to change its rows, which nothing reads as anchored
+        // until the patch records them again.
+        internal void Unanchor(VisualElement placeholder)
+        {
+            if (_stored.TryGetValue(placeholder, out var info))
+            {
+                _stored[placeholder] = Resolve(info) with { First = null, Last = null };
+            }
+        }
+
+        private static VisualElement? RowAt(VisualElement target, int slot)
+            => LogicalChildSlots.TryGetPhysical(target, slot, out var physical) ? target[physical] : null;
+
+        private static PortalSlotInfo Resolve(PortalSlotInfo info)
+        {
+            var target = info.Target;
+            if (target == null || info.First == null || info.Last == null)
+            {
+                return info;
+            }
+            var firstIndex = target.IndexOf(info.First);
+            var lastIndex = target.IndexOf(info.Last);
+            if (firstIndex < 0 || lastIndex < firstIndex)
+            {
+                return info;
+            }
+            var start = LogicalChildSlots.ToLogical(target, firstIndex);
+            var end = LogicalChildSlots.ToLogical(target, lastIndex);
+            return info with { SlotStart = start, SlotLength = end - start + 1 };
+        }
+
+        public Enumerator GetEnumerator() => new(this);
+
+        IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>> IEnumerable<KeyValuePair<VisualElement, PortalSlotInfo>>.GetEnumerator()
+            => GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        internal struct Enumerator : IEnumerator<KeyValuePair<VisualElement, PortalSlotInfo>>
+        {
+            private Dictionary<VisualElement, PortalSlotInfo>.Enumerator _inner;
+
+            internal Enumerator(PortalRangeTable table) => _inner = table._stored.GetEnumerator();
+
+            public KeyValuePair<VisualElement, PortalSlotInfo> Current
+                => new(_inner.Current.Key, Resolve(_inner.Current.Value));
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _inner.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _inner.Dispose();
+        }
+
+        internal readonly struct ValueView : IEnumerable<PortalSlotInfo>
+        {
+            private readonly PortalRangeTable _table;
+
+            internal ValueView(PortalRangeTable table) => _table = table;
+
+            public ValueEnumerator GetEnumerator() => new(_table);
+
+            IEnumerator<PortalSlotInfo> IEnumerable<PortalSlotInfo>.GetEnumerator() => GetEnumerator();
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        internal struct ValueEnumerator : IEnumerator<PortalSlotInfo>
+        {
+            private Enumerator _pairs;
+
+            internal ValueEnumerator(PortalRangeTable table) => _pairs = new Enumerator(table);
+
+            public PortalSlotInfo Current => _pairs.Current.Value;
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext() => _pairs.MoveNext();
+
+            public void Reset() => throw new System.NotSupportedException();
+
+            public void Dispose() => _pairs.Dispose();
+        }
+    }
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
@@ -197,9 +343,8 @@ namespace Velvet
     // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
     // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), the create or
     // patch that sees a gesture or drag channel or a play's classes carry one (ReconcilerContext.ExpectGatePayload,
-    // ExpectPlayGates), or the toggle itself for an element none of those named — a [&>*]: rule on its PARENT,
-    // since every other variant family (first: and has-[.class]: included) spells its payload on the subject's
-    // own class list, or a play on an element ExpectPlayGates did not reach. It outlives an emptied token set,
+    // ExpectPlayGates), a create or patch under a [&>*]: container (ChildVariantHostDepth), or the toggle
+    // itself for an element none of those named — a play on an element ExpectPlayGates did not reach. It outlives an emptied token set,
     // because the array it holds is what the NEXT toggle will need and no reconcile need ever run again to
     // re-record it.
     internal sealed class VariantGateState
@@ -417,10 +562,9 @@ namespace Velvet
         public string[]? Resolved;
 
         // Whether a pass of this element's own has resolved it, which is what lets the re-sync run the
-        // wrapper-less paint tail. False while a [&>*]: rule on the parent is the only thing that has ever named
-        // this element, because the child is fully created before that rule runs; the re-sync then drives the
-        // layout gates alone, and the element's next patch records it. A child that declares any gated payload
-        // of its OWN was recorded at create, so the same [&>*]: payload paints at mount for it.
+        // wrapper-less paint tail. An element made or patched under a [&>*]: container is recorded as it is
+        // made, so the container's payload paints at mount for it; False for an element nothing but a toggle
+        // has ever named, for which the re-sync drives the layout gates alone until its next patch.
         public bool PaintTail;
     }
 
@@ -989,6 +1133,63 @@ namespace Velvet
         // StackedVariantManipulators (keyed by the child) and are swept with each child, not here.
         public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantManipulators { get; } = new();
 
+        // Above zero while the children of a container carrying a [&>*]: token are being reconciled, so that each
+        // element made or patched there is recorded for the re-sync the container's payload raises
+        // (FiberNodePatcher.RecordVariantGateSource). Nested containers raise it further; it is a superset of the
+        // direct children, which costs a record per descendant and nothing else.
+        internal int ChildVariantHostDepth;
+
+        // Raises ChildVariantHostDepth for the span of a using, when hosts says the children being reconciled
+        // belong to a container carrying a [&>*]: token.
+        internal ChildVariantHostScope OpenChildVariantHost(bool hosts) => new(this, hosts);
+
+        internal readonly struct ChildVariantHostScope : System.IDisposable
+        {
+            private readonly ReconcilerContext _ctx;
+            private readonly bool _hosts;
+
+            public ChildVariantHostScope(ReconcilerContext ctx, bool hosts)
+            {
+                _ctx = ctx;
+                _hosts = hosts;
+                if (hosts)
+                {
+                    ctx.ChildVariantHostDepth++;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (_hosts)
+                {
+                    _ctx.ChildVariantHostDepth--;
+                }
+            }
+        }
+
+        // Whether parent, as a reconcile target, is the child container of an element that carries a manipulator.
+        internal bool HostsChildVariant(VisualElement? parent)
+        {
+            if (parent == null || ChildVariantManipulators.Count == 0)
+            {
+                return false;
+            }
+            if (ChildVariantManipulators.ContainsKey(parent))
+            {
+                return true;
+            }
+            var owner = parent.hierarchy.parent;
+            for (var level = 0; owner != null && level < 4; level++, owner = owner.hierarchy.parent)
+            {
+                if (ChildVariantManipulators.ContainsKey(owner)
+                    && ReferenceEquals(FiberNodePatcher.GetChildContainer(owner), parent))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
         // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes
         // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
@@ -1041,8 +1242,8 @@ namespace Velvet
         public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
 
         // The element a V.Motion(layoutId:) id is registered to, and the box MotionLayoutIdDriver falls
-        // back to when that element gives none. A null element marks a torn-down element's box, listed in
-        // LayoutIdSnapshots until MotionLayoutIdDriver.ExpireSnapshots drops it where the render ends. Keyed by the id string, not an element, so it
+        // back to when that element gives none. A null element marks a torn-down element's box, which stays until
+        // another Motion takes the id. Keyed by the id string, not an element, so it
         // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
         // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
         // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
@@ -1050,7 +1251,15 @@ namespace Velvet
         // element (a replacement created before the old element's teardown has already taken it over).
         public Dictionary<string, (VisualElement? Element, LayoutIdBox? Box)> LayoutIdRegistry { get; } = new();
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
-        public HashSet<string> LayoutIdSnapshots { get; } = new();
+        // How many layoutId Motions the children being created are inside, which a Motion created with no parent yet
+        // reads as an ancestor (MotionLayoutIdDriver.Corrects).
+        internal int LayoutIdMotionDepth;
+        // The parent the children being reconciled are placed under (ChildReconciler.Reconcile).
+        internal VisualElement? ReconcileParent;
+        // The ids whose entry holds a box read under each parent, and the ids whose entry lost its element, oldest
+        // first (MotionLayoutIdDriver.SetEntry).
+        public Dictionary<VisualElement, HashSet<string>> LayoutIdBoxParents { get; } = new();
+        public Queue<string> LayoutIdSnapshotOrder { get; } = new();
 
         // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
         // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
@@ -1117,9 +1326,17 @@ namespace Velvet
         // for the caller to insert, so element.parent is still null while the binding is being built.
         public List<VisualElement> PendingRingPlacements { get; } = new();
 
+        // Per-element backdrop-* bookkeeping (BackdropFilterLayer), every entry placed again where
+        // PendingRingPlacements drains. The layer lives in the element's parent, so cleanup has to remove it.
+        public Dictionary<VisualElement, BackdropBinding> BackdropBindings { get; } = new();
+
         // Sheared-silhouette bookkeeping for skew-x-*/skew-y-* elements (SkewSilhouette). Keyed by
         // the element itself — skew paints via the element's own generateVisualContent, no wrapper.
         public Dictionary<VisualElement, SkewBinding> SkewBindings { get; } = new();
+
+        // The elements whose inline rotate and scale slots carry their skew (FiberSkewApplier), by the skew classes
+        // that won on each axis. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, (string? X, string? Y)> SkewTransformed { get; } = new();
 
         // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
         // itself — like skew, the outline is painted by the element's own generateVisualContent with no
@@ -1227,7 +1444,10 @@ namespace Velvet
         // other on patch (each Portal reconciles only its own slot range) and on cleanup (only the
         // range is removed, not the entire target). When a Portal's range grows or shrinks, the
         // SlotStart of Portals later in target.children is shifted by the delta.
-        public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
+        // A read answers from the rows the range holds (PortalSlotInfo.First and Last), so a row put ahead of
+        // it by something that did not shift the recorded start does not move it; the shifts keep the
+        // recording that a range with no rows to read is addressed by.
+        public PortalRangeTable PortalState { get; } = new();
 
         // The reconciles of a Portal target's own children in progress, by target: FiberCommitWork.OpenOwnRows owns
         // what each frame holds. An element's own children never reconcile inside themselves, so one frame each.
@@ -3071,6 +3291,7 @@ namespace Velvet
                 LayoutIdFollows,
                 LayoutIdExiting,
                 LayoutIdRestored,
+                SkewTransformed,
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,

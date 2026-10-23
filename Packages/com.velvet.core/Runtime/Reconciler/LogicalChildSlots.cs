@@ -92,8 +92,10 @@ namespace Velvet
         /// depends on. An element in the back z band is the exception: an append steps over it, so slot 0 of a
         /// parent holding nothing else resolves after it.
         /// Insert semantics follow from the same rule: inserting at a logical slot puts the new child
-        /// immediately before the child currently holding that slot, so an invisible child sitting between
-        /// two rendered ones stays attached to the rendered child it precedes.
+        /// immediately before the child currently holding that slot, and so after every invisible child between
+        /// that child and the rendered one before it. One hosted after its rendered child (a ring band) stays
+        /// beside it; one hosted before its rendered child (a backdrop layer) is left before the new child,
+        /// which is why BackdropFilterLayer places its layer again at the reconcile boundary.
         /// </remarks>
         internal static int ToPhysical(VisualElement container, int logical)
         {

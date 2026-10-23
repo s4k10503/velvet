@@ -41,10 +41,11 @@ namespace Velvet
         // Per-frame cadence, matching the sibling per-frame element drivers (SceneViewDriver, ParticlesDriver).
         internal const long TickIntervalMs = 16;
 
-        // Below this camera-to-target distance, distanceFactor / distance diverges toward whatever float
-        // range is left rather than anything a screen-space scale should read as — a real-world Unity
-        // scene can plausibly put a camera this close to a target (unlike Mathf.Epsilon, which only
-        // excludes an exact, near-impossible 0), so scale holds at 1 instead of ballooning.
+        // Below this camera-to-target distance the visible height at the target approaches zero and
+        // distanceFactor / height diverges toward whatever float range is left rather than anything a
+        // screen-space scale should read as — a real-world Unity scene can plausibly put a camera this
+        // close to a target (unlike Mathf.Epsilon, which only excludes an exact, near-impossible 0), so
+        // scale holds at 1 instead of ballooning.
         private const float MinDistanceFactorDistance = 0.01f;
 
         public static AnchoredBinding Attach(VisualElement element, AnchoredSettings settings)
@@ -197,7 +198,8 @@ namespace Velvet
             else
             {
                 // position: absolute resolves left/top against the element's own PARENT (UI Toolkit has no
-                // nearest-positioned-ancestor walk), so the panel point is taken to the parent's origin.
+                // nearest-positioned-ancestor walk), so the panel point is taken into the parent's local
+                // space, which a scaled or rotated parent changes and an origin subtraction would miss.
                 var parentOrigin = (Vector2)box.parent.worldBound.position;
                 // A parent that has never been laid out reports a NaN-sized worldBound whose origin cannot
                 // be trusted yet — skip this write and let the geometry callback registered in Attach re-sync
@@ -206,7 +208,7 @@ namespace Velvet
                 {
                     return;
                 }
-                localPoint = PanelPoint(panel, target.position, camera) - parentOrigin;
+                localPoint = box.parent.WorldToLocal(PanelPoint(panel, target.position, camera));
             }
             // Clears any inline override from a previous hide rather than forcing DisplayStyle.Flex: an inline
             // display would otherwise permanently outrank the "hidden" USS class Props.Visible = false toggles
@@ -221,13 +223,7 @@ namespace Velvet
             var distanceFactor = binding.Settings.DistanceFactor;
             if (distanceFactor.HasValue)
             {
-                // Flat screen-space content has no inherent size in
-                // the scene, so faking perspective falloff means scaling it inversely with camera distance
-                // — distanceFactor is the reference distance at which scale is exactly 1. toTarget (from the
-                // behind-camera test above) already holds camera-to-target; reused here rather than a
-                // second Vector3.Distance call.
-                var distance = toTarget.magnitude;
-                var scale = distance > MinDistanceFactorDistance ? distanceFactor.Value / distance : 1f;
+                var scale = DistanceScale(camera, toTarget.magnitude, distanceFactor.Value);
                 element.style.scale = new Scale(new Vector2(scale, scale));
                 binding.HasAppliedDistanceFactorScale = true;
             }
@@ -239,6 +235,21 @@ namespace Velvet
                 // same element is left entirely to whichever of those systems is actually driving it.
                 ClearAppliedScale(element, binding);
             }
+        }
+
+        // drei's objectScale times distanceFactor: the factor over the world height the camera sees at the
+        // target, which is 2 * tan(fov / 2) * distance for a perspective camera and 2 * orthographicSize for an
+        // orthographic one, whose view does not widen with distance. distance is the full camera-to-target
+        // distance, as drei's distanceTo reads it.
+        internal static float DistanceScale(Camera camera, float distance, float distanceFactor)
+        {
+            if (camera.orthographic)
+            {
+                var orthographicHeight = 2f * camera.orthographicSize;
+                return orthographicHeight > 0f ? distanceFactor / orthographicHeight : 1f;
+            }
+            var visibleHeight = 2f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f) * distance;
+            return distance > MinDistanceFactorDistance && visibleHeight > 0f ? distanceFactor / visibleHeight : 1f;
         }
 
         // RuntimePanelUtils.CameraTransformWorldToPanel casts its panel to BaseRuntimePanel, which an editor

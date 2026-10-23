@@ -24,8 +24,19 @@ namespace Velvet
             var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
-            parent.RemoveAt(index);
+            RemoveCleaned(parent, element);
             ReturnOccupantToPool(element, poolable);
+        }
+
+        // Removes element by reference rather than at the index it was found at: its cleanup can take a child
+        // hosted before it out of the same parent (BackdropFilterLayer.Detach), which moves it down a slot.
+        private static void RemoveCleaned(VisualElement parent, VisualElement element)
+        {
+            var at = parent.IndexOf(element);
+            if (at >= 0)
+            {
+                parent.RemoveAt(at);
+            }
         }
 
         // Resolves the poolable occupant of a slot: a clip-path-* leaf sits inside a
@@ -330,6 +341,12 @@ namespace Velvet
                 RingOverlay.Detach(element, ringBinding);
                 _ctx.RingBindings.Remove(element);
             }
+            if (_ctx.BackdropBindings.TryGetValue(element, out var backdropBinding))
+            {
+                // Lives in the element's parent, as the ring band does.
+                BackdropFilterLayer.Detach(element, backdropBinding);
+                _ctx.BackdropBindings.Remove(element);
+            }
             if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))
             {
                 // Detach unhooks the paint/stash callbacks, destroys the baked gradient texture, drops the
@@ -577,9 +594,15 @@ namespace Velvet
             var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
             var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
             if (slotEnd > target.childCount) slotEnd = target.childCount;
+            // Read before any is cleaned: a cleanup can take a child hosted before its element out of the target
+            // (RemoveCleaned), which would move the indices still to be visited.
+            var range = new List<VisualElement>(slotEnd - physicalSlotStart);
             for (var i = slotEnd - 1; i >= physicalSlotStart; i--)
             {
-                var child = target.ElementAt(i);
+                range.Add(target.ElementAt(i));
+            }
+            foreach (var child in range)
+            {
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
                 if (LogicalChildSlots.IsInvisible(child))
                 {
@@ -587,7 +610,7 @@ namespace Velvet
                 }
                 var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
-                target.RemoveAt(i);
+                RemoveCleaned(target, child);
                 ReturnOccupantToPool(child, poolable);
             }
 
@@ -599,7 +622,7 @@ namespace Velvet
 
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState, target, element, portalInfo, -portalInfo.SlotLength);
+            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, element, portalInfo, -portalInfo.SlotLength);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, element, portalInfo, -portalInfo.SlotLength);
         }
@@ -616,7 +639,7 @@ namespace Velvet
                 return;
             }
             CleanupPortal(placeholder);
-            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0 };
+            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0, First = null, Last = null };
         }
 
         // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that

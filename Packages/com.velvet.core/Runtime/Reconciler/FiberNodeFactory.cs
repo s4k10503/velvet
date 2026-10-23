@@ -84,8 +84,11 @@ namespace Velvet
         // it — is released before the throw goes on. A suspend passes through untouched: releasing the
         // element on one too left the Suspense boundary on its fallback after the resource resolved, which
         // ElementCreationFailureTests holds.
-        private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children)
+        private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children,
+            string[]? classNames = null)
         {
+            using var host = _ctx.OpenChildVariantHost(
+                classNames != null && StyleChildVariantClass.HasChildVariantClass(classNames));
             try
             {
                 _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), children);
@@ -136,7 +139,7 @@ namespace Velvet
                 // produce no DOM element of their own. The same path is used
                 // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
                 // symmetric — both omit the per-Component wrapper VE.
-                ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children);
+                ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children, elementNode.ClassNames);
             }
             try
             {
@@ -206,6 +209,9 @@ namespace Velvet
             // composes with every layer above and with a user wrapElement. The element has no parent yet at
             // this point; the overlay places itself when the reconcile boundary drains.
             _patcher.Appliers.ApplyRingOnCreate(element, paintClasses);
+            // backdrop-*: an immediate-mode sibling placed before this element (BackdropFilterLayer), placed at the
+            // drain as the ring band is.
+            _patcher.Appliers.ApplyBackdropOnCreate(element, paintClasses);
             ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
 
             VisualElement outer;
@@ -331,7 +337,8 @@ namespace Velvet
                             _ctx.ComponentContextStack.Get(MotionContext.Playback)));
                     try
                     {
-                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
+                        using var inside = new LayoutIdMotionScope(_ctx, motionNode.LayoutId != null);
+                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
                     }
                     finally
                     {
@@ -340,7 +347,8 @@ namespace Velvet
                 }
                 else
                 {
-                    ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
+                    using var inside = new LayoutIdMotionScope(_ctx, motionNode.LayoutId != null);
+                    ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children, writtenClasses);
                 }
             }
             _ctx.SyncRefCallback(element, motionNode.RefCallback);
@@ -371,6 +379,7 @@ namespace Velvet
                 StyleSkewClass.TryExtract(motionPaintClasses, out var motionSkew) ? motionSkew : default);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive: false);
+            _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses);
             WarnIgnoredMotionUtilities(motionNode, appliedClasses);
             // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
             // mount animation, the same variant enter the presence expansion drives
@@ -417,6 +426,12 @@ namespace Velvet
                         + "pose for its initial label, and a transition, for a mount enter.");
                 }
             }
+            // A rotated layoutId Motion created inside another is drawn through a correction wrapper from its first
+            // frame: inside one still being created, which is not registered yet, by the depth count, else by the
+            // parent the reconcile places it under.
+            var outer = WantsLayoutIdCorrection(motionNode, appliedClasses)
+                ? _patcher.Appliers.WrapLayoutIdCorrection(element)
+                : element;
             // Shared-element layout animation (layoutId) on a freshly-created element, which never
             // routes through PatchMotion's own registration.
             if (motionNode.LayoutId != null)
@@ -424,8 +439,15 @@ namespace Velvet
                 MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
             }
             // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
-            return FiberZLayerCoordinator.OnCreated(_ctx, element, element, appliedClasses,
-                _patcher.ResolveStackingClasses(element, appliedClasses), motionNode.Props?.Anchored != null);
+            var stackingClasses = _patcher.ResolveStackingClasses(element, appliedClasses);
+            return FiberZLayerCoordinator.OnCreated(_ctx, outer, element, appliedClasses, stackingClasses,
+                motionNode.Props?.Anchored != null);
+        }
+
+        private bool WantsLayoutIdCorrection(MotionNode motionNode, string[] appliedClasses)
+        {
+            if (motionNode.LayoutId == null || !MotionLayoutIdDriver.Corrects(appliedClasses)) return false;
+            return _ctx.LayoutIdMotionDepth > 0 || MotionLayoutIdDriver.HasLayoutIdAncestor(_ctx.ReconcileParent, _ctx);
         }
 
         // The variant enter a Motion plays as it mounts, from its own labels or inherited ones. DelaySec is the
@@ -527,7 +549,7 @@ namespace Velvet
                 target = FiberNodePatcher.PortalContainerOf(FiberPortalRegistry.Get(portalNode.TargetId!));
                 if (target == null)
                 {
-                    FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
+                    FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Its children mount once an element is registered under that id.");
                     var placeholder = CreateHiddenPlaceholder();
                     _ctx.PortalState[placeholder] = new PortalSlotInfo(
                         null, 0, 0, portalNode.TargetId, _ctx.FiberStack.Current);

@@ -781,6 +781,7 @@ namespace Velvet
         private static readonly List<SlotEntry> s_front = new();
         private static readonly List<(VisualElement Element, int Order, int Declared, int Kind)> s_middle = new();
         private static readonly List<(VisualElement Host, VisualElement Follower)> s_followers = new();
+        private static readonly List<(VisualElement Host, VisualElement Leader)> s_leaders = new();
         private static readonly List<VisualElement> s_desired = new();
         private static readonly HashSet<VisualElement> s_placed = new();
         private static readonly Dictionary<VisualElement, int> s_rank = new();
@@ -1110,11 +1111,14 @@ namespace Velvet
 
         // The paint order, into s_desired: the back band, the declared slots with the in-flow elements placed by
         // flex order, the front band, then whatever else the parent holds in its present order. A ring band or a
-        // face border overlay follows the element it sits after.
+        // face border overlay follows the element it sits after, and a backdrop layer leads the element it sits
+        // before.
         private static void BuildDesiredOrder(VisualElement parent, List<SlotEntry> entries)
         {
             s_followers.Clear();
+            s_leaders.Clear();
             VisualElement? host = null;
+            VisualElement? leader = null;
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
@@ -1125,6 +1129,16 @@ namespace Velvet
                         s_followers.Add((host, child));
                     }
                     continue;
+                }
+                if (child.ClassListContains(BackdropFilterLayer.MarkerClass))
+                {
+                    leader = child;
+                    continue;
+                }
+                if (leader != null)
+                {
+                    s_leaders.Add((child, leader));
+                    leader = null;
                 }
                 host = child;
             }
@@ -1175,6 +1189,7 @@ namespace Velvet
             }
             s_placed.Clear();
             s_followers.Clear();
+            s_leaders.Clear();
             s_back.Clear();
             s_front.Clear();
             s_middle.Clear();
@@ -1185,6 +1200,13 @@ namespace Velvet
             if (!s_placed.Add(element))
             {
                 return;
+            }
+            foreach (var (host, leader) in s_leaders)
+            {
+                if (ReferenceEquals(host, element) && s_placed.Add(leader))
+                {
+                    s_desired.Add(leader);
+                }
             }
             s_desired.Add(element);
             foreach (var (host, follower) in s_followers)

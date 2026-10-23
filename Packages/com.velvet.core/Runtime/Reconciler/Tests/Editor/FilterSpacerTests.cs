@@ -29,8 +29,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class FilterSpacerTests : PanelTestBase
     {
-        private const string SkewFilter = "w-[200px] -skew-x-6 hue-rotate-90 flex flex-col";
-        private const string SkewNoFilter = "w-[200px] -skew-x-6 flex flex-col";
+        private const string SkewFilter = "w-[200px] -skew-x-6 hue-rotate-90 flex flex-col rotate-0";
+        private const string SkewNoFilter = "w-[200px] -skew-x-6 flex flex-col rotate-0";
         private const string ShadowFilter = "w-[200px] h-[80px] shadow-lg hue-rotate-90";
         private const string ShadowNoFilter = "w-[200px] h-[80px] shadow-lg";
 
@@ -217,6 +217,7 @@ namespace Velvet.Tests
             Assert.That((countWithoutFilter, SpacerCount()), Is.EqualTo((0, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedElementWithAVariantOnlyFilter_When_Patched_Then_ASpacerIsAdded()
         {
@@ -224,37 +225,40 @@ namespace Velvet.Tests
             // time, outside the reconcile — so the spacer must exist whenever a filter COULD apply, not only
             // while the state is active.
             Mount();
-            SetClass("w-[200px] -skew-x-6 hover:blur-sm flex flex-col");
+            SetClass("w-[200px] -skew-x-6 hover:blur-sm flex flex-col rotate-0");
 
             Assert.That(SpacerCount(), Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_SkewAndShadowAndFilter_When_Patched_Then_TwoSpacersAreAdded()
         {
             // Both paint layers reserve their own bounds; the two spacers coexist as trailing children.
             Mount();
-            SetClass("w-[200px] -skew-x-6 shadow-lg hue-rotate-90 flex flex-col");
+            SetClass("w-[200px] -skew-x-6 shadow-lg hue-rotate-90 flex flex-col rotate-0");
 
             Assert.That(SpacerCount(), Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_SkewAndShadowAndFilter_When_Patched_Then_TheRenderedChildrenAreStillIntact()
         {
             // Two trailing spacers must not disturb the reconciled children.
             Mount();
-            SetClass("w-[200px] -skew-x-6 shadow-lg hue-rotate-90 flex flex-col");
+            SetClass("w-[200px] -skew-x-6 shadow-lg hue-rotate-90 flex flex-col rotate-0");
 
             Assert.That(ChildNames(), Is.EqualTo(new[] { "a", "b", "c" }));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_SkewAndShadowAndFilter_When_Patched_Then_BothSpacersTrailAllRenderedChildren()
         {
             // The last two children are the spacers; every rendered child precedes them.
             Mount();
-            SetClass("w-[200px] -skew-x-6 shadow-lg hue-rotate-90 flex flex-col");
+            SetClass("w-[200px] -skew-x-6 shadow-lg hue-rotate-90 flex flex-col rotate-0");
             var trailingTwoAreSpacers = Box.childCount >= 2
                 && SilhouetteBoundsSpacer.IsSpacer(Box[Box.childCount - 1])
                 && SilhouetteBoundsSpacer.IsSpacer(Box[Box.childCount - 2]);

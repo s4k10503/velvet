@@ -127,8 +127,8 @@ wrap-specific strategy, and CSS has none either: the rule selects by sibling pos
 `flex-wrap` every child but the last gets its one divider edge whichever line it sits on. The last child
 of a wrapped line therefore keeps its end edge, and no rule is drawn along the break between two lines.
 
-`divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules itself,
-which costs them on a child that also carries `overflow-hidden` — see the painted-utility table in
+`divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules itself, on a
+sibling over a child that also carries `overflow-hidden` — see the painted-utility table in
 [styling-variants.md](styling-variants.md). The dash is drawn at whichever border width and in whichever
 color win the divided edge under the specificity rule above, so a child's own `border-r-4` that wins the
 edge is drawn dashed. A `border-solid`, `border-dashed` or `border-dotted` of the child's own sets the
