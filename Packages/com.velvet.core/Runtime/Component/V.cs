@@ -2101,7 +2101,11 @@ namespace Velvet
         /// that test. Forces <c>position: absolute</c> inline (dynamic left/top positioning has no other way
         /// to work; see AnchoredDriver.Attach) — pass layout classes for everything else. Among a
         /// <see cref="WorldSpace"/> panel's children it sits where the camera's ray to the target crosses
-        /// that panel's plane.
+        /// that panel's plane. As drei's <c>&lt;Html&gt;</c> does, it renders a wrapper that owns the position,
+        /// the hide and the <paramref name="distanceFactor"/> scale, and puts the element carrying
+        /// <paramref name="className"/>, <paramref name="name"/>, <paramref name="events"/>, the ref and the
+        /// children inside it; <c>z-*</c> classes stay on the wrapper, which is the out-of-flow element they
+        /// stack.
         /// </summary>
         /// <param name="target">The Transform this element's screen position tracks. Null (or a Transform
         /// destroyed later) mounts an inert, hidden (display: none) element until a live target is supplied —
@@ -2124,9 +2128,8 @@ namespace Velvet
         /// <param name="distanceFactor">When set, scales the element by this value divided by the world
         /// height the camera sees at the target, as drei's <c>distanceFactor</c> does: <c>2 * tan(fov / 2) *
         /// distance</c> for a perspective camera, <c>2 * orthographicSize</c> for an orthographic one. Null
-        /// (default) leaves the element unscaled and never touches <c>style.scale</c>, so it composes with a
-        /// <c>scale-*</c> class or a Motion scale variant on the same element; a non-null value OWNS that style
-        /// slot every tick instead and will fight either of those for it. Must be positive when supplied.</param>
+        /// (default) leaves the wrapper unscaled. The scale is the wrapper's, so a <c>scale-*</c> class or a
+        /// Motion scale variant on the element inside composes with it. Must be positive when supplied.</param>
         /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>
@@ -2158,16 +2161,29 @@ namespace Velvet
             // this factory included.
             var anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera,
                 occlude, occludeLayerMask, distanceFactor);
-            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.Anchored = anchored;
-
-            return new ElementNode
+            var classNames = ParseClassNames(className);
+            var outerClasses = EmptyClassNames;
+            var innerClasses = classNames;
+            if (StyleZIndexClass.HasZIndexClass(classNames))
             {
-                Key = key,
+                var stacking = new List<string>();
+                var rest = new List<string>();
+                foreach (var cls in classNames)
+                {
+                    var bucket = StyleZIndexClass.IsZIndexClass(cls) ? stacking : rest;
+                    bucket.Add(cls);
+                }
+                outerClasses = stacking.ToArray();
+                innerClasses = rest.ToArray();
+            }
+            var wrapperProps = VNodePool.RentProps();
+            wrapperProps.Anchored = anchored;
+            var inner = new ElementNode
+            {
                 ElementType = typeof(VisualElement),
                 Name = name,
-                ClassNames = ParseClassNames(className),
-                Props = mergedProps,
+                ClassNames = innerClasses,
+                Props = WithAttributes(props, data, aria),
                 Styles = styles,
                 Children = children ?? EmptyChildren,
                 Events = events ?? EmptyEvents,
@@ -2175,6 +2191,14 @@ namespace Velvet
                 WhileHoverClass = whileHoverClass,
                 WhileTapClass = whileTapClass,
                 WhileFocusClass = whileFocusClass,
+            };
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(VisualElement),
+                ClassNames = outerClasses,
+                Props = wrapperProps,
+                Children = new VNode[] { inner },
             };
         }
 

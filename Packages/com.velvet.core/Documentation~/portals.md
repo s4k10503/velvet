@@ -245,13 +245,16 @@ physics `Linecast` between the camera and the target hides the element when a so
 collider sits on that mask will typically occlude itself — scope the mask to scene geometry that
 excludes it). `distanceFactor` scales the element as drei's does: by the factor divided by the world height the camera
 sees at the target, which is 2·tan(fov/2)·distance for a perspective camera and 2·`orthographicSize` for an
-orthographic one, whose view does not widen with distance. Left unset, Anchored never touches the element's
-`scale` style at all, so it composes freely with a `scale-*` class or a Motion scale variant; setting it makes
-Anchored own that style slot every tick instead, so a scale of the same element's own conflicts with it. drei
-keeps the content in an element inside the wrapper it scales; a scale of your own goes on a child of the
-Anchored element likewise.
+orthographic one, whose view does not widen with distance.
 
-`V.Anchored` forces `position: absolute` inline (dynamic positioning has no other way to
+As in drei, the element is not the thing that is positioned: `V.Anchored` renders a wrapper that owns the
+position, the hide for a target behind the camera or occluded, and the `distanceFactor` scale, and the
+element carrying the `className`, `name`, `events`, ref and children sits inside it. So a `scale-*` class or a
+Motion scale variant on the element composes with the distance scale instead of fighting it. `z-*` classes go
+on the wrapper, which is the out-of-flow element they stack. A selector or `Q` query for the element finds it
+inside the wrapper, and its parent is the positioned one.
+
+`V.Anchored` forces `position: absolute` inline on the wrapper (dynamic positioning has no other way to
 work), so pass layout classes for everything else — sizing, background, text, and so on —
 exactly as on any other element, at any nesting depth (the panel-space projection is
 converted to the element's own parent-relative space before it's written, so it positions

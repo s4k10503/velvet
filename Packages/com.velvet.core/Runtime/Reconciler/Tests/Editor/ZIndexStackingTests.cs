@@ -958,7 +958,8 @@ namespace Velvet.Tests
                 V.Anchored(target: null, name: "child", className: "z-10"),
             }));
             var ctx = mounted.Root.Reconciler.Context;
-            var child = root.Q<VisualElement>("child");
+            // The wrapper V.Anchored renders holds the z-* class, and the element named below sits inside it.
+            var child = root.Q<VisualElement>("child").parent;
             var carriesNoAbsoluteClass = child != null && !child.ClassListContains("absolute");
 
             // Assert — TryClassify's Props.Anchored half classified it anyway. The absent utility class is a

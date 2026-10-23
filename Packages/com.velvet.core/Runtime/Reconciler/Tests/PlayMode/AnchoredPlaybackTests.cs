@@ -31,6 +31,7 @@ namespace Velvet.Tests
         private static bool s_visible = true;
         private static bool s_occlude;
         private static float? s_distanceFactor;
+        private static string s_className = "w-[10px] h-[10px]";
         private static StateUpdater<bool> s_setOccludeLive;
 
         private GameObject _panelGo;
@@ -46,7 +47,7 @@ namespace Velvet.Tests
             // it on a LIVE binding via s_setOccludeLive — AnchoredDriver.Update, not a fresh Attach.
             var (occlude, setOcclude) = Hooks.UseState(s_occlude);
             s_setOccludeLive = setOcclude;
-            var anchored = V.Anchored(s_target, camera: s_camera, name: "anchored", className: "w-[10px] h-[10px]",
+            var anchored = V.Anchored(s_target, camera: s_camera, name: "anchored", className: s_className,
                 occlude: occlude, distanceFactor: s_distanceFactor,
                 props: new FiberElementProps { Visible = s_visible });
             // Margin, not padding: position:absolute's containing block is the parent's PADDING edge (CSS/UI
@@ -65,6 +66,7 @@ namespace Velvet.Tests
             s_visible = true;
             s_occlude = false;
             s_distanceFactor = null;
+            s_className = "w-[10px] h-[10px]";
 
             _panelGo = new GameObject("AnchoredPlaybackPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
@@ -111,7 +113,7 @@ namespace Velvet.Tests
             // Arrange
             yield return Mount();
             var camera = _cameraGo.GetComponent<Camera>();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
             yield return null;
             yield return null;
@@ -141,7 +143,7 @@ namespace Velvet.Tests
             s_nestInOffsetContainer = true;
             yield return Mount();
             var camera = _cameraGo.GetComponent<Camera>();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
             yield return null;
             yield return null;
@@ -172,7 +174,7 @@ namespace Velvet.Tests
             s_nestClass = "m-[40px] scale-50";
             yield return Mount();
             var camera = _cameraGo.GetComponent<Camera>();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
             yield return null;
             yield return null;
@@ -203,7 +205,7 @@ namespace Velvet.Tests
             yield return null;
             yield return null;
             yield return null;
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
 
             // Act
             var screenPoint = _cameraGo.GetComponent<Camera>().WorldToScreenPoint(_targetGo.transform.position);
@@ -244,7 +246,7 @@ namespace Velvet.Tests
                 blockerGo.transform.position = new Vector3(0f, 0f, -5f);
                 s_occlude = true;
                 yield return Mount();
-                var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+                var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
                 Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
 
                 // Act
@@ -266,7 +268,7 @@ namespace Velvet.Tests
             // Arrange — occlude opted in, but the scene has no collider at all for the Linecast to hit.
             s_occlude = true;
             yield return Mount();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
 
             // Act
@@ -285,7 +287,7 @@ namespace Velvet.Tests
             // there; drei scales by distanceFactor over that height.
             s_distanceFactor = 5f;
             yield return Mount();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
             var visibleHeight = 2f * Mathf.Tan(s_camera.fieldOfView * Mathf.Deg2Rad * 0.5f) * 10f;
 
@@ -298,6 +300,26 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_ADistanceFactorAndAScaleClassOnTheElement_When_ARealPanelTicks_Then_TheElementDrawsAtTheProductOfBoth()
+        {
+            // Arrange — the wrapper takes the distance scale and the element keeps its own class, so the two multiply
+            // as drei's wrapper and the content inside it do.
+            s_distanceFactor = 5f;
+            s_className = "w-[10px] h-[10px] scale-150";
+            yield return Mount();
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
+            var visibleHeight = 2f * Mathf.Tan(s_camera.fieldOfView * Mathf.Deg2Rad * 0.5f) * 10f;
+
+            // Act
+            yield return null;
+            yield return null;
+
+            // Assert
+            Assert.That(element.worldBound.width, Is.EqualTo(10f * 1.5f * 5f / visibleHeight).Within(0.3f));
+        }
+
+        [UnityTest]
         public IEnumerator Given_ADistanceFactorAndAnOrthographicCamera_When_ARealPanelTicks_Then_TheElementIsScaledByFactorOverTwiceTheOrthographicSize()
         {
             // Arrange — an orthographic view does not widen with distance, so the scale reads only the size.
@@ -305,7 +327,7 @@ namespace Velvet.Tests
             s_camera.orthographic = true;
             s_camera.orthographicSize = 4f;
             yield return Mount();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
 
             // Act
@@ -327,7 +349,7 @@ namespace Velvet.Tests
             {
                 blockerGo.transform.position = new Vector3(0f, 0f, -5f);
                 yield return Mount();
-                var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+                var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
                 Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
 
                 // Act
@@ -350,7 +372,7 @@ namespace Velvet.Tests
             // variant) already owning this element's inline scale; distanceFactor stays unset (the
             // UnitySetUp default).
             yield return Mount();
-            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+            var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
             Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
             element.style.scale = new Scale(new Vector2(2f, 2f));
 
@@ -375,7 +397,7 @@ namespace Velvet.Tests
             {
                 blockerGo.transform.position = new Vector3(0f, 0f, -5f);
                 yield return Mount();
-                var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored");
+                var element = _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>("anchored").parent;
                 Assume.That(element, Is.Not.Null, "Precondition: the Anchored element mounted");
                 yield return null;
                 yield return null;

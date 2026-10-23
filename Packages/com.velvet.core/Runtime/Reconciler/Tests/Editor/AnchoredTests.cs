@@ -53,7 +53,7 @@ namespace Velvet.Tests
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
 
             // Assert
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
             Assert.That(element.style.position.value, Is.EqualTo(Position.Absolute));
         }
 
@@ -64,7 +64,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(0f, 0f, -20f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -80,7 +80,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(0f, 0f, 0f);
             var tree = new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
             Assume.That(_reconciler.Context.AnchoredBindings.ContainsKey(element), Is.True,
                 "Precondition: mounting registered a binding");
 
@@ -105,7 +105,7 @@ namespace Velvet.Tests
                 _targetGo.transform.position = new Vector3(0f, 0f, 0f);
                 _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                     new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
-                var element = Root.Q<VisualElement>("anchored");
+                var element = Root.Q<VisualElement>("anchored").parent;
 
                 // Act
                 Tick();
@@ -127,7 +127,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(1f, 0.5f, 0f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -143,7 +143,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(1f, 0.5f, -20f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, hideWhenBehindCamera: false, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -160,7 +160,7 @@ namespace Velvet.Tests
             _targetGo.transform.position = new Vector3(5f, 0f, -10f);
             _reconciler.Reconcile(Root, Array.Empty<VNode>(),
                 new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
-            var element = Root.Q<VisualElement>("anchored");
+            var element = Root.Q<VisualElement>("anchored").parent;
 
             // Act
             Tick();
@@ -258,7 +258,7 @@ namespace Velvet.Tests
                 _targetGo.transform.position = new Vector3(0f, 0f, 0f);
                 var before = new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") };
                 _reconciler.Reconcile(Root, Array.Empty<VNode>(), before);
-                var element = Root.Q<VisualElement>("anchored");
+                var element = Root.Q<VisualElement>("anchored").parent;
                 _reconciler.Context.AnchoredBindings.TryGetValue(element, out var bindingBefore);
                 Assume.That(bindingBefore, Is.Not.Null, "Precondition: mounting registered a binding");
 
