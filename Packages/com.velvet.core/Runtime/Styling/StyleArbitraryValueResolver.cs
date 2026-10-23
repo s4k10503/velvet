@@ -894,9 +894,17 @@ namespace Velvet
 
         // The non-bracket names: a filter preset, a tracking preset, or one of the static scales.
         private static bool TryParsePreset(string className, out ArbitraryStyle result)
-            => StyleFilterValueParser.TryParseFilterPreset(className, out result)
-               || TryParseTrackingPreset(className, out result)
-               || TryParseStaticScale(className, out result);
+        {
+            if (StyleFilterValueParser.TryParseFilterPreset(className, out result))
+            {
+                return true;
+            }
+            if (TryParseTrackingPreset(className, out result))
+            {
+                return true;
+            }
+            return TryParseStaticScale(className, out result);
+        }
 
         private static bool TryParseTrackingPreset(string className, out ArbitraryStyle result)
         {

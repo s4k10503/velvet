@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
-using UnityEngine.UIElements;
 using TextElement = UnityEngine.UIElements.TextElement;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -39,17 +39,24 @@ namespace Velvet
 
         private static void Remember(VisualElement element)
         {
-            if (s_seen.TryGetValue(element, out _))
+            var seen = s_seen.TryGetValue(element, out _);
+            if (seen)
             {
                 return;
             }
             s_seen.Add(element, element);
             if (s_resolved.Count >= s_pruneAt)
             {
-                s_resolved.RemoveAll(entry => !entry.TryGetTarget(out _));
+                s_resolved.RemoveAll(Released);
                 s_pruneAt = Math.Max(64, s_resolved.Count * 2);
             }
             s_resolved.Add(new WeakReference<VisualElement>(element));
+        }
+
+        private static bool Released(WeakReference<VisualElement> entry)
+        {
+            var alive = entry.TryGetTarget(out _);
+            return !alive;
         }
 
         // Builds the text again of every label under a resolved element that shows asset, so the entries just
@@ -59,18 +66,30 @@ namespace Velvet
             foreach (var entry in s_resolved.ToArray())
             {
                 var alive = entry.TryGetTarget(out var element);
-                if (alive && element.panel != null)
+                if (!alive)
+                {
+                    continue;
+                }
+                if (element.panel != null)
                 {
                     MarkSubtree(element, asset);
                 }
             }
         }
 
-        private static void MarkSubtree(VisualElement element, FontAsset asset)
+        private static void MarkIfShowing(TextElement text, FontAsset asset)
         {
-            if (element is TextElement text && text.resolvedStyle.unityFontDefinition.fontAsset == asset)
+            if (text.resolvedStyle.unityFontDefinition.fontAsset == asset)
             {
                 text.MarkDirtyText();
+            }
+        }
+
+        private static void MarkSubtree(VisualElement element, FontAsset asset)
+        {
+            if (element is TextElement)
+            {
+                MarkIfShowing((TextElement)element, asset);
             }
             var count = element.hierarchy.childCount;
             for (var i = 0; i < count; i++)

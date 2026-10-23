@@ -276,9 +276,12 @@ namespace Velvet
         {
             var style = element.resolvedStyle;
             var key = (FontIdentity(style.unityFontDefinition), style.unityFontStyleAndWeight);
-            if (key.Item1 != 0 && s_digitCells.TryGetValue(key, out var known))
+            var cell = 0f;
+            var named = key.Item1 != 0;
+            var known = named && s_digitCells.TryGetValue(key, out cell);
+            if (known)
             {
-                return known;
+                return cell;
             }
             var size = style.fontSize;
             var widest = 0f;
@@ -289,7 +292,7 @@ namespace Velvet
                     float.NaN, VisualElement.MeasureMode.Undefined).x;
                 widest = float.IsNaN(width) ? widest : Math.Max(widest, width);
             }
-            var cell = (widest - style.letterSpacing) / size;
+            cell = (widest - style.letterSpacing) / size;
             if (!(size > 0f) || !(cell > 0f) || !float.IsFinite(cell))
             {
                 return 0f;
