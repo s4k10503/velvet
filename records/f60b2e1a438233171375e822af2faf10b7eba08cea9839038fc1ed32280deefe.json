@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_ABorderSideReadingAnUndeclaredProperty_When_Mounted_Then_ItsColourIsUnset",
+ "file": "02b77037ea1563f5b9d1a7fbaa823d657bbd3e65d0d6df4b1a372c8d9b83f8bd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CustomPropertyTests.Given_ABorderSideReadingAnUndeclaredProperty_When_Mounted_Then_ItsColourIsUnset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyTests.cs": "a39792578dfafe6ca2ff742df2f5bc169f3ae2446dfd91a9d791652e60ca6022",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "39820607771",
+ "mutant": {
+  "after": ";",
+  "before": "ApplyCustomPropertyConfig(element, classNames);",
+  "column": 12,
+  "line": 2626,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "verdict": "killed"
+}

@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed: Given_AViewportTwiceThePanelsReference_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheViewportsSize, Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheStagesSize",
+ "file": "aa76b94643e873ba19e93b99b9269c4c3c37168518f18531b411333a250e2841",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PreviewPanelScaleWindowTests.Given_AViewportTwiceThePanelsReference_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheViewportsSize",
+   "files": {
+    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/PreviewPanelScaleTests.cs": "358685f0270386d74487b580370e070c940a3c8ed1d3a284e8d49c9ad06e887b",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PreviewPanelScaleWindowTests.Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheStagesSize",
+   "files": {
+    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/PreviewPanelScaleTests.cs": "358685f0270386d74487b580370e070c940a3c8ed1d3a284e8d49c9ad06e887b",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39820607771",
+ "mutant": {
+  "after": ";",
+  "before": "_canvas.style.backgroundImage = Background.FromRenderTexture(texture);",
+  "column": 16,
+  "line": 736,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/Preview/VelvetPreviewWindow.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "verdict": "killed"
+}

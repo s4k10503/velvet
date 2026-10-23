@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity",
+ "file": "02b77037ea1563f5b9d1a7fbaa823d657bbd3e65d0d6df4b1a372c8d9b83f8bd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimationSequenceSpeedCancelTests.Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "206102e80405d2852be237d185d5e1b69c733af1598a110696eb8b2f610fc0e2",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceSpeedCancelTests.cs": "5684573171f897eca1fc260540ce64262b40274b70b741bc66f157333056c823",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "39820607771",
+ "mutant": {
+  "after": "",
+  "before": " && StyleArbitraryValueResolver.IsInlineResolved(core)",
+  "column": 49,
+  "line": 1588,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "verdict": "killed"
+}

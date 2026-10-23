@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Preview.Editor: Given_ASmokeRun_When_ItFinishes_Then_ItLeavesNoPanelObjectBehind",
+ "file": "caf1bd3c16f9abb59de39eb0f6681002413009a0f7ae869f55de4f9c0f9ce792",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VelvetPreviewSmokeTestTests.Given_ASmokeRun_When_ItFinishes_Then_ItLeavesNoPanelObjectBehind",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Preview/Tests/Editor/VelvetPreviewSmokeTestTests.cs": "28a269285379bfb3f76008dc0a7543a354dcc6c13a987832b1bc0ff9108151c3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "39820607771",
+ "mutant": {
+  "after": ";",
+  "before": "VelvetObjectUtil.Destroy(_clearHost);",
+  "column": 12,
+  "line": 135,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Preview/VelvetPreviewPanel.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "caf1bd3c16f9abb59de39eb0f6681002413009a0f7ae869f55de4f9c0f9ce792",
+ "killers": [],
+ "measured_by": "39820607771",
+ "mutant": {
+  "after": ";",
+  "before": "if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewPanel));",
+  "column": 12,
+  "line": 103,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Preview/VelvetPreviewPanel.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "verdict": "survived"
+}

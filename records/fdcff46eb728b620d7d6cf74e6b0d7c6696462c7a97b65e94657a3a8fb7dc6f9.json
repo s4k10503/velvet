@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingCreatesTheSharedParentsFirstBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices, Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingCreatesTheSharedParentsFirstBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices",
+ "file": "02b77037ea1563f5b9d1a7fbaa823d657bbd3e65d0d6df4b1a372c8d9b83f8bd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingCreatesTheSharedParentsFirstBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "10944ed1f3d6f3d3f5a335b6f14e0f914458ee52dba60addc45eb6b62829d596",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AKeyedFiberParkedAndRegisteredAcrossPasses_When_AnIndependentSiblingCreatesTheSharedParentsFirstBackContainer_Then_TheParkedFiberResumesAtRebasedPhysicalIndices",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "10944ed1f3d6f3d3f5a335b6f14e0f914458ee52dba60addc45eb6b62829d596",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "39820607771",
+ "mutant": {
+  "after": ";",
+  "before": "FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, real, newResolvedZ);",
+  "column": 20,
+  "line": 306,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "verdict": "killed"
+}
