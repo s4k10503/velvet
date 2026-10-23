@@ -1916,11 +1916,11 @@ namespace Velvet.Tests
             // Act — drain the remainder; what this case reads is already fully determined by tick 2 above.
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — every trailing item lands at its slot.
+            // Assert — item1 stands in the back band ahead of the trailing items, and each of item2..item9 lands at its slot.
             Assert.That(
                 (noBackBandBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
                     resumeTickFilledTheBackBand, reParkedWhileStillRegistered, TrailingItemOrder(root)),
-                Is.EqualTo((true, true, true, true, true, "item2,item3,item4,item5,item6,item7,item8,item9")));
+                Is.EqualTo((true, true, true, true, true, ExpectedTrailingItemOrder)));
         }
 
         #endregion

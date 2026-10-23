@@ -787,9 +787,9 @@ namespace Velvet
         private static readonly Dictionary<VisualElement, int> s_rank = new();
         private static readonly List<VisualElement> s_layout = new();
         private static readonly List<VisualElement> s_retiredHere = new();
-        private static readonly IComparer<SlotEntry> s_compareBand = Comparer<SlotEntry>.Create(CompareBand);
-        private static readonly IComparer<(VisualElement Element, int Order, int Declared, int Kind)> s_compareMiddle =
-            Comparer<(VisualElement Element, int Order, int Declared, int Kind)>.Create(CompareMiddle);
+        private static readonly System.Comparison<SlotEntry> s_compareBand = CompareBand;
+        private static readonly System.Comparison<(VisualElement Element, int Order, int Declared, int Kind)> s_compareMiddle =
+            CompareMiddle;
         private static readonly System.Comparison<VisualElement> s_compareRank = CompareRank;
 
         // Arranges parent's children into the order CSS paints them in, relocating and returning elements as that
