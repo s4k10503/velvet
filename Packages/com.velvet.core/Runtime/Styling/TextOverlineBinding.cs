@@ -33,10 +33,10 @@ namespace Velvet
         // being invoked AFTER (over) the text — the same ordering rule BorderStyleSilhouette keeps for a
         // dashed outline, and it also matches how a browser paints a decoration line behind the glyph ink,
         // so a tall glyph that dips into the rule's band is not visually interrupted by it.
-        public static TextOverlineBinding Attach(VisualElement element)
+        public static TextOverlineBinding Attach(ReconcilerContext ctx, VisualElement element)
         {
             var binding = new TextOverlineBinding();
-            binding.OnGenerate = mgc => Draw(mgc, (TextElement)element);
+            binding.OnGenerate = mgc => Draw(mgc, ctx, (TextElement)element);
             element.generateVisualContent = binding.OnGenerate + element.generateVisualContent;
             element.MarkDirtyRepaint();
             return binding;
@@ -50,8 +50,9 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        private static void Draw(MeshGenerationContext mgc, TextElement element)
+        private static void Draw(MeshGenerationContext mgc, ReconcilerContext ctx, TextElement element)
         {
+            var shown = StyleTextEffectResolver.DisplayedText(ctx, element);
             // Two different measurements for two different axes: an UNCONSTRAINED measure gives the text's
             // natural single-line-equivalent width (what ResolveStartX centers/right-aligns horizontally,
             // unrelated to how the text actually wraps); a measure pinned to the content width via Exactly
@@ -59,9 +60,9 @@ namespace Velvet
             // needs to place a Middle/Lower-anchored block vertically. Both are read fresh here (not cached)
             // per this file's own contract, and passed in so TryComputeGeometry stays pure and unit-testable.
             var measuredWidth = element.MeasureTextSize(
-                element.text, 0f, VisualElement.MeasureMode.Undefined, 0f, VisualElement.MeasureMode.Undefined).x;
+                shown, 0f, VisualElement.MeasureMode.Undefined, 0f, VisualElement.MeasureMode.Undefined).x;
             var textBlockHeight = element.MeasureTextSize(
-                element.text, element.contentRect.width, VisualElement.MeasureMode.Exactly,
+                shown, element.contentRect.width, VisualElement.MeasureMode.Exactly,
                 0f, VisualElement.MeasureMode.Undefined).y;
             if (!TextOverlinePainter.TryComputeGeometry(
                     element.contentRect, measuredWidth, textBlockHeight, element.resolvedStyle.fontSize,

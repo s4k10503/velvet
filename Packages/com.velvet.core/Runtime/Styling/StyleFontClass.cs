@@ -19,8 +19,11 @@ namespace Velvet
         public readonly bool HasWeight;
         public readonly bool Italic;
         public readonly bool HasItalic;
+        public readonly float Stretch;        // A percentage of the normal width; 100 when no font-stretch-* class was present.
+        public readonly bool HasStretch;
 
-        public FontIntent(string? family, bool hasFamily, VelvetFontWeight weight, bool hasWeight, bool italic, bool hasItalic)
+        public FontIntent(string? family, bool hasFamily, VelvetFontWeight weight, bool hasWeight, bool italic, bool hasItalic,
+            float stretch = 100f, bool hasStretch = false)
         {
             Family = family;
             HasFamily = hasFamily;
@@ -28,6 +31,8 @@ namespace Velvet
             HasWeight = hasWeight;
             Italic = italic;
             HasItalic = hasItalic;
+            Stretch = stretch;
+            HasStretch = hasStretch;
         }
     }
 
@@ -65,6 +70,8 @@ namespace Velvet
             public bool HasWeight;
             public bool Italic;
             public bool HasItalic;
+            public float Stretch;
+            public bool HasStretch;
         }
 
         /// <summary>
@@ -147,7 +154,7 @@ namespace Velvet
                 return false;
             }
 
-            var facets = new FontFacets { Weight = VelvetFontWeight.Normal };
+            var facets = new FontFacets { Weight = VelvetFontWeight.Normal, Stretch = 100f };
             var any = false;
 
             // The important tokens are folded in a second pass, so each facet one of them sets overrides every
@@ -169,7 +176,8 @@ namespace Velvet
                 return false;
             }
 
-            intent = new FontIntent(facets.Family, facets.HasFamily, facets.Weight, facets.HasWeight, facets.Italic, facets.HasItalic);
+            intent = new FontIntent(facets.Family, facets.HasFamily, facets.Weight, facets.HasWeight, facets.Italic, facets.HasItalic,
+                facets.Stretch, facets.HasStretch);
             return true;
         }
 
@@ -235,6 +243,12 @@ namespace Velvet
                 return true;
             }
 
+            // font-stretch-<keyword | percentage | [value]>, never read as a family named stretch-….
+            if (rest.StartsWith("stretch-", StringComparison.Ordinal))
+            {
+                return TryParseStretch(rest.Substring("stretch-".Length), ref facets);
+            }
+
             // Otherwise a family name: font-sans, font-mono, font-display, …
             facets.Family = rest;
             facets.HasFamily = true;
@@ -279,6 +293,58 @@ namespace Velvet
                 : StyleCustomPropertyClass.Decode(family);
             facets.HasFamily = true;
             return true;
+        }
+
+        // font-stretch keywords as Tailwind v4 spells them, with the percentages CSS gives them.
+        private static readonly Dictionary<string, float> StretchKeywords = new(StringComparer.Ordinal)
+        {
+            ["ultra-condensed"] = 50f,
+            ["extra-condensed"] = 62.5f,
+            ["condensed"] = 75f,
+            ["semi-condensed"] = 87.5f,
+            ["normal"] = 100f,
+            ["semi-expanded"] = 112.5f,
+            ["expanded"] = 125f,
+            ["extra-expanded"] = 150f,
+            ["ultra-expanded"] = 200f,
+        };
+
+        // A keyword, a percentage (font-stretch-87.5%), or either in a bracket (font-stretch-[66.66%]). A value
+        // CSS's font-stretch rejects (a negative percentage, a bare number) sets nothing, as an unrecognised
+        // class does.
+        private static bool TryParseStretch(string raw, ref FontFacets facets)
+        {
+            if (StyleArbitraryValueResolver.TryStripBrackets(raw, 0, out var inner))
+            {
+                raw = inner.ToString();
+            }
+
+            if (!TryReadStretch(raw, out var percent))
+            {
+                return false;
+            }
+
+            facets.Stretch = percent;
+            facets.HasStretch = true;
+            return true;
+        }
+
+        private static bool TryReadStretch(string raw, out float percent)
+        {
+            if (StretchKeywords.TryGetValue(raw, out percent))
+            {
+                return true;
+            }
+
+            percent = 0f;
+            if (raw.Length < 2 || raw[raw.Length - 1] != '%')
+            {
+                return false;
+            }
+
+            var number = raw.Substring(0, raw.Length - 1);
+            return float.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out percent)
+                && float.IsFinite(percent) && percent >= 0f;
         }
 
         private static bool TryParseWeight(string raw, ref FontFacets facets)

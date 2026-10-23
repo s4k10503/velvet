@@ -80,6 +80,21 @@ namespace Velvet
             return float.IsFinite(px);
         }
 
+        // What expression comes to as a line height: an em and a percentage are both the element's own font size,
+        // as they are for letter-spacing. False while the element is on no panel or has no font size yet.
+        public static bool TryMeasureLineHeight(VisualElement element, StyleLengthExpression expression, out float px)
+        {
+            px = 0f;
+            if (element.panel == null)
+            {
+                return false;
+            }
+            var font = element.resolvedStyle.fontSize;
+            var viewport = ViewportOf(element);
+            px = expression.Evaluate(new RelativeLengthBasis(font, font, viewport.width, viewport.height));
+            return float.IsFinite(px);
+        }
+
         private static UnityEngine.Vector2 PercentBox(VisualElement parent, bool absolute)
         {
             var content = parent.contentRect.size;

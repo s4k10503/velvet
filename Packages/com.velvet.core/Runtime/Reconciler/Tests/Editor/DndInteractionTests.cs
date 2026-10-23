@@ -617,19 +617,19 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnActiveTranslateDrag_When_ThePointerMovesByADelta_Then_TheInlineTranslateFollowsIt()
         {
-            // Arrange — activate first (10 px travel), so the delta below is measured from activation.
+            // Arrange — activate first (10 px travel), so the translate below shows where it is measured from.
             Mount(Scene);
             var item = Q("item");
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerMove(item, new Vector2(20, 10));
             Assume.That(s_started, Is.Not.Empty, "Precondition: the drag activated");
 
-            // Act — move a further (15, 25) from the activation point.
+            // Act — move on to (35, 35), (25, 25) from the press at (10, 10).
             SendPointerMove(item, new Vector2(35, 35));
 
             // Assert
             var translate = item.style.translate.value;
-            Assert.That((translate.x.value, translate.y.value), Is.EqualTo((15f, 25f)));
+            Assert.That((translate.x.value, translate.y.value), Is.EqualTo((25f, 25f)));
         }
 
         [Test]
@@ -649,6 +649,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_ended, Is.EqualTo(new[] { "slot" }));
+        }
+
+        [Test]
+        public void Given_ADroppableMovedByItsOwnTranslate_When_TheDragEndsOverItsLayoutBox_Then_ItIsTheDropTarget()
+        {
+            // Arrange — the slot's layout box is at x = 150, its own translate moves it 300 px right.
+            Mount(Scene);
+            var slot = Q("slot");
+            slot.style.translate = new Translate(300f, 0f);
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(20, 10));
+            SendPointerMove(item, new Vector2(190, 20));
+
+            // Act
+            SendPointerUp(item, new Vector2(190, 20));
+
+            // Assert — the bound's x shows the translate took effect, so a drop on the layout box is a drop past it.
+            Assert.That((slot.worldBound.x, string.Join(",", s_ended)), Is.EqualTo((450f, "slot")));
         }
 
         [Test]

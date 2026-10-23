@@ -152,7 +152,9 @@ These are read by the utilities that write a length-percentage inline:
 - position: `inset-`, `inset-x-`, `inset-y-`, `top-`, `right-`, `bottom-`, `left-`, `start-`, `end-`;
 - spacing: the `p*-` and `m*-` utilities, the logical `ps-` / `pe-` / `ms-` / `me-` among them, and their
   negated forms (`-mt-[1em]`);
-- type: `text-[…]` as a font size, and `tracking-[…]`;
+- type: `text-[…]` as a font size, `tracking-[…]` and the `tracking-*` presets, which are em of the element's own
+  font size; `leading-[…]` is measured on the element too, a percentage being of its font size
+  ([fonts.md](fonts.md));
 - filters: `blur-[…]` and the offsets and deviation of a `drop-shadow-[…]`, an em being the element's own font
   size and a percentage declined, as `blur()` and `drop-shadow()` take none. A math function coming below zero gives a
   blur or a deviation of zero.

@@ -637,17 +637,22 @@ namespace Velvet
 
         // text-transform / text-decoration / whitespace-pre-line / leading-* (uppercase / underline / … / the
         // pre-line collapse / line-height). UI Toolkit has no property for any of them, so they are realised
-        // by mutating the displayed text (StyleTextEffectResolver). TextEffects holds each element's OWN
+        // in the string the leaf shows (StyleTextEffectResolver). TextEffects holds each element's OWN
         // parsed effect (the cascade source, now four axes — Leading rides the same table, see LeadingUnit);
-        // TextRawText holds the untransformed text captured at the text-set seams so the effect re-applies
+        // TextRawText holds the text the app gave, captured at the text-set seams so the effect re-applies
         // idempotently. TextWhitespaceOwned is a THIRD table, set-shaped (a Dictionary with a trivial bool
         // value): presence means this element's CURRENT inline style.whiteSpace was written by the resolver
         // itself, so a later resolve that writes nothing clears only what the resolver owns — never a
         // value set directly by other means (e.g. a refCallback, a pattern the framework treats as legitimate
-        // — see RefCallbacks below). All three are pure (teardown = Remove(element)).
+        // — see RefCallbacks below). All of them are pure (teardown = Remove(element)).
         public Dictionary<VisualElement, TextEffect> TextEffects { get; } = new();
         public Dictionary<VisualElement, string> TextRawText { get; } = new();
         public Dictionary<VisualElement, bool> TextWhitespaceOwned { get; } = new();
+
+        // The string a text leaf shows when the resolver has handed the engine one other than the leaf's text
+        // (StyleTextEffectResolver.ShowText), with the text it was made from. Absent while the leaf shows its
+        // text. Pure like the three above.
+        public Dictionary<VisualElement, (string Raw, string Shown)> TextRendered { get; } = new();
 
         // A FOURTH pure table, set-shaped like TextWhitespaceOwned: presence means the reconciler made this
         // element for a TextNode, so its own reconcile applies no class of its own — ever, not merely not
@@ -692,6 +697,10 @@ namespace Velvet
         // pure for the reason TextOverlineBindings is not: an entry owns live callbacks, which
         // FiberElementCleaner detaches.
         public Dictionary<VisualElement, LeadingLengthProbe> LeadingLengthProbes { get; } = new();
+
+        // Text leaves whose shown string differs from their text, each with the callback that notices what it
+        // was built under moving (TextShownWatch). Not pure for the same reason: FiberElementCleaner detaches it.
+        public Dictionary<VisualElement, TextShownWatch> TextShownWatches { get; } = new();
 
         // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
         // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
@@ -1235,8 +1244,8 @@ namespace Velvet
         public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
 
         // The element a V.Motion(layoutId:) id is registered to, and the box MotionLayoutIdDriver falls
-        // back to when that element gives none. A null element marks a torn-down element's box, listed in
-        // LayoutIdSnapshots until MotionLayoutIdDriver.ExpireSnapshots drops it where the render ends. Keyed by the id string, not an element, so it
+        // back to when that element gives none. A null element marks a torn-down element's box, which stays until
+        // another Motion takes the id. Keyed by the id string, not an element, so it
         // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
         // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
         // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
@@ -1244,7 +1253,15 @@ namespace Velvet
         // element (a replacement created before the old element's teardown has already taken it over).
         public Dictionary<string, (VisualElement? Element, LayoutIdBox? Box)> LayoutIdRegistry { get; } = new();
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
-        public HashSet<string> LayoutIdSnapshots { get; } = new();
+        // How many layoutId Motions the children being created are inside, which a Motion created with no parent yet
+        // reads as an ancestor (MotionLayoutIdDriver.Corrects).
+        internal int LayoutIdMotionDepth;
+        // The parent the children being reconciled are placed under (ChildReconciler.Reconcile).
+        internal VisualElement? ReconcileParent;
+        // The ids whose entry holds a box read under each parent, and the ids whose entry lost its element, oldest
+        // first (MotionLayoutIdDriver.SetEntry).
+        public Dictionary<VisualElement, HashSet<string>> LayoutIdBoxParents { get; } = new();
+        public Queue<string> LayoutIdSnapshotOrder { get; } = new();
 
         // The live elements holding each id, in the order they joined it; LayoutIdRegistry names the lead among
         // them. Each member's layout transition, for a lead it takes without a patch of its own; the inline
@@ -3270,6 +3287,7 @@ namespace Velvet
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
+                TextRendered,
                 TextNodeElements,
                 ChildVariantOwners,
                 ChildBoxOwners,

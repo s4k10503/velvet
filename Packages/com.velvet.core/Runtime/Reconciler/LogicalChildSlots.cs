@@ -103,19 +103,20 @@ namespace Velvet
             }
             var rendered = 0;
             // Where an append lands, decided by the invisible child's KIND rather than its position. The
-            // three kinds have opposite contracts: a z-index BACK container must stay the parent's first
-            // physical child, while a front container and a filter bounds spacer must stay last. So an
-            // append steps over a leading back container — slot 0 of a parent holding nothing else resolves
-            // AFTER it — and stops before everything else. Deciding this positionally instead ("anything
-            // invisible seen before the first rendered child is leading") sent an append past a bounds
-            // spacer on a parent whose rendered children had all been removed.
+            // kinds have opposite contracts: a z-index BACK container, a SceneView's camera feed and a
+            // Particles element's layers must stay ahead of every rendered child, while a front container and
+            // a filter bounds spacer must stay last. So an append steps over a leading one of the first three —
+            // slot 0 of a parent holding nothing else resolves AFTER it — and stops before everything else.
+            // Deciding this positionally instead ("anything invisible seen before the first rendered child is
+            // leading") sent an append past a bounds spacer on a parent whose rendered children had all been
+            // removed.
             var appendAt = 0;
             for (var i = 0; i < physicalCount; i++)
             {
                 var child = container[i];
                 if (SilhouetteBoundsSpacer.IsSpacer(child))
                 {
-                    if (FiberZLayerCoordinator.IsBackLayerContainer(child))
+                    if (StaysFirst(child))
                     {
                         appendAt = i + 1;
                     }
@@ -130,6 +131,11 @@ namespace Velvet
             }
             return appendAt;
         }
+
+        private static bool StaysFirst(VisualElement child)
+            => FiberZLayerCoordinator.IsBackLayerContainer(child)
+                || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
+                || child.ClassListContains(ParticlesDriver.LayerMarkerClass);
 
         /// <summary>
         /// The logical slot a physical child index occupies — the number of rendered children before it.

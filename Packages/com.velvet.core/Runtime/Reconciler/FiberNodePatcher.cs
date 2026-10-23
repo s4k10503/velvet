@@ -163,6 +163,7 @@ namespace Velvet
                 else
                 {
                     _ctx.TextRawText.Remove(element);
+                    _ctx.TextRendered.Remove(element);
                     // The element stays MOUNTED across this transition (no pool cycle), so
                     // ReconcilerContext.ClearElementSideTables never runs for it, and with no raw text left
                     // to resolve from, StyleTextEffectResolver.ApplyToElement can never run for it again
@@ -183,6 +184,7 @@ namespace Velvet
                         TextOverlineSilhouette.Detach(element, overlineBinding);
                         _ctx.TextOverlineBindings.Remove(element);
                     }
+                    TextShownWatch.Detach(_ctx, element);
                     // Likewise the line-breaking manipulator, whose events would otherwise keep re-deriving
                     // a leaf the resolver can no longer resolve.
                     if (_ctx.TextBalanceManipulators.Remove(element, out var balanceBreaker))
@@ -513,6 +515,23 @@ namespace Velvet
             _ctx.SyncRefCallback(element, newNode.RefCallback);
         }
 
+        // Draws a rotated layoutId Motion inside another through a correction wrapper, and takes the wrapper off
+        // again once it no longer is one. The Motion's layout and projection are read through the box its parent
+        // lays out (MotionLayoutIdDriver.Box), so the swap hands them to the driver first.
+        private void ReconcileLayoutIdCorrection(VisualElement element, MotionNode node, string[] appliedClasses)
+        {
+            var wants = node.LayoutId != null && MotionLayoutIdDriver.Corrects(appliedClasses)
+                && MotionLayoutIdDriver.HasLayoutIdAncestor(element.hierarchy.parent, _ctx);
+            if (wants == _appliers.HasLayoutIdCorrection(element))
+            {
+                if (wants) ClipPathLayoutBox.SyncClasses(element);
+                return;
+            }
+            MotionLayoutIdDriver.BeforeReseat(element, _ctx);
+            if (wants) _appliers.WrapLayoutIdCorrectionInPlace(element);
+            else _appliers.UnwrapLayoutIdCorrectionInPlace(element);
+        }
+
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
             _ctx.MotionNodes[element] = newNode;
@@ -631,6 +650,7 @@ namespace Velvet
                     childOrchestration, playback);
                 try
                 {
+                    using var inside = new LayoutIdMotionScope(_ctx, newNode.LayoutId != null);
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
                 finally
@@ -640,6 +660,7 @@ namespace Velvet
             }
             else
             {
+                using var inside = new LayoutIdMotionScope(_ctx, newNode.LayoutId != null);
                 PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
             }
 
@@ -680,6 +701,7 @@ namespace Velvet
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
             // it fires whether or not this patch also changed Variants/Animate.
+            ReconcileLayoutIdCorrection(element, newNode, appliedNew);
             if (newNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);

@@ -16,8 +16,9 @@ namespace Velvet
     }
 
     /// <summary>
-    /// The element behind <see cref="V.Particles"/>: draws a hidden ParticleSystem simulation as
-    /// textured quads in its own visual content. A dedicated subclass so a type change to or from any
+    /// The element behind <see cref="V.Particles"/>: draws a hidden ParticleSystem simulation's baked
+    /// geometry in its own visual content and in the blend layers over it, or the texture a camera renders
+    /// of a hidden VisualEffect. A dedicated subclass so a type change to or from any
     /// other element remounts instead of patching, and so the element is never recycled through the
     /// shared primitive pools while it owns a live simulation host.
     /// </summary>
