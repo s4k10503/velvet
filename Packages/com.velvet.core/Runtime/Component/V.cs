@@ -2240,6 +2240,12 @@ namespace Velvet
         /// <see cref="DndCollisions.RectIntersection"/>.</param>
         /// <param name="activation">Scope-wide activation default; a per-draggable override wins.</param>
         /// <param name="onDragMove">Fired on every move of an active drag.</param>
+        /// <param name="sensors">The sensors a press or key on a draggable is offered to; null means
+        /// <see cref="DndSensors.Default"/>.</param>
+        /// <param name="modifiers">Applied in order to every drag's translate.</param>
+        /// <param name="autoScroll">Null means <see cref="DndAutoScroll.Default"/>.</param>
+        /// <param name="accessibility">Null announces <see cref="DndAnnouncements.Default"/> while a screen reader is
+        /// enabled.</param>
         /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
         /// <returns>The created <see cref="ComponentNode"/>.</returns>
         public static ComponentNode DndContext(
@@ -2250,6 +2256,10 @@ namespace Velvet
             DndCollisionDetection? collisionDetection = null,
             DragActivation? activation = null,
             Action<DragMoveArgs>? onDragMove = null,
+            IReadOnlyList<DndSensor>? sensors = null,
+            IReadOnlyList<DndModifier>? modifiers = null,
+            DndAutoScroll? autoScroll = null,
+            DndAccessibility? accessibility = null,
             string? className = null,
             string? key = null,
             string? name = null,
@@ -2266,7 +2276,13 @@ namespace Velvet
         {
             VNode.RequireKey(key);
             var settings = new DndContextSettings(
-                onDragStart, onDragOver, onDragEnd, onDragCancel, collisionDetection, activation, onDragMove);
+                onDragStart, onDragOver, onDragEnd, onDragCancel, collisionDetection, activation, onDragMove)
+            {
+                Sensors = sensors,
+                Modifiers = modifiers,
+                AutoScroll = autoScroll,
+                Accessibility = accessibility,
+            };
             return Component(DndContextHost.Render, new DndContextHost.Props
             {
                 Settings = settings,
@@ -2429,33 +2445,133 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Portal-rendered drag preview. Expands to
-        /// <c>V.Portal(UILayer.Overlay)</c> hosting a framework-positioned, picking-ignored positioner
-        /// that is sized to the drag source at activation and tracks the pointer while a drag is active
-        /// (hidden otherwise). Render preview content conditionally from state set in
-        /// <c>onDragStart</c>/<c>onDragEnd</c>. Inherits
-        /// <c>V.Portal(layer:)</c>'s editor-context degradation.
+        /// Drag preview, dnd-kit's <c>DragOverlay</c>: a component rendering a framework-positioned, picking-ignored
+        /// positioner, through <c>V.Portal(UILayer.Overlay)</c> in a runtime mount and in place in an editor-panel
+        /// mount, that is sized to the drag source at activation and tracks the drag while one is active (hidden
+        /// otherwise). Render preview content conditionally from state set in <c>onDragStart</c>/<c>onDragEnd</c>;
+        /// through the drop animation it keeps showing the last content it showed.
         /// </summary>
         /// <param name="children">The preview content.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <returns>The created <see cref="PortalNode"/>.</returns>
-        public static PortalNode DragOverlay(VNode?[]? children = null, string? key = null)
+        /// <param name="dropAnimation">How the overlay returns to the source when a drag ends or is cancelled; null
+        /// means <see cref="DndDropAnimation.Default"/>, and <see cref="DndDropAnimation.None"/> hides it at
+        /// once.</param>
+        /// <param name="modifiers">Applied in order to the overlay's position after the scope's own modifiers.</param>
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode DragOverlay(
+            VNode?[]? children = null,
+            string? key = null,
+            DndDropAnimation? dropAnimation = null,
+            IReadOnlyList<DndModifier>? modifiers = null)
         {
             VNode.RequireKey(key);
-            var positionerProps = VNodePool.RentProps();
-            positionerProps.DragOverlay = new DragOverlaySettings();
-            // A drag preview is not a place Tab goes.
-            return Portal(UILayer.Overlay, key: key, focusOrder: PanelFocusOrder.Isolated, children: new VNode?[]
+            return Component(DragOverlayHost.Render, new DragOverlayHost.Props
             {
-                new ElementNode
-                {
-                    Key = "drag-overlay-positioner",
-                    ElementType = typeof(VisualElement),
-                    Props = positionerProps,
-                    Children = children ?? EmptyChildren,
-                    Events = EmptyEvents,
-                },
-            });
+                Children = children,
+                DropAnimation = dropAnimation ?? DndDropAnimation.Default,
+                Modifiers = modifiers,
+            }, key);
+        }
+
+        /// <summary>
+        /// Sorting scope, dnd-kit's <c>SortableContext</c>: the <see cref="Sortable"/> items under it sort in the
+        /// order <paramref name="items"/> gives. Renders no element of its own.
+        /// </summary>
+        /// <param name="items">The items' ids, in their current order.</param>
+        /// <param name="strategy">How items move aside while a drag sorts them; null means
+        /// <see cref="DndSortingStrategies.Rect"/>.</param>
+        /// <param name="id">The context's id, as <see cref="SortableInfo.ContainerId"/> reports it; null generates
+        /// one.</param>
+        /// <param name="children">The content holding the sortable items.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode SortableContext(
+            IReadOnlyList<string> items,
+            DndSortingStrategy? strategy = null,
+            string? id = null,
+            VNode?[]? children = null,
+            string? key = null)
+        {
+            if (items == null) throw new ArgumentNullException(nameof(items));
+            VNode.RequireKey(key);
+            return Component(SortableContextHost.Render, new SortableContextHost.Props
+            {
+                Items = items,
+                Strategy = strategy,
+                Id = id,
+                Children = children,
+            }, key);
+        }
+
+        /// <summary>
+        /// Sortable item, dnd-kit's <c>useSortable</c> node: one element that is both a draggable and a droppable
+        /// under <paramref name="id"/>, which the nearest <see cref="SortableContext"/> moves aside while a drag
+        /// sorts its items. The reorder itself stays app logic in <c>onDragEnd</c>, as with dnd-kit.
+        /// </summary>
+        /// <param name="id">The item's id, as it appears in the context's items.</param>
+        /// <param name="sortableData">Arbitrary payload carried into the callbacks.</param>
+        /// <param name="disabled">A disabled item neither drags nor collides.</param>
+        /// <param name="movement">Whether the item follows the drag itself; <see cref="DragMovement.None"/> for the
+        /// <c>V.DragOverlay</c> pattern, where the item instead moves to the slot it would drop into.</param>
+        /// <param name="activation">This item's activation constraint, over the scope's.</param>
+        /// <param name="strategy">This item's sorting strategy, over the context's.</param>
+        /// <param name="whileDraggingClass">Classes applied while this item is dragged.</param>
+        /// <param name="whileOverClass">Classes applied while the drag is over this item.</param>
+        /// <param name="events">Event bindings applied to the element (<c>Documentation~/react-migration.md</c> owns the rule). The array is read and never written.</param>
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode Sortable(
+            string id,
+            object? sortableData = null,
+            bool disabled = false,
+            DragMovement movement = DragMovement.Translate,
+            DragActivation? activation = null,
+            DndSortingStrategy? strategy = null,
+            string? whileDraggingClass = null,
+            string? whileOverClass = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null,
+            FiberEventBinding[]? events = null)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            VNode.RequireKey(key);
+            if (movement is not (DragMovement.Translate or DragMovement.None))
+            {
+                throw new ArgumentOutOfRangeException(nameof(movement), movement,
+                    "V.Sortable takes a member of DragMovement as its movement.");
+            }
+            return Component(SortableHost.Render, new SortableHost.Props
+            {
+                Id = id,
+                SortableData = sortableData,
+                Disabled = disabled,
+                Movement = movement,
+                Activation = activation,
+                Strategy = strategy,
+                WhileDraggingClass = whileDraggingClass,
+                WhileOverClass = whileOverClass,
+                ClassName = className,
+                Name = name,
+                ElementProps = props,
+                Styles = styles,
+                RefCallback = refCallback,
+                Children = children,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+                Data = data,
+                Aria = aria,
+                Events = events,
+            }, key);
         }
 
         /// <summary>

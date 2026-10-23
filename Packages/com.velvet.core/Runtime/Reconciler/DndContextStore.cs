@@ -19,9 +19,6 @@ namespace Velvet
         internal readonly TransformStore Transform = new();
         private readonly List<DndMonitorListener> _monitors = new();
 
-        // The text the screen reader was last handed: dnd-kit's live-region content.
-        internal string? Announcement;
-
         internal sealed class StateStore : Store<DndContextState>
         {
             internal StateStore() : base(DndContextState.Idle)

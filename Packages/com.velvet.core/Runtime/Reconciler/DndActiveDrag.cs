@@ -5,10 +5,11 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The drag-gesture state machine — the single owner of one pointer-drag session per mounted tree,
-    // referenced solely from ReconcilerContext.ActiveDrag (null = idle). Armed (PENDING) by a draggable's
-    // pointer-down, promoted to ACTIVE when the activation constraint is crossed, and returned to idle on
-    // drop, cancel, or teardown. Two engine facts shape the event wiring (both verified against engine
+    // The drag-gesture state machine — the single owner of one drag session per mounted tree, referenced solely
+    // from ReconcilerContext.ActiveDrag (null = idle). A sensor starts it: the pointer sensor arms it (PENDING)
+    // from a draggable's pointer-down and promotes it to ACTIVE when the activation constraint is crossed; any
+    // other sensor starts it ACTIVE and drives it through DndSensorSession. It returns to idle on drop, cancel,
+    // or teardown. Two engine facts shape the pointer sensor's event wiring (both verified against engine
     // source and pinned by the DnD PlayMode tests):
     //
     //   1. CAPTURED pointer events are delivered to the capturing element ONLY — no trickle through
@@ -38,6 +39,20 @@ namespace Velvet
             internal VisualElement PanelRoot { get; init; }
         }
 
+        // How one session is driven, fixed for its life: by the pointer sensor (PointerDriven, with the pointer id
+        // and the press target the press chain starts at) or by another sensor through DndSensorSession.
+        private readonly struct Drive
+        {
+            internal bool PointerDriven { get; init; }
+            internal int PointerId { get; init; }
+            internal VisualElement? PressTarget { get; init; }
+            internal Vector2 Start { get; init; }
+            internal DragActivation Activation { get; init; }
+            internal Vector2? ActivatorCoordinates { get; init; }
+            internal bool AutoScroll { get; init; }
+            internal System.Action? OnClose { get; init; }
+        }
+
         private readonly ReconcilerContext _ctx;
         private readonly VisualElement _scopeElement;
         private readonly DndScopeBinding _scope;
@@ -46,9 +61,18 @@ namespace Velvet
         private readonly VisualElement _panelRoot;
         private readonly DragActivation _activation;
         private readonly int _pointerId;
+        // True for the pointer sensor's session, the only one that listens to the pointer itself; every other
+        // sensor drives its session through DndSensorSession.
+        private readonly bool _pointerDriven;
+        // Where the activating pointer pressed; null for a session no pointer started, which collision
+        // detection then reads as having no pointer.
+        private readonly Vector2? _activatorCoordinates;
+        private readonly bool _autoScrollAllowed;
+        private System.Action? _onSensorClose;
         // The press target up to the panel root, deepest first: every element the pointer-down reached.
         // Both phases register their pointer callbacks on all of them, a swallowed release is settled on
-        // all of them, and any of them may still hold the pointer when the session closes.
+        // all of them, and any of them may still hold the pointer when the session closes. Empty for a session
+        // no pointer drives.
         private readonly List<VisualElement> _pressChain = new();
 
         private bool _active;
@@ -73,9 +97,11 @@ namespace Velvet
         // state-ghosting class this codebase's pool discipline exists to prevent.
         private Vector2 _origin;
         private Rect _originRect;
-        private Vector2 _grabOffset;
+        private Rect? _containerRect;
         private StyleTranslate _savedTranslate;
         private Vector2 _baseTranslate;
+        // The sensor's translate, and the one the modifiers made of it: the drag's translate everywhere else.
+        private Vector2 _rawDelta;
         private Vector2 _delta;
         private DragMovement _activeMovement;
         private string[] _activeDraggingClasses = System.Array.Empty<string>();
@@ -99,12 +125,24 @@ namespace Velvet
             (left, right) => left.Order.CompareTo(right.Order);
         // The strategy's ranking at the latest move: what DragOverArgs and DragEndArgs carry.
         private IReadOnlyList<DndCollision> _collisions = System.Array.Empty<DndCollision>();
+        // The ScrollViews around the source, nearest first, with their offsets when the drag started: the
+        // source's translate makes up what they have scrolled since, so it stays under the pointer.
+        private readonly List<(ScrollView View, Vector2 Start)> _sourceScrollers = new();
+        private DndAutoScroller? _autoScroller;
+        private DndSortableSession? _sortable;
 
         internal VisualElement Source => _source;
         internal VisualElement ScopeElement => _scopeElement;
         internal bool IsActivePhase => _active;
+        internal bool IsClosed => _closed;
+        internal ReconcilerContext Context => _ctx;
+        internal DndScopeBinding Scope => _scope;
+        internal string ActiveId => _draggable.Settings.Id;
+        internal DragMovement ActiveMovement => _activeMovement;
+        internal Rect OriginRect => _originRect;
+        internal Rect CollisionRect => new(_originRect.position + _delta, _originRect.size);
 
-        // See Arm: a stale pending session steps aside for a fresh press. No user callback fires — a
+        // See Offer: a stale pending session steps aside for a fresh press. No user callback fires — a
         // pending session never surfaced anything.
         internal void DiscardForRearm()
         {
@@ -114,16 +152,12 @@ namespace Velvet
             }
         }
 
-        // Arms a session from a draggable's pointer-down. Primary button only; no arming while another
-        // session (pending or active) exists; disabled draggables never arm; a draggable outside any
-        // DndContext warns once per binding and stays inert. No capture and no StopPropagation here —
-        // a press that never crosses the activation constraint must remain a plain click.
-        internal static void Arm(VisualElement source, DndDraggableBinding draggable, ReconcilerContext ctx, PointerDownEvent evt)
+        // Offers a draggable's pointer-down or key-down to its scope's sensors, in order. A press or key that can
+        // never start a drag (disabled, NoDrag) is refused before any sensor sees it. No capture and no
+        // StopPropagation here — a press that never crosses the activation constraint must remain a plain click.
+        internal static void Offer(VisualElement source, DndDraggableBinding draggable, ReconcilerContext ctx, EventBase evt)
         {
-            // A press that can never arm (secondary button, disabled, NoDrag) is validated BEFORE any hand-off:
-            // it must not cost a live pending session its observers (a right-button chord mid-press
-            // would otherwise silently kill the held left gesture).
-            if (evt.button != 0 || draggable.Settings.Disabled || ctx.NoDragElements.Contains(source))
+            if (draggable.Settings.Disabled || ctx.NoDragElements.Contains(source))
             {
                 return;
             }
@@ -136,26 +170,10 @@ namespace Velvet
             {
                 return;
             }
-            // A lingering PENDING session yields to a fresh press: a release delivered where none of its
-            // pending observers sees it leaves the session open, and without this hand-off the dead
-            // session would block every future drag. An ACTIVE
-            // session never yields — extra pointer-downs during a drag do not arm.
-            if (ctx.ActiveDrag != null)
-            {
-                if (ctx.ActiveDrag.IsActivePhase)
-                {
-                    return;
-                }
-                ctx.ActiveDrag.DiscardForRearm();
-            }
-            if (ctx.ActiveDrag != null)
-            {
-                return;
-            }
             var scopeElement = FindEnclosingScope(source, ctx, out var scope);
             if (scopeElement == null || scope == null)
             {
-                if (!draggable.WarnedNoScope)
+                if (evt is PointerDownEvent { button: 0 } && !draggable.WarnedNoScope)
                 {
                     draggable.WarnedNoScope = true;
                     FiberLogger.LogWarning("Dnd",
@@ -164,30 +182,132 @@ namespace Velvet
                 }
                 return;
             }
-            var panelRoot = source.panel?.visualTree;
-            if (panelRoot == null)
+            var sensors = scope.Settings.Sensors ?? DndSensors.Default;
+            if (sensors.Count == 0)
             {
                 return;
             }
+            var activation = new DndSensorActivation(source, draggable, ctx, scopeElement, scope, evt);
+            for (var i = 0; i < sensors.Count; i++)
+            {
+                if (sensors[i].TryActivate(evt, activation))
+                {
+                    return;
+                }
+            }
+        }
+
+        // The pointer sensor's arm: primary button only; no arming while an ACTIVE session exists. A
+        // draggable's own activation wins over the sensor's, and the sensor's over the scope's.
+        internal static bool ArmPointer(DndSensorActivation sensorActivation, PointerDownEvent evt, DragActivation? activation)
+        {
+            // A press that can never arm (secondary button) is validated BEFORE any hand-off: it must not cost a
+            // live pending session its observers (a right-button chord mid-press would otherwise silently kill
+            // the held left gesture).
+            if (evt.button != 0)
+            {
+                return false;
+            }
+            var ctx = sensorActivation.Context;
+            if (!TryTakeSlot(ctx))
+            {
+                return false;
+            }
+            var panelRoot = sensorActivation.Element.panel?.visualTree;
+            if (panelRoot == null)
+            {
+                return false;
+            }
+            var draggable = sensorActivation.Binding;
+            var origin = OriginOf(sensorActivation, panelRoot);
+            var resolved = draggable.Settings.Activation
+                ?? activation
+                ?? sensorActivation.Scope.Settings.Activation
+                ?? DragActivation.Default;
             // The session is INSTALLED before it begins: DragActivation.None activates immediately, and
             // its OnDragStart runs a synchronous discrete flush — a teardown that flush causes (the
             // activeId recipe swapping the source out) must find ctx.ActiveDrag set, or every teardown
             // interlock is bypassed and the closed session would be installed afterward, wedging arming
             // for the tree's lifetime.
-            var origin = new DragOrigin
+            var session = new DndActiveDrag(ctx, in origin, new Drive
             {
-                ScopeElement = scopeElement,
-                Scope = scope,
-                Source = source,
-                Draggable = draggable,
-                PanelRoot = panelRoot,
-            };
-            var session = new DndActiveDrag(ctx, in origin, evt);
+                PointerDriven = true,
+                PointerId = evt.pointerId,
+                PressTarget = evt.target as VisualElement,
+                Start = evt.position,
+                Activation = resolved,
+                ActivatorCoordinates = evt.position,
+                AutoScroll = true,
+            });
             ctx.ActiveDrag = session;
             session.Begin();
+            return true;
         }
 
-        private DndActiveDrag(ReconcilerContext ctx, in DragOrigin origin, PointerDownEvent evt)
+        // Any other sensor's start: the session is ACTIVE at once, at the coordinates the sensor names.
+        internal static DndSensorSession? StartFromSensor(
+            DndSensorActivation sensorActivation, Vector2 coordinates, bool autoScroll, System.Action? onClose)
+        {
+            var ctx = sensorActivation.Context;
+            var element = sensorActivation.Element;
+            // A sensor may start after its own constraint, by when the draggable may have gone.
+            if (!ctx.DraggableBindings.TryGetValue(element, out var binding)
+                || !ReferenceEquals(binding, sensorActivation.Binding) || binding.Settings.Disabled
+                || !ReferenceEquals(FindEnclosingScope(element, ctx, out _), sensorActivation.ScopeElement))
+            {
+                return null;
+            }
+            if (!TryTakeSlot(ctx))
+            {
+                return null;
+            }
+            var panelRoot = element.panel?.visualTree;
+            if (panelRoot == null)
+            {
+                return null;
+            }
+            var origin = OriginOf(sensorActivation, panelRoot);
+            var session = new DndActiveDrag(ctx, in origin, new Drive
+            {
+                PointerId = PointerId.invalidPointerId,
+                Start = coordinates,
+                Activation = DragActivation.None,
+                ActivatorCoordinates = sensorActivation.ActivatorCoordinates,
+                AutoScroll = autoScroll,
+                OnClose = onClose,
+            });
+            ctx.ActiveDrag = session;
+            var handle = new DndSensorSession(session);
+            session.Activate();
+            return handle;
+        }
+
+        // A lingering PENDING session yields to a fresh start: a release delivered where none of its pending
+        // observers sees it leaves the session open, and without this hand-off the dead session would block every
+        // future drag. An ACTIVE session never yields — one drag per tree, as dnd-kit's active is singular.
+        private static bool TryTakeSlot(ReconcilerContext ctx)
+        {
+            if (ctx.ActiveDrag != null)
+            {
+                if (ctx.ActiveDrag.IsActivePhase)
+                {
+                    return false;
+                }
+                ctx.ActiveDrag.DiscardForRearm();
+            }
+            return ctx.ActiveDrag == null;
+        }
+
+        private static DragOrigin OriginOf(DndSensorActivation sensorActivation, VisualElement panelRoot) => new()
+        {
+            ScopeElement = sensorActivation.ScopeElement,
+            Scope = sensorActivation.Scope,
+            Source = sensorActivation.Element,
+            Draggable = sensorActivation.Binding,
+            PanelRoot = panelRoot,
+        };
+
+        private DndActiveDrag(ReconcilerContext ctx, in DragOrigin origin, in Drive drive)
         {
             _ctx = ctx;
             _scopeElement = origin.ScopeElement;
@@ -195,16 +315,21 @@ namespace Velvet
             _source = origin.Source;
             _draggable = origin.Draggable;
             _panelRoot = origin.PanelRoot;
-            _pointerId = evt.pointerId;
-            for (var current = evt.target as VisualElement ?? origin.Source; current != null; current = current.parent)
+            _pointerId = drive.PointerId;
+            _pointerDriven = drive.PointerDriven;
+            _activatorCoordinates = drive.ActivatorCoordinates;
+            _autoScrollAllowed = drive.AutoScroll;
+            _onSensorClose = drive.OnClose;
+            if (drive.PointerDriven)
             {
-                _pressChain.Add(current);
+                for (var current = drive.PressTarget ?? origin.Source; current != null; current = current.parent)
+                {
+                    _pressChain.Add(current);
+                }
             }
-            _pressPosition = evt.position;
-            _lastPointerPosition = _pressPosition;
-            _activation = origin.Draggable.Settings.Activation
-                ?? origin.Scope.Settings.Activation
-                ?? DragActivation.Default;
+            _pressPosition = drive.Start;
+            _lastPointerPosition = drive.Start;
+            _activation = drive.Activation;
         }
 
         private void Begin()
@@ -336,10 +461,17 @@ namespace Velvet
             _delayTick = null;
 
             CaptureActiveSnapshot();
-            RegisterActiveObservers();
-            EstablishFocusAnchor();
+            if (_pointerDriven)
+            {
+                RegisterActiveObservers();
+                EstablishFocusAnchor();
+            }
             ApplyActiveStyling();
+            _delta = ApplyModifiers(_scope.Settings.Modifiers, Vector2.zero);
+            WriteSourceTranslate();
+            _sortable = DndSortableSession.TryBegin(this);
             RefreshOverlays();
+            StartAutoScroll();
 
             var args = new DragStartArgs(ActiveInfo(), _origin);
             FireDiscrete(() =>
@@ -348,6 +480,7 @@ namespace Velvet
                 PublishTransform();
                 _scope.Settings.OnDragStart?.Invoke(args);
                 _scope.Store.Dispatch(args, static listener => listener.OnDragStart);
+                Announce(Announcements()?.OnDragStart?.Invoke(args));
             });
         }
 
@@ -390,14 +523,22 @@ namespace Velvet
         {
             _origin = _lastPointerPosition;
             _originRect = _source.worldBound;
-            _grabOffset = _origin - _originRect.position;
+            _containerRect = _source.parent?.worldBound;
             _savedTranslate = SeatedTranslate.Read(_source);
             _baseTranslate = ResolveBaseTranslate(_savedTranslate);
+            _rawDelta = Vector2.zero;
             _delta = Vector2.zero;
             // Snapshot what the session applies (see the field-block note): restore symmetry must not
             // depend on the live settings surviving the drag unchanged.
             _activeMovement = _draggable.Settings.Movement;
             _activeDraggingClasses = _draggable.DraggingClasses;
+            for (var current = _source.parent; current != null; current = current.parent)
+            {
+                if (current is ScrollView view)
+                {
+                    _sourceScrollers.Add((view, view.scrollOffset));
+                }
+            }
         }
 
         // Steals the pointer from a child that captured at its own pointer-down (its
@@ -500,7 +641,7 @@ namespace Velvet
                     continue;
                 }
                 _overlays.Add((positioner, binding));
-                DndOverlayDriver.BeginSession(positioner, _originRect.size);
+                DndOverlayDriver.BeginSession(positioner, binding, _originRect.size);
             }
         }
 
@@ -520,7 +661,10 @@ namespace Velvet
         private void RefreshOverlays()
         {
             JoinMountedOverlays();
-            RegisterEscapeOnManagedRoots();
+            if (_pointerDriven)
+            {
+                RegisterEscapeOnManagedRoots();
+            }
             SyncOverlays();
         }
 
@@ -534,11 +678,14 @@ namespace Velvet
             return found;
         }
 
+        // An overlay sits on the source's rect at the start, moved by the drag's translate and then by its own
+        // modifiers, as dnd-kit's DragOverlay applies its modifiers to the context's modified translate.
         private void SyncOverlays()
         {
             foreach (var (positioner, binding) in _overlays)
             {
-                DndOverlayDriver.SyncPosition(positioner, binding, _source.panel, _lastPointerPosition, _grabOffset);
+                var translate = ApplyModifiers(binding.Settings?.Modifiers, _delta);
+                DndOverlayDriver.SyncPosition(positioner, binding, _source.panel, _originRect.position + translate, _ctx);
             }
         }
 
@@ -576,10 +723,11 @@ namespace Velvet
 
         // Candidacy pairs a droppable with its NEAREST enclosing DndContext, keeping nested contexts
         // isolated: subtree containment alone would leak an inner scope's droppables into an
-        // outer scope's drag, handing the outer callbacks drop ids they never registered.
+        // outer scope's drag, handing the outer callbacks drop ids they never registered. A droppable on
+        // another panel of the tree is a candidate where DndPanelSpace maps its rect into the source's panel.
         private bool IsCollisionCandidate(VisualElement element, DndDroppableBinding binding)
             => !binding.Settings.Disabled
-               && element.panel != null && element.panel == _source.panel
+               && DndPanelSpace.CanMap(element.panel, _source.panel, _ctx)
                && ReferenceEquals(FindEnclosingScope(element, _ctx, out _), _scopeElement)
                && binding.Settings.Id != _draggable.Settings.Id;
 
@@ -608,16 +756,114 @@ namespace Velvet
             {
                 _source.CapturePointer(_pointerId);
             }
-            _lastPointerPosition = evt.position;
-            _delta = _lastPointerPosition - _origin;
-            if (_activeMovement == DragMovement.Translate)
-            {
-                SeatedTranslate.Write(_source, new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y));
-            }
+            MoveTo(evt.position);
+            evt.StopPropagation();
+        }
+
+        private void MoveTo(Vector2 coordinates)
+        {
+            _lastPointerPosition = coordinates;
+            _rawDelta = coordinates - _origin;
+            _delta = ApplyModifiers(_scope.Settings.Modifiers, _rawDelta);
+            WriteSourceTranslate();
             RefreshOverlays();
             UpdateCollision();
             PublishTransform();
-            evt.StopPropagation();
+            _autoScroller?.Update(PointerCoordinates(), _rawDelta, ScrollSearchStart());
+        }
+
+        // A scroll the auto-scroller made moves the droppables under a pointer that has not moved.
+        internal void OnAutoScrolled()
+        {
+            if (_closed || !_active)
+            {
+                return;
+            }
+            WriteSourceTranslate();
+            UpdateCollision();
+        }
+
+        private void WriteSourceTranslate()
+        {
+            if (_activeMovement != DragMovement.Translate)
+            {
+                return;
+            }
+            var applied = _baseTranslate + _delta + ScrollCompensation();
+            SeatedTranslate.Write(_source, new Translate(applied.x, applied.y));
+        }
+
+        private Vector2 ScrollCompensation()
+        {
+            var total = Vector2.zero;
+            foreach (var (view, start) in _sourceScrollers)
+            {
+                total += view.scrollOffset - start;
+            }
+            return total;
+        }
+
+        // The pointer the collision strategies read: the pointer sensor's own, a pointer-started sensor's
+        // activator moved by its translate, and none for a session no pointer started.
+        private Vector2? PointerCoordinates()
+        {
+            if (_pointerDriven)
+            {
+                return _lastPointerPosition;
+            }
+            return _activatorCoordinates is { } pressed ? pressed + _rawDelta : null;
+        }
+
+        private VisualElement ScrollSearchStart() => _overElement ?? _source;
+
+        private Vector2 ApplyModifiers(IReadOnlyList<DndModifier>? modifiers, Vector2 transform)
+        {
+            if (modifiers == null || modifiers.Count == 0)
+            {
+                return transform;
+            }
+            var args = new DndModifierArgs
+            {
+                Transform = transform,
+                Active = ActiveInfo(),
+                ActiveNodeRect = _originRect,
+                DraggingNodeRect = _originRect,
+                ContainerNodeRect = _containerRect,
+                WindowRect = _panelRoot.worldBound,
+                FirstScrollableAncestorRect = NearestScrollViewport(_source),
+                ActivatorCoordinates = _activatorCoordinates,
+                Over = CurrentOverInfo(),
+            };
+            for (var i = 0; i < modifiers.Count; i++)
+            {
+                args = args with { Transform = modifiers[i](in args) };
+            }
+            return args.Transform;
+        }
+
+        private static Rect? NearestScrollViewport(VisualElement element)
+        {
+            for (var current = element.parent; current != null; current = current.parent)
+            {
+                if (current is ScrollView view)
+                {
+                    return view.contentViewport.worldBound;
+                }
+            }
+            return null;
+        }
+
+        // A V.Sortable item is measured without the displacement this drag gave it, as dnd-kit measures its
+        // droppables without their transforms; otherwise an item the drag pushed aside would leave the pointer.
+        private DndDroppableRect CandidateRect(VisualElement element, DndDroppableBinding binding)
+        {
+            var rect = _sortable != null && _sortable.IsMember(element)
+                ? DndSortableSession.TransformAgnosticRect(element)
+                : DndPanelSpace.RectIn(element, _source.panel!, _ctx);
+            var sortable = _ctx.DraggableBindings.TryGetValue(element, out var draggable)
+                ? DndSortableSession.InfoOf(draggable.Settings)
+                : null;
+            return new DndDroppableRect(binding.Settings.Id, rect, binding.Settings.Data, binding.Order, sortable);
         }
 
         private void UpdateCollision()
@@ -628,8 +874,7 @@ namespace Velvet
                 if (IsCollisionCandidate(element, binding))
                 {
                     ApplyDragActiveClassTo(element, binding);
-                    _queryBuffer.Add(new DndDroppableRect(
-                        binding.Settings.Id, element.worldBound, binding.Settings.Data, binding.Order));
+                    _queryBuffer.Add(CandidateRect(element, binding));
                 }
             }
             // Dictionary enumeration does not follow attach order once an entry has been removed, so the
@@ -637,8 +882,10 @@ namespace Velvet
             // DndInteractionTests pins it.
             _queryBuffer.Sort(s_byRegistration);
             var strategy = _scope.Settings.CollisionDetection ?? DndCollisions.RectIntersection;
-            var query = new DndCollisionQuery(
-                new Rect(_originRect.position + _delta, _originRect.size), _lastPointerPosition, _queryBuffer);
+            var collisionRect = CollisionRect;
+            var pointer = PointerCoordinates();
+            var query = new DndCollisionQuery(collisionRect, pointer ?? collisionRect.center, _queryBuffer,
+                hasPointer: pointer.HasValue);
             // A custom strategy may return null for no collision, as dnd-kit's getFirstCollision tolerates.
             DndCollision[]? collisions = strategy(in query);
             _collisions = collisions ?? System.Array.Empty<DndCollision>();
@@ -647,6 +894,7 @@ namespace Velvet
             var move = new DragMoveArgs(ActiveInfo(), CurrentOverInfo(), _delta, _collisions);
             _scope.Settings.OnDragMove?.Invoke(move);
             _scope.Store.Dispatch(move, static listener => listener.OnDragMove);
+            Announce(Announcements()?.OnDragMove?.Invoke(move));
             SetOver(collisions is { Length: > 0 } ? collisions[0].Id : null);
             PublishState();
         }
@@ -684,12 +932,14 @@ namespace Velvet
                     Toggle(_overElement, _appliedOverClasses, true);
                 }
             }
+            _sortable?.Update(_overId);
             // Over-change is continuous-lane feedback (it fires mid-move, potentially every frame):
             // a plain invoke, never the discrete synchronous-flush bracket drop/cancel use.
             var overInfo = CurrentOverInfo();
             var args = new DragOverArgs(ActiveInfo(), overInfo, _delta, _collisions);
             _scope.Settings.OnDragOver?.Invoke(args);
             _scope.Store.Dispatch(args, static listener => listener.OnDragOver);
+            Announce(Announcements()?.OnDragOver?.Invoke(args));
         }
 
         private void OnDragUp(PointerUpEvent evt)
@@ -701,22 +951,30 @@ namespace Velvet
                 return;
             }
             _lastPointerPosition = evt.position;
-            _delta = _lastPointerPosition - _origin;
-            var args = new DragEndArgs(ActiveInfo(), CurrentOverInfo(), _delta, _lastPointerPosition, _collisions);
-            // Close the session BEFORE the user callback, deviating from "callback then scrub": OnDragEnd
-            // runs in the discrete bracket, whose synchronous flush may unmount the source (the sortable
-            // commit) — the cleaner would then find a live session mid-teardown and cancel-scrub what the
-            // drop already owned. With the session closed first, that path sees idle and does nothing.
-            Close();
-            DndPressVariantSettler.Settle(_pressChain, _ctx);
+            _rawDelta = _lastPointerPosition - _origin;
+            _delta = ApplyModifiers(_scope.Settings.Modifiers, _rawDelta);
             // Swallowed before bubble-phase listeners on this same element run, so a Clickable on the
             // source (a draggable V.Button) does not fire `clicked` after a REAL drag. A sub-threshold
             // press never reaches here (it discards in Pending) — clicks stay intact.
             evt.StopImmediatePropagation();
+            Drop();
+        }
+
+        private void Drop()
+        {
+            var args = new DragEndArgs(ActiveInfo(), CurrentOverInfo(), _delta, _lastPointerPosition, _collisions);
+            var scope = _scope;
+            // Close the session BEFORE the user callback, deviating from "callback then scrub": OnDragEnd
+            // runs in the discrete bracket, whose synchronous flush may unmount the source (the sortable
+            // commit) — the cleaner would then find a live session mid-teardown and cancel-scrub what the
+            // drop already owned. With the session closed first, that path sees idle and does nothing.
+            Close(animateOverlays: true);
+            DndPressVariantSettler.Settle(_pressChain, _ctx);
             FireDiscrete(() =>
             {
-                _scope.Settings.OnDragEnd?.Invoke(args);
-                _scope.Store.Dispatch(args, static listener => listener.OnDragEnd);
+                scope.Settings.OnDragEnd?.Invoke(args);
+                scope.Store.Dispatch(args, static listener => listener.OnDragEnd);
+                Announce(scope, Announcements(scope)?.OnDragEnd?.Invoke(args));
             });
         }
 
@@ -760,6 +1018,40 @@ namespace Velvet
             Cancel();
         }
 
+        // DndSensorSession's three verbs. A session the sensor drives is ACTIVE from its start, and a verb that
+        // reaches it after it closed does nothing.
+        internal void SensorMove(Vector2 coordinates)
+        {
+            if (!_closed && _active)
+            {
+                MoveTo(coordinates);
+            }
+        }
+
+        internal void SensorEnd()
+        {
+            if (!_closed && _active)
+            {
+                Drop();
+            }
+        }
+
+        internal void SensorCancel() => Cancel();
+
+        internal DndKeyboardMove KeyboardMove(KeyCode key)
+        {
+            _queryBuffer.Clear();
+            foreach (var (element, binding) in _ctx.DroppableBindings)
+            {
+                if (IsCollisionCandidate(element, binding))
+                {
+                    _queryBuffer.Add(CandidateRect(element, binding));
+                }
+            }
+            _queryBuffer.Sort(s_byRegistration);
+            return new DndKeyboardMove(key, CollisionRect, ActiveInfo(), _overId, _queryBuffer.ToArray());
+        }
+
         private void Cancel()
         {
             if (_closed)
@@ -772,15 +1064,17 @@ namespace Velvet
                 return;
             }
             var args = new DragCancelArgs(ActiveInfo());
-            Close();
+            var scope = _scope;
+            Close(animateOverlays: true);
             DndPressVariantSettler.Settle(_pressChain, _ctx);
-            FireDiscrete(() => InvokeCancel(_scope, args));
+            FireDiscrete(() => InvokeCancel(scope, args));
         }
 
         private static void InvokeCancel(DndScopeBinding scope, DragCancelArgs args)
         {
             scope.Settings.OnDragCancel?.Invoke(args);
             scope.Store.Dispatch(args, static listener => listener.OnDragCancel);
+            Announce(scope, Announcements(scope)?.OnDragCancel?.Invoke(args));
         }
 
         // Teardown-flavored cancel, called by FiberElementCleaner / the drivers when the source, its
@@ -832,6 +1126,31 @@ namespace Velvet
             }
         }
 
+        private DndAnnouncements? Announcements() => Announcements(_scope);
+
+        private static DndAnnouncements? Announcements(DndScopeBinding scope)
+            => scope.Settings.Accessibility?.Announcements ?? DndAnnouncements.Default;
+
+        private void Announce(string? text) => Announce(_scope, text);
+
+        private static void Announce(DndScopeBinding scope, string? text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+            var announce = scope.Settings.Accessibility?.Announce;
+            if (announce != null)
+            {
+                announce(text!);
+                return;
+            }
+            if (UnityEngine.Accessibility.AssistiveSupport.isScreenReaderEnabled)
+            {
+                UnityEngine.Accessibility.AssistiveSupport.notificationDispatcher.SendAnnouncement(text!);
+            }
+        }
+
         // Takes this session's classes off element without ending the session, for a teardown that drops the
         // element's class projection before it cancels the session.
         internal void ReleaseClassesOf(VisualElement element)
@@ -868,6 +1187,9 @@ namespace Velvet
                 _appliedOverClasses = null;
             }
         }
+
+        // A sortable item leaving mid-drag takes its displacement off before the pool can hand it on.
+        internal void OnDraggableDetached(VisualElement element) => _sortable?.Forget(element);
 
         // A render that DECLARES Focusable on the source takes ownership of the flag mid-session: the
         // anchor's transient flip must not be "restored" over a value the props now own (the prop diff
@@ -909,8 +1231,9 @@ namespace Velvet
 
         // Restores everything this session ever wrote and returns the context to idle. Ordering note:
         // the drag-lifetime callbacks unregister BEFORE ReleasePointer, so our own release's
-        // PointerCaptureOutEvent cannot re-enter as a cancel.
-        private void Close()
+        // PointerCaptureOutEvent cannot re-enter as a cancel. A drop or a cancel hands its overlays to their
+        // drop animation; a teardown hides them.
+        private void Close(bool animateOverlays = false)
         {
             if (_closed)
             {
@@ -924,12 +1247,13 @@ namespace Velvet
             {
                 UnregisterActiveObservers();
                 ReleaseFocusAnchor();
+                _autoScroller?.Stop();
+                _autoScroller = null;
+                _sortable?.Restore();
+                _sortable = null;
                 RestoreActiveTranslate();
                 RemoveActiveStyling();
-                EndOverlaySession();
-            }
-            if (_active)
-            {
+                EndOverlaySession(animateOverlays);
                 _scope.Store.State.Publish(DndContextState.Idle);
                 _scope.Store.Transform.Publish(default);
             }
@@ -937,6 +1261,9 @@ namespace Velvet
             {
                 _ctx.ActiveDrag = null;
             }
+            var onClose = _onSensorClose;
+            _onSensorClose = null;
+            onClose?.Invoke();
         }
 
         private void UnregisterActiveObservers()
@@ -1028,11 +1355,27 @@ namespace Velvet
             _appliedOverClasses = null;
         }
 
-        private void EndOverlaySession()
+        private void EndOverlaySession(bool animate)
         {
-            foreach (var (positioner, _) in _overlays)
+            foreach (var (positioner, binding) in _overlays)
             {
-                DndOverlayDriver.EndSession(positioner);
+                if (animate)
+                {
+                    DndDropAnimator.Begin(positioner, binding, _source, _scopeElement, ActiveId, _ctx);
+                }
+                else
+                {
+                    DndOverlayDriver.EndSession(positioner, binding);
+                }
+            }
+        }
+
+        private void StartAutoScroll()
+        {
+            var settings = _scope.Settings.AutoScroll ?? DndAutoScroll.Default;
+            if (_autoScrollAllowed && settings.Enabled)
+            {
+                _autoScroller = new DndAutoScroller(this, settings, _panelRoot);
             }
         }
 
@@ -1157,11 +1500,19 @@ namespace Velvet
         }
 
         private DraggableInfo ActiveInfo()
-            => new(_draggable.Settings.Id, _draggable.Settings.Data, _source);
+            => new(_draggable.Settings.Id, _draggable.Settings.Data, _source)
+            {
+                Sortable = DndSortableSession.InfoOf(_draggable.Settings),
+            };
 
         private DroppableInfo? CurrentOverInfo()
             => _overBinding != null && _overElement != null
                 ? new DroppableInfo(_overBinding.Settings.Id, _overBinding.Settings.Data, _overElement)
+                {
+                    Sortable = _ctx.DraggableBindings.TryGetValue(_overElement, out var overDraggable)
+                        ? DndSortableSession.InfoOf(overDraggable.Settings)
+                        : null,
+                }
                 : null;
 
         private void FireDiscrete(System.Action callback)

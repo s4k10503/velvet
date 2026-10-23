@@ -1614,6 +1614,42 @@ namespace Velvet
             UseEffect(() => store.Register(relay.Forwarder), new object?[] { store, relay });
         }
 
+        /// <summary>
+        /// Returns the sorting state of the item <paramref name="id"/> names in the nearest <c>V.SortableContext</c>
+        /// — dnd-kit's <c>useSortable</c>, read-only: the element is <c>V.Sortable</c>, which moves the items aside
+        /// itself. The component re-renders when the context's items, the active draggable or the target it is
+        /// over changes. Outside a <c>V.SortableContext</c> every index is -1 and the items are empty.
+        /// </summary>
+        /// <param name="id">The item's id. Must not be null.</param>
+        /// <returns>The item's sorting state.</returns>
+        public static SortableState UseSortable(string id)
+        {
+            if (id == null) throw new ArgumentNullException(nameof(id));
+            _ = Resolve("UseSortable");
+            var context = UseContext(DndSortableContextValue.Context);
+            var store = UseContext(DndContextStore.Context) ?? DndContextStore.Detached;
+            var (active, over) = UseStore(store.State, static state => (state.Active, state.Over));
+            var items = context?.Items ?? System.Array.Empty<string>();
+            var index = DndSortable.IndexOf(items, id);
+            var activeIndex = DndSortable.IndexOf(items, active?.Id);
+            var overIndex = DndSortable.IndexOf(items, over?.Id);
+            var newIndex = activeIndex >= 0 && overIndex >= 0 && index >= 0
+                ? DndSortable.IndexOf(DndSortable.ArrayMove(items, activeIndex, overIndex), id)
+                : index;
+            return new SortableState
+            {
+                Index = index,
+                ActiveIndex = activeIndex,
+                OverIndex = overIndex,
+                NewIndex = newIndex,
+                IsSorting = active != null,
+                IsDragging = active?.Id == id,
+                IsOver = over?.Id == id,
+                Items = items,
+                ContainerId = context?.Id,
+            };
+        }
+
         // The registration UseDndMonitor holds for the component's life, forwarding to the listener its latest
         // committed render passed.
         private sealed class DndMonitorRelay

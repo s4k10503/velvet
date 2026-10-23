@@ -23,13 +23,14 @@ namespace Velvet
     }
 
     // Bookkeeping for one draggable element: the latest settings, the parsed while-dragging classes, the
-    // registered pointer-down armer (binding-lifetime, NOT a FiberEventBinding — it must survive event-prop
-    // diffs untouched), and the one-shot no-scope warning flag.
+    // registered pointer-down and key-down sensor offers (binding-lifetime, NOT FiberEventBindings — they must
+    // survive event-prop diffs untouched), and the one-shot no-scope warning flag.
     internal sealed class DndDraggableBinding
     {
         public DraggableSettings Settings;
         public string[] DraggingClasses;
         public EventCallback<PointerDownEvent>? OnPointerDown;
+        public EventCallback<KeyDownEvent>? OnKeyDown;
         public bool WarnedNoScope;
 
         public DndDraggableBinding(DraggableSettings settings)
@@ -64,11 +65,14 @@ namespace Velvet
         }
     }
 
-    // Bookkeeping for one V.DragOverlay positioner: the one-shot unsupported-panel warning — the positioner
-    // element itself is the registry key, and all session state lives on DndActiveDrag.
+    // Bookkeeping for one V.DragOverlay positioner: its latest settings, the one-shot unsupported-panel warning
+    // and the drop animation it runs after a drag — the positioner element itself is the registry key, and all
+    // session state lives on DndActiveDrag.
     internal sealed class DndOverlayBinding
     {
+        public DragOverlaySettings? Settings;
         public bool WarnedUnsupportedPanel;
+        public DndDropAnimator.Run? Drop;
     }
 
     // Attach/Update/Detach for the DndContext scope slot, hand-inlined in FiberWrapperElementAppliers like
@@ -111,8 +115,10 @@ namespace Velvet
             // would silence a later-registered bubble armer — the trickle phase runs deterministically
             // first. Arming itself neither captures nor stops propagation: a press that never crosses
             // the activation constraint must stay a plain click (see DndActiveDrag.Arm).
-            binding.OnPointerDown = evt => DndActiveDrag.Arm(element, binding, ctx, evt);
+            binding.OnPointerDown = evt => DndActiveDrag.Offer(element, binding, ctx, evt);
+            binding.OnKeyDown = evt => DndActiveDrag.Offer(element, binding, ctx, evt);
             element.RegisterCallback(binding.OnPointerDown, TrickleDown.TrickleDown);
+            element.RegisterCallback(binding.OnKeyDown, TrickleDown.TrickleDown);
             return binding;
         }
 
@@ -143,6 +149,13 @@ namespace Velvet
                 element.UnregisterCallback(binding.OnPointerDown, TrickleDown.TrickleDown);
                 binding.OnPointerDown = null;
             }
+            if (binding.OnKeyDown != null)
+            {
+                element.UnregisterCallback(binding.OnKeyDown, TrickleDown.TrickleDown);
+                binding.OnKeyDown = null;
+            }
+            ctx.ActiveDrag?.OnDraggableDetached(element);
+            DndDropAnimator.ForgetSource(element, ctx);
         }
     }
 
@@ -167,13 +180,12 @@ namespace Velvet
         }
     }
 
-    // The V.DragOverlay positioner: a framework-positioned, picking-ignored container on the Overlay
-    // layer panel that tracks the pointer while a drag is active and is display:none otherwise. Session
-    // begin/end and per-move positioning are driven by DndActiveDrag; this driver owns only the
-    // element's binding lifecycle and the panel-space conversion.
+    // The V.DragOverlay positioner: a framework-positioned, picking-ignored container that tracks the drag while
+    // one is active and is display:none otherwise. Session begin/end and per-move positioning are driven by
+    // DndActiveDrag; this driver owns only the element's binding lifecycle and the panel-space conversion.
     internal static class DndOverlayDriver
     {
-        public static DndOverlayBinding Attach(VisualElement positioner, ReconcilerContext ctx)
+        public static DndOverlayBinding Attach(VisualElement positioner, DragOverlaySettings settings, ReconcilerContext ctx)
         {
             // Forced inline for the same reason AnchoredDriver forces absolute: dynamic left/top has no
             // other way to work. PickingMode.Ignore keeps the ghost from intercepting the drop or waking
@@ -181,12 +193,16 @@ namespace Velvet
             positioner.pickingMode = PickingMode.Ignore;
             positioner.style.position = Position.Absolute;
             positioner.style.display = DisplayStyle.None;
-            return new DndOverlayBinding();
+            return new DndOverlayBinding { Settings = settings };
         }
 
         public static void Detach(VisualElement positioner, ReconcilerContext ctx)
         {
             ctx.ActiveDrag?.OnOverlayInvalidated(positioner);
+            if (ctx.DragOverlayBindings.TryGetValue(positioner, out var binding))
+            {
+                DndDropAnimator.Stop(binding);
+            }
             positioner.pickingMode = PickingMode.Position;
             positioner.style.position = StyleKeyword.Null;
             positioner.style.display = StyleKeyword.Null;
@@ -196,57 +212,58 @@ namespace Velvet
             positioner.style.height = StyleKeyword.Null;
         }
 
-        public static void BeginSession(VisualElement positioner, Vector2 sourceSize)
+        public static void BeginSession(VisualElement positioner, DndOverlayBinding binding, Vector2 sourceSize)
         {
+            DndDropAnimator.Stop(binding);
             positioner.style.display = DisplayStyle.Flex;
             positioner.style.width = sourceSize.x;
             positioner.style.height = sourceSize.y;
         }
 
-        public static void EndSession(VisualElement positioner)
+        public static void EndSession(VisualElement positioner, DndOverlayBinding binding)
         {
             positioner.style.display = DisplayStyle.None;
         }
 
-        // Converts the source panel's pointer position into the overlay panel's space through screen
-        // space (PanelToScreen's derived inverse affine + ScreenToPanel), and pins the positioner so the
-        // grab point stays under the pointer. Editor-context panels have no defined screen mapping for
-        // this conversion — degrade to hidden with a one-shot warning (the layer host itself already
-        // degrades in editor mounts; this guard covers a positioner that got created anyway).
+        // Pins the positioner's top-left at topLeft, a point in the source's panel. An overlay that can show
+        // nothing there degrades to hidden with a one-shot warning.
         public static void SyncPosition(
-            VisualElement positioner, DndOverlayBinding binding,
-            IPanel? sourcePanel, Vector2 pointerPanelPosition, Vector2 grabOffset)
+            VisualElement positioner, DndOverlayBinding binding, IPanel? sourcePanel, Vector2 topLeft,
+            ReconcilerContext ctx)
         {
-            var overlayPanel = positioner.panel;
-            if (overlayPanel == null || sourcePanel == null)
+            if (positioner.panel == null || sourcePanel == null)
             {
                 return;
             }
-            Vector2 overlayLocal;
-            if (ReferenceEquals(overlayPanel, sourcePanel))
+            if (!TryLocalPosition(positioner, sourcePanel, topLeft, ctx, out var local))
             {
-                overlayLocal = pointerPanelPosition;
-            }
-            else
-            {
-                if (sourcePanel.contextType != ContextType.Player || overlayPanel.contextType != ContextType.Player)
+                if (!binding.WarnedUnsupportedPanel)
                 {
-                    if (!binding.WarnedUnsupportedPanel)
-                    {
-                        binding.WarnedUnsupportedPanel = true;
-                        FiberLogger.LogWarning("Dnd",
-                            "V.DragOverlay needs runtime (Player-context) panels on both ends of its "
-                            + "panel-space conversion; hiding the overlay in this editor-context mount.");
-                    }
-                    positioner.style.display = DisplayStyle.None;
-                    return;
+                    binding.WarnedUnsupportedPanel = true;
+                    FiberLogger.LogWarning("Dnd",
+                        "A drag overlay on another panel than its drag source needs both to be screen-space "
+                        + "runtime (Player-context) panels; hiding the overlay.");
                 }
-                var screen = FiberCrossPanelPointerRouter.PanelToScreen(sourcePanel, pointerPanelPosition);
-                overlayLocal = RuntimePanelUtils.ScreenToPanel(overlayPanel, screen);
+                positioner.style.display = DisplayStyle.None;
+                return;
             }
-            var topLeft = overlayLocal - grabOffset;
-            positioner.style.left = topLeft.x;
-            positioner.style.top = topLeft.y;
+            positioner.style.left = local.x;
+            positioner.style.top = local.y;
+        }
+
+        // A point in the source's panel, in the positioner's parent's space: through screen space when the two
+        // panels differ (DndPanelSpace).
+        public static bool TryLocalPosition(
+            VisualElement positioner, IPanel sourcePanel, Vector2 point, ReconcilerContext ctx, out Vector2 local)
+        {
+            if (!DndPanelSpace.TryPoint(sourcePanel, positioner.panel, point, ctx, out var onOverlayPanel))
+            {
+                local = default;
+                return false;
+            }
+            var parent = positioner.hierarchy.parent;
+            local = parent != null ? parent.WorldToLocal(onOverlayPanel) : onOverlayPanel;
+            return true;
         }
     }
 

@@ -269,19 +269,22 @@ namespace Velvet
 
         internal void ApplyDragOverlay(VisualElement element, DragOverlaySettings? settings)
         {
-            if (_ctx.DragOverlayBindings.TryGetValue(element, out _))
+            if (_ctx.DragOverlayBindings.TryGetValue(element, out var binding))
             {
                 if (settings == null)
                 {
                     DndOverlayDriver.Detach(element, _ctx);
                     _ctx.DragOverlayBindings.Remove(element);
                 }
-                // The marker record carries no updatable state, so a live binding has nothing to refresh.
+                else
+                {
+                    binding.Settings = settings;
+                }
                 return;
             }
             if (settings != null)
             {
-                _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element, _ctx);
+                _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element, settings, _ctx);
             }
         }
 
