@@ -162,6 +162,18 @@ namespace Velvet
             // panel without a teardown carries one to a panel without a frame, and Velvet moves none between panels: a
             // portal given another target remounts its children (portals.md). A first-layout wait settles on an element in a panel.
             else if (host != null && ctx.LayoutIdFrames.ContainsKey(host)) Project(host, ctx);
+            RecordResting(element, ctx);
+        }
+
+        // Keeps the box a lead is laid out at as its id's snapshot when it holds none, so a teardown that can no longer read the
+        // element (a recycled virtual-list row is taken out of its parent first) leaves the box it last stood at.
+        private static void RecordResting(VisualElement element, ReconcilerContext ctx)
+        {
+            if (!ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)) return;
+            if (!ctx.LayoutIdRegistry.TryGetValue(layoutId, out var entry)) return;
+            if (!ReferenceEquals(entry.Element, element) || entry.Box != null) return;
+            var box = ReadBox(element, ctx);
+            if (box != null) SetEntry(ctx, layoutId, element, box.Value.Detached());
         }
 
         private static void SettleMovedAncestors(VisualElement element, ReconcilerContext ctx)

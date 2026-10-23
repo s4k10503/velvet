@@ -852,6 +852,57 @@ namespace Velvet.Tests
             Assert.That((element.layout.x, element.style.translate.keyword), Is.EqualTo((230f, StyleKeyword.Null)));
         }
 
+        private static readonly string[] s_rowIds =
+        {
+            "row-0", "row-1", "row-2", "row-3", "row-4", "row-5", "row-6", "row-7", "row-8", "row-9", "row-10", "row-11",
+        };
+
+        // Each row is a layoutId Motion under its own id; a scroll renders the range outside any render.
+        private static VirtualListNode LayoutIdRows() => V.VirtualList(
+            items: s_rowIds,
+            keySelector: id => id,
+            itemHeight: 50f,
+            renderer: id => V.Motion(key: id, name: id, layoutId: id, transition: s_layoutSpring, className: "w-[100px] h-[50px]"),
+            overscan: 0);
+
+        // What the id's entry holds, for a failure message: whether an element, a box, and how many ids are kept.
+        private static string RegistryReading(ReconcilerContext ctx, string id) =>
+            ctx.LayoutIdRegistry.TryGetValue(id, out var entry)
+                ? $"{id}: element={(entry.Element != null)}, box={entry.Box.HasValue} of {ctx.LayoutIdRegistry.Count} ids"
+                : $"{id}: absent of {ctx.LayoutIdRegistry.Count} ids";
+
+        [Test]
+        public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromTheRowsBox()
+        {
+            // Arrange — the rows re-render once after layout, so row-0 holds its own box when the scroll takes it.
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            Root.Add(scrollView);
+            using var controller = new FiberVirtualListController(scrollView, LayoutIdRows(), _reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            Tick();
+            controller.Update(LayoutIdRows());
+            Tick();
+            var ctx = _reconciler.Context;
+            var row0 = Root.Q<VisualElement>("row-0");
+            var before = $"{RegistryReading(ctx, "row-0")}; row layout={row0.layout}, parented={row0.hierarchy.parent != null}";
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 100f);
+            var afterScroll = RegistryReading(ctx, "row-0");
+            var host = new VisualElement();
+            Root.Add(host);
+
+            // Act
+            _reconciler.Reconcile(host, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "remount", layoutId: "row-0", transition: s_layoutSpring,
+                    className: "left-[300px] top-[0px] w-[100px] h-[50px]"),
+            });
+            Tick();
+
+            // Assert — the row stood 300px left of where the new Motion does.
+            var diagnostic = $"before the scroll [{before}]; after it [{afterScroll}]; after the mount [{RegistryReading(ctx, "row-0")}]";
+            Assert.That(TranslateX(host.Q<VisualElement>("remount")), Is.LessThan(-200f), diagnostic);
+        }
+
         [Test]
         public void Given_ALayoutIdMotionTornDownOutsideARender_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromItsBox()
         {
