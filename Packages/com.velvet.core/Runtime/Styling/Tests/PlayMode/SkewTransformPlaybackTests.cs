@@ -80,12 +80,12 @@ namespace Velvet.Tests
             return -1;
         }
 
-        private IEnumerator Mount(float xDeg, float yDeg)
+        private IEnumerator Mount(float xDeg, float yDeg, string extraClasses = "")
         {
             _host = new RenderTexturePanelHost("Skew", Width, Height);
             VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root,
-                V.Div(name: "box", className: "w-[100px] h-[100px] mt-[80px] ml-[130px] bg-[#0000ff]"));
+                V.Div(name: "box", className: "w-[100px] h-[100px] mt-[80px] ml-[130px] bg-[#0000ff] " + extraClasses));
             var box = _host.Root.Q<VisualElement>("box");
             if (SkewTransformFactor.TryFactor(xDeg, yDeg, out var rotation, out var scale))
             {
@@ -114,22 +114,39 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ABoxCarryingTheFactoredSkew_When_APointerPicksAtItsTopEdge_Then_TheHitRegionLeansWithThePaint()
+        public IEnumerator Given_AClippingBoxCarryingTheFactoredSkew_When_UIToolkitDrawsIt_Then_ItsShearedEdgesAreNotCutAtTheLayoutBox()
         {
-            // Arrange — skewX(30deg) carries the top edge left by 50 * tan 30 = 28.9 px about the box's centre
-            // (230, 130 down to 180 for the 100 x 100 box at 130, 80), so 15 px left of the box's left edge near the
-            // top is painted, and 15 px left of its right edge near the top is not.
+            // Arrange — the same box and angle as above, with a hidden overflow, which cuts what the element's own
+            // content paints outside its padding box.
+            yield return Mount(30f, 0f, "overflow-hidden");
+
+            // Act
+            var measured = Measure(RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Width, Height)));
+
+            // Assert
+            var shear = measured.TopLeft - measured.BottomLeft;
+            Assert.That(new float[] { measured.Rows, shear },
+                Is.EqualTo(new[] { BoxSize, -(BoxSize - 5f) * Mathf.Tan(30f * Mathf.Deg2Rad) }).Within(3f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABoxCarryingTheFactoredSkew_When_APointerPicksNearItsTopEdge_Then_TheBoundingRectangleOfTheShearedBoxIsPicked()
+        {
+            // Arrange — skewX(30deg) carries the top edge left by 50 * tan 30 = 28.9 px about the centre of the
+            // 100 x 100 box at (130, 80): 15 px left of its left edge near the top is painted, and 15 px left of its
+            // right edge there is not.
             yield return Mount(30f, 0f);
             var panel = _host.Root.panel;
 
             // Act
-            var outsideTheBox = panel.Pick(new Vector2(130f - 15f, 85f));
-            var insideTheBox = panel.Pick(new Vector2(230f - 15f, 85f));
+            var paintedCorner = panel.Pick(new Vector2(130f - 15f, 85f));
+            var unpaintedCorner = panel.Pick(new Vector2(230f - 15f, 85f));
 
-            // Assert
+            // Assert — both resolve to the box: the pick reaches the sheared box's bounding rectangle rather than
+            // the sheared shape.
             var box = _host.Root.Q<VisualElement>("box");
-            Assert.That((ReferenceEquals(outsideTheBox, box), ReferenceEquals(insideTheBox, box)),
-                Is.EqualTo((true, false)));
+            Assert.That((ReferenceEquals(paintedCorner, box), ReferenceEquals(unpaintedCorner, box)),
+                Is.EqualTo((true, true)));
         }
     }
 }

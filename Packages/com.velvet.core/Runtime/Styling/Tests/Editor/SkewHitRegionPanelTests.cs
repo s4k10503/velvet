@@ -24,6 +24,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base picks by the unsheared box and seats children already.
         // Velvet's skew writes no transform on the caster and this branch changes neither half; the case is
         // what the styling guide's new skew paragraph rests on.
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [Test]
         public void Given_ASkewedCaster_When_PickedAtASeatedChildAndBeyondItsLayoutBox_Then_ChildIsPickedAndOutsidePointIsNot()
         {
@@ -31,7 +32,7 @@ namespace Velvet.Tests
             // measurably sideways. Sizes are arbitrary values, which resolve to inline style, so this panel
             // needs no stylesheet; skew-x-* carries no USS rule either.
             _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "caster", className: $"w-[200px] h-[48px] skew-x-{(int)SkewDegrees}",
+                V.Div(name: "caster", className: $"w-[200px] h-[48px] skew-x-{(int)SkewDegrees} rotate-0",
                     children: new VNode?[] { V.Div(name: "tab", className: "w-[20px] h-[20px] mt-[28px]") }));
             var caster = _window.rootVisualElement.Q<VisualElement>("caster");
             var child = _window.rootVisualElement.Q<VisualElement>("tab");

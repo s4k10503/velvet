@@ -287,12 +287,13 @@ namespace Velvet.Tests
                 $"plainClipped={plainClipped} shadowOpen={shadowOpen} shadowClipped={shadowClipped}");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ABorderedSkewedCaster_When_ItsOwnOverflowIsHidden_Then_ItKeepsItsBorder()
         {
             // Arrange — a clipping skewed card paints its border and the background beneath it on a sibling over
             // it (FaceBorderOverlay). A shallow angle keeps the sheared face over the sampled strip.
-            const string skew = " skew-x-[10deg]";
+            const string skew = " skew-x-[10deg] rotate-0";
             yield return MountBorderedCard("BorderedSkewOpen", skew, clip: false);
             var open = SampleBorderStrip();
 
@@ -306,11 +307,12 @@ namespace Velvet.Tests
                 $"open={open} clipped={clipped}");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedElement_When_ItsOwnOverflowIsHidden_Then_TheShearOverhangIsLostAndTheFaceSurvives()
         {
             // Arrange
-            const string skew = BoxBase + " bg-[#ff0000] skew-x-[30deg]";
+            const string skew = BoxBase + " bg-[#ff0000] skew-x-[30deg] rotate-0";
             yield return MountBox("SkewOpen", skew, clip: false);
             var openOverhang = Count(LeftOfBox, IsRed);
 
@@ -330,6 +332,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
         // Move `overflow-hidden` from the inner child onto the caster and the overhang term reddens.
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedElementWithAFullSizeClippingChild_When_ItRenders_Then_TheFaceKeepsItsOverhangAndTheContentIsClipped()
         {
@@ -337,7 +340,7 @@ namespace Velvet.Tests
             // its right edge: the half inside proves the content painted, the half outside proves the clip took.
             NewPanel("SkewClipChild");
             _mounted = V.Mount(_host.Root, V.Div(name: "caster",
-                className: BoxBase + " bg-[#ff0000] skew-x-[30deg]",
+                className: BoxBase + " bg-[#ff0000] skew-x-[30deg] rotate-0",
                 children: new[] { V.Div(name: "clip", className: "absolute inset-0 overflow-hidden") }));
             var caster = _host.Root.Q<VisualElement>("caster");
             var clip = _host.Root.Q<VisualElement>("clip");
@@ -371,12 +374,13 @@ namespace Velvet.Tests
                 $"box={box} inner={inner} overhang={overhang} inside={contentInside} outside={contentOutside}");
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only a rotate class was added so it still reaches the painted skew layer.
         [UnityTest]
         public IEnumerator Given_ASkewedGradientElement_When_ItsOwnOverflowIsHidden_Then_TheShearOverhangIsLost()
         {
             // Arrange — a gradient alone is a background-image and is clipped to the box either way; the
             // skewed one is the case that becomes a generated-content quad, so it is the one at risk.
-            const string skewGradient = BoxBase + " skew-x-[30deg] bg-gradient-to-r from-[#ff0000] to-[#ff0000]";
+            const string skewGradient = BoxBase + " skew-x-[30deg] bg-gradient-to-r from-[#ff0000] to-[#ff0000] rotate-0";
             yield return MountBox("SkewGradOpen", skewGradient, clip: false);
             var openOverhang = Count(LeftOfBox, IsRed);
 

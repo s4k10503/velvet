@@ -345,29 +345,18 @@ hovered), and an important one (`!skew-6`, `skew-6!`, `hover:!skew-6`) over ever
 gives 6° on both). A bare value is a whole number of degrees written without a leading zero, so
 `skew-x-07` is declined, as Tailwind declines it.
 
-**Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
-no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
-content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where
-the shear would carry it. The seat composes with the child's own `translate-x-*`, `V.Motion` translation or
-drag offset, as CSS composes the parent's transform with the child's. Three things follow that a CSS
-`skewX()` does not do.
+**How `skew-*` is drawn.** An element with no other source of `rotate` or `scale` takes its skew as its own
+transform: Velvet writes the inline `rotate` and `scale` slots with a uniform scale and one 3D rotation whose
+projection onto the panel is the shear (`skewX() skewY()` as the single 2x2 matrix Tailwind composes). UI Toolkit
+then draws the element sheared about the pivot `origin-*` names, with its descendants under the same transform.
+The sheared face keeps its overhang under a hidden overflow, and a pointer picks the bounding rectangle of the
+sheared box rather than the sheared shape (`SkewTransformPlaybackTests` measures both).
 
-- **The caster's hit region does not lean with its face.** Its layout box stays axis-aligned and that box
-  is what answers a pointer, so a click near an edge lands by the upright rectangle while the paint has
-  moved off it. The two part company most at the top and bottom edges, where the face is carried
-  ±(height / 2) · tan θ sideways: ±2.5 px for `skew-x-6` on a 48 px-tall button, ±42.5 px for
-  `skew-x-12` on a 400 px-tall card. A direct child's hit region *does* follow, its seat being a real
-  transform.
-- **A caster's own text neither shears nor moves.** `V.Button(text:)` and `V.Label` paint their text on
-  the caster itself rather than into a child, so there is no child for the seat to move and the text
-  stands upright over the sheared fill.
-- **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
-  across that child, so a child large relative to the caster reads off at its far corners, and a
-  grandchild moves only because its parent did.
-
-`origin-*` does not move the skew pivot either: the shear is always taken about the box centre, while
-`rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
-approximation described here rather than a true shear transform.
+An element that also carries a `rotate-*` or `scale-*` class (behind a variant too), an `animate-*` preset, or a
+`V.Motion` keeps the older painted layer, since those write the same slots: the caster's own face is repainted
+sheared in its generated content, and each direct in-flow child is seated with an inline `translate` that puts its
+centroid where the shear would carry it. There the caster's hit region stays the upright box, its own text neither
+shears nor moves, descendants are seated rather than sheared, and `origin-*` does not move the pivot.
 
 **How a radius larger than its box fits.** A `rounded-*` class or an arbitrary radius that does not fit
 its box is scaled the way CSS scales it: once two adjacent radii overlap on a side, every radius on the
@@ -389,12 +378,12 @@ without `overflow-hidden` appearing anywhere in its className.
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
 | `shadow-*` | unaffected: the outer layers are painted on a sibling over the element, outside its clip, and an `inset` layer (`shadow-inner`, `inset` in `shadow-[…]`) is drawn inside the padding box |
-| `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
+| `skew-*` (and a gradient on a skewed element) | unaffected where the skew is the element's transform. Where it keeps the painted layer (see above): the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
 
-**`skew-*` and `shadow-*` keep a bordered element's border.** Either takes ownership of the element's face: it
+**`skew-*` and `shadow-*` keep a bordered element's border.** A `shadow-*`, and a `skew-*` on the painted layer, takes ownership of the element's face: it
 suppresses the native background and border and repaints both in its own generated content, which the
 padding-box clip would cut at the border. While the element clips, a `skew-*` paints its border, and the
 background beneath it, on a sibling placed over the element and outside its clip, and a `shadow-*` leaves a
