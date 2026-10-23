@@ -106,6 +106,42 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEmMixedWithAPixelLength_When_ALargerLabelIsUnderIt_Then_TheLabelGetsTheSumAtTheDeclaringSize()
+        {
+            // Act
+            var text = MountAndReadText(
+                V.Div(className: "text-[20px] leading-[calc(1em+4px)]", V.Label(className: "text-[40px]", text: "hi")));
+
+            // Assert
+            Assert.That(text, Is.EqualTo("<line-height=24px>hi</line-height>"));
+        }
+
+        [Test]
+        public void Given_AViewportWidthLeading_When_Mounted_Then_TheLabelGetsThatShareOfTheWindowsContent()
+        {
+            // Act
+            var text = MountAndReadText(V.Div(className: "leading-[10vw]", V.Label(text: "hi")));
+
+            // Assert — the window's content is what vw measures in an editor window (ViewportWindowTests).
+            var content = _window.rootVisualElement.layout.width;
+            Assert.That(PixelsOf(text), Is.EqualTo(content / 10f).Within(0.01f));
+        }
+
+        private static float PixelsOf(string tagged)
+        {
+            var start = tagged.IndexOf("<line-height=", System.StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return float.NaN;
+            }
+            start += "<line-height=".Length;
+            var end = tagged.IndexOf("px>", start, System.StringComparison.Ordinal);
+            return end < 0
+                ? float.NaN
+                : float.Parse(tagged.Substring(start, end - start), System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        [Test]
         public void Given_AUnitlessLeadingOverALargerLabel_When_Mounted_Then_TheLabelGetsTheFactor()
         {
             // Act

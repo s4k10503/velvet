@@ -171,6 +171,10 @@ namespace Velvet
                 {
                     return true;
                 }
+                if (TryParseTrackingPreset(className, out result))
+                {
+                    return true;
+                }
                 return TryParseStaticScale(className, out result);
             }
 
@@ -816,7 +820,7 @@ namespace Velvet
             }
             // Named filter presets (blur-sm, contrast-125, hue-rotate-90, ...) are non-bracket resolver tokens
             // too, so the one dispatch gate also claims them (incl. the negated -hue-rotate-N).
-            if (StyleFilterValueParser.IsFilterPreset(cls))
+            if (StyleFilterValueParser.IsFilterPreset(cls) || s_trackingEm.ContainsKey(cls))
             {
                 return true;
             }
@@ -882,6 +886,40 @@ namespace Velvet
         private static bool IsMarginName(ReadOnlySpan<char> body)
             => body.StartsWith("m-") || body.StartsWith("mx-") || body.StartsWith("my-") || body.StartsWith("mt-")
                 || body.StartsWith("mr-") || body.StartsWith("mb-") || body.StartsWith("ml-");
+
+        // Tailwind v4's tracking scale, in em of the element's own font size. No stylesheet declares these
+        // classes: letter-spacing has no em unit in USS, so the scale is measured on the element like a bracketed
+        // tracking-[0.025em] (RelativeLengthAxis.OwnFont).
+        private static readonly Dictionary<string, string> s_trackingEm = new(StringComparer.Ordinal)
+        {
+            ["tracking-tighter"] = "-0.05em",
+            ["tracking-tight"] = "-0.025em",
+            ["tracking-normal"] = "0em",
+            ["tracking-wide"] = "0.025em",
+            ["tracking-wider"] = "0.05em",
+            ["tracking-widest"] = "0.1em",
+        };
+
+        private static bool TryParseTrackingPreset(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!s_trackingEm.TryGetValue(className, out var length))
+            {
+                return false;
+            }
+            // Zero is zero at any font size, so it lands without waiting for a measurement.
+            if (className == "tracking-normal")
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.LetterSpacing, 0f, LengthUnit.Pixel);
+                return true;
+            }
+            if (!StyleLengthExpression.TryParse(length.AsSpan(), out var expression))
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(ArbitraryProperty.LetterSpacing, expression!);
+            return true;
+        }
 
         // grow-<N> / shrink-<N>: Tailwind's bare factor, a whole number spelled without a sign or a leading
         // zero. grow-0 and shrink-0 are USS classes, so zero is left to the class list.

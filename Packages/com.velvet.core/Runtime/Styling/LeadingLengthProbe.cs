@@ -3,7 +3,10 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Reads the computed font size of an element declaring an em or percentage leading-[…], which CSS
-    // computes the line-height from, and re-resolves the text under it when that size changes.
+    // computes the line-height from, and re-resolves the text under it when that size changes. For a
+    // leading-[…] that reads more than that size (LeadingUnit.Measured) it measures the expression on the
+    // element as the other relative lengths are, and a viewport unit in it is read again on a scheduler
+    // tick, since the panel moving raises no event on the element.
     //
     // UI Toolkit's style traversal sends CustomStyleResolvedEvent to an element it has just restyled,
     // after SetComputedStyle and before layout, when the element holds a custom property and listens for
@@ -21,8 +24,22 @@ namespace Velvet
         private readonly EventCallback<CustomStyleResolvedEvent> _onStyleResolved;
         private readonly EventCallback<GeometryChangedEvent> _onGeometryChanged;
 
+        // The tick StyleAnimateDriver and AnchoredDriver poll at.
+        private const long TickMs = 16;
+
+        private StyleLengthExpression? _expression;
+        private IVisualElementScheduledItem? _tick;
+        private float _measured = float.NaN;
+
         // NaN until UI Toolkit has resolved the element's style.
         public float FontSize { get; private set; } = float.NaN;
+
+        // What the declared expression comes to now, or false while it cannot be measured.
+        public bool TryMeasure(out float px)
+        {
+            px = 0f;
+            return _expression != null && StyleRelativeLengths.TryMeasureLineHeight(_element, _expression, out px);
+        }
 
         private LeadingLengthProbe(ReconcilerContext ctx, VisualElement element)
         {
@@ -32,8 +49,9 @@ namespace Velvet
             _onGeometryChanged = _ => Refresh();
         }
 
-        public static void Sync(ReconcilerContext ctx, VisualElement element, bool wanted)
+        public static void Sync(ReconcilerContext ctx, VisualElement element, LeadingValue? leading)
         {
+            var wanted = leading?.Unit is LeadingUnit.EmLength or LeadingUnit.Measured;
             ctx.LeadingLengthProbes.TryGetValue(element, out var probe);
             if (wanted && probe == null)
             {
@@ -42,11 +60,33 @@ namespace Velvet
                 element.AddToClassList(MarkerClass);
                 element.RegisterCallback(probe._onStyleResolved);
                 element.RegisterCallback(probe._onGeometryChanged);
+            }
+            if (wanted)
+            {
+                probe!.Declare(leading!.Value.Expression);
                 return;
             }
-            if (!wanted && probe != null)
+            if (probe != null)
             {
                 Detach(ctx, element, probe);
+            }
+        }
+
+        // Takes the expression the element now declares, if any, so that the next change is measured against it
+        // and a viewport unit in it is polled.
+        private void Declare(StyleLengthExpression? expression)
+        {
+            _expression = expression;
+            _measured = TryMeasure(out var px) ? px : float.NaN;
+            var polled = expression != null && expression.ReadsViewport;
+            if (polled && _tick == null)
+            {
+                _tick = _element.schedule.Execute(Refresh).Every(TickMs);
+            }
+            else if (!polled && _tick != null)
+            {
+                _tick.Pause();
+                _tick = null;
             }
         }
 
@@ -57,6 +97,8 @@ namespace Velvet
             element.UnregisterCallback(probe._onStyleResolved);
             // MUTANT_SURVIVES(equivalent, line removed): the geometry callback re-resolves the same way.
             element.UnregisterCallback(probe._onGeometryChanged);
+            probe._tick?.Pause();
+            probe._tick = null;
             element.RemoveFromClassList(MarkerClass);
             ctx.LeadingLengthProbes.Remove(element);
         }
@@ -64,11 +106,13 @@ namespace Velvet
         private void Refresh()
         {
             var size = _element.resolvedStyle.fontSize;
-            if (size == FontSize)
+            var measured = TryMeasure(out var px) ? px : float.NaN;
+            if (size == FontSize && (measured == _measured || (float.IsNaN(measured) && float.IsNaN(_measured))))
             {
                 return;
             }
             FontSize = size;
+            _measured = measured;
             StyleTextEffectResolver.Reapply(_ctx, _element);
         }
     }

@@ -124,7 +124,7 @@ namespace Velvet
         {
             ctx.TextEffects.TryGetValue(element, out var previous);
             var own = StyleTextEffectClass.Parse(classNames);
-            LeadingLengthProbe.Sync(ctx, element, own.Leading?.Unit == LeadingUnit.EmLength);
+            LeadingLengthProbe.Sync(ctx, element, own.Leading);
             if (own.IsEmpty)
             {
                 ctx.TextEffects.Remove(element);
@@ -175,6 +175,7 @@ namespace Velvet
                     display = Compose(raw, effect, te.enableRichText, null);
                 }
                 ShowText(ctx, te, raw, display);
+                TextRichTextWatch.Sync(ctx, te, WritesTags(effect));
                 var decoration = effect.Decoration;
                 // The leaf is written pre-wrap over a string StyleTextEffectClass.Apply already collapsed.
                 var write = breaks != null ? WhiteSpace.PreWrap : effect.Write;
@@ -245,6 +246,14 @@ namespace Velvet
                 effect.Whitespace,
                 richText ? effect.Leading : null,
                 breaks);
+        }
+
+        // Whether the shown string carries a tag, which only a leaf with rich text on is given (Compose).
+        private static bool WritesTags(in ResolvedEffect effect)
+        {
+            var decorated = effect.Decoration is TextDecorationKind.Underline or TextDecorationKind.LineThrough;
+            var spaced = effect.Leading is { Unit: LeadingUnit.Em or LeadingUnit.Pixel or LeadingUnit.EmLength };
+            return decorated || spaced;
         }
 
         // The leaf's text stays what the app gave; the string it shows goes in through the engine's
@@ -364,9 +373,9 @@ namespace Velvet
                     modeDecided = eff.Whitespace != null || eff.Wraps != null;
                 }
             }
-            if (leading?.Unit == LeadingUnit.EmLength)
+            if (leading?.Unit is LeadingUnit.EmLength or LeadingUnit.Measured)
             {
-                leading = ResolveEmLength(ctx, leading.Value, leadingOwner!);
+                leading = ResolveLength(ctx, leading.Value, leadingOwner!);
             }
             var preserves = whitespace == WhitespaceCollapseKind.PreLine
                 || collapseClass == WhiteSpace.Pre || collapseClass == WhiteSpace.PreWrap;
@@ -404,12 +413,17 @@ namespace Velvet
 
         // CSS computes an em or percentage line-height to a length on the element that declares it, from
         // that element's computed font size. LeadingLengthProbe reads that size once UI Toolkit has resolved
-        // it; until then the em is left to the text's own size.
-        private static LeadingValue ResolveEmLength(ReconcilerContext ctx, LeadingValue leading, VisualElement owner)
+        // it; until then the em is left to the text's own size. A Measured value is the probe's measurement of
+        // the expression, and is left unresolved, which writes no tag, until there is one.
+        private static LeadingValue ResolveLength(ReconcilerContext ctx, LeadingValue leading, VisualElement owner)
         {
             if (!ctx.LeadingLengthProbes.TryGetValue(owner, out var probe))
             {
                 return leading;
+            }
+            if (leading.Unit == LeadingUnit.Measured)
+            {
+                return probe.TryMeasure(out var px) ? new LeadingValue(LeadingUnit.Pixel, Math.Max(0f, px)) : leading;
             }
             if (float.IsNaN(probe.FontSize))
             {

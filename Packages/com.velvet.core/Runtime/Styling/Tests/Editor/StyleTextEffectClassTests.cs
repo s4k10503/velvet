@@ -497,9 +497,34 @@ namespace Velvet.Tests
             Assert.That(effect.Leading, Is.Null);
         }
 
+        [TestCase("leading-[2vw]")]
+        [TestCase("leading-[calc(1em+4px)]")]
+        [TestCase("leading-[calc(100%-2px)]")]
+        public void Given_ALeadingBracketReadingMoreThanTheFontSize_When_Parsed_Then_ItIsMeasuredOnTheElement(string cls)
+        {
+            // Act
+            var effect = StyleTextEffectClass.Parse(new[] { cls });
+
+            // Assert
+            Assert.That(effect.Leading?.Unit, Is.EqualTo(LeadingUnit.Measured));
+        }
+
+        [Test]
+        public void Given_AMeasuredLeadingNothingHasMeasured_When_Applied_Then_TheTextCarriesNoTag()
+        {
+            // Arrange
+            var effect = StyleTextEffectClass.Parse(new[] { "leading-[2vw]" });
+
+            // Act
+            var result = StyleTextEffectClass.Apply("hi", null, null, null, effect.Leading);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("hi"));
+        }
+
         // GREEN_ON_BASE(characterization): the base rejects every non-px bracket value; these pin what the
         // widened grammar still rejects.
-        [TestCase("leading-[2vw]")]
+        [TestCase("leading-[2vwx]")]
         [TestCase("leading-[em]")]
         public void Given_AnUnparseableLeadingBracket_When_Parsed_Then_LeadingIsUnsetNull(string cls)
         {
@@ -604,7 +629,7 @@ namespace Velvet.Tests
         {
             // Arrange — the prefix-only check must exclude a malformed bracket value from the USS class
             // list too, exactly like a malformed font-[...] never leaks in either (see IsArbitraryLeadingClass).
-            const string cls = "leading-[2vw]";
+            const string cls = "leading-[2vwx]";
 
             // Act
             var isArbitrary = StyleTextEffectClass.IsArbitraryLeadingClass(cls);

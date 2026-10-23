@@ -554,6 +554,10 @@ namespace Velvet
         // FiberElementCleaner detaches.
         public Dictionary<VisualElement, LeadingLengthProbe> LeadingLengthProbes { get; } = new();
 
+        // Text leaves whose shown string carries tags only while enableRichText is on, each with the callback
+        // that notices the flag moving. Not pure for the same reason: FiberElementCleaner detaches it.
+        public Dictionary<VisualElement, TextRichTextWatch> TextRichTextWatches { get; } = new();
+
         // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
         // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
         // manipulator to detach and no resource (a shader Material, a baked VectorImage, an event subscription,

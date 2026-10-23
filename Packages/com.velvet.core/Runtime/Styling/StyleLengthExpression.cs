@@ -32,6 +32,7 @@ namespace Velvet
         private const int ReadsPixels = 1;
         private const int ReadsPercent = 2;
         private const int ReadsElement = 4;
+        private const int ReadsViewportBit = 8;
 
         // Nesting, and a run of terms or arguments, past this depth is declined rather than recursed into.
         private const int MaxDepth = 64;
@@ -49,6 +50,9 @@ namespace Velvet
         public StyleLengthExpression Negated() => new Scaled(this, -1f);
 
         public bool ReadsPercentage => (_reads & ReadsPercent) != 0;
+
+        // Whether a viewport unit takes part, which moves when the panel does and not when the element does.
+        public bool ReadsViewport => (_reads & ReadsViewportBit) != 0;
 
         // Whether a coefficient overflowed, which every basis then carries.
         public bool IsFinite() => float.IsFinite(Evaluate(new RelativeLengthBasis(1f, 100f, 100f, 100f)));
@@ -91,10 +95,10 @@ namespace Velvet
             };
             foreach (var prefix in new[] { "", "s", "l", "d" })
             {
-                units[prefix + "vw"] = new Leaf(b => b.ViewportWidth / 100f, ReadsElement);
-                units[prefix + "vh"] = new Leaf(b => b.ViewportHeight / 100f, ReadsElement);
-                units[prefix + "vmin"] = new Leaf(b => Math.Min(b.ViewportWidth, b.ViewportHeight) / 100f, ReadsElement);
-                units[prefix + "vmax"] = new Leaf(b => Math.Max(b.ViewportWidth, b.ViewportHeight) / 100f, ReadsElement);
+                units[prefix + "vw"] = new Leaf(b => b.ViewportWidth / 100f, ReadsElement | ReadsViewportBit);
+                units[prefix + "vh"] = new Leaf(b => b.ViewportHeight / 100f, ReadsElement | ReadsViewportBit);
+                units[prefix + "vmin"] = new Leaf(b => Math.Min(b.ViewportWidth, b.ViewportHeight) / 100f, ReadsElement | ReadsViewportBit);
+                units[prefix + "vmax"] = new Leaf(b => Math.Max(b.ViewportWidth, b.ViewportHeight) / 100f, ReadsElement | ReadsViewportBit);
             }
             return units;
         }

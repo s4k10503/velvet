@@ -548,21 +548,23 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TrackingWidest_When_Resolved_Then_ItIsPointOneEmAtTheSixteenPxRoot()
+        public void Given_SubpixelAntialiased_When_Resolved_Then_ItIsTheBitmapRenderingMode()
         {
-            // Tailwind tracking-widest is 0.1em; at the 16px root that is 1.6px.
-            var leaf = MountLeaf("tracking-widest");
+            // Act
+            var leaf = MountLeaf("subpixel-antialiased");
 
-            Assert.That(leaf.resolvedStyle.letterSpacing, Is.EqualTo(1.6f).Within(1e-3f));
+            // Assert
+            Assert.That(leaf.resolvedStyle.unityEditorTextRenderingMode, Is.EqualTo(EditorTextRenderingMode.Bitmap));
         }
 
         [Test]
-        public void Given_TrackingTight_When_Resolved_Then_ItIsNegativePointZeroTwoFiveEm()
+        public void Given_AntialiasedUnderASubpixelAntialiasedParent_When_Resolved_Then_ItIsTheSdfRenderingMode()
         {
-            // Tailwind tracking-tight is -0.025em; at the 16px root that is -0.4px.
-            var leaf = MountLeaf("tracking-tight");
+            // Act
+            var leaf = MountChildAndResolve("subpixel-antialiased", "antialiased");
 
-            Assert.That(leaf.resolvedStyle.letterSpacing, Is.EqualTo(-0.4f).Within(1e-3f));
+            // Assert
+            Assert.That(leaf.resolvedStyle.unityEditorTextRenderingMode, Is.EqualTo(EditorTextRenderingMode.SDF));
         }
 
         // --- Sizing / flex / transform USS-only presets ---

@@ -170,7 +170,7 @@ USS property** for them.
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `text-balance` / `text-pretty` / `truncate` / `text-ellipsis` / `text-clip`
-(`text-overflow: ellipsis | clip`) / text color / `uppercase` `lowercase` `capitalize` `normal-case`
+(`text-overflow: ellipsis | clip`) / `antialiased` `subpixel-antialiased` / text color / `uppercase` `lowercase` `capitalize` `normal-case`
 (text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
 
 **Text-transform / text-decoration are realised in the string a leaf shows** (UI Toolkit has no
@@ -182,7 +182,7 @@ the descendant text leaves pick it up (`StyleTextEffectResolver` walks ancestors
 classes re-resolves the text under it). The decoration and the line height (`leading-*`, below) are
 rich-text tags, so a leaf with `enableRichText = false` is shown without them, where it would otherwise show
 the markup as literal text; the text-transform, the white-space and the line breaks still apply. A change of
-`enableRichText` is read at the leaf's next resolve, not when it is set.
+`enableRichText` builds the shown string again the next time the leaf repaints.
 
 **`overline` is the one decoration value that cannot be a string rewrite:** UI Toolkit's rich text
 has no overline tag (only `<u>` / `<s>`), so `overline` **paints** a solid rule above the text via
@@ -194,7 +194,7 @@ The stroke color tracks `resolvedStyle.color`, its thickness is
 `-unity-text-align`'s vertical component for where the FIRST line sits — top-aligned under an
 `upper-*` anchor, vertically centered under a `middle-*` anchor (the default for
 `text-left|center|right|start|end`, and UI Toolkit's own unstyled default), bottom-aligned under a
-`lower-*` anchor — then sits 15% of the font size below that line's top.
+`lower-*` anchor — then has its top edge on that line's top.
 
 `overline` joins the same decoration axis as `underline` / `line-through` / `no-underline`, so
 cascade and inheritance apply to it. `no-underline` ends the lines the element's own classes ask for; as in
@@ -245,7 +245,11 @@ unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percent
 line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, and
 takes an ancestor's line height away from the text. A math function is read where it
 comes to one of those pixel lengths or one percentage
-([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A negative value, any other unit, or a
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A length that reads more than the element's
+font size, a viewport unit (`leading-[10vw]`) or a math function mixing an em or a percentage with another
+length (`leading-[calc(1em+4px)]`), is measured on the element that declares it, like the other relative
+lengths, a percentage being of its font size, and measured again when that size or the panel changes;
+a result below zero is zero. Until it is measured the text carries no tag. A negative value, any other unit, or a
 malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
 `<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's
 spacing-based `leading-*` does (`leading-6` is 24px, as `p-6` is, and `leading-px` is 1px); its steps
@@ -262,11 +266,11 @@ that length in pixels unless a nearer element sets its own line height: `V.Div("
 class. Velvet reads the size UI Toolkit resolves for the declaring element
 (`LeadingLengthProbe`, which the bundled stylesheet's `velvet-leading-length` rule arms) and
 re-resolves the text whenever that size changes. Until the panel has resolved it — a tree that is
-not yet on a panel — the text carries the em tag. `tracking-*` is the contrast: USS `letter-spacing` has no
-`em` unit (see `_typography.uss`), so its em scale had to be **baked to px at Tailwind's 16px root
-font** — `tracking-wide`'s 0.4px is only 0.025em at exactly 16px and drifts off-ratio at any other
-size. A bracketed `tracking-[0.025em]` is measured on the element's own font size instead
-([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
+not yet on a panel — the text carries the em tag. `tracking-*` is the other em-based
+utility: USS `letter-spacing` has no `em` unit, so `tracking-tighter` (-0.05em) to `tracking-widest` (0.1em) are
+measured on the element's own font size, as a bracketed `tracking-[0.025em]` is
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)), and measured again when that size changes.
+`leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
 ancestor's `leading-*` overrides a farther one's). Its reset is `leading-[normal]`: no named utility is one,
 since every preset — `leading-none`'s multiplier of 1 included — is a real value.
 
@@ -339,6 +343,9 @@ Deviations from CSS:
   engine's own layout of each line checks.
 - **`text-balance` stops at six lines and `text-pretty` at four**, the limits Chromium applies.
 
+**`antialiased` and `subpixel-antialiased`** write `-unity-editor-text-rendering-mode`, `sdf` and `bitmap`
+respectively; the property inherits, so the class on a container reaches the text under it.
+
 **Wrapping:** `text-wrap`, `text-nowrap`, `text-balance` and `text-pretty` are CSS's `text-wrap`
 shorthand, which sets the wrap mode (`wrap`, or `nowrap` for `text-nowrap`) and leaves the collapse
 alone. So text that inherits `whitespace-pre`, `whitespace-pre-wrap` or `whitespace-pre-line` keeps
@@ -354,7 +361,6 @@ breaking the text gets.
 
 | Tailwind | Why omitted |
 |---|---|
-| `antialiased` / `subpixel-antialiased` (font-smoothing) | `IStyle` has no font-smoothing property |
 | `tabular-nums` etc. (font-variant-numeric) | `IStyle` has no font-variant or font-feature property |
 
 Where the *look* matters (tabular figures in a price list, …), register a purpose-built Font Asset

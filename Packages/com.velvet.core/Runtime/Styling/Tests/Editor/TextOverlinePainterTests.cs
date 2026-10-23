@@ -71,7 +71,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUpperAnchor_When_GeometryComputed_Then_TheYBaseIsTheContentBoxTopPlusTheFontNudge()
+        public void Given_AnUpperAnchor_When_GeometryComputed_Then_TheRuleTopEdgeIsOnTheContentBoxTop()
         {
             // Arrange — Upper* top-aligns the whole text block to the content box, so the first (only, here)
             // line's top IS the content box's own top edge (yMin = 20).
@@ -81,13 +81,13 @@ namespace Velvet.Tests
             var (ok, from, _, _) = Compute(
                 contentRect: contentRect, measuredWidth: 40f, textBlockHeight: 20f, fontSize: 16f, align: TextAnchor.UpperLeft);
 
-            // Assert — yMin (20) + 15% of the 16px font (2.4).
+            // Assert — yMin (20) + half the 1px stroke of a 16px font.
             Assume.That(ok, Is.True, "Precondition: a well-formed content rect computes geometry");
-            Assert.That(from.y, Is.EqualTo(22.4f).Within(1e-3f));
+            Assert.That(from.y, Is.EqualTo(20.5f).Within(1e-3f));
         }
 
         [Test]
-        public void Given_AMiddleAnchor_When_GeometryComputed_Then_TheYBaseIsTheCenteredBlocksTopPlusTheFontNudge()
+        public void Given_AMiddleAnchor_When_GeometryComputed_Then_TheRuleTopEdgeIsOnTheCenteredBlocksTop()
         {
             // Arrange — a middle anchor centers the 20-tall block in the 50-tall content box (center.y = 45):
             // the block spans 35..55, so the first line's top is 35, not the content box's own top (20).
@@ -97,13 +97,13 @@ namespace Velvet.Tests
             var (ok, from, _, _) = Compute(
                 contentRect: contentRect, measuredWidth: 40f, textBlockHeight: 20f, fontSize: 16f, align: TextAnchor.MiddleLeft);
 
-            // Assert — 35 + 2.4.
+            // Assert — 35 + half the 1px stroke.
             Assume.That(ok, Is.True, "Precondition: a well-formed content rect computes geometry");
-            Assert.That(from.y, Is.EqualTo(37.4f).Within(1e-3f));
+            Assert.That(from.y, Is.EqualTo(35.5f).Within(1e-3f));
         }
 
         [Test]
-        public void Given_ALowerAnchor_When_GeometryComputed_Then_TheYBaseIsTheBottomAlignedBlocksTopPlusTheFontNudge()
+        public void Given_ALowerAnchor_When_GeometryComputed_Then_TheRuleTopEdgeIsOnTheBottomAlignedBlocksTop()
         {
             // Arrange — a lower anchor bottom-aligns the 20-tall block to the content box's own bottom (yMax
             // = 70), so the block's (and so the first line's) top is 50 (70 - 20), not the content box's own
@@ -114,9 +114,9 @@ namespace Velvet.Tests
             var (ok, from, _, _) = Compute(
                 contentRect: contentRect, measuredWidth: 40f, textBlockHeight: 20f, fontSize: 16f, align: TextAnchor.LowerLeft);
 
-            // Assert — 50 + 2.4.
+            // Assert — 50 + half the 1px stroke.
             Assume.That(ok, Is.True, "Precondition: a well-formed content rect computes geometry");
-            Assert.That(from.y, Is.EqualTo(52.4f).Within(1e-3f));
+            Assert.That(from.y, Is.EqualTo(50.5f).Within(1e-3f));
         }
 
         [Test]

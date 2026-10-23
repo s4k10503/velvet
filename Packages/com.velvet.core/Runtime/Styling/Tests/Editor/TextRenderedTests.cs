@@ -81,6 +81,24 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("two"));
         }
 
+        [Test]
+        public void Given_AnUnderlinedLabel_When_RichTextIsTurnedOff_Then_TheMarkupIsDroppedOnceItRepaints()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(className: "underline", text: "one"));
+            var label = _window.rootVisualElement.Q<Label>();
+            var panel = _window.rootVisualElement.panel;
+            ForcePanelUpdate(panel);
+
+            // Act
+            label.enableRichText = false;
+            ForcePanelUpdate(panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("one"));
+        }
+
         [Component]
         private static VNode RenderCasedLabel()
         {

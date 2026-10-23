@@ -86,11 +86,14 @@ namespace Velvet
     // number (every named leading-* preset and a unitless bracket value): CSS inherits the number itself,
     // so it multiplies whatever font-size is in effect where the rich-text tag is generated. EmLength is an
     // em or percentage bracket value: CSS computes it to a length on the element that declares it, and
-    // StyleTextEffectResolver.ResolveEmLength turns it into Pixel where it can. Pixel is an absolute
+    // StyleTextEffectResolver.ResolveLength turns it into Pixel where it can. Pixel is an absolute
     // length (a bracket px or rem value, or a leading-<n> spacing step). Normal is CSS's line-height: normal
     // (leading-[normal]), the font's own line advance: a real value that takes an ancestor's line height
     // away from the text and writes no tag, so it is this axis's only reset. Inherit is CSS's inherit keyword
     // (leading-[inherit]), which ranks as any leading-* does and leaves the element taking its parent's line height.
+    // Measured is a length that reads more than the element's font size, a viewport unit or a math function mixing
+    // an em or a percentage with another length; it carries its expression, which StyleTextEffectResolver measures
+    // on the declaring element as it does an EmLength, and it writes no tag until that has a number.
     internal enum LeadingUnit
     {
         Em,
@@ -98,6 +101,7 @@ namespace Velvet
         Pixel,
         Normal,
         Inherit,
+        Measured,
     }
 
     // A resolved leading-* value: the numeric multiplier/length plus which unit it is in. Nullable
@@ -109,14 +113,17 @@ namespace Velvet
     {
         public readonly LeadingUnit Unit;
         public readonly float Value;
+        public readonly StyleLengthExpression? Expression;
 
-        public LeadingValue(LeadingUnit unit, float value)
+        public LeadingValue(LeadingUnit unit, float value, StyleLengthExpression? expression = null)
         {
             Unit = unit;
             Value = value;
+            Expression = expression;
         }
 
-        public bool Equals(LeadingValue other) => Unit == other.Unit && Value == other.Value;
+        public bool Equals(LeadingValue other)
+            => Unit == other.Unit && Value == other.Value && ReferenceEquals(Expression, other.Expression);
         public override bool Equals(object obj) => obj is LeadingValue o && Equals(o);
         public override int GetHashCode() => unchecked((Unit.GetHashCode() * 397) ^ Value.GetHashCode());
     }
@@ -464,7 +471,7 @@ namespace Velvet
                 return false;
             }
             var inner = cls.AsSpan(prefix.Length, cls.Length - prefix.Length - 1);
-            if (!TryParseLineHeight(inner, out var amount, out var unit))
+            if (!TryParseLineHeight(inner, out var amount, out var unit, out var expression))
             {
                 return false;
             }
@@ -472,7 +479,7 @@ namespace Velvet
             {
                 return false;
             }
-            leading = new LeadingValue(unit, amount);
+            leading = new LeadingValue(unit, amount, expression);
             return true;
         }
 
@@ -489,10 +496,12 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryGetSpacingPx(cls.Substring(prefix.Length), out px);
         }
 
-        private static bool TryParseLineHeight(ReadOnlySpan<char> value, out float amount, out LeadingUnit unit)
+        private static bool TryParseLineHeight(
+            ReadOnlySpan<char> value, out float amount, out LeadingUnit unit, out StyleLengthExpression? expression)
         {
             unit = LeadingUnit.Inherit;
             amount = 0f;
+            expression = null;
             if (value.SequenceEqual("inherit".AsSpan()) || value.SequenceEqual("unset".AsSpan()))
             {
                 return true;
@@ -515,7 +524,8 @@ namespace Velvet
             }
             if (!StyleArbitraryValueResolver.TryParseValue(value, out amount, out var lengthUnit))
             {
-                return false;
+                unit = LeadingUnit.Measured;
+                return StyleLengthExpression.TryParse(value, out expression) && expression!.IsFinite();
             }
             if (lengthUnit == LengthUnit.Percent)
             {
@@ -639,7 +649,7 @@ namespace Velvet
                 return text;
             }
             var value = leading.Value;
-            if (value.Unit == LeadingUnit.Normal)
+            if (value.Unit == LeadingUnit.Normal || value.Unit == LeadingUnit.Measured)
             {
                 return text;
             }
