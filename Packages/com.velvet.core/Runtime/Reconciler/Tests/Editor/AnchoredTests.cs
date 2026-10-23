@@ -43,6 +43,7 @@ namespace Velvet.Tests
             base.TearDown();
         }
 
+        // GREEN_ON_BASE(refactor): only which element the case reads changed, the wrapper V.Anchored now renders; the base forces the anchored element out of flow too.
         [Test]
         public void Given_AnAnchoredElement_When_Mounted_Then_ItIsForcedOutOfFlow()
         {
