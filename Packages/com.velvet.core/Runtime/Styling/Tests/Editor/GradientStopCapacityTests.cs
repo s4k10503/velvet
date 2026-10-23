@@ -10,6 +10,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class GradientStopCapacityTests
     {
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost the shader-source case and this memo case reads none of it.
         [Test]
         public void Given_MoreDistinctActivatorsThanTheMemoHolds_When_Extracted_Then_TheMemoStaysWithinItsBound()
         {

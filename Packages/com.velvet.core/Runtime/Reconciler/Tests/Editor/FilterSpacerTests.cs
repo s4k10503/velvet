@@ -120,6 +120,7 @@ namespace Velvet.Tests
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_AShadowedFilteredContainer_When_Mounted_Then_OneSpacerIsAdded()
         {
@@ -128,6 +129,7 @@ namespace Velvet.Tests
             Assert.That(SpacerCount(), Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_AShadowedFilteredContainer_When_Mounted_Then_TheSpacerIsLast()
         {
@@ -136,6 +138,7 @@ namespace Velvet.Tests
             Assert.That(SpacerIsLast(), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_AShadowedFilteredContainer_When_Mounted_Then_TheRenderedChildrenAreIntact()
         {
@@ -180,6 +183,7 @@ namespace Velvet.Tests
             Assert.That(Box.childCount == 1 && SpacerIsLast(), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_TheFilterRemoved_When_Drained_Then_TheSpacerIsGone()
         {
@@ -190,6 +194,7 @@ namespace Velvet.Tests
             Assert.That(SpacerCount(), Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_TheFilterRemoved_When_Drained_Then_TheChildrenSurvive()
         {
@@ -199,6 +204,7 @@ namespace Velvet.Tests
             Assert.That(ChildNames(), Is.EqualTo(new[] { "a", "b", "c" }));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_TheFilterAddedOnPatch_When_Drained_Then_TheSpacerAppears()
         {
@@ -212,6 +218,7 @@ namespace Velvet.Tests
             Assert.That((countWithoutFilter, SpacerCount()), Is.EqualTo((0, 1)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's remarks and constants moved when the painted skew layer left it. The branch changed only the fixture's shared skew probe.
         [Test]
         public void Given_AShadowedElementWithAVariantOnlyFilter_When_Patched_Then_ASpacerIsAdded()
         {

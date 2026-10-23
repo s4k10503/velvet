@@ -172,6 +172,7 @@ namespace Velvet.Tests
             Assert.That(VelvetBuildSettings.Read().ExcludeStyleSheet, Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): the base already runs this case; only the shader it unticks changed, from a retired one to one the package still ships.
         [Test]
         public void Given_TheSettingsPage_When_AShaderIsUnticked_Then_TheSavedSettingsExcludeIt()
         {
