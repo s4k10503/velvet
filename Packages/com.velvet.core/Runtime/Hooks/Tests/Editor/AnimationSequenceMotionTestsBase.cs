@@ -82,7 +82,7 @@ namespace Velvet.Tests
             return V.Motion(key: "coordinator", name: "coordinator", animate: state.CurrentLabel,
                 transition: state.CurrentTransition, children: new VNode[]
                 {
-                    V.Motion(key: "m", name: "m", variants: s_childFade),
+                    V.Motion(key: "m", name: "m", variants: s_childFade, transition: StyleTransition.Fade),
                 }, enterOnMount: false);
         }
 
@@ -100,7 +100,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "coordinator", name: "coordinator", animate: state.CurrentLabel,
                     transition: state.CurrentTransition, enterOnMount: false),
-                V.Motion(key: "m", name: "m", variants: s_childFade),
+                V.Motion(key: "m", name: "m", variants: s_childFade, transition: StyleTransition.Fade),
             }, enterOnMount: false);
         }
 
@@ -116,7 +116,7 @@ namespace Velvet.Tests
             Controls = controls;
             return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
                 transition: state.CurrentTransition, children: ChildMounted
-                    ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                    ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade, transition: StyleTransition.Fade) }
                     : Array.Empty<VNode>());
         }
 
@@ -131,7 +131,7 @@ namespace Velvet.Tests
                 transition: state.CurrentTransition, children: new VNode[]
                 {
                     V.AnimatePresence(children: ChildMounted
-                        ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                        ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade, transition: StyleTransition.Fade) }
                         : Array.Empty<VNode>()),
                 });
         }
@@ -169,7 +169,7 @@ namespace Velvet.Tests
             var (mounted, setMounted) = Hooks.UseState(false);
             SetChildMounted = setMounted;
             return V.Div(name: "toggler", children: mounted
-                ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade, transition: StyleTransition.Fade) }
                 : Array.Empty<VNode>());
         }
 
@@ -179,7 +179,7 @@ namespace Velvet.Tests
             var (mounted, setMounted) = Hooks.UseState(false);
             SetChildMounted = setMounted;
             return V.AnimatePresence(children: mounted
-                ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade) }
+                ? new VNode[] { V.Motion(key: "m", name: "m", variants: s_childFade, transition: StyleTransition.Fade) }
                 : Array.Empty<VNode>());
         }
 
@@ -215,7 +215,7 @@ namespace Velvet.Tests
             return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
                 transition: state.CurrentTransition, children: new VNode[]
                 {
-                    V.Motion(key: "badge", name: "badge", animate: "visible", variants: s_childFade, enterOnMount: false),
+                    V.Motion(key: "badge", name: "badge", animate: "visible", variants: s_childFade, enterOnMount: false, transition: StyleTransition.Fade),
                     V.Component(ChildToggler, key: "t"),
                 });
         }

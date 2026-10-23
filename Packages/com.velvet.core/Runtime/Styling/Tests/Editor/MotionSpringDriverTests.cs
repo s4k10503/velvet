@@ -619,5 +619,35 @@ namespace Velvet.Tests
             // Assert
             Assert.That((delta.Translate, delta.Scale), Is.EqualTo((new Vector2(0f, -50f), new Vector2(1f, 0.5f))));
         }
+
+        [Test]
+        public void Given_APlayOnTheFramerDefaults_When_OpacityAndTranslateArePlanned_Then_OpacityRunsAThirtyHundredthsEaseAndTranslateASpring()
+        {
+            // Arrange
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "translate-x-0" },
+                new[] { "opacity-100", "translate-x-[100px]" });
+
+            // Act
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Assert
+            Assert.That((state.Opacity.PassSec, state.TranslateX.FixedPhysics),
+                Is.EqualTo((0.3f, ((float, float)?)(500f, 25f))));
+        }
+
+        [Test]
+        public void Given_AnEasedChannelOnTheFramerDefaults_When_SteppedHalfwayThroughItsEase_Then_ItIsShortOfHalfwayToItsTarget()
+        {
+            // Arrange — the ease starts slowly, so a quarter of the way in the value is under a quarter along.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Act
+            MotionSpringDriver.Step(element, state, 0.075f);
+
+            // Assert
+            Assert.That(state.Opacity.Integrator.Value, Is.InRange(0.01f, 0.25f));
+        }
     }
 }

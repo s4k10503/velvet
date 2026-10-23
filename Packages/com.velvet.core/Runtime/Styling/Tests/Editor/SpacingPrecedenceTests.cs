@@ -296,7 +296,7 @@ namespace Velvet.Tests
             var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "p-[52px]" };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pt-[8px]", variants: variants, animate: "on", enterOnMount: false));
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pt-[8px]", variants: variants, animate: "on", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(52f));
@@ -311,7 +311,7 @@ namespace Velvet.Tests
             var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "p-[52px]" };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pt-2", variants: variants, animate: "on", enterOnMount: false));
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pt-2", variants: variants, animate: "on", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(52f));
@@ -349,7 +349,7 @@ namespace Velvet.Tests
             var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "pt-2" };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-[52px]", variants: variants, animate: "on", enterOnMount: false));
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-[52px]", variants: variants, animate: "on", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert
             var style = root.Q<VisualElement>("leaf").style;
@@ -365,7 +365,7 @@ namespace Velvet.Tests
             var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "pt-2" };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-[52px]", variants: variants, animate: "off", enterOnMount: false));
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "p-[52px]", variants: variants, animate: "off", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.paddingTop.value.value, Is.EqualTo(52f));
@@ -380,7 +380,7 @@ namespace Velvet.Tests
             var variants = new System.Collections.Generic.Dictionary<string, MotionVariant> { ["on"] = "ps-[52px]" };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pl-[8px]", variants: variants, animate: "on", enterOnMount: false));
+            using var mounted = V.Mount(root, V.Motion(name: "leaf", className: "pl-[8px]", variants: variants, animate: "on", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert
             Assert.That(root.Q<VisualElement>("leaf").style.paddingLeft.value.value, Is.EqualTo(52f));

@@ -281,7 +281,7 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "coordinator-" + key, key: key.ToString(),
                     variants: s_classlessCoordinator, animate: "visible", exit: "hidden",
                     transition: s_nodeDefault,
-                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade) }, enterOnMount: false));
+                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade, transition: StyleTransition.Fade) }, enterOnMount: false));
             }
             return V.Div(name: "host", children: new VNode[]
             {

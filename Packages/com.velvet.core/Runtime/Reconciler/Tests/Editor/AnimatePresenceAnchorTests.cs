@@ -141,11 +141,11 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode CoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
-            exit: "hidden", children: new[] { InheritingMotion(0), InheritingMotion(1), InheritingMotion(2) }, enterOnMount: false);
+            exit: "hidden", children: new[] { InheritingMotion(0), InheritingMotion(1), InheritingMotion(2) }, enterOnMount: false, transition: StyleTransition.Fade);
 
         [Component]
         private static VNode SpringCoordinatorRender() => V.Motion(name: "spring-coordinator",
-            variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) }, enterOnMount: false);
+            variants: s_springCoordinator, animate: "visible", exit: "hidden", children: new[] { InheritingMotion(0) }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // A coordinator whose exit pose swaps only once its inheriting children's exits have ended.
         private static readonly Dictionary<string, MotionVariant> s_afterChildrenCoordinator = new()
@@ -163,7 +163,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode AfterChildrenCoordinatorRender() => V.Motion(name: "after-coordinator",
             variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
-            children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false);
+            children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // The spring coordinator's exit on a 1 s duration, which a BeforeChildren span counting the channels it
         // names rather than the ones that play holds the children for.
@@ -184,7 +184,7 @@ namespace Velvet.Tests
             children: new[]
             {
                 V.Motion(name: "slow-child", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 2f }),
-            }, enterOnMount: false);
+            }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // child0 has an inheriting child of its own, which is its to number rather than the coordinator's.
         [Component]
@@ -194,7 +194,7 @@ namespace Velvet.Tests
                 V.Motion(name: "child0", variants: s_fade, transition: new StyleTransitionConfig { DurationSec = 0.05f },
                     children: new[] { InheritingMotion(3) }),
                 InheritingMotion(1),
-            }, enterOnMount: false);
+            }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // Ahead of the two inheriting children: a Motion naming its own exit, one naming its own animate, and a
         // variant child whose variants name no pose for the exit label.
@@ -210,7 +210,7 @@ namespace Velvet.Tests
                     transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                 InheritingMotion(1),
                 InheritingMotion(2),
-            }, enterOnMount: false);
+            }, enterOnMount: false, transition: StyleTransition.Fade);
 
         // The keyed child s_wrapper names: the same TimedMotion, or a wrapper around it. "nested" puts it inside
         // a Motion that plays no exit of its own.
@@ -223,7 +223,7 @@ namespace Velvet.Tests
             "suspense" => V.Suspense(V.Label(text: "loading"), new[] { TimedMotion(null) }, key: key),
             "element" => V.Div(key: key, children: new[] { TimedMotion(null) }),
             "nested" => V.Motion(key: key, variants: s_fade, animate: "visible",
-                children: new[] { TimedMotion(null) }, enterOnMount: false),
+                children: new[] { TimedMotion(null) }, enterOnMount: false, transition: StyleTransition.Fade),
             "toggled" => V.Component(ToggledMotionRender, key: key),
             "inner-presence" => V.Div(key: key, children: new VNode[]
             {
@@ -259,7 +259,7 @@ namespace Velvet.Tests
             "coordinator-after" => V.Component(AfterChildrenCoordinatorRender, key: key),
             "anchor-coordinator-after" => V.Motion(name: "after-coordinator", key: key,
                 variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
-                children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false),
+                children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false, transition: StyleTransition.Fade),
             "coordinator-spring-important" => V.Component(ImportantSpringCoordinatorRender, key: key),
             "coordinator-mixed" => V.Component(MixedCoordinatorRender, key: key),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),

@@ -155,6 +155,10 @@ namespace Velvet
         // default layout transition in its place (LayoutIdTiming.From).
         internal bool TransitionDefaulted { get; init; }
 
+        // What a variant play on this Motion takes where its pose names no transition: the Framer default for a Motion
+        // nobody gave one, else the Motion's own.
+        internal StyleTransitionConfig? VariantTransition => TransitionDefaulted ? StyleTransitionConfig.FramerDefault : Transition;
+
         /// <summary>
         /// Callback invoked when the enter animation completes.
         /// Fires for a variant <see cref="Initial"/>/<see cref="Animate"/> enter whether this Motion sits under

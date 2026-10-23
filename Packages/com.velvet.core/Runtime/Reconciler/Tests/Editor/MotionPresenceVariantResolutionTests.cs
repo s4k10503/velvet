@@ -768,7 +768,7 @@ namespace Velvet.Tests
             {
                 mounted = V.Mount(_root, V.Motion(name: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(name: "m", variants: s_fade, initial: "hidden"),
+                    V.Motion(name: "m", variants: s_fade, initial: "hidden", transition: StyleTransition.Fade),
                 }, enterOnMount: false));
             }
             finally
@@ -790,7 +790,7 @@ namespace Velvet.Tests
 
             // Act — an `exit` variant declared with no AnimatePresence to defer the unmount for.
             using var mounted = V.Mount(_root,
-                V.Motion(name: "m", variants: s_fade, animate: "visible", exit: "hidden", enterOnMount: false));
+                V.Motion(name: "m", variants: s_fade, animate: "visible", exit: "hidden", enterOnMount: false, transition: StyleTransition.Fade));
 
             // Assert — the element mounted; the expected warning is enforced by LogAssert at test
             // end (an Assert.Pass would bypass that unmatched-expectation check).
@@ -813,7 +813,7 @@ namespace Velvet.Tests
             {
                 // Act — a standalone entrance pair (no `exit`, no AnimatePresence).
                 using var mounted = V.Mount(_root,
-                    V.Motion(name: "m", variants: s_fade, initial: "hidden", animate: "visible"));
+                    V.Motion(name: "m", variants: s_fade, initial: "hidden", animate: "visible", transition: StyleTransition.Fade));
             }
             finally
             {

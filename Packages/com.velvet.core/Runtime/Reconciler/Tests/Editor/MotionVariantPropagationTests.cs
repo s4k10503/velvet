@@ -72,7 +72,7 @@ namespace Velvet.Tests
         {
             var (_, bump) = Hooks.UseState(0);
             s_consumerBump = bump;
-            return V.Motion(name: "animated-child", key: "c", variants: Fade);
+            return V.Motion(name: "animated-child", key: "c", variants: Fade, transition: StyleTransition.Fade);
         }
 
         [Component]
@@ -90,7 +90,7 @@ namespace Velvet.Tests
         {
             var (_, bump) = Hooks.UseState(0);
             s_wrapperConsumerBump = bump;
-            return V.Motion(name: "wrapper-child", key: "c", variants: Fade);
+            return V.Motion(name: "wrapper-child", key: "c", variants: Fade, transition: StyleTransition.Fade);
         }
 
         [Component]
@@ -110,7 +110,7 @@ namespace Velvet.Tests
         // MotionContext is an ambient context, so it flows THROUGH intervening components — this is the consumer.
         [Component]
         private static VNode PassThroughChild(Dictionary<string, MotionVariant> childVariants)
-            => V.Motion(key: "c", variants: childVariants);
+            => V.Motion(key: "c", variants: childVariants, transition: StyleTransition.Fade);
 
         [Test]
         public void Given_AMemoizedComponentBetweenParentAndChildMotion_When_TheParentAnimateChanges_Then_TheChildStillFollows()
@@ -159,7 +159,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithExit_When_ResolvingExitTransition_Then_ItAnimatesFromAnimateToExitVariant()
         {
             // Arrange — a Motion with an `exit` label.
-            MotionNode motion = V.Motion(variants: Fade, animate: "visible", exit: "hidden", enterOnMount: false);
+            MotionNode motion = V.Motion(variants: Fade, animate: "visible", exit: "hidden", enterOnMount: false, transition: StyleTransition.Fade);
 
             // Act
             var cfg = GeneralPathReconciler.TryResolveVariantExit(motion);
@@ -231,7 +231,7 @@ namespace Velvet.Tests
             VNode[] Tree(bool present) => new VNode[]
             {
                 V.AnimatePresence(children: present
-                    ? new VNode[] { V.Motion(key: "a", variants: Fade, animate: "visible", exit: "hidden", enterOnMount: false) }
+                    ? new VNode[] { V.Motion(key: "a", variants: Fade, animate: "visible", exit: "hidden", enterOnMount: false, transition: StyleTransition.Fade) }
                     : Array.Empty<VNode>()),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), Tree(true));
@@ -333,7 +333,7 @@ namespace Velvet.Tests
         {
             // Arrange / Act — a standalone Motion resolving its own label.
             using var scope = new ReconcilerScope();
-            Mount(scope, new VNode[] { V.Motion("item", key: "m", variants: Fade, animate: "visible", enterOnMount: false) });
+            Mount(scope, new VNode[] { V.Motion("item", key: "m", variants: Fade, animate: "visible", enterOnMount: false, transition: StyleTransition.Fade) });
 
             // Assert — the variant is resolved onto the element at reconcile time.
             Assert.That(scope.Root[0].ClassListContains("opacity-100"), Is.True);
@@ -350,7 +350,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(key: "c", variants: Fade),
+                    V.Motion(key: "c", variants: Fade, transition: StyleTransition.Fade),
                 }, enterOnMount: false),
             });
 
@@ -402,7 +402,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(key: "c", variants: Fade, animate: "hidden", enterOnMount: false),
+                    V.Motion(key: "c", variants: Fade, animate: "hidden", enterOnMount: false, transition: StyleTransition.Fade),
                 }, enterOnMount: false),
             });
 
@@ -424,7 +424,7 @@ namespace Velvet.Tests
                 V.Motion(key: "p", variants: Fade, animate: "visible", children: new VNode[]
                 {
                     V.Motion("p-4", key: "c"),
-                }, enterOnMount: false),
+                }, enterOnMount: false, transition: StyleTransition.Fade),
             });
 
             // Assert — a variant-less child keeps only its base classes; nothing is propagated onto it.
@@ -445,8 +445,8 @@ namespace Velvet.Tests
                 {
                     V.Motion(key: "mid", variants: Fade, children: new VNode[]
                     {
-                        V.Motion(key: "leaf", variants: scale),
-                    }),
+                        V.Motion(key: "leaf", variants: scale, transition: StyleTransition.Fade),
+                    }, transition: StyleTransition.Fade),
                 }, enterOnMount: false),
             });
 
@@ -517,7 +517,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Motion(key: "c", variants: Fade, elementType: typeof(Button)),
+                    V.Motion(key: "c", variants: Fade, elementType: typeof(Button), transition: StyleTransition.Fade),
                 }, enterOnMount: false),
             };
             var plain = new VNode[] { V.Button("plain", key: "b") };

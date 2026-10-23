@@ -35,7 +35,7 @@ namespace Velvet
                         && SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)
                         ? MotionSpringDriver.SpanSec(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
                             config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config),
-                            config.SpringSettleSec)
+                            config.SpringSettleSec, config.PerValueDefaults)
                         : 0.0;
                 default:
                     return config.DurationSec;

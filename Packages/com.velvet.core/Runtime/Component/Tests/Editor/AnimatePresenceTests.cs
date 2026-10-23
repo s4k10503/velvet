@@ -113,7 +113,7 @@ namespace Velvet.Tests
             };
 
             // Act
-            var node = V.Motion("item", variants: variants, animate: "visible", enterOnMount: false);
+            var node = V.Motion("item", variants: variants, animate: "visible", enterOnMount: false, transition: StyleTransition.Fade);
 
             // Assert — the active variant is resolved at reconcile time (effective label =
             // Animate ?? inherited-from-ancestor), so construction leaves ClassNames base-only. The applied class appears on the
@@ -128,7 +128,7 @@ namespace Velvet.Tests
             var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — no active label selected.
-            var node = V.Motion("item", variants: variants);
+            var node = V.Motion("item", variants: variants, transition: StyleTransition.Fade);
 
             // Assert
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);
@@ -141,7 +141,7 @@ namespace Velvet.Tests
             var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — the requested label is not a key of the variants map.
-            var node = V.Motion("item", variants: variants, animate: "ghost", enterOnMount: false);
+            var node = V.Motion("item", variants: variants, animate: "ghost", enterOnMount: false, transition: StyleTransition.Fade);
 
             // Assert
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);

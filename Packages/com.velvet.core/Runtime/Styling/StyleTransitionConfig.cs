@@ -19,6 +19,19 @@ namespace Velvet
         /// </summary>
         public static readonly StyleTransitionConfig None = new() { DurationSec = 0f };
 
+        /// <summary>
+        /// The transition a variant play takes on a Motion whose caller named none: each value runs on the transition
+        /// Framer Motion picks for its type, a spring for translate, rotate and scale and a 0.3 s ease for the
+        /// rest.
+        /// </summary>
+        internal static readonly StyleTransitionConfig FramerDefault = new()
+        {
+            Type = TransitionType.Spring, PerValueDefaults = true,
+        };
+
+        // Set on FramerDefault alone: the spring's physics and the ease are chosen per channel, not by the knobs.
+        internal bool PerValueDefaults { get; init; }
+
         /// <summary>USS class string for the initial enter state. Use the parsed array <see cref="EnterFromClasses"/> at runtime.</summary>
         internal string? EnterFromClass { get; init; }
 
@@ -412,6 +425,7 @@ namespace Velvet
                 StaggerDirection = StaggerDirection,
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,
+                PerValueDefaults = PerValueDefaults,
                 Type = Type,
                 _stiffness = _stiffness,
                 _damping = _damping,
@@ -457,6 +471,7 @@ namespace Velvet
                 ExitEasing = ExitEasing,
                 DelaySec = DelaySec,
                 PropertyOverrides = PropertyOverrides,
+                PerValueDefaults = PerValueDefaults,
                 Type = Type,
                 _stiffness = _stiffness,
                 _damping = _damping,

@@ -994,8 +994,10 @@ V.AnimatePresence(children: new VNode[]
 
 Three consequences worth knowing:
 
-- **Every Motion animates by default.** `V.Motion` without an explicit `transition` falls back
-  to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
+- **Every Motion animates by default.** `V.Motion` without an explicit `transition` is `Fade` for the preset enter and
+  exit of a Motion with no variants, and for a variant play it runs each value on the transition Framer Motion picks for
+  its type: a spring (500 stiffness, 25 damping) for translate and rotate, a stiffer one (550, 30) for scale, and a
+  0.3 s ease for opacity, colours and lengths. A value neither covers lands with the swap, as on any spring. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
   means exactly that pose animates and the rest are instant. Whether a removal animates is

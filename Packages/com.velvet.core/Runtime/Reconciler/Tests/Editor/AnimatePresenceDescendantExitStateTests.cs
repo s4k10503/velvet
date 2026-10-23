@@ -76,7 +76,7 @@ namespace Velvet.Tests
         private static VNode KeyedChild(string key) => s_kind switch
         {
             // An anchor that plays no exit, around a Motion that does.
-            "nested" => V.Motion(key: key, variants: s_fade, animate: "visible", children: new[] { TimedMotion() }, enterOnMount: false),
+            "nested" => V.Motion(key: key, variants: s_fade, animate: "visible", children: new[] { TimedMotion() }, enterOnMount: false, transition: StyleTransition.Fade),
             // An anchor with nothing to play, so its exit settles in the passive flush after the removing render.
             "instant" => V.Motion(key: key, name: "item", transition: StyleTransitionConfig.None),
             "timed-row" => V.Component(TimedRow, key: key),

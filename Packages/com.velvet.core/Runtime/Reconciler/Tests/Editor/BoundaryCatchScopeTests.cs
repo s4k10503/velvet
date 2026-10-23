@@ -1528,9 +1528,9 @@ namespace Velvet.Tests
                 {
                     V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
                     {
-                        V.Motion(key: "a", variants: s_fade, onEnterComplete: () => s_enterCompletions++),
+                        V.Motion(key: "a", variants: s_fade, onEnterComplete: () => s_enterCompletions++, transition: StyleTransition.Fade),
                     }),
-                }),
+                }, transition: StyleTransition.Fade),
                 V.Component(ThrowerRender, key: "thrower"),
             });
         }

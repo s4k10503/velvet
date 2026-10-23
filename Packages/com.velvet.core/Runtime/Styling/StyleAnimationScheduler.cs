@@ -49,6 +49,9 @@ namespace Velvet
             internal MotionPlayback? Playback { get; init; }
             // How a bezier or spring play repeats; a tween does not read it.
             internal MotionRepeat Repeat { get; init; }
+            // Whether a spring play runs each channel on the transition Framer picks for its type
+            // (StyleTransitionConfig.PerValueDefaults).
+            internal bool PerValueDefaults { get; init; }
         }
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
@@ -166,7 +169,7 @@ namespace Velvet
                 landsAtOnce ? TransitionType.Tween : config.Type, config.Stiffness, config.Damping, config.Mass,
                 config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses,
                 playback, config.PlayedRepeat, config.SpringSettleSec,
-                config.SpringDescription);
+                config.SpringDescription, config.PerValueDefaults);
         }
 
         // additionalDelaySec, here and in LandsAtOnce: the stagger the caller hands the play, which an instant
@@ -212,7 +215,7 @@ namespace Velvet
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
             Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null,
             MotionRepeat repeat = default, double? springSettleSec = null,
-            DurationSpringDescription? springDescription = null)
+            DurationSpringDescription? springDescription = null, bool perValueDefaults = false)
         {
             if (element == null)
             {
@@ -234,6 +237,7 @@ namespace Velvet
                 IsExit = false,
                 Playback = playback,
                 Repeat = repeat,
+                PerValueDefaults = perValueDefaults,
             };
 
             WarnRepeatNotPlayed(type, repeat);
@@ -484,6 +488,7 @@ namespace Velvet
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = true,
                 Repeat = config.PlayedRepeat,
+                PerValueDefaults = config.PerValueDefaults,
             };
 
             WarnRepeatNotPlayed(config.Type, play.Repeat);
@@ -725,7 +730,8 @@ namespace Velvet
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
             var state = ValidateSpringParameters(stiffness, damping, mass)
-                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description,
+                    play.PerValueDefaults)
                 : null;
             GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both

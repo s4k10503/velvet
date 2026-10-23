@@ -23,7 +23,7 @@ namespace Velvet.Tests
     /// a sequential slot ADDED on top of its own declared delay, riding the runtime-swap play's
     /// <c>additionalDelaySec</c> so the claim delays the SWAP itself rather than parking an inline
     /// <c>transition-delay</c>, while a descendant with its own explicit <c>animate</c> opts out entirely
-    /// (Framer parity); (3) a standalone <c>V.Motion(variants:, initial:, animate:)</c> mounted with
+    /// (Framer parity); (3) a standalone <c>V.Motion(variants:, initial:, animate:, transition: StyleTransition.Fade)</c> mounted with
     /// NO AnimatePresence — Framer parity dictates <c>initial</c>/<c>animate</c> drive the mount enter on
     /// any <c>motion.*</c> component regardless, with the scheduled swap to the resting
     /// <c>variants[animate]</c> firing on the next tick and a later unrelated re-render never replaying

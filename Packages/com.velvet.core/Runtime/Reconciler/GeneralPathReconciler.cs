@@ -2730,7 +2730,7 @@ namespace Velvet
                 var hasPose = motion.Variants != null && motion.Variants.TryGetValue(label, out pose);
                 // A label naming no pose plays the classic exit when the Motion names it itself, as an
                 // anchor's does; an inherited one names nothing this Motion can play.
-                exitTransition = hasPose ? pose.Transition ?? motion.Transition
+                exitTransition = hasPose ? pose.Transition ?? motion.VariantTransition
                     : motion.Exit != null ? motion.Transition : null;
                 exitPoseClass = hasPose ? pose.ClassName : null;
                 if (exitTransition?.HasExitAnimation == true)
@@ -3799,7 +3799,7 @@ namespace Velvet
             motion.Variants.TryGetValue(animateLabel, out var to);
             fromClasses = V.ParseClassNames(from.ClassName ?? string.Empty);
             toClasses = V.ParseClassNames(to.ClassName ?? string.Empty);
-            transition = to.Transition ?? motion.Transition;
+            transition = to.Transition ?? motion.VariantTransition;
             return transition != null;
         }
 
@@ -3836,7 +3836,7 @@ namespace Velvet
             motion.Variants.TryGetValue(motion.Animate, out var resting);
             restingClass = resting.ClassName ?? string.Empty;
             exitClass = exit.ClassName ?? string.Empty;
-            transition = exit.Transition ?? motion.Transition;
+            transition = exit.Transition ?? motion.VariantTransition;
             return true;
         }
 
