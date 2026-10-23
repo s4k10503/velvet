@@ -262,7 +262,8 @@ namespace Velvet
         // due, all within scope. It runs every layout-effect cleanup before any setup — a later fiber's cleanup
         // must not observe state an earlier fiber's setup wrote — and both passes in post-order: a child before
         // its parent, so a parent setup observes a child's already-committed imperative handle, and the fibers
-        // under one parent in tree order (OrderByNearestStagedAncestorPostOrder). Insertion effects belong to the cleanup pass (the mutation phase), together with the cleanups of the
+        // under one parent in the order they rendered, a root or a boundary joining them at its position in the
+        // tree. Insertion effects belong to the cleanup pass (the mutation phase), together with the cleanups of the
         // refs the commit replaces; imperative handles and layout setups to the setup pass, which attaches the
         // queued host refs where the walk reaches their elements (FiberRefPlacement). A boundary's reports are
         // delivered right after its own setups: after the layout effects of the fallback below it, before its
@@ -295,6 +296,7 @@ namespace Velvet
                 {
                     ScheduleRunEffects(roots[i].Fiber, roots[i].IsMount);
                 }
+                StageInCommitOrder(ctx, ordered);
             }
             finally
             {
@@ -372,7 +374,8 @@ namespace Velvet
             {
                 var entry = popped[i];
                 // MUTANT_SURVIVES(equivalent, guard removed): a fiber no longer mounted runs nothing in a batch.
-                // Its unmount cleared its effect lists and handles, and the setup pass skips it.
+                // Its unmount cleared its effect lists and handles, the setup pass skips it, and detached, it
+                // precedes and follows nothing, so InsertInTreeOrder places nothing around it.
                 if (!entry.Fiber.IsMounted) continue;
                 // A tree a Suspense hides commits none of the layout work its render queued, as React discards
                 // that work; ShowLayoutEffects queues all of it again for the commit that reveals it.
@@ -400,11 +403,13 @@ namespace Velvet
             }
             deduped.Reverse();
 
-            // The roots and the boundaries with a report due join what was pushed: a boundary that caught shows its
-            // fallback without rendering, so unless it rendered as well nothing pushed it.
-            for (var i = 0; i < roots.Count; i++)
+            // The roots and the boundaries with a report due join what was pushed at their positions in the tree:
+            // a drain's roots arrive in the order it flushed them, a root can sit below another root among fibers
+            // that were pushed, and a boundary that caught shows its fallback without rendering, so unless it
+            // rendered as well nothing pushed it.
+            for (var i = roots.Count - 1; i >= 0; i--)
             {
-                if (pushedSet.Add(roots[i].Fiber)) deduped.Add(roots[i]);
+                if (pushedSet.Add(roots[i].Fiber)) InsertInTreeOrder(deduped, roots[i]);
             }
             var reports = ctx.PendingCaughtErrorReports;
             for (var i = 0; i < reports.Count; i++)
@@ -414,7 +419,7 @@ namespace Velvet
                     // MUTANT_SURVIVES(equivalent, literal): the mount flag reaches nothing on this boundary.
                     // One that joins here has not rendered since its last commit, so no layout or insertion
                     // effect of its own is pending.
-                    deduped.Add((reports[i].Boundary, false));
+                    InsertInTreeOrder(deduped, (reports[i].Boundary, false));
                 }
             }
 
@@ -422,6 +427,49 @@ namespace Velvet
             OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
             bufferPool.ReturnFiberSet(pushedSet);
             return ordered;
+        }
+
+        // The entry goes ahead of the first fiber it precedes in the tree. Its ancestors and descendants it
+        // precedes neither way, and the post-order walk groups each under the nearest fiber of the batch above
+        // it wherever it sits.
+        private static void InsertInTreeOrder(
+            List<(ComponentFiber Fiber, bool IsMount)> deduped, (ComponentFiber Fiber, bool IsMount) entry)
+        {
+            var slot = deduped.Count;
+            for (var i = 0; i < deduped.Count; i++)
+            {
+                if (!PrecedesInTreeOrder(entry.Fiber, deduped[i].Fiber)) continue;
+                slot = i;
+                break;
+            }
+            deduped.Insert(slot, entry);
+        }
+
+        // Of two branches under one parent, the one earlier in its child list precedes. A fiber and its ancestor
+        // or descendant read false both ways, as do two fibers with no common ancestor.
+        private static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
+        {
+            for (var branchOfA = a; branchOfA.Parent != null; branchOfA = branchOfA.Parent)
+            {
+                var parent = branchOfA.Parent;
+                ComponentFiber? branchOfB = null;
+                for (var x = b; x != null; x = x.Parent)
+                {
+                    if (!ReferenceEquals(x.Parent, parent)) continue;
+                    branchOfB = x;
+                    break;
+                }
+                if (branchOfB == null) continue;
+                // Both are children of parent, so the walk meets one of them.
+                for (var sibling = parent.Child; !ReferenceEquals(sibling, branchOfB); sibling = sibling!.Sibling)
+                {
+                    if (ReferenceEquals(sibling, branchOfA)) return true;
+                }
+                return false;
+            }
+            // MUTANT_SURVIVES(unreachable, literal): every fiber a batch orders is mounted, and mounted fibers of one
+            // context descend from its root fiber, so two of them always meet under a common parent above.
+            return false;
         }
 
         // reportCutoff excludes a report caught after the batch delivering it was collected. CaughtErrorHandlerTests
@@ -659,6 +707,22 @@ namespace Velvet
             return false;
         }
 
+        // The passive drain runs fibers in the order they were staged (OrderFibersPostOrder), and the fibers of a
+        // commit were staged as their passes rendered them, its roots in the order a drain flushed them
+        // (CommitLayoutBatch). They move to the end of the staged list in the commit's own order, the tree's, as
+        // React's commit walks the tree for its passive effects as for its layout effects; what earlier commits
+        // staged stays ahead of them.
+        private static void StageInCommitOrder(ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered)
+        {
+            var staged = ctx.PendingPassiveEffectFibers;
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if (!ctx.PendingPassiveEffectFiberSet.Contains(ordered[i].Fiber)) continue;
+                staged.Remove(ordered[i].Fiber);
+                staged.Add(ordered[i].Fiber);
+            }
+        }
+
         // Runs when a layout commit ends, a throwing one included, since the commit that completes a pass is the one
         // that takes its entries off the deferred stack. A fiber whose entry is still there keeps waiting: the
         // commit that takes it is the one whose layout effects run first.
@@ -680,7 +744,11 @@ namespace Velvet
             held.RemoveRange(kept, held.Count - kept);
         }
 
-        // The passive phases take the staged fibers in the order the layout commit takes its batch.
+        // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary
+        // subset of fibers using fiber.Parent ancestry — the same grouping
+        // TakeBatch performs for layout effects. A fiber whose
+        // nearest staged ancestor is present is emitted before that ancestor; staged roots keep their
+        // relative staging order (siblings are staged left-to-right during reconcile).
         private static List<ComponentFiber> OrderFibersPostOrder(List<ComponentFiber> staged)
         {
             var stagedSet = new HashSet<ComponentFiber>(staged);
@@ -693,21 +761,19 @@ namespace Velvet
         // (entries carry an IsMount flag) and the passive-effect drain (plain fibers): each staged entry is
         // grouped under its NEAREST staged ancestor — non-staged intermediates are skipped, so wrapper-mount
         // subtrees whose middle ancestors did not stage collapse naturally — then an iterative post-order
-        // DFS over the resulting forest emits children before their parent into result. The entries are put in
-        // tree order first, so the trees of the forest and the children under each staged fiber come out in tree
-        // order however their work was scheduled, flushed or pushed, as React's commit walks the tree. Iterative
-        // (stack-based, recursion-free) to prevent .NET stack overflow on deep inline-mount chains (1k+ nested
-        // Provider / Memo subtrees); the same iterative pattern that FiberTreeTraversal.Visit documented away.
-        // fiberOf must be a compiler-cached static lambda.
+        // DFS over the resulting forest emits children before their parent into result, roots in their
+        // relative staging order. Iterative (stack-based, recursion-free) to prevent .NET stack overflow on
+        // deep inline-mount chains (1k+ nested Provider / Memo subtrees); the same iterative pattern that
+        // FiberTreeTraversal.Visit documented away. fiberOf must be a compiler-cached static lambda so this
+        // stays allocation-free per call beyond the grouping collections themselves.
         private static void OrderByNearestStagedAncestorPostOrder<T>(
             List<T> staged, HashSet<ComponentFiber> stagedSet, Func<T, ComponentFiber> fiberOf, List<T> result)
         {
-            var inTreeOrder = InTreeOrder(staged, fiberOf);
             Dictionary<ComponentFiber, List<T>>? childrenByParent = null;
             var roots = new List<T>();
-            for (var i = 0; i < inTreeOrder.Count; i++)
+            for (var i = 0; i < staged.Count; i++)
             {
-                var entry = inTreeOrder[i];
+                var entry = staged[i];
                 var ancestor = fiberOf(entry).Parent;
                 while (ancestor != null && !stagedSet.Contains(ancestor)) ancestor = ancestor.Parent;
                 if (ancestor == null)
@@ -745,71 +811,6 @@ namespace Velvet
                     result.Add(entry);
                 }
             }
-        }
-
-        // The order a depth-first walk of the fibers meets the entries' fibers: an ancestor ahead of its descendants,
-        // and the branches under one fiber in its child order (ComponentFiber.CommitChildOrder). Fibers under
-        // different tops keep the order their tops first appear in.
-        private static List<T> InTreeOrder<T>(List<T> entries, Func<T, ComponentFiber> fiberOf)
-        {
-            if (entries.Count < 2) return entries;
-            var siblingIndices = new Dictionary<ComponentFiber, int>();
-            var topRanks = new Dictionary<ComponentFiber, int>();
-            var keyed = new (T Entry, int TopRank, int[] Path, int Index)[entries.Count];
-            for (var i = 0; i < entries.Count; i++)
-            {
-                var path = TreePath(fiberOf(entries[i]), siblingIndices, out var top);
-                if (!topRanks.TryGetValue(top, out var rank))
-                {
-                    rank = topRanks.Count;
-                    topRanks[top] = rank;
-                }
-                keyed[i] = (entries[i], rank, path, i);
-            }
-            Array.Sort(keyed, static (a, b) =>
-            {
-                if (a.TopRank != b.TopRank) return a.TopRank.CompareTo(b.TopRank);
-                var shared = Math.Min(a.Path.Length, b.Path.Length);
-                for (var level = 0; level < shared; level++)
-                {
-                    if (a.Path[level] != b.Path[level]) return a.Path[level].CompareTo(b.Path[level]);
-                }
-                if (a.Path.Length != b.Path.Length) return a.Path.Length.CompareTo(b.Path.Length);
-                return a.Index.CompareTo(b.Index);
-            });
-            var ordered = new List<T>(entries.Count);
-            for (var i = 0; i < keyed.Length; i++) ordered.Add(keyed[i].Entry);
-            return ordered;
-        }
-
-        // The child index of each fiber on the way down from the top of its tree.
-        private static int[] TreePath(
-            ComponentFiber fiber, Dictionary<ComponentFiber, int> siblingIndices, out ComponentFiber top)
-        {
-            var depth = 0;
-            for (var f = fiber; f.Parent != null; f = f.Parent) depth++;
-            var path = new int[depth];
-            var current = fiber;
-            for (var level = depth - 1; level >= 0; level--)
-            {
-                path[level] = SiblingIndex(current, siblingIndices);
-                current = current.Parent!;
-            }
-            top = current;
-            return path;
-        }
-
-        private static int SiblingIndex(ComponentFiber fiber, Dictionary<ComponentFiber, int> siblingIndices)
-        {
-            if (siblingIndices.TryGetValue(fiber, out var index)) return index;
-            var next = 0;
-            for (var sibling = fiber.Parent!.Child; sibling != null; sibling = sibling.Sibling)
-            {
-                siblingIndices[sibling] = next++;
-            }
-            // MUTANT_SURVIVES(unreachable): a fiber's Parent is set and cleared together with its place in that
-            // parent's child list (ComponentFiber.AppendChild, RemoveChild, CommitChildOrder).
-            return siblingIndices.TryGetValue(fiber, out index) ? index : next;
         }
 
         // Runs async effects in 2-pass order (all cleanup → all effect) for a single fiber. Retained
