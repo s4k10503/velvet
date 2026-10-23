@@ -55,8 +55,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit), Is.EqualTo(((ArbitraryProperty)property, value, unit)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, (ArbitraryProperty)property, value, unit)));
         }
 
         // GREEN_ON_BASE(characterization): the base already declines `w-[200]`, as a BareNumberBracketTests row there pinned.
@@ -334,8 +334,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit), Is.EqualTo(((ArbitraryProperty)property, value, unit)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, (ArbitraryProperty)property, value, unit)));
         }
 
         [Test]
@@ -345,8 +345,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("right-[16px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Right, 16f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Right, 16f)));
         }
 
         static readonly object[] InsetShorthandPropertyCases =
@@ -367,8 +367,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo((ArbitraryProperty)property));
+            Assert.That((ok, s.Property), Is.EqualTo((true, (ArbitraryProperty)property)));
         }
 
         #endregion
@@ -395,8 +394,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo(((ArbitraryProperty)property, value)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, (ArbitraryProperty)property, value)));
         }
 
         [Test]
@@ -406,8 +405,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("pl-[16px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo(ArbitraryProperty.PaddingLeft));
+            Assert.That((ok, s.Property), Is.EqualTo((true, ArbitraryProperty.PaddingLeft)));
         }
 
         #endregion
@@ -430,8 +428,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo((ArbitraryProperty)property));
+            Assert.That((ok, s.Property), Is.EqualTo((true, (ArbitraryProperty)property)));
         }
 
         static readonly object[] MarginPropertyValueCases =
@@ -450,8 +447,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(className, out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo(((ArbitraryProperty)property, value)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, (ArbitraryProperty)property, value)));
         }
 
         #endregion
@@ -465,8 +462,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("rounded-[36px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.BorderRadius, 36f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.BorderRadius, 36f)));
         }
 
         [Test]
@@ -476,8 +473,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[18px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.FontSize, 18f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.FontSize, 18f)));
         }
 
         #endregion
@@ -491,8 +488,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[#ff0000]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.TextColor, Color.red)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.TextColor, Color.red)));
         }
 
         [Test]
@@ -502,8 +499,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[#fff]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.TextColor, Color.white)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.TextColor, Color.white)));
         }
 
         [Test]
@@ -513,8 +510,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("bg-[#00ff00]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.BackgroundColor, Color.green)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.BackgroundColor, Color.green)));
         }
 
         [Test]
@@ -536,8 +533,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[18px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Property, Is.EqualTo(ArbitraryProperty.FontSize));
+            Assert.That((ok, s.Property), Is.EqualTo((true, ArbitraryProperty.FontSize)));
         }
 
         [Test]
@@ -569,8 +565,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("text-[red]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Color), Is.EqualTo((ArbitraryProperty.TextColor, Color.red)));
+            Assert.That((ok, s.Property, s.Color),
+                Is.EqualTo((true, ArbitraryProperty.TextColor, Color.red)));
         }
 
         [Test]
@@ -594,9 +590,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-mt-[20px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.MarginTop, -20f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.MarginTop, -20f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -606,9 +601,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-ml-[50%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.MarginLeft, -50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.MarginLeft, -50f, LengthUnit.Percent)));
         }
 
         [Test]
@@ -618,9 +612,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-left-[50%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.Left, -50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.Left, -50f, LengthUnit.Percent)));
         }
 
         [Test]
@@ -630,8 +623,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-top-[10px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Top, -10f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Top, -10f)));
         }
 
         #endregion
@@ -1739,8 +1732,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("scale-[1.4]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Scale, 1.4f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Scale, 1.4f)));
         }
 
         [Test]
@@ -1765,9 +1758,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("translate-x-[4px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.TranslateX, 4f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.TranslateX, 4f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -1777,8 +1769,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("translate-y-[8px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.TranslateY, 8f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.TranslateY, 8f)));
         }
 
         [Test]
@@ -1819,8 +1811,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("-rotate-[45deg]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Rotate, -45f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Rotate, -45f)));
         }
 
         [Test]
@@ -1830,8 +1822,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("rotate-[3.14159265rad]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Value, Is.EqualTo(180f).Within(0.01f));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(180f).Within(0.01f));
         }
 
         [Test]
@@ -1841,8 +1832,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("rotate-[0.25turn]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That(s.Value, Is.EqualTo(90f).Within(0.001f));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(90f).Within(0.001f));
         }
 
         [Test]
@@ -1863,9 +1853,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("origin-[33%_75%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((ArbitraryProperty.TransformOrigin, 33f, LengthUnit.Percent, 75f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, ArbitraryProperty.TransformOrigin, 33f, LengthUnit.Percent, 75f, LengthUnit.Percent)));
         }
 
         [Test]
@@ -1876,9 +1865,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("origin-[0px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Value, s.Unit, s.Value2, s.Unit2),
-                Is.EqualTo((0f, LengthUnit.Pixel, 50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((true, 0f, LengthUnit.Pixel, 50f, LengthUnit.Percent)));
         }
 
         [Test]
@@ -1888,8 +1876,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Unit, s.Unit2), Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
+            Assert.That((ok, s.Unit, s.Unit2),
+                Is.EqualTo((true, LengthUnit.Pixel, LengthUnit.Percent)));
         }
 
         // CSS transform-origin's grammar inside the brackets: a keyword stands for its percentage, a lone
@@ -3300,8 +3288,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("opacity-[.37]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Opacity, 0.37f)));
+            Assert.That((ok, s.Property, s.Value),
+                Is.EqualTo((true, ArbitraryProperty.Opacity, 0.37f)));
         }
 
         [Test]
@@ -3340,9 +3328,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("size-[40px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.Size, 40f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.Size, 40f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -3543,9 +3530,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("basis-[120px]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.FlexBasis, 120f, LengthUnit.Pixel)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.FlexBasis, 120f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -3555,9 +3541,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("basis-[50%]", out var s);
 
             // Assert
-            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
-            Assert.That((s.Property, s.Value, s.Unit),
-                Is.EqualTo((ArbitraryProperty.FlexBasis, 50f, LengthUnit.Percent)));
+            Assert.That((ok, s.Property, s.Value, s.Unit),
+                Is.EqualTo((true, ArbitraryProperty.FlexBasis, 50f, LengthUnit.Percent)));
         }
 
         [Test]

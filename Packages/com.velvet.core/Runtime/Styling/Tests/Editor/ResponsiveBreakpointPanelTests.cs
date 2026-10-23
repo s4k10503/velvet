@@ -166,11 +166,11 @@ namespace Velvet.Tests
         {
             // Arrange/Act — an md:bg-wide leaf in a 500px-wide panel (< md 768).
             var leaf = MountAndResolveAt(500f, "md:bg-wide");
-            Assume.That(leaf.panel.visualTree.resolvedStyle.width, Is.LessThan(MdBreakpoint),
-                "Precondition: the panel root resolved below the md breakpoint");
 
-            // Assert — the md payload stays off below the breakpoint.
-            Assert.IsFalse(leaf.ClassListContains("bg-wide"));
+            // Assert — the md payload stays off below the breakpoint. The width the root resolved to rides along,
+            // so a host that did not get the narrow width fails here rather than reporting Inconclusive.
+            Assert.That((leaf.panel.visualTree.resolvedStyle.width < MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, false)));
         }
 
         [Test]
@@ -178,13 +178,13 @@ namespace Velvet.Tests
         {
             // Arrange — an md:bg-wide leaf applied while the panel is wide.
             var leaf = MountAndResolveAt(1000f, "md:bg-wide");
-            Assume.That(leaf.ClassListContains("bg-wide"), Is.True, "Precondition: payload on while wide");
+            var onWhileWide = leaf.ClassListContains("bg-wide");
 
             // Act — the panel shrinks below the md breakpoint and re-resolves.
             ResolveAt(500f, leaf);
 
-            // Assert — the responsive payload toggles back off.
-            Assert.IsFalse(leaf.ClassListContains("bg-wide"));
+            // Assert — the responsive payload toggles from on back off.
+            Assert.That((onWhileWide, leaf.ClassListContains("bg-wide")), Is.EqualTo((true, false)));
         }
     }
 
@@ -246,10 +246,10 @@ namespace Velvet.Tests
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
             var scope = leaf.parent;
             Resolve(leaf, scope);
-            Assume.That(scope.resolvedStyle.width, Is.LessThan(MdBreakpoint), "Precondition: scope resolved below md");
 
             // Assert — the descendant's md: follows the narrow scope, not the wide panel.
-            Assert.IsFalse(leaf.ClassListContains("bg-wide"));
+            Assert.That((scope.resolvedStyle.width < MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, false)));
         }
 
         // Widening the scope across the breakpoint flips the descendant's variant on.
@@ -262,14 +262,14 @@ namespace Velvet.Tests
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
             var scope = leaf.parent;
             Resolve(leaf, scope);
-            Assume.That(leaf.ClassListContains("bg-wide"), Is.False, "Precondition: payload off in the narrow scope");
+            var onWhileNarrow = leaf.ClassListContains("bg-wide");
 
             // Act — grow the scope past the md breakpoint and re-resolve against it.
             scope.style.width = WideScope;
             Resolve(leaf, scope);
 
-            // Assert — the descendant's md: now follows the widened scope.
-            Assert.IsTrue(leaf.ClassListContains("bg-wide"));
+            // Assert — the descendant's md: goes from off to on with the widened scope.
+            Assert.That((onWhileNarrow, leaf.ClassListContains("bg-wide")), Is.EqualTo((false, true)));
         }
 
         // Nested scopes: the NEAREST viewport-scope ancestor wins (the inner narrow scope, not the outer wide one).
@@ -284,11 +284,10 @@ namespace Velvet.Tests
             var leaf = _window.rootVisualElement.Q<Label>("leaf");
             var innerScope = leaf.parent;
             Resolve(leaf, innerScope);
-            Assume.That(innerScope.resolvedStyle.width, Is.LessThan(MdBreakpoint),
-                "Precondition: the nearest (inner) scope resolved below md");
 
             // Assert — the nearest (narrow) scope decides; the wide outer scope does not leak through.
-            Assert.IsFalse(leaf.ClassListContains("bg-wide"));
+            Assert.That((innerScope.resolvedStyle.width < MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                Is.EqualTo((true, false)));
         }
 
         // Stacked variant (dark:md:): the responsive inner of a stack also respects the scope width.
@@ -305,10 +304,10 @@ namespace Velvet.Tests
                 var leaf = _window.rootVisualElement.Q<Label>("leaf");
                 var scope = leaf.parent;
                 Resolve(leaf, scope);
-                Assume.That(scope.resolvedStyle.width, Is.LessThan(MdBreakpoint), "Precondition: scope below md");
 
                 // Assert — dark is satisfied, but the scope-driven md: inner gate stays closed, so nothing applies.
-                Assert.IsFalse(leaf.ClassListContains("bg-wide"));
+                Assert.That((scope.resolvedStyle.width < MdBreakpoint, leaf.ClassListContains("bg-wide")),
+                    Is.EqualTo((true, false)));
             }
             finally
             {
@@ -355,11 +354,10 @@ namespace Velvet.Tests
         {
             // Arrange / Act — a 375px scope inside a 1200px panel.
             var leaf = MountInViewport(MobileWidth);
-            Assume.That(_window.rootVisualElement.Q<VisualElement>("canvas").resolvedStyle.width,
-                Is.LessThan(MdBreakpoint), "Precondition: the simulated viewport resolved below md");
 
             // Assert — the descendant's md: follows the narrow simulated viewport, not the wide panel.
-            Assert.IsFalse(leaf.ClassListContains("bg-wide"));
+            Assert.That((_window.rootVisualElement.Q<VisualElement>("canvas").resolvedStyle.width < MdBreakpoint,
+                leaf.ClassListContains("bg-wide")), Is.EqualTo((true, false)));
         }
 
         [Test]
@@ -367,11 +365,10 @@ namespace Velvet.Tests
         {
             // Arrange / Act — a 1000px scope (≥ md).
             var leaf = MountInViewport(DesktopWidth);
-            Assume.That(_window.rootVisualElement.Q<VisualElement>("canvas").resolvedStyle.width,
-                Is.GreaterThanOrEqualTo(MdBreakpoint), "Precondition: the simulated viewport resolved at/above md");
 
             // Assert — the wide simulated viewport drives the descendant's md: on.
-            Assert.IsTrue(leaf.ClassListContains("bg-wide"));
+            Assert.That((_window.rootVisualElement.Q<VisualElement>("canvas").resolvedStyle.width >= MdBreakpoint,
+                leaf.ClassListContains("bg-wide")), Is.EqualTo((true, true)));
         }
     }
 }
