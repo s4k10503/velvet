@@ -868,8 +868,12 @@ namespace Velvet.Tests
         // What the id's entry holds, for a failure message: whether an element, a box, and how many ids are kept.
         private static string RegistryReading(ReconcilerContext ctx, string id) =>
             ctx.LayoutIdRegistry.TryGetValue(id, out var entry)
-                ? $"{id}: element={(entry.Element != null)}, box={entry.Box.HasValue} of {ctx.LayoutIdRegistry.Count} ids"
+                ? $"{id}: element={(entry.Element != null)}, box={entry.Box.HasValue}{BoxReading(entry.Box)} of {ctx.LayoutIdRegistry.Count} ids"
                 : $"{id}: absent of {ctx.LayoutIdRegistry.Count} ids";
+
+        private static string BoxReading(LayoutIdBox? box) => box is { } b
+            ? $" (parented={b.Parent != null}, local={b.Local}, centre={b.PanelCentre}, size={b.PanelSize})"
+            : "";
 
         [Test]
         public void Given_ALayoutIdRowAScrollTookOutOfRange_When_ALaterRenderMountsAnotherUnderItsId_Then_ItTweensFromTheRowsBox()
@@ -899,8 +903,12 @@ namespace Velvet.Tests
             Tick();
 
             // Assert — the row stood 300px left of where the new Motion does.
-            var diagnostic = $"before the scroll [{before}]; after it [{afterScroll}]; after the mount [{RegistryReading(ctx, "row-0")}]";
-            Assert.That(TranslateX(host.Q<VisualElement>("remount")), Is.LessThan(-200f), diagnostic);
+            var remount = host.Q<VisualElement>("remount");
+            var diagnostic = $"before the scroll [{before}]; after it [{afterScroll}]; after the mount [{RegistryReading(ctx, "row-0")}]; "
+                + $"remount layout={remount.layout}, translate={remount.style.translate.keyword}/{remount.style.translate.value.x.value}, "
+                + $"projected={ctx.LayoutIdProjections.ContainsKey(remount)}, waiting={ctx.LayoutIdPendingSettles.ContainsKey(remount)}, "
+                + $"hostWorld={host.worldBound}";
+            Assert.That(TranslateX(remount), Is.LessThan(-200f), diagnostic);
         }
 
         [Test]
