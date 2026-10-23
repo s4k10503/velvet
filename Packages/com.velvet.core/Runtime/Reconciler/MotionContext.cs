@@ -28,6 +28,10 @@ namespace Velvet
         // and ComponentFiber.BlocksInitialEnters answers instead.
         public static readonly ComponentContext<bool?> EntersBlocked = ComponentContext<bool?>.Create(null);
 
+        // Whether a Motion above plays no mount enter (MotionNode.EnterOnMount), which the Motions below it follow. Unlike
+        // EntersBlocked it crosses a presence, since the Motion's choice is not the presence's.
+        public static readonly ComponentContext<bool> EntersWithheld = ComponentContext<bool>.Create(false);
+
         // The staggerChildren/delayChildren orchestration a Motion's inheriting children claim their slots from,
         // while that Motion's label changes this render or its mount enter plays. Pushed alongside ActiveLabel by
         // FiberNodePatcher.PatchMotion and FiberNodeFactory.CreateForMotionNode; null (the default) means no

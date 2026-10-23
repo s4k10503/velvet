@@ -949,7 +949,7 @@ namespace Velvet.Tests
                     V.AnimatePresence(key: "presence", children: new VNode[]
                     {
                         V.Motion(name: "item-a", key: "a", variants: s_fade, animate: "visible", exit: "hidden",
-                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                            transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
                     }),
                     V.Component(ThrowerRender, key: "thrower"),
                 });
@@ -970,7 +970,7 @@ namespace Velvet.Tests
                 V.AnimatePresence(key: "host-presence", children: new VNode[]
                 {
                     V.Motion(name: "host-item", key: "h", variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
                 }),
                 V.Label(text: "outside"),
                 V.Component(NewPresenceBoundaryRender, key: "boundary"),
@@ -986,7 +986,7 @@ namespace Velvet.Tests
             var first = V.AnimatePresence(key: "first", children: new VNode[]
             {
                 V.Motion(name: "item-a", key: "a", variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
             });
             return tick == 0
                 ? V.Fragment(new VNode[] { first })
@@ -996,7 +996,7 @@ namespace Velvet.Tests
                     V.AnimatePresence(key: "second", children: new VNode[]
                     {
                         V.Motion(name: "item-b", key: "b", variants: s_fade, animate: "visible", exit: "hidden",
-                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                            transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
                     }),
                     V.Component(ThrowerRender, key: "thrower"),
                 });
@@ -1045,7 +1045,7 @@ namespace Velvet.Tests
                 V.AnimatePresence(key: "presence", children: new VNode[]
                 {
                     V.Motion(name: "item-" + key, key: key, variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
                 }),
                 tick == 0 ? null : V.Component(ThrowerRender, key: "thrower"),
             });
@@ -1487,7 +1487,7 @@ namespace Velvet.Tests
                 V.AnimatePresence(key: "presence", children: new VNode[]
                 {
                     V.Motion(name: "item-" + key, key: key, variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
                 }),
                 V.Component(ThrowerRender, key: "thrower"),
             });
@@ -2798,7 +2798,7 @@ namespace Velvet.Tests
         private static VNode[] InstantPoseMotionAndPlainChild() => new VNode[]
         {
             V.Motion(key: "m", variants: s_fade, animate: "visible", exit: "hidden",
-                transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }),
+                transition: StyleTransitionConfig.None, children: new VNode[] { V.Label(text: "m") }, enterOnMount: false),
             V.Label(text: "plain", key: "plain"),
         };
 

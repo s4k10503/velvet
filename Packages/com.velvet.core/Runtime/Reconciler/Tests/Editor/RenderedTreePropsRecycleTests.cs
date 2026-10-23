@@ -513,13 +513,13 @@ namespace Velvet.Tests
             var children = new System.Collections.Generic.List<VNode>
             {
                 V.Motion(name: "item-a", key: "a", variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
             };
             if (count == 0)
             {
                 children.Add(V.Motion(name: "item-b", key: "b", variants: s_fade, animate: "visible", exit: "hidden",
                     transition: new StyleTransitionConfig { DurationSec = 0.3f },
-                    children: new VNode[] { s_capturedMemoNode = V.Button(text: "ghost-content") }));
+                    children: new VNode[] { s_capturedMemoNode = V.Button(text: "ghost-content") }, enterOnMount: false));
             }
             return V.Div(name: "presence-host", children: new VNode[]
             {
@@ -559,7 +559,7 @@ namespace Velvet.Tests
             var children = new System.Collections.Generic.List<VNode>
             {
                 V.Motion(name: "stay", key: "stay", variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false),
             };
             if (count == 0)
             {

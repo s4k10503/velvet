@@ -73,6 +73,10 @@ on any `motion.*` element). The element mounts showing `variants[initial]`, then
   *Orchestration*); one mounting under a parent already mounted enters on its own.
 - An `initial` pose applying no class starts the enter from the Motion's own classes, the way a
   Framer `initial` naming no value starts each value from the one it already has.
+- A Motion that resolves no `initial` label, its own or inherited, enters from the same place: the look it has
+  without its variant classes. Its `animate` pose applying no class leaves nothing to enter to. `enterOnMount:
+  false` mounts a Motion, and the Motions below it across a presence, at their resting pose with no enter, as
+  Framer's `initial={false}` does; `transition: StyleTransitionConfig.None` does the same for a single Motion.
 - Inside `AnimatePresence`, the presence can withhold enters: `V.AnimatePresence(initial: false, …)`
   suppresses them for the children its first render mounts, like Framer's `<AnimatePresence initial={false}>`
   (see *Exits* below).

@@ -69,7 +69,7 @@ namespace Velvet.Tests
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.Motion(key: "m", name: "m", variants: s_fade, animate: label,
-                    transition: new StyleTransitionConfig { DurationSec = 0.4f }),
+                    transition: new StyleTransitionConfig { DurationSec = 0.4f }, enterOnMount: false),
             });
         }
 

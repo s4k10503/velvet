@@ -113,7 +113,7 @@ namespace Velvet.Tests
             };
 
             // Act
-            var node = V.Motion("item", variants: variants, animate: "visible");
+            var node = V.Motion("item", variants: variants, animate: "visible", enterOnMount: false);
 
             // Assert — the active variant is resolved at reconcile time (effective label =
             // Animate ?? inherited-from-ancestor), so construction leaves ClassNames base-only. The applied class appears on the
@@ -141,7 +141,7 @@ namespace Velvet.Tests
             var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — the requested label is not a key of the variants map.
-            var node = V.Motion("item", variants: variants, animate: "ghost");
+            var node = V.Motion("item", variants: variants, animate: "ghost", enterOnMount: false);
 
             // Assert
             CollectionAssert.AreEqual(new[] { "item" }, node.ClassNames);
@@ -460,8 +460,8 @@ namespace Velvet.Tests
                 { "hidden", "opacity-0" },
                 { "visible", "opacity-100" },
             };
-            var old = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "hidden", transition: StyleTransitionConfig.None) };
-            var @new = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "visible", transition: StyleTransitionConfig.None) };
+            var old = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "hidden", transition: StyleTransitionConfig.None, enterOnMount: false) };
+            var @new = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "visible", transition: StyleTransitionConfig.None, enterOnMount: false) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), old);
             Assume.That(Root.ElementAt(0).ClassListContains("opacity-0"), Is.True,
                 "Precondition: starts in the hidden variant");

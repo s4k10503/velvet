@@ -1001,7 +1001,7 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "b", className: "w-[20px] h-[20px]", variants: poses, animate: lit ? "b" : "a",
-                    transition: new StyleTransitionConfig { DurationSec = 0.2f }, whileHoverClass: "bg-red-500"),
+                    transition: new StyleTransitionConfig { DurationSec = 0.2f }, whileHoverClass: "bg-red-500", enterOnMount: false),
                 V.Div(name: "ref", className: "border bg-red-500"),
             });
         }

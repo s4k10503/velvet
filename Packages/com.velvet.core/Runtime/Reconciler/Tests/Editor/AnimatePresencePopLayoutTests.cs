@@ -64,7 +64,7 @@ namespace Velvet.Tests
                 var motion = V.Motion(name: "item-" + key, key: s_fragments ? null : key.ToString(),
                     className: "w-[60px] h-[24px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
                 children.Add(s_fragments ? V.Fragment(new[] { motion }, key: key.ToString()) : motion);
             }
             return V.Div(name: "presence-host", children: new VNode[]
@@ -103,7 +103,7 @@ namespace Velvet.Tests
                     ? V.Motion(className: "w-[60px] h-[24px]", transition: StyleTransition.Fade)
                     : V.Motion(className: "w-[60px] h-[24px]",
                         variants: s_fade, animate: "visible", exit: "hidden",
-                        transition: new StyleTransitionConfig { DurationSec = 0.3f });
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
                 children.Add(V.Div(name: "item-" + key, key: key.ToString(), className: "absolute z-10",
                     children: new VNode[] { motion }));
             }
@@ -434,7 +434,7 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     className: "h-[20px] w-[40px]" + extra,
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
             {
@@ -583,7 +583,7 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(), className: "h-[20px] w-[40px]",
                     variants: s_fade, animate: "visible", exit: "hidden",
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false));
             }
             return V.Div(name: "row", className: "flex flex-row-reverse gap-x-2", children: new VNode[]
             {

@@ -63,7 +63,7 @@ namespace Velvet.Tests
         private static VNode Box()
         {
             var label = Hooks.UseStore(s_labels, s => s.Label);
-            return V.Motion(key: "m", name: "m", variants: s_variants, animate: label, transition: s_transition);
+            return V.Motion(key: "m", name: "m", variants: s_variants, animate: label, transition: s_transition, enterOnMount: false);
         }
 
         private static readonly StyleTransitionConfig s_physics = new()

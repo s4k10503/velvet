@@ -43,7 +43,7 @@ namespace Velvet.Tests
                 ? new VNode[]
                 {
                     V.Motion(key: "card", name: "card", className: "translate-y-[10]", variants: s_poses,
-                        animate: "rest", exit: "gone", transition: s_tween),
+                        animate: "rest", exit: "gone", transition: s_tween, enterOnMount: false),
                 }
                 : System.Array.Empty<VNode>());
         }

@@ -70,7 +70,7 @@ namespace Velvet.Tests
             State = state;
             Controls = controls;
             return V.Motion(key: "m", name: "m", variants: s_fade, animate: state.CurrentLabel,
-                transition: state.CurrentTransition);
+                transition: state.CurrentTransition, enterOnMount: false);
         }
 
         [Component]
@@ -83,7 +83,7 @@ namespace Velvet.Tests
                 transition: state.CurrentTransition, children: new VNode[]
                 {
                     V.Motion(key: "m", name: "m", variants: s_childFade),
-                });
+                }, enterOnMount: false);
         }
 
         protected static string OuterLabel;
@@ -99,9 +99,9 @@ namespace Velvet.Tests
             return V.Motion(key: "outer", name: "outer", animate: OuterLabel, children: new VNode[]
             {
                 V.Motion(key: "coordinator", name: "coordinator", animate: state.CurrentLabel,
-                    transition: state.CurrentTransition),
+                    transition: state.CurrentTransition, enterOnMount: false),
                 V.Motion(key: "m", name: "m", variants: s_childFade),
-            });
+            }, enterOnMount: false);
         }
 
         protected static bool ChildMounted;
@@ -215,7 +215,7 @@ namespace Velvet.Tests
             return V.Motion(key: "coordinator", name: "coordinator", initial: "hidden", animate: state.CurrentLabel,
                 transition: state.CurrentTransition, children: new VNode[]
                 {
-                    V.Motion(key: "badge", name: "badge", animate: "visible", variants: s_childFade),
+                    V.Motion(key: "badge", name: "badge", animate: "visible", variants: s_childFade, enterOnMount: false),
                     V.Component(ChildToggler, key: "t"),
                 });
         }

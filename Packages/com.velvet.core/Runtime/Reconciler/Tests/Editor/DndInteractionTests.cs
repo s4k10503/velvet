@@ -472,7 +472,7 @@ namespace Velvet.Tests
                         props: new FiberElementProps
                         {
                             Draggable = new DraggableSettings("item", WhileDraggingClass: "opacity-50"),
-                        }),
+                        }, enterOnMount: false),
                 });
         }
 

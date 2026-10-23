@@ -205,6 +205,14 @@ namespace Velvet
         public string? Exit { get; init; }
 
         /// <summary>
+        /// Whether this Motion plays its mount enter. False mounts it, and every Motion below it, at its resting
+        /// pose with no enter, as Framer Motion's <c>initial={false}</c> does. A Motion naming no
+        /// <see cref="Initial"/> label otherwise enters from the look it has without its variant classes to the
+        /// <see cref="Animate"/> pose.
+        /// </summary>
+        public bool EnterOnMount { get; init; } = true;
+
+        /// <summary>
         /// Shared-element layout animation identity. When a Motion
         /// carrying this same string patches at a resolved layout rect (position and/or size) different from
         /// the rect the SAME id last settled at — including a different physical element entirely, e.g. after

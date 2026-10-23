@@ -1562,7 +1562,7 @@ namespace Velvet.Tests
                 {
                     V.Label(refCallback: childRef),
                     V.Custom<ConstructionRefusingElement>(),
-                }),
+                }, enterOnMount: false),
                 healthyRow: _ => V.Div(),
                 firstScrollY: 0f,
                 failScrollY: 50f);

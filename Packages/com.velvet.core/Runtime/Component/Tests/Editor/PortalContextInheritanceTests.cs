@@ -167,7 +167,7 @@ namespace Velvet.Tests
                 {
                     V.Component(MotionLabelConsumerRender, key: "consumer"),
                 }),
-            });
+            }, enterOnMount: false);
 
         [Component]
         private static VNode RerenderConsumerRender()
@@ -225,7 +225,7 @@ namespace Velvet.Tests
                 {
                     V.Component(RerenderMotionConsumerRender, key: "consumer"),
                 }),
-            });
+            }, enterOnMount: false);
 
         #endregion
     }

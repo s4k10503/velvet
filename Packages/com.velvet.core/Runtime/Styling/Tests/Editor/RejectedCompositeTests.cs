@@ -175,7 +175,7 @@ namespace Velvet.Tests
             var poses = new Dictionary<string, MotionVariant> { ["open"] = pose };
 
             // Act
-            using var mounted = V.Mount(root, V.Motion(name: "box", className: own, variants: poses, animate: "open"));
+            using var mounted = V.Mount(root, V.Motion(name: "box", className: own, variants: poses, animate: "open", enterOnMount: false));
 
             // Assert
             Assert.That(Drawn(root.Q("box")), Is.EqualTo(expected));

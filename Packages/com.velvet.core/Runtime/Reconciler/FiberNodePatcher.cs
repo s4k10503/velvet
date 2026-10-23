@@ -619,26 +619,42 @@ namespace Velvet
             }
 
             MotionOrchestrationFrame? childOrchestration = null;
-            if (childLabel != null)
+            // A Motion that plays no mount enter withholds the enters of the Motions its patch mounts below it.
+            var withholdsEnters = !newNode.EnterOnMount;
+            if (withholdsEnters)
             {
-                childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
-                    ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses, element,
-                    _ctx.StyleAnimationScheduler);
-                MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
-                    MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
-                    childOrchestration, playback);
-                try
+                _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
+            }
+            try
+            {
+                if (childLabel != null)
+                {
+                    childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
+                        ambientOrchestration, extraDelaySec, oldVariantClasses, newVariantClasses, element,
+                        _ctx.StyleAnimationScheduler);
+                    MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel,
+                        MotionVariantResolver.InitialLabel(newNode, _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
+                        childOrchestration, playback);
+                    try
+                    {
+                        PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
+                    }
+                    finally
+                    {
+                        MotionContext.PopForChildren(_ctx.ComponentContextStack);
+                    }
+                }
+                else
                 {
                     PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
-                finally
-                {
-                    MotionContext.PopForChildren(_ctx.ComponentContextStack);
-                }
             }
-            else
+            finally
             {
-                PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
+                if (withholdsEnters)
+                {
+                    _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
+                }
             }
 
             // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
@@ -677,9 +693,10 @@ namespace Velvet
                 new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
-            // children) directly. A Motion carries no clip wrapper, so no clip suppresses a paint here.
+            // children) directly. A clip wrapper, where the classes call for one, suppresses the paints a clip clips.
+            var clipActive = _appliers.ApplyClipPathOnPatch(element, appliedNew);
             _ctx.ExpectPlayGates(element, newNode);
-            ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive: false);
+            ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive);
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
@@ -3446,10 +3463,8 @@ namespace Velvet
                 return;
             }
             // The clip verdict is the same one the reconcile path forwards from its own clip patch: that call
-            // returns exactly its own wantWrap answer, so reading the predicate here cannot disagree. A Motion
-            // carries no clip wrapper, as PatchMotion's own answer says.
-            ApplyResolvedClassPasses(element, resolved, classesChanged,
-                !_ctx.MotionNodes.ContainsKey(element) && StyleClipPathClass.WantsClipWrapper(resolved));
+            // returns exactly its own wantWrap answer, so reading the predicate here cannot disagree.
+            ApplyResolvedClassPasses(element, resolved, classesChanged, StyleClipPathClass.WantsClipWrapper(resolved));
         }
 
         // Records the class array an element that DECLARES a variant-gated payload will need if that payload

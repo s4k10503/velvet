@@ -2871,13 +2871,13 @@ namespace Velvet.Tests
                     className: $"absolute left-[{s_aLeft}px] top-[0px] w-[{s_aSize}px] h-[{s_aSize}px] {s_sharedClasses} {s_aClasses}",
                     children: s_aField
                         ? new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]"), V.TextField(key: "field", name: "field") }
-                        : new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]") }));
+                        : new VNode[] { V.Div(key: "a-child", name: "a-child", className: "w-[20px] h-[20px]") }, enterOnMount: false));
             }
             if (s_bMounted)
             {
                 children.Add(V.Motion(key: "b", name: "b", layoutId: "card", transition: s_bTransition,
                     variants: s_bPose != null ? s_bVariants ?? s_fade : null, animate: s_bPose,
-                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[{s_bSize}px] h-[{s_bSize}px] {s_sharedClasses} {s_bClasses}"));
+                    className: $"absolute left-[{s_bLeft}px] top-[0px] w-[{s_bSize}px] h-[{s_bSize}px] {s_sharedClasses} {s_bClasses}", enterOnMount: false));
             }
             if (s_cMounted)
             {
@@ -6334,7 +6334,7 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[]
             {
                 V.Motion(name: "shared", layoutId: "shared-box", transition: s_slowTween, variants: s_radiusPoses,
-                    animate: s_radiusPose, className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] origin-[0%_0%]"),
+                    animate: s_radiusPose, className: $"left-[0px] top-[0px] w-[{size}px] h-[{size}px] origin-[0%_0%]", enterOnMount: false),
             });
         }
 
@@ -7130,7 +7130,7 @@ namespace Velvet.Tests
                     {
                         V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
                             exit: "hidden", transition: s_modalTransition ?? s_slowTween,
-                            className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]"),
+                            className: $"absolute left-[{s_modalLeft}px] top-[0px] w-[100px] h-[100px]", enterOnMount: false),
                     }
                     : Array.Empty<VNode>()),
                 s_closeRead == null ? null : V.Component(CloseReaderRender, s_modalOpen, key: "reader"),
@@ -7379,7 +7379,7 @@ namespace Velvet.Tests
                     {
                         V.Motion(key: "modal", name: "modal", layoutId: "card", variants: s_fade, animate: "visible",
                             exit: "hidden", transition: s_slowTween,
-                            className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]", children: new[] { Title("modal") }),
+                            className: "absolute left-[300px] top-[0px] w-[100px] h-[100px]", children: new[] { Title("modal") }, enterOnMount: false),
                     }
                     : Array.Empty<VNode>()),
             });
@@ -7454,7 +7454,7 @@ namespace Velvet.Tests
             s_setStep = setStep;
             VNode Modal(string key, int left) => V.Motion(key: key, name: key, layoutId: "card", variants: s_fade,
                 animate: "visible", exit: "hidden", transition: s_slowTween,
-                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]");
+                className: $"absolute left-[{left}px] top-[0px] w-[100px] h-[100px]", enterOnMount: false);
             var modals = new List<VNode>();
             if (s_m1Open) modals.Add(Modal("m1", 300));
             if (s_m2Open) modals.Add(Modal("m2", 600));
@@ -7691,9 +7691,9 @@ namespace Velvet.Tests
                 V.Motion(key: "p", name: "p", animate: parentLabel, transition: parentTransition,
                     children: new VNode[]
                     {
-                        V.Motion(key: "c0", name: "c0", variants: s_fade, animate: child0Animate, transition: childTransition),
+                        V.Motion(key: "c0", name: "c0", variants: s_fade, animate: child0Animate, transition: childTransition, enterOnMount: false),
                         V.Motion(key: "c1", name: "c1", variants: s_fade, transition: childTransition),
-                    }),
+                    }, enterOnMount: false),
             };
         }
 
@@ -7857,7 +7857,7 @@ namespace Velvet.Tests
             VNode[] Tree(string label) => new VNode[]
             {
                 V.Motion(key: "box", name: "box", className: "hover:opacity-50", variants: s_fade, animate: label,
-                    transition: spring),
+                    transition: spring, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
             AdvancePast(0.5f);
@@ -7886,7 +7886,7 @@ namespace Velvet.Tests
             VNode[] Tree(string label) => new VNode[]
             {
                 V.Motion(key: "box", name: "box", className: "hover:opacity-50", variants: poses, animate: label,
-                    transition: spring),
+                    transition: spring, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
             AdvancePast(0.5f);
@@ -7927,7 +7927,7 @@ namespace Velvet.Tests
                                 V.Motion(key: "gc", name: "gc", variants: s_fade,
                                     transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                             }),
-                    }),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
             Assume.That(Root.Q<VisualElement>("gc").ClassListContains("opacity-100"), Is.False,
@@ -7963,7 +7963,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "gp", name: "gp", animate: label,
                     transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
-                    children: new[] { Mid(0), Mid(1) }),
+                    children: new[] { Mid(0), Mid(1) }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -7995,7 +7995,7 @@ namespace Velvet.Tests
                             transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                         V.Motion(key: "c1", name: "c1", variants: s_fade,
                             transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                    }),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8027,7 +8027,7 @@ namespace Velvet.Tests
                             V.Motion(key: "c1", name: "c1", variants: s_fade,
                                 transition: new StyleTransitionConfig { DurationSec = 0.05f }),
                         }),
-                    }),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8058,8 +8058,8 @@ namespace Velvet.Tests
                         {
                             V.Motion(key: "gc", name: "gc", variants: s_fade,
                                 transition: new StyleTransitionConfig { DurationSec = 0.05f }),
-                        }),
-                    }),
+                        }, enterOnMount: false),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
 
@@ -8090,8 +8090,8 @@ namespace Velvet.Tests
                                     transition: new StyleTransitionConfig { DurationSec = 0.2f }),
                             }),
                         V.Motion(key: "own", name: "own", variants: s_fade, animate: label,
-                            transition: new StyleTransitionConfig { DurationSec = 0.6f }),
-                    }),
+                            transition: new StyleTransitionConfig { DurationSec = 0.6f }, enterOnMount: false),
+                    }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
 
@@ -8119,7 +8119,7 @@ namespace Velvet.Tests
                     {
                         DurationSec = 0.1f, StaggerChildrenSec = 0.2f, StaggerDirection = -1,
                     },
-                    children: new[] { Child(0), Child(1), Child(2) }),
+                    children: new[] { Child(0), Child(1), Child(2) }, enterOnMount: false),
             };
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
 
@@ -8200,17 +8200,33 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStandaloneMotionWithoutInitial_When_Mounted_Then_ItStartsAtTheAnimateVariantWithNoTweenScheduled()
+        public void Given_AStandaloneMotionWithoutInitial_When_Mounted_Then_ItEntersFromItsOwnClassesToTheAnimateVariant()
         {
-            // Arrange / Act — no `initial` declared, so there is no starting pose to enter FROM.
+            // Arrange / Act — no `initial` declared, so the enter starts from the look the Motion has without its pose.
             _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
             {
                 V.Motion(name: "m", variants: s_fade, animate: "visible",
-                    transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+                    transition: new StyleTransitionConfig { DurationSec = DurationSec }, enterOnMount: false),
+            });
+            var element = Root.Q<VisualElement>("m");
+            var heldBack = element.ClassListContains("opacity-100");
+            AdvancePast(DurationSec);
+
+            // Assert — the pose is held back while the enter waits, and rests on the element once it has played.
+            Assert.That((heldBack, element.ClassListContains("opacity-100")), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AStandaloneMotionNotEnteringOnMount_When_Mounted_Then_ItStartsAtTheAnimateVariantWithNoTweenScheduled()
+        {
+            // Arrange / Act
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "m", variants: s_fade, animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = DurationSec }, enterOnMount: false),
             });
 
-            // Assert — rests directly at variants[animate], and (unlike the `initial` case above) no transition
-            // was scheduled: no inline transition-duration was ever applied.
+            // Assert — rests directly at variants[animate], and no inline transition-duration was ever applied.
             var element = Root.Q<VisualElement>("m");
             Assert.That(
                 (element.ClassListContains("opacity-100"), element.style.transitionDuration.keyword),

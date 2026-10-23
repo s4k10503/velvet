@@ -37,7 +37,7 @@ namespace Velvet.Tests
 
         private static VNode Card(string className, string label) => V.Motion(
             className: className, name: "card", variants: s_variants, animate: label,
-            transition: new StyleTransitionConfig { DurationSec = SwapDurationSec });
+            transition: new StyleTransitionConfig { DurationSec = SwapDurationSec }, enterOnMount: false);
 
         private VisualElement MountCard(string className)
         {
@@ -63,7 +63,7 @@ namespace Velvet.Tests
             {
                 V.Div(className: $"w-[{spacerWidth}px] h-[40px]"),
                 V.Motion(className: className, name: "card", variants: s_variants, animate: label, layoutId: "card",
-                    transition: transition ?? new StyleTransitionConfig { DurationSec = SwapDurationSec, Layout = s_layoutSpring }),
+                    transition: transition ?? new StyleTransitionConfig { DurationSec = SwapDurationSec, Layout = s_layoutSpring }, enterOnMount: false),
             });
 
         private VisualElement MountLayoutIdRow(string className, StyleTransitionConfig transition = null)

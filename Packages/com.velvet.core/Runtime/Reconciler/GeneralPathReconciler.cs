@@ -3321,7 +3321,8 @@ namespace Velvet
                 var presence = pass.Presence;
                 // The Initial flag only suppresses the enter animation on the AnimatePresence's
                 // very first mount; later additions always animate.
-                if (!pass.FirstRender || presence.Initial)
+                if ((!pass.FirstRender || presence.Initial) && motion?.EnterOnMount != false
+                    && !_ctx.ComponentContextStack.Get(MotionContext.EntersWithheld))
                 {
                     DispatchPresenceEnter(motion, anchor, motionElement, wasExiting, playDelaySec,
                         pass.BoundaryFiber);
@@ -3781,14 +3782,22 @@ namespace Velvet
             fromClasses = null;
             toClasses = null;
             transition = null;
-            if (initialLabel == null || animateLabel == null || motion?.Variants == null
-                || !motion.Variants.TryGetValue(initialLabel, out var from))
+            if (animateLabel == null || motion?.Variants == null)
+            {
+                return false;
+            }
+
+            // A Motion naming no initial label starts from the values it has, so its enter runs from no pose to the
+            // animate one: a Motion whose animate pose applies nothing has nothing to run.
+            MotionVariant from = default;
+            if (initialLabel != null ? !motion.Variants.TryGetValue(initialLabel, out from)
+                : !motion.Variants.TryGetValue(animateLabel, out var target) || string.IsNullOrEmpty(target.ClassName))
             {
                 return false;
             }
 
             motion.Variants.TryGetValue(animateLabel, out var to);
-            fromClasses = V.ParseClassNames(from.ClassName);
+            fromClasses = V.ParseClassNames(from.ClassName ?? string.Empty);
             toClasses = V.ParseClassNames(to.ClassName ?? string.Empty);
             transition = to.Transition ?? motion.Transition;
             return transition != null;
