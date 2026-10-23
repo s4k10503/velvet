@@ -113,7 +113,9 @@ a commit uses to lay the panel out before its layout effects and callback refs r
 ([react-migration.md](react-migration.md)), and the custom properties a stylesheet declares on an element, with
 the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), and a
 panel's hierarchy-change event with the kinds of change it announces, on which a `group-*:` or `peer-*:` consumer
-hears a source that code outside a render adds ([styling-variants.md](styling-variants.md)).
+hears a source that code outside a render adds ([styling-variants.md](styling-variants.md)), and a layout node's
+clear and insert of its children, which lay a relocated `z-*` or `order-*` element out at its place in flex order
+([styling-z-index.md](styling-z-index.md)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole

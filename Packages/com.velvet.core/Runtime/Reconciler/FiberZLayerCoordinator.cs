@@ -1,193 +1,129 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Internal-only carrier that shuttles a fully-built z-managed element through the EXISTING
-    // ReconcilerContext.PendingPortalMounts queue so its container placement resolves from the same
-    // post-pass safe context Portal mounts already use (ChildReconciler.DrainPendingPortalMounts). Never
-    // appears in an actual VNode tree — synthesized in FiberNodeFactory.CreateElement / FiberNodePatcher and
-    // immediately enqueued, so RequiresInlineExpansion / CanPatch / ExpandInlineRecursive never see it: the
-    // element it carries is already an ordinary ElementNode as far as the rest of the reconciler is
-    // concerned, and this node's only job is to reach ResolveQueuedMount with the placeholder it was queued
-    // against.
+    // Internal-only carrier that shuttles a fully-built relocated element through the EXISTING
+    // ReconcilerContext.PendingPortalMounts queue, so it joins its parent from the same post-pass point a Portal
+    // mount resolves from (ChildReconciler.DrainPendingPortalMounts). Never appears in an actual VNode tree:
+    // FiberNodeFactory synthesizes and enqueues it, so RequiresInlineExpansion / CanPatch / ExpandInlineRecursive
+    // never see it.
     internal sealed class ZLayerMountNode : VNode
     {
         public VisualElement Real = null!;
-        public int ResolvedZ;
-
-        // Carries a focus rescue forward across a deferred reposition (the target container did not exist yet):
-        // Reposition/RelocateFromOrdinarySlot capture this BEFORE their own detach (the only point Real
-        // is still attached to a live panel to read FocusController.focusedElement from), then this queued entry
-        // is the sole surviving reference by the time ResolveQueuedMount finally re-attaches Real — see
-        // FiberZLayerCoordinator.CaptureFocusForRescue / RestoreRescuedFocus. Null when nothing was focused (the
-        // common case) or for a genuinely fresh mount (nothing to rescue — the element never existed before).
-        public VisualElement? RescueFocus;
-
-        // Set when a custom property the z reads stopped resolving to an integer before the drain placed Real,
-        // which then takes the placeholder's slot instead (FiberZLayerCoordinator.Restack).
-        public bool Unstacked;
     }
 
-    // Owns the reconciler-side mechanics of the z-* stacking feature: classifying which absolute elements
-    // are z-managed, the lazily-created per-stacking-parent front/back layer containers, sorted insertion
-    // within a layer, and the four patch-time transitions (z stays z / z->none / none->z / z changes within
-    // z) that must preserve the real element's identity across a physical relocation. Called from
-    // FiberNodeFactory (mount), FiberNodePatcher (patch), FiberElementCleaner (unmount), and ChildReconciler
-    // (the leading-offset gate + the deferred-mount drain arm). No state of its own — everything lives in
-    // ReconcilerContext, mirroring PanelHostFactory/AnchoredDriver's own ctx-parameter style.
+    // Brings CSS's paint order among siblings — z-index, positioned before unpositioned, flex order — to UI Toolkit,
+    // which paints, picks and lays out one child list in one order. A child that has to paint somewhere other than
+    // its declared slot is RELOCATED within its own parent: a zero-size placeholder keeps the declared slot for the
+    // reconciler, structural variants, Tab order and peer searches, and the real element is sorted to where it
+    // paints (Hierarchy.Sort, which reorders without detaching, so nothing it runs is cancelled). Where the element
+    // takes part in flex layout, its layout node is put back at the slot it lays out at (ChildLayoutOrder), so only
+    // its paint moves.
     //
-    // Safety invariant threaded through every method below: mutating a LAYER CONTAINER's own children
-    // (insert / remove / reorder a member) never touches the stacking parent's child list and is always
-    // safe, from any call site, at any time. Mutating the stacking parent's OWN children — creating a
-    // container for the first time, or removing one once empty — changes physical indices a live
-    // Indexed/Keyed diff over that same parent may still be iterating by absolute position (worse for a
-    // LEADING back container, which shifts every ordinary sibling after it), so that half is always
-    // deferred to the same post-pass point Portal's own deferred mount already resolves from
-    // (EnqueueMount/ResolveQueuedMount for creation, PendingZLayerTeardownChecks/DrainTeardowns for removal).
+    // A parent's children are arranged as [back band] [declared slots] [front band]: the back band holds negative z,
+    // sorted by z; the slots hold the unpositioned children in flex order; the front band holds positioned children
+    // with z auto or 0 in flex order (when an unpositioned sibling would otherwise paint over one of them) and then
+    // positive z, sorted by z. Equal keys keep tree order.
+    //
+    // Safety invariant: a slot occupant (an ordinary child or a placeholder) changes only where the reconciler expects
+    // it to — when an element is created or patched — or at the end of a pass for a parent no parked diff holds.
+    // Everything else this moves is invisible to the reconciler's slot arithmetic (LogicalChildSlots.IsInvisible).
     internal static class FiberZLayerCoordinator
     {
-        internal const string FrontMarkerClass = "velvet-z-layer-front";
-        internal const string BackMarkerClass = "velvet-z-layer-back";
+        private enum Role
+        {
+            Slot,
+            BackReal,
+            MiddleReal,
+            FrontReal,
+            Anchor,
+            Dead,
+        }
 
-        // True when child is one of the two layer containers this stacking parent may carry. Consulted by
-        // SilhouetteBoundsSpacer.IsSpacer, the single centralized predicate every "real child" count/index
-        // site in the reconciler already goes through.
-        internal static bool IsLayerContainer(VisualElement child)
-            => child.ClassListContains(FrontMarkerClass) || child.ClassListContains(BackMarkerClass);
+        // Partner: for a Slot, the real element it stands for; for a real element, the element its layout node is
+        // exchanged with (its placeholder or its anchor), null when none is; for an Anchor, its real element.
+        // Slot: for a real element, its placeholder.
+        private sealed class Held
+        {
+            public Role Role;
+            public VisualElement? Partner;
+            public VisualElement? Slot;
+        }
 
-        // The BACK container is the only reconciler-invisible child that must stay a parent's FIRST physical
-        // child (it paints behind the ordinary children). Every other kind — the front container, a filter
-        // bounds spacer — must stay last. LogicalChildSlots needs the two apart to place an append.
-        internal static bool IsBackLayerContainer(VisualElement child)
-            => child != null && child.ClassListContains(BackMarkerClass);
+        private static readonly ConditionalWeakTable<VisualElement, Held> s_held = new();
 
-        // The z-* scope gate: an element is z-managed only when it carries an explicit z-* utility class AND
-        // is ALSO out-of-flow — either the "absolute" utility class (StyleOutOfFlowChild's off-panel/class-
-        // based half: z-* on an in-flow element is a documented no-op, decided here before the element has
-        // any live position to read) or V.Anchored's Props.Anchored (which forces position:absolute via
-        // AnchoredDriver.Attach as a plain inline style, never through the utility class, so the classNames
-        // array alone would otherwise never see it). Cheap prefix-gated (HasZIndexClass short-circuits the
-        // common case with no z class at all).
-        internal static bool TryClassify(string[] classNames, FiberElementProps? props, out int resolvedZ)
+        // A relocated real element: painted outside its declared slot, which its placeholder holds.
+        internal static bool IsRelocatedReal(VisualElement child)
+            => child != null && s_held.TryGetValue(child, out var held)
+                && held.Role is Role.BackReal or Role.MiddleReal or Role.FrontReal;
+
+        // An anchor (the box a relocated element lays out at, when that is not its placeholder's) or a retired
+        // placeholder or anchor waiting for removal: internal, and invisible to everything that walks children.
+        internal static bool IsInternal(VisualElement child)
+            => child != null && s_held.TryGetValue(child, out var held) && held.Role is Role.Anchor or Role.Dead;
+
+        // A relocated element sitting in the back band. LogicalChildSlots needs it apart from the other invisible
+        // children, which an append must stop before rather than step over.
+        internal static bool IsBackBandMember(VisualElement child)
+            => child != null && s_held.TryGetValue(child, out var held) && held.Role == Role.BackReal;
+
+        // The children of container in the order flex lays them out: a relocated element stands where its layout
+        // node is, and the element whose node it took (its placeholder or anchor) is left out.
+        internal static void FlowChildren(VisualElement container, List<VisualElement> into)
+        {
+            into.Clear();
+            var count = container.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                var child = container[i];
+                if (s_held.TryGetValue(child, out var held))
+                {
+                    switch (held.Role)
+                    {
+                        case Role.Dead:
+                            continue;
+                        case Role.BackReal or Role.FrontReal or Role.MiddleReal when held.Partner != null:
+                            continue;
+                        case Role.Anchor:
+                            into.Add(held.Partner!);
+                            continue;
+                        case Role.Slot when held.Partner != null && s_held.TryGetValue(held.Partner, out var real)
+                            && ReferenceEquals(real.Partner, child):
+                            into.Add(held.Partner);
+                            continue;
+                    }
+                }
+                into.Add(child);
+            }
+        }
+
+        // The element in container's last declared slot, read through a placeholder to its real element — the child
+        // a `:last-child` selector matches. Null when container holds no declared child.
+        internal static VisualElement? LastDeclaredChild(VisualElement container)
+        {
+            for (var i = container.childCount - 1; i >= 0; i--)
+            {
+                var child = container[i];
+                if (LogicalChildSlots.IsInvisible(child))
+                {
+                    continue;
+                }
+                return s_held.TryGetValue(child, out var held) && held.Role == Role.Slot && held.Partner != null
+                    ? held.Partner
+                    : child;
+            }
+            return null;
+        }
+
+        // Whether the classes give a z other than auto, and which. Kept for the callers that only ask whether an
+        // element stacks at all (FiberNodeFactory.FindFirstMotionDescendant).
+        internal static bool TryClassify(string[] classNames, out int resolvedZ)
         {
             resolvedZ = 0;
-            if (!StyleZIndexClass.HasZIndexClass(classNames))
-            {
-                return false;
-            }
-            if (!StyleOutOfFlowChild.IsOutOfFlowClass(classNames) && props?.Anchored == null)
-            {
-                return false;
-            }
-            return StyleZIndexClass.TryExtract(classNames, out resolvedZ);
-        }
-
-        // A zero-footprint stand-in left at a z-managed element's logical slot while its real element
-        // lives in a layer container. Carries focusable/tabIndex so it can act as a same-panel Tab proxy
-        // (FiberFocusNavigator) — set unconditionally (not opt-in): keeping Tab order following the
-        // logical position has no downside, unlike PanelFocusOrder's genuine cross-panel behavior change.
-        // display:None is NOT used here, unlike an Isolated portal placeholder (ConfigureChainedPlaceholder's
-        // reset branch) — display:None excludes an element from VisualElementFocusRing's ring entirely, which
-        // would make every focus redirect below silently unreachable (Tab could never land on this
-        // placeholder, and a ring query anchored on it would not resolve). Mirrors
-        // ConfigureChainedPlaceholder's own chained-branch styling instead: absolute (zero-size, out of flex
-        // flow and the gap/grid/divide/child-variant index walks, which already skip out-of-flow children)
-        // while staying displayed, so the engine's own ring keeps a ring position for it.
-        internal static VisualElement CreatePlaceholder()
-        {
-            var placeholder = new VisualElement
-            {
-                focusable = true,
-                tabIndex = 0,
-            };
-            placeholder.style.position = Position.Absolute;
-            placeholder.style.width = 0f;
-            placeholder.style.height = 0f;
-            return placeholder;
-        }
-
-        // Mount-time entry (FiberNodeFactory.CreateElement): `real` is fully built but not yet attached
-        // anywhere (CreateElement never knows its own parent), so placement must wait for the drain, where
-        // placeholder.parent is finally resolvable. Returns the placeholder to install at the ordinary slot.
-        // ZLayerPlaceholders[placeholder] is registered HERE, before the physical relocation this method
-        // defers, NOT only later inside Place: AnimatePresence's own enter dispatch (GeneralPathReconciler.
-        // EmitPresenceChild) resolves this exact mapping synchronously, during THIS SAME reconcile pass —
-        // for a brand-new mount, that resolution runs before the drain (the only place Place would otherwise
-        // populate it), so without this the enter would tween a zero-size placeholder instead of `real`.
-        // ZLayerMembers (which needs the layer CONTAINER — not yet known, since GetOrCreateContainer runs
-        // only from the drain) is deliberately left for Place to set once resolved; every other
-        // ZLayerPlaceholders consumer already tolerates a "registered but not yet physically relocated"
-        // entry: TakeReal (a same-pass Suspense/error-boundary rollback) reads real's absent ZLayerMembers
-        // entry as "nothing to detach yet" and still cleans real up correctly, and PatchZLayerElement /
-        // FiberFocusNavigator only ever read this map for an ALREADY z-managed element on a LATER pass, once
-        // this one has committed.
-        internal static VisualElement EnqueueMount(ReconcilerContext ctx, VisualElement real, int resolvedZ)
-        {
-            var placeholder = CreatePlaceholder();
-            ctx.ZLayerPlaceholders[placeholder] = real;
-            ctx.PendingPortalMounts.Enqueue(
-                (placeholder, new ZLayerMountNode { Real = real, ResolvedZ = resolvedZ }, null, null, null));
-            return placeholder;
-        }
-
-        // Drain-time resolution of a queued mount (ChildReconciler.DrainPendingPortalMounts's new case arm).
-        // By now placeholder.parent is set (the caller already inserted it at the ordinary slot like any
-        // other created element), so the stacking parent — and therefore its container — is finally known.
-        internal static void ResolveQueuedMount(
-            ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node)
-        {
-            var stackingParent = placeholder.parent;
-            // The parent alone cannot say the pair was torn down: a placeholder inside an element whose
-            // creation failed is still parented by that element when this drains. The mapping can, since
-            // TakeReal removes it before the real element is pooled.
-            if (stackingParent == null || !ctx.ZLayerPlaceholders.ContainsKey(placeholder))
-            {
-                return;
-            }
-            if (node.Unstacked)
-            {
-                RelocateToOrdinarySlot(ctx, placeholder, node.Real);
-                return;
-            }
-            var container = GetOrCreateContainer(ctx, stackingParent, node.ResolvedZ);
-            Place(ctx, placeholder, container, stackingParent, node.Real, node.ResolvedZ, node.RescueFocus);
-        }
-
-        // Patch-time: an already z-managed element's resolved z (or its front/back sign) changed. A no-op
-        // when the resolved value is unchanged. Safe to call synchronously when the destination layer
-        // already exists (a pure container-membership move); defers to the drain only for the rarer case
-        // where this parent's FIRST member of the opposite sign has just appeared.
-        internal static void Reposition(ReconcilerContext ctx, VisualElement placeholder, VisualElement real, int newResolvedZ)
-        {
-            if (!ctx.ZLayerMembers.TryGetValue(real, out var member) || member.ResolvedZ == newResolvedZ)
-            {
-                return;
-            }
-            // Captured before the branches below, two of which detach `real` from its current parent
-            // (DetachFromContainer for a cross-container move, and the deferred sign-flip) — UI Toolkit clears
-            // FocusController.focusedElement the instant an element leaves its panel's visual tree (see
-            // FiberElementCleaner.RescueFocusFromWorldSpaceHost's own comment on the same behavior), even across
-            // an immediate same-panel reattachment, so this must run while `real` is still attached to read it.
-            var rescue = CaptureFocusForRescue(real);
-            var stackingParent = member.StackingParent;
-            var existing = TryGetExistingContainer(ctx, stackingParent, newResolvedZ);
-            if (existing != null)
-            {
-                if (!ReferenceEquals(existing, member.Container))
-                {
-                    DetachFromContainer(ctx, member.Container, real);
-                }
-                Place(ctx, placeholder, existing, stackingParent, real, newResolvedZ, rescue);
-                return;
-            }
-            DetachFromContainer(ctx, member.Container, real);
-            ctx.ZLayerMembers.Remove(real);
-            ctx.PendingPortalMounts.Enqueue(
-                (placeholder, new ZLayerMountNode
-                    { Real = real, ResolvedZ = newResolvedZ, RescueFocus = rescue },
-                    null, null, null));
+            return StyleZIndexClass.HasZIndexClass(classNames) && StyleZIndexClass.TryExtract(classNames, out resolvedZ);
         }
 
         private static readonly object s_candidate = new();
@@ -236,163 +172,362 @@ namespace Velvet
             return slot;
         }
 
+        // Whether declared — the class array as written, variants included — names a z, a flex order or a position
+        // anywhere, so the element's stacking has to be tracked. Only the utility after a token's last variant is
+        // read, so `md:absolute` counts and `[&>*]:z-10`'s bracketed selector does not.
+        internal static bool DeclaresStacking(string[] declared)
+        {
+            if (declared == null)
+            {
+                return false;
+            }
+            foreach (var cls in declared)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+                var core = StyleArbitraryValueResolver.StripImportant(UtilityOf(cls), out _);
+                if (core == "absolute" || core == "relative" || StyleOrderClass.IsOrderToken(core)
+                    || core.StartsWith("z-", System.StringComparison.Ordinal)
+                    || core.StartsWith("-z-", System.StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The utility after cls's last variant separator outside brackets and parentheses.
+        private static string UtilityOf(string cls)
+        {
+            var depth = 0;
+            var start = 0;
+            for (var i = 0; i < cls.Length; i++)
+            {
+                switch (cls[i])
+                {
+                    case '[' or '(':
+                        depth++;
+                        break;
+                    case ']' or ')':
+                        depth--;
+                        break;
+                    case ':' when depth == 0:
+                        start = i + 1;
+                        break;
+                }
+            }
+            return start == 0 ? cls : cls.Substring(start);
+        }
+
+        // Records the z and flex order resolved — the class source the element's passes read, with whatever variant
+        // payload is lit — gives the element whose slot real occupies, or forgets them where neither declared nor
+        // an anchoring gives a stacking to track. Returns what is recorded.
+        internal static StackingFacts? Record(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
+            string[] declared, string[] resolved, bool anchored)
+        {
+            if (!anchored && !DeclaresStacking(declared) && !DeclaresStacking(resolved))
+            {
+                // A candidate is only ever recorded beside facts.
+                if (ctx.StackingFacts.Remove(real))
+                {
+                    ctx.ZLayerCandidates.Remove(classElement);
+                }
+                return null;
+            }
+            var classified = TryClassify(resolved, out var z);
+            int? stackedZ = Stacks(ctx, classElement, classified, ref z) ? z : null;
+            var order = 0;
+            if (StyleOrderClass.HasOrderClass(resolved) && StyleOrderClass.TryExtract(resolved, out var declaredOrder, out _))
+            {
+                order = StyleCustomProperties.TryVariableOrder(classElement, out var variable) ? variable ?? 0 : declaredOrder;
+            }
+            var facts = new StackingFacts(stackedZ, order);
+            ctx.StackingFacts[real] = facts;
+            return facts;
+        }
+
+        // Whether facts alone, whatever the siblings, move an element out of its declared slot: a z other than auto
+        // and 0, or a flex order an in-flow element lays out by.
+        private static bool IsExplicit(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
+            => facts is { } f
+                && ((f.Z is { } z && z != 0 && (ChildLayoutOrder.Available || IsAbsolute(ctx, real)))
+                    || (f.Order != 0 && !IsAbsolute(ctx, real)));
+
+        // A zero-footprint stand-in left at a relocated element's declared slot. Carries focusable/tabIndex so it
+        // can act as a same-panel Tab proxy (FiberFocusNavigator). display:None is NOT used: it excludes an element
+        // from VisualElementFocusRing's ring, which would leave every focus redirect onto it unreachable. Absolute
+        // and zero-size instead, so it takes no part in flex flow or in the gap/grid/divide/child-variant walks.
+        internal static VisualElement CreatePlaceholder()
+        {
+            var placeholder = new VisualElement
+            {
+                focusable = true,
+                tabIndex = 0,
+            };
+            placeholder.style.position = Position.Absolute;
+            placeholder.style.width = 0f;
+            placeholder.style.height = 0f;
+            return placeholder;
+        }
+
+        // The box a relocated element lays out at when its flex order puts that somewhere other than its declared
+        // slot: zero-size, absolute and unfocusable, since only its layout node takes part, and that one is the
+        // relocated element's.
+        private static VisualElement CreateAnchor()
+        {
+            var anchor = new VisualElement { focusable = false, pickingMode = PickingMode.Ignore };
+            anchor.style.position = Position.Absolute;
+            anchor.style.width = 0f;
+            anchor.style.height = 0f;
+            return anchor;
+        }
+
+        // Create-time entry (FiberNodeFactory): returns the element to install at the slot — a placeholder when the
+        // element's own facts relocate it (it joins its parent when the pass drains, ResolveQueuedMount), or outer
+        // itself, whose siblings decide at the end of the pass whether it moves. The placeholder -> real pair is
+        // registered here, before the drain: AnimatePresence's enter dispatch resolves it during this same pass.
+        internal static VisualElement OnCreated(ReconcilerContext ctx, VisualElement outer, VisualElement classElement,
+            string[] declared, string[] resolved, bool anchored)
+        {
+            var facts = Record(ctx, outer, classElement, declared, resolved, anchored);
+            if (!IsExplicit(ctx, outer, facts))
+            {
+                return outer;
+            }
+            var placeholder = CreatePlaceholder();
+            Hold(placeholder, Role.Slot, outer);
+            Hold(outer, RoleFor(facts!.Value.Z), null, placeholder);
+            ctx.ZLayerPlaceholders[placeholder] = outer;
+            ctx.PendingPortalMounts.Enqueue((placeholder, new ZLayerMountNode { Real = outer }, null, null, null));
+            return placeholder;
+        }
+
+        // Drain-time resolution of a queued mount. By now placeholder.parent is set, so the parent is known. An
+        // element whose facts changed before the drain (a custom property that stopped resolving) takes its slot.
+        internal static void ResolveQueuedMount(ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node)
+        {
+            var parent = placeholder.parent;
+            // The parent alone cannot say the pair was torn down: a placeholder inside an element whose creation
+            // failed is still parented by that element when this drains. The mapping can, since TakeReal removes it
+            // before the real element is pooled.
+            if (parent == null || !ctx.ZLayerPlaceholders.ContainsKey(placeholder))
+            {
+                return;
+            }
+            var real = node.Real;
+            Realign(ctx, parent);
+            if (!IsExplicit(ctx, real, ctx.StackingFacts.TryGetValue(real, out var facts) ? facts : null))
+            {
+                parent.hierarchy.Insert(parent.hierarchy.IndexOf(placeholder), real);
+                ctx.ZLayerPlaceholders.Remove(placeholder);
+                s_held.Remove(placeholder);
+                s_held.Remove(real);
+                parent.hierarchy.Remove(placeholder);
+                MarkPending(ctx, parent);
+                return;
+            }
+            Hold(real, RoleFor(facts.Z), null, placeholder);
+            ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
+            parent.hierarchy.Add(real);
+            MarkPending(ctx, parent);
+        }
+
+        // Patch-time entry: real (the slot's element, read through its placeholder) was patched to declared /
+        // resolved. Explicit facts relocate it at once and their loss returns it to its slot at once, so the slot
+        // occupant changes only where the patching diff expects it to; a relocation its siblings decide waits for
+        // the end of the pass (Arrange).
+        internal static void OnPatched(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
+            string[] declared, string[] resolved, bool anchored)
+        {
+            var facts = Record(ctx, real, classElement, declared, resolved, anchored);
+            Settle(ctx, real, facts);
+        }
+
         // The z a custom property supplies classElement changed with no patch of it; null is no integer, which
-        // unstacks it. A queued mount takes the change when it drains. Inside a pass a stacked element is
-        // Repositioned, whose deferred half that pass's drain places; outside one no drain follows, so a layer
-        // that does not exist yet is created here and the layers are settled at once.
+        // unstacks it. Outside a pass no drain follows, so the parent is arranged at once.
         internal static void Restack(ReconcilerContext ctx, VisualElement classElement, int? resolvedZ)
         {
             var real = SlotOf(ctx, classElement);
-            var outOfPass = ctx.SharedReconcileDepth == 0;
-            if (ctx.ZLayerMembers.TryGetValue(real, out var member))
+            if (!ctx.StackingFacts.TryGetValue(real, out var facts))
             {
-                if (resolvedZ is not { } z)
-                {
-                    RelocateToOrdinarySlot(ctx, member.Placeholder, real);
-                }
-                else if (!outOfPass)
-                {
-                    Reposition(ctx, member.Placeholder, real, z);
-                }
-                else if (member.ResolvedZ != z)
-                {
-                    var rescue = CaptureFocusForRescue(real);
-                    var container = GetOrCreateContainer(ctx, member.StackingParent, z);
-                    if (!ReferenceEquals(container, member.Container))
-                    {
-                        DetachFromContainer(ctx, member.Container, real);
-                    }
-                    Place(ctx, member.Placeholder, container, member.StackingParent, real, z, rescue);
-                }
-            }
-            else if (Queued(ctx, real) is { } node)
-            {
-                node.Unstacked = resolvedZ == null;
-                node.ResolvedZ = resolvedZ ?? node.ResolvedZ;
                 return;
             }
-            else if (resolvedZ is { } stacked && ctx.ZLayerCandidates.TryGetValue(classElement, out _)
-                && real.parent != null && !IsLayerContainer(real.parent))
-            {
-                RelocateFromOrdinarySlot(ctx, real, stacked, createLayer: outOfPass);
-            }
-            if (outOfPass)
+            facts = facts with { Z = resolvedZ };
+            ctx.StackingFacts[real] = facts;
+            Settle(ctx, real, facts);
+            if (ctx.SharedReconcileDepth == 0)
             {
                 DrainTeardowns(ctx);
                 ResortLayers(ctx);
             }
         }
 
-        private static ZLayerMountNode? Queued(ReconcilerContext ctx, VisualElement real)
+        // A flex order a custom property supplies classElement changed with no patch of it.
+        internal static void Reorder(ReconcilerContext ctx, VisualElement classElement, int order)
         {
-            foreach (var queued in ctx.PendingPortalMounts)
+            var real = SlotOf(ctx, classElement);
+            if (!ctx.StackingFacts.TryGetValue(real, out var facts))
             {
-                if (queued.Node is ZLayerMountNode node && ReferenceEquals(node.Real, real))
-                {
-                    return node;
-                }
+                return;
             }
-            return null;
+            facts = facts with { Order = order };
+            ctx.StackingFacts[real] = facts;
+            Settle(ctx, real, facts);
+            if (ctx.SharedReconcileDepth == 0)
+            {
+                DrainTeardowns(ctx);
+                ResortLayers(ctx);
+            }
         }
 
-        // The placeholder standing at real's declared slot while it is z-managed, placed or still queued; null
-        // while real is in that slot itself.
+        // A variant re-derived real's class source, which outside a pass nothing follows: the parent is arranged at
+        // once there.
+        internal static void OnResolved(ReconcilerContext ctx, VisualElement real, VisualElement classElement,
+            string[] declared, string[] resolved, bool anchored)
+        {
+            var facts = Record(ctx, real, classElement, declared, resolved, anchored);
+            Settle(ctx, real, facts);
+            if (ctx.SharedReconcileDepth == 0)
+            {
+                DrainTeardowns(ctx);
+                ResortLayers(ctx);
+            }
+        }
+
+        // A variant moved slot's position utility (`md:absolute`) on or off: its parent's arrangement may change.
+        internal static void OnPositionToggled(ReconcilerContext ctx, VisualElement classElement)
+        {
+            var real = SlotOf(ctx, classElement);
+            var parent = ParentOf(ctx, real);
+            if (parent == null)
+            {
+                return;
+            }
+            MarkPending(ctx, parent);
+            if (ctx.SharedReconcileDepth == 0)
+            {
+                DrainTeardowns(ctx);
+                ResortLayers(ctx);
+            }
+        }
+
+        private static void Settle(ReconcilerContext ctx, VisualElement real, StackingFacts? facts)
+        {
+            if (facts == null && !s_held.TryGetValue(real, out _))
+            {
+                return;
+            }
+            var placeholder = PlaceholderOf(ctx, real);
+            // Still queued: the drain reads the facts again.
+            if (placeholder != null && real.parent == null)
+            {
+                return;
+            }
+            var parent = placeholder?.parent ?? real.parent;
+            if (parent == null)
+            {
+                return;
+            }
+            var explicitly = IsExplicit(ctx, real, facts);
+            if (placeholder == null)
+            {
+                if (explicitly)
+                {
+                    RelocateFromOrdinarySlot(ctx, real, facts!.Value);
+                }
+            }
+            else if (!explicitly && !StaysLifted(ctx, real, parent, facts))
+            {
+                RelocateToOrdinarySlot(ctx, placeholder, real);
+            }
+            MarkPending(ctx, parent);
+        }
+
+        // Whether real, no longer relocated by its own facts, still paints in the front band its parent's last
+        // arrangement lifted the positioned children into. Arrange revisits it at the end of the pass.
+        private static bool StaysLifted(ReconcilerContext ctx, VisualElement real, VisualElement parent, StackingFacts? facts)
+            => facts is { } f && ctx.ZLayerHosts.TryGetValue(parent, out var record) && record.Lifted
+                && (f.Z == 0 || (f.Z == null && IsPositioned(ctx, real)));
+
+        // The placeholder standing at real's declared slot while it is relocated, placed or still queued; null while
+        // real is in that slot itself.
         internal static VisualElement? PlaceholderOf(ReconcilerContext ctx, VisualElement real)
-        {
-            if (ctx.ZLayerMembers.TryGetValue(real, out var member))
-            {
-                return member.Placeholder;
-            }
-            foreach (var pair in ctx.ZLayerPlaceholders)
-            {
-                if (ReferenceEquals(pair.Value, real))
-                {
-                    return pair.Key;
-                }
-            }
-            return null;
-        }
+            => s_held.TryGetValue(real, out var held) && held.Slot is { } slot && ctx.ZLayerPlaceholders.ContainsKey(slot)
+                ? slot
+                : null;
 
-        // Patch-time none-to-z: `real` is still ordinary (physically at its declared slot under
-        // `stackingParent`); relocates it out, leaving `placeholder` in its place at the SAME physical
-        // index (an in-place swap, like a WrapElement type-flip — parent childCount/order is unchanged, so
-        // the caller's post-patch re-fetch-at-the-same-index picks up the new occupant). Synchronous when
-        // the destination layer already exists; defers only when it must be created for the first time.
-        internal static VisualElement RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, int resolvedZ,
-            bool createLayer = false)
+        private static VisualElement? ParentOf(ReconcilerContext ctx, VisualElement real)
+            => ctx.ZLayerMembers.TryGetValue(real, out var member) ? member.StackingParent : real.parent;
+
+        // Relocates real, still at its declared slot, out of it: a fresh placeholder takes the slot at the same
+        // physical index (real becomes invisible to the slot arithmetic in the same step, so the caller's re-fetch
+        // at that index reads the placeholder). Nothing leaves the panel; Arrange sorts real into its band.
+        private static void RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, StackingFacts facts)
         {
-            var stackingParent = real.parent!;
-            var idx = stackingParent.IndexOf(real);
-            // Captured before the detach two lines below drops it — see Reposition's own comment on why this
-            // must run while `real` is still attached.
-            var rescue = CaptureFocusForRescue(real);
+            var parent = real.parent!;
             var placeholder = CreatePlaceholder();
-            stackingParent.Insert(idx, placeholder);
-            real.RemoveFromHierarchy();
-
-            var existing = createLayer ? GetOrCreateContainer(ctx, stackingParent, resolvedZ)
-                : TryGetExistingContainer(ctx, stackingParent, resolvedZ);
-            if (existing != null)
-            {
-                Place(ctx, placeholder, existing, stackingParent, real, resolvedZ, rescueFocus: rescue);
-            }
-            else
-            {
-                // `placeholder` is new (this is a none-to-z transition), so it needs the same eager
-                // registration EnqueueMount's own doc comment explains — a same-render consumer must not see
-                // this pair as unregistered just because the destination layer happens to need creating.
-                ctx.ZLayerPlaceholders[placeholder] = real;
-                ctx.PendingPortalMounts.Enqueue(
-                    (placeholder, new ZLayerMountNode { Real = real, ResolvedZ = resolvedZ, RescueFocus = rescue },
-                        null, null, null));
-            }
-            return placeholder;
+            Hold(placeholder, Role.Slot, real);
+            Hold(real, RoleFor(facts.Z), null, placeholder);
+            ctx.ZLayerPlaceholders[placeholder] = real;
+            ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
+            parent.hierarchy.Insert(parent.hierarchy.IndexOf(real), placeholder);
+            MarkPending(ctx, parent);
         }
 
-        // Patch-time z-to-none: `real` (found via `placeholder`) leaves its layer and returns to the
-        // ordinary slot `placeholder` occupies, replacing it (same in-place-swap contract as above).
-        internal static void RelocateToOrdinarySlot(ReconcilerContext ctx, VisualElement placeholder, VisualElement real)
+        // Returns real to the slot its placeholder holds: the two exchange places by a sort, so real never leaves
+        // the panel and every other child keeps its index; the placeholder, now invisible, is removed once the pass
+        // is over.
+        private static void RelocateToOrdinarySlot(ReconcilerContext ctx, VisualElement placeholder, VisualElement real)
         {
-            // Captured before the container detach below drops it — see Reposition's own comment on why this
-            // must run while `real` is still attached. Restored once `real` is back in its ordinary slot below
-            // (RelocateToOrdinarySlot has no deferred branch, so this always resolves synchronously).
-            var rescue = CaptureFocusForRescue(real);
-            if (ctx.ZLayerMembers.TryGetValue(real, out var member))
-            {
-                DetachFromContainer(ctx, member.Container, real);
-                ctx.ZLayerMembers.Remove(real);
-            }
+            var parent = placeholder.parent!;
+            Exchange(parent, placeholder, real);
+            Retire(ctx, placeholder);
+            RetireAnchorOf(ctx, real);
+            s_held.Remove(real);
             ctx.ZLayerPlaceholders.Remove(placeholder);
-
-            var stackingParent = placeholder.parent!;
-            var idx = stackingParent.IndexOf(placeholder);
-            stackingParent.Insert(idx, real);
-            stackingParent.Remove(placeholder);
-            RestoreRescuedFocus(rescue);
+            ctx.ZLayerMembers.Remove(real);
+            if (ctx.ZLayerHosts.TryGetValue(parent, out var record))
+            {
+                // The sort laid the list out in physical order again.
+                record.Swapped = false;
+            }
+            MarkPending(ctx, parent);
         }
 
-        // Cleanup entry (FiberElementCleaner.CleanupZLayerPlaceholder, mirroring CleanupPortal): detaches and
-        // forgets the real element owned by a departing placeholder, returning it so the caller performs the
-        // ordinary resource-cleanup + pool-return sequence it already owns for any removed element. Returns
-        // null when `placeholder` is not (or is no longer) a z-layer placeholder.
-        internal static VisualElement? TakeReal(ReconcilerContext ctx, VisualElement placeholder)
+        // Cleanup entry (FiberElementCleaner.CleanupZLayerPlaceholder): forgets the real element a departing
+        // placeholder stood for and returns it, with stillPlaced true when it still stands in the parent. Such an
+        // element is retired rather than removed — removing it would shift the index of every child after it, which
+        // the caller is about to remove by — and FiberElementCleaner releases it at the end of the pass.
+        internal static VisualElement? TakeReal(ReconcilerContext ctx, VisualElement placeholder, out bool stillPlaced)
         {
+            stillPlaced = false;
             if (!ctx.ZLayerPlaceholders.Remove(placeholder, out var real))
             {
                 return null;
             }
-            if (ctx.ZLayerMembers.TryGetValue(real, out var member))
+            s_held.Remove(placeholder);
+            ctx.ZLayerMembers.Remove(real);
+            var parent = real.parent;
+            if (parent == null)
             {
-                DetachFromContainer(ctx, member.Container, real);
-                ctx.ZLayerMembers.Remove(real);
+                s_held.Remove(real);
+                return real;
             }
+            // The caller removes the placeholder by its index, which takes whatever layout node sits there.
+            Realign(ctx, parent);
+            RetireAnchorOf(ctx, real);
+            Hold(real, Role.Dead, null);
+            stillPlaced = true;
             return real;
         }
 
-        // The (logical parent, logical index) a peer-/group- source search must walk from: a z-managed
-        // element's PLACEHOLDER position (its declared position among its true siblings), not its current
-        // physical parent (the layer container, whose "preceding siblings" are unrelated same-layer
-        // members). Ordinary elements resolve to their own physical parent/index unchanged.
+        // Forgets a retired real element FiberElementCleaner has taken back out of its parent.
+        internal static void ForgetRetired(VisualElement real) => s_held.Remove(real);
+
+        // The (logical parent, logical index) a peer-/group- source search must walk from: a relocated element's
+        // PLACEHOLDER position (its declared position among its siblings), not its physical one.
         internal static bool TryGetLogicalPosition(ReconcilerContext ctx, VisualElement element, out VisualElement? parent, out int index)
         {
             if (ctx.ZLayerMembers.TryGetValue(element, out var member))
@@ -406,294 +541,646 @@ namespace Velvet
             return parent != null && index >= 0;
         }
 
-        // Runs at the same post-pass safe point as DrainPendingPortalMounts: any container whose membership
-        // changed this pass and is now empty is removed from its stacking parent and forgotten.
+        // Removes the retired placeholders and anchors. Runs at the post-pass point DrainPendingPortalMounts runs
+        // from, where no diff holds a physical index.
         internal static void DrainTeardowns(ReconcilerContext ctx)
         {
-            if (ctx.PendingZLayerTeardownChecks.Count == 0)
+            if (ctx.PendingZLayerRemovals.Count == 0)
             {
                 return;
             }
-            foreach (var container in ctx.PendingZLayerTeardownChecks)
+            foreach (var retired in ctx.PendingZLayerRemovals)
             {
-                // NonSpacerChildCount, not the raw count: a z-managed element hosts its ring band and its
-                // filter bounds-spacer inside this container, and either can outlive the element by a beat
-                // (a band is re-homed on the element's next attach). The check is not retried — the pending
-                // set is cleared unconditionally below — so a container held back by one of those internal
-                // children would be retained empty for good.
-                if (SilhouetteBoundsSpacer.NonSpacerChildCount(container) > 0 || container.parent == null)
+                if (retired.parent is { } parent)
                 {
-                    continue;
+                    Realign(ctx, parent);
+                    retired.RemoveFromHierarchy();
+                    MarkPending(ctx, parent);
                 }
-                var stackingParent = container.parent;
-                stackingParent.Remove(container);
-                if (!ctx.ZLayerHosts.TryGetValue(stackingParent, out var record))
-                {
-                    continue;
-                }
-                if (ReferenceEquals(record.Front, container)) record.Front = null;
-                if (ReferenceEquals(record.Back, container)) record.Back = null;
-                if (record.Front == null && record.Back == null)
-                {
-                    ctx.ZLayerHosts.Remove(stackingParent);
-                }
+                s_held.Remove(retired);
             }
-            ctx.PendingZLayerTeardownChecks.Clear();
+            ctx.PendingZLayerRemovals.Clear();
         }
 
-        // Records `real`'s bookkeeping and puts it into `container`, ordered by z; ResortLayers settles equal z
-        // into tree order and a z change within the container once the pass ends. rescueFocus carries a focus
-        // rescue forward (see ZLayerMountNode.RescueFocus) and is restored here, once, whichever caller reached
-        // this.
-        private static void Place(
-            ReconcilerContext ctx, VisualElement placeholder, VisualElement container, VisualElement stackingParent,
-            VisualElement real, int resolvedZ, VisualElement? rescueFocus = null)
-        {
-            ctx.ZLayerPlaceholders[placeholder] = real;
-            ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, container, stackingParent, resolvedZ);
-            ctx.PendingZLayerResorts.Add(stackingParent);
-            if (!ReferenceEquals(real.parent, container))
-            {
-                InsertByZ(ctx, container, real, resolvedZ);
-            }
-            RestoreRescuedFocus(rescueFocus);
-        }
-
-        // Captures the panel's currently focused element when it is `moving` itself, or is contained within its
-        // subtree, immediately before `moving` physically detaches from its current parent — UI Toolkit clears
-        // FocusController.focusedElement the instant an element leaves its panel's visual tree (see
-        // FiberElementCleaner.RescueFocusFromWorldSpaceHost's own comment on this exact behavior), even when the
-        // very next statement reattaches it elsewhere in the SAME panel. Unlike that world-space rescue (which
-        // redirects focus elsewhere because the host is being destroyed), `moving` survives every z transition
-        // with its identity intact, so the caller can simply re-Focus() this SAME captured element once it is
-        // back in the tree — see RestoreRescuedFocus.
-        private static VisualElement? CaptureFocusForRescue(VisualElement moving)
-        {
-            var focused = moving.panel?.focusController?.focusedElement as VisualElement;
-            return focused != null && (ReferenceEquals(focused, moving) || moving.Contains(focused)) ? focused : null;
-        }
-
-        // Restores focus captured by CaptureFocusForRescue once the moved element is back in a panel. A no-op
-        // when nothing was captured (the common case: the moving element held no focus) or the captured element
-        // can no longer grab focus (a concurrent unmount elsewhere in the same pass).
-        private static void RestoreRescuedFocus(VisualElement? rescued)
-        {
-            if (rescued != null && rescued.panel != null && rescued.canGrabFocus)
-            {
-                rescued.Focus();
-            }
-        }
-
-        // The already-existing container for `resolvedZ`'s sign under `stackingParent`, or null. A pure
-        // dictionary read — never mutates `stackingParent`'s children, so it is always safe to call, from
-        // anywhere, including synchronously mid-diff.
-        private static VisualElement? TryGetExistingContainer(ReconcilerContext ctx, VisualElement stackingParent, int resolvedZ)
-        {
-            if (!ctx.ZLayerHosts.TryGetValue(stackingParent, out var record))
-            {
-                return null;
-            }
-            return resolvedZ < 0 ? record.Back : record.Front;
-        }
-
-        // The container for `resolvedZ`'s sign under `stackingParent`, creating (and physically attaching)
-        // it on first use. Only ever called from a safe context, after a pass or outside one — creating one changes
-        // `stackingParent`'s own child list, which a live diff over that same parent may still be indexing
-        // by absolute position.
-        private static VisualElement GetOrCreateContainer(
-            ReconcilerContext ctx, VisualElement stackingParent, int resolvedZ)
-        {
-            if (!ctx.ZLayerHosts.TryGetValue(stackingParent, out var record))
-            {
-                record = new ZLayerHostRecord();
-                ctx.ZLayerHosts[stackingParent] = record;
-            }
-            if (resolvedZ < 0)
-            {
-                if (record.Back == null)
-                {
-                    record.Back = CreateContainer(BackMarkerClass);
-                    // The back layer must physically PRECEDE the parent's ordinary children to paint behind
-                    // them. LogicalChildSlots is what keeps that invisible to every slot computation, and it
-                    // is the reason an append into a parent holding only this container must still resolve
-                    // AFTER it rather than to index 0.
-                    stackingParent.Insert(0, record.Back);
-                }
-                return record.Back;
-            }
-            if (record.Front == null)
-            {
-                record.Front = CreateContainer(FrontMarkerClass);
-                // Trailing, like SilhouetteBoundsSpacer's own spacer — Add (not Insert at NonSpacerChildCount)
-                // is correct here specifically because IsLayerContainer now makes IsSpacer recognize this
-                // container too, so a co-existing bounds-spacer's own "after all rendered children" invariant
-                // tolerates either relative order between the two trailing spacers.
-                stackingParent.Add(record.Front);
-            }
-            return record.Front;
-        }
-
-
-        private static VisualElement CreateContainer(string markerClass)
-        {
-            var container = new VisualElement { pickingMode = PickingMode.Ignore };
-            container.AddToClassList(markerClass);
-            container.style.position = Position.Absolute;
-            container.style.left = 0;
-            container.style.top = 0;
-            container.style.right = 0;
-            container.style.bottom = 0;
-            return container;
-        }
-
-        // Inserts `real`, arriving from another parent, after every member of `container` whose z is not above
-        // its own. Only ever mutates `container`'s own children — never `container`'s parent — so this is safe
-        // from any call site, synchronous or deferred.
-        private static void InsertByZ(ReconcilerContext ctx, VisualElement container, VisualElement real, int resolvedZ)
-        {
-            if (real.parent != null)
-            {
-                real.RemoveFromHierarchy();
-            }
-            var insertAt = container.childCount;
-            for (var i = 0; i < container.childCount; i++)
-            {
-                var sibling = container.ElementAt(i);
-                if (ctx.ZLayerMembers.TryGetValue(sibling, out var siblingInfo) && siblingInfo.ResolvedZ > resolvedZ)
-                {
-                    insertAt = i;
-                    break;
-                }
-            }
-            container.Insert(insertAt, real);
-        }
-
-        // Paint order within a layer: resolved z ascending, then tree order, which for siblings of one stacking
-        // parent is their placeholders' declared order — CSS stacks equal z values in tree order.
-        private static int Compare(ZLayerMember a, ZLayerMember b, Dictionary<VisualElement, int> declared)
-        {
-            var byZ = a.ResolvedZ.CompareTo(b.ResolvedZ);
-            return byZ != 0 ? byZ : DeclaredIndex(declared, a).CompareTo(DeclaredIndex(declared, b));
-        }
-
-        // A member whose placeholder has already left the stacking parent sorts last rather than throwing from
-        // the post-pass drain.
-        private static int DeclaredIndex(Dictionary<VisualElement, int> declared, ZLayerMember member)
-            => declared.TryGetValue(member.Placeholder, out var index) ? index : int.MaxValue;
-
+        // Called where a diff starts over parent's children: the diff inserts and removes by index, which UI
+        // Toolkit applies to the layout list at the same index, so the list goes back to physical order first.
         internal static void NoteChildrenReconciled(ReconcilerContext ctx, VisualElement? parent)
         {
-            if (parent != null && ctx.ZLayerHosts.ContainsKey(parent))
+            if (parent == null)
             {
-                ctx.PendingZLayerResorts.Add(parent);
+                return;
             }
+            ctx.PendingZLayerResorts.Add(parent);
+            Realign(ctx, parent);
         }
 
-        // Post-pass, once the placeholders sit where the pass put them. A stacking parent is pending when a member
-        // was placed under it or when a pass reconciled its children.
+        // Arranges every parent pending since the last call. A parent a diff is parked over keeps its slot occupants
+        // (Arrange), and is arranged again when that diff resumes, which notes its children reconciled.
         internal static void ResortLayers(ReconcilerContext ctx)
         {
             if (ctx.PendingZLayerResorts.Count == 0)
             {
                 return;
             }
-            foreach (var stackingParent in ctx.PendingZLayerResorts)
-            {
-                if (!ctx.ZLayerHosts.TryGetValue(stackingParent, out var record))
-                {
-                    continue;
-                }
-                if (record.Front != null) Resort(ctx, record.Front);
-                if (record.Back != null) Resort(ctx, record.Back);
-            }
+            var queue = ctx.ZLayerArrangeQueue;
+            var start = queue.Count;
+            queue.AddRange(ctx.PendingZLayerResorts);
             ctx.PendingZLayerResorts.Clear();
-        }
-
-        // Re-sorts `container` when its members are out of order. Hierarchy.Sort reorders within one parent, so
-        // no member leaves the panel the way a remove-and-insert makes it. A ring band keeps its place directly
-        // after the member it rings (RingOverlay.Place); any other child goes last.
-        private static void Resort(ReconcilerContext ctx, VisualElement container)
-        {
-            var stackingParent = container.hierarchy.parent;
-            if (stackingParent == null)
-            {
-                return;
-            }
-            var declared = ctx.ZLayerDeclaredIndex;
             try
             {
-                for (var i = 0; i < stackingParent.hierarchy.childCount; i++)
+                for (var i = start; i < queue.Count; i++)
                 {
-                    declared[stackingParent.hierarchy[i]] = i;
-                }
-                if (!MembersInOrder(ctx, container, declared))
-                {
-                    SortMembers(ctx, container, declared);
+                    Arrange(ctx, queue[i], ctx.IsParkedParent(queue[i]));
                 }
             }
             finally
             {
-                declared.Clear();
+                queue.RemoveRange(start, queue.Count - start);
             }
         }
 
-        private static bool MembersInOrder(
-            ReconcilerContext ctx, VisualElement container, Dictionary<VisualElement, int> declared)
+        private static void MarkPending(ReconcilerContext ctx, VisualElement parent) => ctx.PendingZLayerResorts.Add(parent);
+
+        private static void Hold(VisualElement element, Role role, VisualElement? partner, VisualElement? slot = null)
         {
-            ZLayerMember? previous = null;
-            for (var i = 0; i < container.hierarchy.childCount; i++)
+            if (s_held.TryGetValue(element, out var held))
             {
-                if (!ctx.ZLayerMembers.TryGetValue(container.hierarchy[i], out var member))
+                held.Role = role;
+                held.Partner = partner;
+                held.Slot = slot;
+                return;
+            }
+            s_held.Add(element, new Held { Role = role, Partner = partner, Slot = slot });
+        }
+
+        private static Role RoleFor(int? z) => z switch
+        {
+            < 0 => Role.BackReal,
+            > 0 => Role.FrontReal,
+            _ => Role.MiddleReal,
+        };
+
+        private static void Retire(ReconcilerContext ctx, VisualElement element)
+        {
+            Hold(element, Role.Dead, null);
+            ctx.PendingZLayerRemovals.Add(element);
+        }
+
+        private static void RetireAnchorOf(ReconcilerContext ctx, VisualElement real)
+        {
+            if (s_held.TryGetValue(real, out var held) && held.Partner is { } partner
+                && s_held.TryGetValue(partner, out var partnerHeld) && partnerHeld.Role == Role.Anchor)
+            {
+                Retire(ctx, partner);
+            }
+        }
+
+        // Puts parent's layout list back in physical order, where an arrangement left a relocated element's layout
+        // node at another child's index.
+        private static void Realign(ReconcilerContext ctx, VisualElement parent)
+        {
+            if (!ctx.ZLayerHosts.TryGetValue(parent, out var record) || !record.Swapped)
+            {
+                return;
+            }
+            var children = s_layout;
+            children.Clear();
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                children.Add(parent.hierarchy[i]);
+            }
+            ChildLayoutOrder.Rebuild(parent, children);
+            children.Clear();
+            record.Swapped = false;
+        }
+
+        // Moves a to b's index and b to a's, leaving every other child where it is.
+        private static void Exchange(VisualElement parent, VisualElement a, VisualElement b)
+        {
+            var rank = new Dictionary<VisualElement, int>(parent.hierarchy.childCount);
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                rank[parent.hierarchy[i]] = i;
+            }
+            (rank[a], rank[b]) = (rank[b], rank[a]);
+            parent.hierarchy.Sort((x, y) => rank[x].CompareTo(rank[y]));
+        }
+
+        // Whether real's own classes position it, as CSS's `position` other than static does: the absolute or
+        // relative utility, or a V.Anchored element, which positions itself absolutely.
+        private static bool IsPositioned(ReconcilerContext ctx, VisualElement real)
+        {
+            var classElement = ClassElementOf(ctx, real);
+            return classElement.ClassListContains("absolute") || classElement.ClassListContains("relative")
+                || ctx.AnchoredBindings.ContainsKey(classElement) || ctx.AnchoredBindings.ContainsKey(real);
+        }
+
+        // Whether real is out of flex flow. `.relative` follows `.absolute` in the bundled sheet, so it wins where
+        // both are on the list.
+        private static bool IsAbsolute(ReconcilerContext ctx, VisualElement real)
+        {
+            var classElement = ClassElementOf(ctx, real);
+            return (classElement.ClassListContains("absolute") && !classElement.ClassListContains("relative"))
+                || ctx.AnchoredBindings.ContainsKey(classElement) || ctx.AnchoredBindings.ContainsKey(real);
+        }
+
+        private sealed class SlotEntry
+        {
+            public VisualElement Slot = null!;
+            public VisualElement Real = null!;
+            public int Declared;
+            public int? Z;
+            public int Order;
+            public bool Tracked;
+            public bool Positioned;
+            public bool Absolute;
+            public bool Relocate;
+            public Role Band;
+            public VisualElement? Partner;
+            public VisualElement? Anchor;
+            public bool Detached;
+
+            // Drops the elements, so the pool holds none of them between calls.
+            public void Release()
+            {
+                Slot = null!;
+                Real = null!;
+                Partner = null;
+                Anchor = null;
+            }
+
+            public void Reset(VisualElement slot, VisualElement real, int declared)
+            {
+                Slot = slot;
+                Real = real;
+                Declared = declared;
+                Z = null;
+                Order = 0;
+                Tracked = false;
+                Positioned = false;
+                Absolute = false;
+                Relocate = false;
+                Band = Role.MiddleReal;
+                Partner = null;
+                Anchor = null;
+                Detached = false;
+            }
+        }
+
+        // Arrange's working state, reused from call to call so arranging a parent allocates nothing once the
+        // buffers have grown to its size. Arrange is not re-entered: nothing it calls arranges a parent.
+        private static readonly List<SlotEntry> s_entryPool = new();
+        private static readonly List<SlotEntry> s_entries = new();
+        private static readonly List<SlotEntry> s_back = new();
+        private static readonly List<SlotEntry> s_front = new();
+        private static readonly List<(VisualElement Element, int Order, int Declared, int Kind)> s_middle = new();
+        private static readonly List<(VisualElement Host, VisualElement Follower)> s_followers = new();
+        private static readonly List<VisualElement> s_desired = new();
+        private static readonly HashSet<VisualElement> s_placed = new();
+        private static readonly Dictionary<VisualElement, int> s_rank = new();
+        private static readonly List<VisualElement> s_layout = new();
+        private static readonly List<VisualElement> s_retiredHere = new();
+        private static readonly IComparer<SlotEntry> s_compareBand = Comparer<SlotEntry>.Create(CompareBand);
+        private static readonly IComparer<(VisualElement Element, int Order, int Declared, int Kind)> s_compareMiddle =
+            Comparer<(VisualElement Element, int Order, int Declared, int Kind)>.Create(CompareMiddle);
+        private static readonly System.Comparison<VisualElement> s_compareRank = CompareRank;
+
+        // Arranges parent's children into the order CSS paints them in, relocating and returning elements as that
+        // requires (see the type's own comment for the layout of the list). parked freezes which elements are
+        // relocated, since a parked diff still addresses parent's slot occupants.
+        private static void Arrange(ReconcilerContext ctx, VisualElement parent, bool parked)
+        {
+            if (!ctx.ZLayerHosts.TryGetValue(parent, out var record) && !HoldsTrackedChild(ctx, parent))
+            {
+                return;
+            }
+            var entries = s_entries;
+            entries.Clear();
+            try
+            {
+                CollectEntries(ctx, parent, entries);
+                // Every move below is by index, which UI Toolkit applies to the layout list at the same index.
+                Realign(ctx, parent);
+                ArrangeEntries(ctx, parent, parked, record, entries);
+            }
+            finally
+            {
+                foreach (var entry in entries)
+                {
+                    entry.Release();
+                }
+                entries.Clear();
+            }
+        }
+
+        private static bool HoldsTrackedChild(ReconcilerContext ctx, VisualElement parent)
+        {
+            if (ctx.StackingFacts.Count == 0)
+            {
+                return false;
+            }
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                var child = parent.hierarchy[i];
+                if (ctx.StackingFacts.ContainsKey(child) && !LogicalChildSlots.IsInvisible(child))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static void CollectEntries(ReconcilerContext ctx, VisualElement parent, List<SlotEntry> entries)
+        {
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                var child = parent.hierarchy[i];
+                if (LogicalChildSlots.IsInvisible(child))
                 {
                     continue;
                 }
-                if (previous != null && Compare(previous.Value, member, declared) > 0)
+                var real = ctx.ZLayerPlaceholders.TryGetValue(child, out var placed) ? placed : child;
+                if (s_entryPool.Count <= entries.Count)
+                {
+                    s_entryPool.Add(new SlotEntry());
+                }
+                var entry = s_entryPool[entries.Count];
+                entry.Reset(child, real, entries.Count);
+                entries.Add(entry);
+                // A placeholder whose element never joined the parent (a drain an abort cut short) keeps it.
+                if (!ReferenceEquals(real, child) && !ReferenceEquals(real.parent, parent))
+                {
+                    entry.Detached = true;
+                    continue;
+                }
+                if (ctx.StackingFacts.TryGetValue(real, out var facts))
+                {
+                    entry.Tracked = true;
+                    entry.Z = facts.Z;
+                    entry.Absolute = IsAbsolute(ctx, real);
+                    entry.Order = entry.Absolute ? 0 : facts.Order;
+                    entry.Positioned = IsPositioned(ctx, real);
+                }
+            }
+        }
+
+        private static void ArrangeEntries(ReconcilerContext ctx, VisualElement parent, bool parked,
+            ZLayerHostRecord? record, List<SlotEntry> entries)
+        {
+            var lift = parked ? record?.Lifted ?? false : PositionedPrecedesUnpositioned(entries);
+            var layoutMovable = ChildLayoutOrder.Available;
+            foreach (var entry in entries)
+            {
+                if (entry.Detached)
+                {
+                    entry.Relocate = true;
+                    continue;
+                }
+                var stacked = entry.Tracked && (entry.Z == 0 || (entry.Z == null && entry.Positioned));
+                var wanted = entry.Tracked
+                    && ((entry.Z is { } z && z != 0) || entry.Order != 0 || (stacked && lift))
+                    // An in-flow element whose layout node cannot be kept at its slot keeps its slot.
+                    && (layoutMovable || entry.Absolute || (entry.Z == null && entry.Order != 0 && !(stacked && lift)));
+                entry.Relocate = parked ? !ReferenceEquals(entry.Slot, entry.Real) : wanted;
+                entry.Band = entry.Z is < 0 ? Role.BackReal
+                    : (entry.Z is > 0 || (stacked && lift)) ? Role.FrontReal
+                    : Role.MiddleReal;
+            }
+
+            var changed = false;
+            foreach (var entry in entries)
+            {
+                if (!entry.Detached)
+                {
+                    changed |= Convert(ctx, parent, entry);
+                }
+            }
+
+            BuildDesiredOrder(parent, entries);
+            if (!InOrder(parent, s_desired))
+            {
+                s_rank.Clear();
+                for (var i = 0; i < s_desired.Count; i++)
+                {
+                    s_rank[s_desired[i]] = i;
+                }
+                parent.hierarchy.Sort(s_compareRank);
+                s_rank.Clear();
+                changed = true;
+            }
+            s_desired.Clear();
+            DrainTeardownsUnder(ctx, parent);
+
+            var swapped = LayOutRelocated(parent, entries);
+            record ??= new ZLayerHostRecord();
+            record.Swapped = swapped;
+            record.Lifted = lift;
+
+            var anyRelocated = false;
+            foreach (var entry in entries)
+            {
+                anyRelocated |= entry.Relocate && !entry.Detached;
+            }
+            if (anyRelocated)
+            {
+                ctx.ZLayerHosts[parent] = record;
+            }
+            else
+            {
+                ctx.ZLayerHosts.Remove(parent);
+            }
+            if (changed)
+            {
+                ReapplyChildWalkers(ctx, parent);
+            }
+        }
+
+        // Relocates entry's element or returns it to its slot as entry.Relocate says, and settles the box it lays out
+        // by. Returns whether a slot occupant changed.
+        private static bool Convert(ReconcilerContext ctx, VisualElement parent, SlotEntry entry)
+        {
+            var changed = false;
+            var relocated = !ReferenceEquals(entry.Slot, entry.Real);
+            if (entry.Relocate && !relocated)
+            {
+                var placeholder = CreatePlaceholder();
+                Hold(placeholder, Role.Slot, entry.Real);
+                ctx.ZLayerPlaceholders[placeholder] = entry.Real;
+                parent.hierarchy.Add(placeholder);
+                entry.Slot = placeholder;
+                changed = true;
+            }
+            else if (!entry.Relocate && relocated)
+            {
+                Retire(ctx, entry.Slot);
+                RetireAnchorOf(ctx, entry.Real);
+                s_held.Remove(entry.Real);
+                ctx.ZLayerPlaceholders.Remove(entry.Slot);
+                ctx.ZLayerMembers.Remove(entry.Real);
+                entry.Slot = entry.Real;
+                changed = true;
+            }
+            if (!entry.Relocate)
+            {
+                return changed;
+            }
+            // The node an in-flow element lays out by goes where its flex order puts it: its placeholder's, when
+            // that is its declared slot, or an anchor's.
+            if (entry.Band != Role.MiddleReal && !entry.Absolute)
+            {
+                if (entry.Order == 0)
+                {
+                    RetireAnchorOf(ctx, entry.Real);
+                    entry.Partner = entry.Slot;
+                }
+                else
+                {
+                    entry.Anchor = AnchorOf(entry.Real) ?? NewAnchor(parent, entry.Real);
+                    entry.Partner = entry.Anchor;
+                }
+            }
+            else
+            {
+                RetireAnchorOf(ctx, entry.Real);
+            }
+            Hold(entry.Real, entry.Band, entry.Partner, entry.Slot);
+            ctx.ZLayerMembers[entry.Real] = new ZLayerMember(entry.Slot, parent, entry.Z, entry.Order);
+            return changed;
+        }
+
+        // Puts each relocated in-flow element's layout node at its partner's index and the partner's at its own.
+        // Returns whether any was.
+        private static bool LayOutRelocated(VisualElement parent, List<SlotEntry> entries)
+        {
+            var layout = s_layout;
+            layout.Clear();
+            try
+            {
+                foreach (var entry in entries)
+                {
+                    if (!entry.Relocate || entry.Detached || entry.Partner == null)
+                    {
+                        continue;
+                    }
+                    if (layout.Count == 0)
+                    {
+                        for (var i = 0; i < parent.hierarchy.childCount; i++)
+                        {
+                            layout.Add(parent.hierarchy[i]);
+                        }
+                    }
+                    var at = layout.IndexOf(entry.Real);
+                    var partnerAt = layout.IndexOf(entry.Partner);
+                    layout[at] = entry.Partner;
+                    layout[partnerAt] = entry.Real;
+                }
+                if (layout.Count == 0)
                 {
                     return false;
                 }
-                previous = member;
+                ChildLayoutOrder.Rebuild(parent, layout);
+                return true;
+            }
+            finally
+            {
+                layout.Clear();
+            }
+        }
+
+        // CSS paints an unpositioned in-flow child before every positioned one: positioned children (and those at
+        // z-index 0) need lifting only where one would otherwise come before an unpositioned child that paints.
+        private static bool PositionedPrecedesUnpositioned(List<SlotEntry> entries)
+        {
+            (int Order, int Declared)? firstPositioned = null;
+            foreach (var entry in entries)
+            {
+                var positioned = entry.Tracked && (entry.Z == 0 || (entry.Z == null && entry.Positioned));
+                if (positioned && (firstPositioned == null || Precedes((entry.Order, entry.Declared), firstPositioned.Value)))
+                {
+                    firstPositioned = (entry.Order, entry.Declared);
+                }
+            }
+            if (firstPositioned == null)
+            {
+                return false;
+            }
+            foreach (var entry in entries)
+            {
+                var unpositioned = !entry.Detached && !entry.Positioned && entry.Z == null
+                    && !StyleOutOfFlowChild.HasNoBox(entry.Real) && !StyleOutOfFlowChild.IsOutOfFlow(entry.Real);
+                if (unpositioned && Precedes(firstPositioned.Value, (entry.Order, entry.Declared)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool Precedes((int Order, int Declared) a, (int Order, int Declared) b)
+            => a.Order != b.Order ? a.Order < b.Order : a.Declared < b.Declared;
+
+        private static VisualElement? AnchorOf(VisualElement real)
+            => s_held.TryGetValue(real, out var held) && held.Partner is { } partner
+                && s_held.TryGetValue(partner, out var partnerHeld) && partnerHeld.Role == Role.Anchor
+                ? partner
+                : null;
+
+        private static VisualElement NewAnchor(VisualElement parent, VisualElement real)
+        {
+            var anchor = CreateAnchor();
+            Hold(anchor, Role.Anchor, real);
+            parent.hierarchy.Add(anchor);
+            return anchor;
+        }
+
+        // The paint order, into s_desired: the back band, the declared slots with the in-flow elements placed by
+        // flex order, the front band, then whatever else the parent holds in its present order. A ring band or a
+        // face border overlay follows the element it sits after.
+        private static void BuildDesiredOrder(VisualElement parent, List<SlotEntry> entries)
+        {
+            s_followers.Clear();
+            VisualElement? host = null;
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                var child = parent.hierarchy[i];
+                if (child.ClassListContains(RingOverlay.MarkerClass) || child.ClassListContains(FaceBorderOverlay.MarkerClass))
+                {
+                    if (host != null)
+                    {
+                        s_followers.Add((host, child));
+                    }
+                    continue;
+                }
+                host = child;
+            }
+
+            s_back.Clear();
+            s_front.Clear();
+            s_middle.Clear();
+            foreach (var entry in entries)
+            {
+                s_middle.Add((entry.Slot, 0, entry.Declared, 0));
+                if (!entry.Relocate || entry.Detached)
+                {
+                    continue;
+                }
+                switch (entry.Band)
+                {
+                    case Role.BackReal:
+                        s_back.Add(entry);
+                        break;
+                    case Role.FrontReal:
+                        s_front.Add(entry);
+                        break;
+                    default:
+                        s_middle.Add((entry.Real, entry.Order, entry.Declared, 1));
+                        break;
+                }
+                if (entry.Anchor != null)
+                {
+                    s_middle.Add((entry.Anchor, entry.Order, entry.Declared, 1));
+                }
+            }
+            s_back.Sort(s_compareBand);
+            s_front.Sort(s_compareBand);
+            s_middle.Sort(s_compareMiddle);
+
+            s_desired.Clear();
+            s_placed.Clear();
+            foreach (var entry in s_back) Place(entry.Real);
+            foreach (var item in s_middle) Place(item.Element);
+            foreach (var entry in s_front) Place(entry.Real);
+            for (var i = 0; i < parent.hierarchy.childCount; i++)
+            {
+                var child = parent.hierarchy[i];
+                if (s_placed.Add(child))
+                {
+                    s_desired.Add(child);
+                }
+            }
+            s_placed.Clear();
+            s_followers.Clear();
+            s_back.Clear();
+            s_front.Clear();
+            s_middle.Clear();
+        }
+
+        private static void Place(VisualElement element)
+        {
+            if (!s_placed.Add(element))
+            {
+                return;
+            }
+            s_desired.Add(element);
+            foreach (var (host, follower) in s_followers)
+            {
+                if (ReferenceEquals(host, element) && s_placed.Add(follower))
+                {
+                    s_desired.Add(follower);
+                }
+            }
+        }
+
+        // z, then flex order, then tree order: CSS stacks equal z values in order-modified document order.
+        private static int CompareBand(SlotEntry a, SlotEntry b)
+        {
+            var byZ = (a.Z ?? 0).CompareTo(b.Z ?? 0);
+            if (byZ != 0) return byZ;
+            var byOrder = a.Order.CompareTo(b.Order);
+            return byOrder != 0 ? byOrder : a.Declared.CompareTo(b.Declared);
+        }
+
+        private static int CompareMiddle((VisualElement Element, int Order, int Declared, int Kind) a,
+            (VisualElement Element, int Order, int Declared, int Kind) b)
+            => a.Order != b.Order ? a.Order.CompareTo(b.Order)
+                : a.Declared != b.Declared ? a.Declared.CompareTo(b.Declared)
+                : a.Kind.CompareTo(b.Kind);
+
+        private static int CompareRank(VisualElement a, VisualElement b) => s_rank[a].CompareTo(s_rank[b]);
+
+        private static bool InOrder(VisualElement parent, List<VisualElement> desired)
+        {
+            for (var i = 0; i < desired.Count; i++)
+            {
+                if (!ReferenceEquals(parent.hierarchy[i], desired[i]))
+                {
+                    return false;
+                }
             }
             return true;
         }
 
-        private static void SortMembers(
-            ReconcilerContext ctx, VisualElement container, Dictionary<VisualElement, int> declared)
+        // Removes the retired children of parent at once: Arrange runs where no diff holds an index into it.
+        private static void DrainTeardownsUnder(ReconcilerContext ctx, VisualElement parent)
         {
-            var members = new List<(ZLayerMember Member, VisualElement Element)>();
-            for (var i = 0; i < container.hierarchy.childCount; i++)
+            if (ctx.PendingZLayerRemovals.Count == 0)
             {
-                var child = container.hierarchy[i];
-                if (ctx.ZLayerMembers.TryGetValue(child, out var member))
+                return;
+            }
+            s_retiredHere.Clear();
+            foreach (var retired in ctx.PendingZLayerRemovals)
+            {
+                if (ReferenceEquals(retired.parent, parent))
                 {
-                    members.Add((member, child));
+                    s_retiredHere.Add(retired);
                 }
             }
-            members.Sort((x, y) => Compare(x.Member, y.Member, declared));
-            var rank = new Dictionary<VisualElement, int>(members.Count * 2);
-            foreach (var (_, element) in members)
+            foreach (var retired in s_retiredHere)
             {
-                rank[element] = rank.Count;
-                if (ctx.RingBindings.TryGetValue(element, out var ring))
-                {
-                    rank[ring.Overlay] = rank.Count;
-                }
+                retired.RemoveFromHierarchy();
+                s_held.Remove(retired);
+                ctx.PendingZLayerRemovals.Remove(retired);
             }
-            container.hierarchy.Sort((x, y) => RankOf(rank, x).CompareTo(RankOf(rank, y)));
+            s_retiredHere.Clear();
         }
 
-        private static int RankOf(Dictionary<VisualElement, int> rank, VisualElement child)
-            => rank.TryGetValue(child, out var r) ? r : int.MaxValue;
-
-        // Detaches `real` from `container` (a no-op if it has already moved) and marks the container for an
-        // emptiness re-check at the next safe drain point — never removed here: that would mutate the
-        // STACKING PARENT's own children, unsafe mid-pass (see the type's own safety-invariant note).
-        private static void DetachFromContainer(ReconcilerContext ctx, VisualElement container, VisualElement real)
+        // The child walkers that read the children in flex order re-run once that order or the elements in it moved
+        // without the parent's own patch, which is what re-runs them otherwise.
+        private static void ReapplyChildWalkers(ReconcilerContext ctx, VisualElement parent)
         {
-            if (ReferenceEquals(real.parent, container))
-            {
-                real.RemoveFromHierarchy();
-            }
-            ctx.PendingZLayerTeardownChecks.Add(container);
+            if (ctx.GapManipulators.TryGetValue(parent, out var gap)) gap.Reapply();
+            if (ctx.GridManipulators.TryGetValue(parent, out var grid)) grid.Apply();
+            if (ctx.DivideManipulators.TryGetValue(parent, out var divide)) divide.Reapply();
         }
     }
 }

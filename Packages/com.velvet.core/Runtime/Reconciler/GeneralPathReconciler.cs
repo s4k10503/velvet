@@ -2432,7 +2432,7 @@ namespace Velvet
             for (var i = 0; i < element.hierarchy.childCount; i++)
             {
                 var child = element.hierarchy[i];
-                if (!FiberZLayerCoordinator.IsLayerContainer(child) && HoldsAMotionUnder(child, roots)) return true;
+                if (!FiberZLayerCoordinator.IsRelocatedReal(child) && HoldsAMotionUnder(child, roots)) return true;
             }
             return false;
         }
@@ -2602,9 +2602,9 @@ namespace Velvet
             }
             for (var i = 0; i < element.hierarchy.childCount; i++)
             {
-                // A layer container holds the z-managed elements whose placeholders the walk follows already.
+                // A relocated element is reached through its placeholder, which the walk follows already.
                 var child = element.hierarchy[i];
-                if (FiberZLayerCoordinator.IsLayerContainer(child)) continue;
+                if (FiberZLayerCoordinator.IsRelocatedReal(child)) continue;
                 count += CollectDescendantExitsUnder(child, inheritedExit, frame, in walk);
             }
             return count;
@@ -3531,18 +3531,13 @@ namespace Velvet
             if (commit != null && commit.NewElements.Count > startIdx)
             {
                 var committed = commit.NewElements[startIdx].element;
-                // A z-managed keyed child's first committed element is its PLACEHOLDER — the real content's
-                // own layer-container placement is deferred to the post-pass drain (FiberZLayerCoordinator),
-                // which has not run yet at this exact synchronous point — every caller of this method
-                // dispatches enter/exit animation and PopLayout pinning against the returned anchor, so
-                // resolving through the registry here, once, means the REAL element is what actually tweens
-                // (and what PinExitingChildOutOfFlow pins) instead of a zero-size proxy that visibly does
-                // nothing. This resolves correctly even for a BRAND-NEW mount reached this same synchronous
-                // pass: FiberZLayerCoordinator.EnqueueMount (and RelocateFromOrdinarySlot's own deferred
-                // branch) register the placeholder->real pair the instant the placeholder is created — well
-                // before the drain that alone would place the real element in its layer container — precisely
-                // so this lookup never has to fall back to the placeholder for a child this method's own
-                // caller is about to explicitly animate.
+                // A z-managed keyed child's first committed element is its PLACEHOLDER — the real content
+                // joins its parent at the post-pass drain (FiberZLayerCoordinator), which has not run yet at
+                // this exact synchronous point — and every caller of this method dispatches enter/exit
+                // animation and PopLayout pinning against the returned anchor, so resolving through the
+                // registry here means the REAL element is what tweens (and what PinExitingChildOutOfFlow
+                // pins) instead of a zero-size proxy. FiberZLayerCoordinator.OnCreated registers the pair the
+                // instant the placeholder is created, so a brand-new mount resolves here too.
                 return _ctx.ZLayerPlaceholders.TryGetValue(committed, out var real) ? real : committed;
             }
             return null;

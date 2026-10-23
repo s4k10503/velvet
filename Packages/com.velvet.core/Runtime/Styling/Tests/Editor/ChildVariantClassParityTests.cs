@@ -243,20 +243,20 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var children = new VNode[]
             {
-                V.Div(className: "child"),
-                V.Div(className: "absolute child"),
-                V.Div(className: "child"),
+                V.Div(name: "first", className: "child"),
+                V.Div(name: "out", className: "absolute child"),
+                V.Div(name: "last", className: "child"),
             };
             var tree = new VNode[] { V.Div(className: "[&>*]:text-red-500", children: children) };
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
             var container = scope.Root[0];
-            Assume.That(container[1].ClassListContains("absolute"), Is.True, "Precondition: the middle child is out of flow");
 
             // Assert — the absolute child is skipped while an in-flow sibling is styled.
             Assert.That(
-                (container[1].ClassListContains("text-red-500"), container[0].ClassListContains("text-red-500")),
+                (container.Q("out").ClassListContains("text-red-500"),
+                    container.Q("first").ClassListContains("text-red-500")),
                 Is.EqualTo((false, true)));
         }
 

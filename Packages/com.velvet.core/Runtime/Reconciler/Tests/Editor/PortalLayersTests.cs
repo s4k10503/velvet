@@ -27,8 +27,8 @@ namespace Velvet.Tests
     /// still commits.</item>
     /// <item>A <c>z-*</c> placement resolves no target and sits outside that containment: an application
     /// throw from the insert that lands its element escapes the render pass, so an Error Boundary above
-    /// the component whose update began that pass shows its fallback, and a layer container that pass emptied is
-    /// still removed.</item>
+    /// the component whose update began that pass shows its fallback, and an element that pass took out of the back
+    /// band is still removed.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>
@@ -309,7 +309,7 @@ namespace Velvet.Tests
         }
 
         private static int s_attachRuns;
-        private static bool s_attachedIntoALayerContainer;
+        private static bool s_attachedRelocated;
 
         // Stands in for a V.Custom&lt;T&gt; whose element registers a panel-attach callback: the insert a
         // z-* placement performs is what runs it.
@@ -320,8 +320,7 @@ namespace Velvet.Tests
                 RegisterCallback<AttachToPanelEvent>(_ =>
                 {
                     s_attachRuns++;
-                    s_attachedIntoALayerContainer =
-                        parent != null && FiberZLayerCoordinator.IsLayerContainer(parent);
+                    s_attachedRelocated = parent != null && FiberZLayerCoordinator.IsRelocatedReal(this);
                     throw new System.InvalidOperationException("attach callback");
                 });
             }
@@ -346,11 +345,10 @@ namespace Velvet.Tests
         public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsItsElement_Then_TheBoundaryAboveShowsItsFallback()
         {
             // Arrange — the element arrives on an update, so the pass is the declaring fiber's own and the
-            // boundary above it is reachable. A first placement is queued unconditionally
-            // (FiberZLayerCoordinator.EnqueueMount has no synchronous branch), so the only insert this
-            // element ever sees is the drain's.
+            // boundary above it is reachable. A z-10 element's arrival in its parent is queued
+            // (FiberZLayerCoordinator.OnCreated), so the only insert this element ever sees is the drain's.
             s_attachRuns = 0;
-            s_attachedIntoALayerContainer = false;
+            s_attachedRelocated = false;
             MountAndLayout(V.ErrorBoundary(
                 fallback: _ => V.Div(name: "fallback"),
                 children: new VNode[] { V.Component(StackedArrivalHost, key: "host") }), CaughtErrors.Unlogged);
@@ -359,26 +357,26 @@ namespace Velvet.Tests
             s_showStacked.Invoke(true);
             FlushAndLayout();
 
-            // Assert — the container term is what fails when the arrangement stops being a layer placement,
-            // so the fallback cannot stand in for an ordinary mount's own throw reaching the same boundary.
-            Assert.That((s_attachRuns, s_attachedIntoALayerContainer,
+            // Assert — the relocation term is what fails when the arrangement stops being a z placement, so the
+            // fallback cannot stand in for an ordinary mount's own throw reaching the same boundary.
+            Assert.That((s_attachRuns, s_attachedRelocated,
                     _host.Root.Q<VisualElement>("fallback") != null),
                 Is.EqualTo((1, true, true)));
         }
 
         private static StateUpdater<bool> s_swapStacked;
-        private static bool? s_backLayerAtUnmount;
+        private static bool? s_behindAtUnmount;
 
         // A field, so every render hands the element the same callback and only the unmount runs its cleanup.
-        private static readonly System.Func<VisualElement, System.Action> s_recordBackLayerAtUnmount =
-            element => () => s_backLayerAtUnmount = HasBackLayerContainer(element);
+        private static readonly System.Func<VisualElement, System.Action> s_recordBehindAtUnmount =
+            element => () => s_behindAtUnmount = HoldsBehind(element);
 
         [Component]
         private static VNode StackedSwapHost()
         {
             var (swapped, setSwapped) = Hooks.UseState(false);
             s_swapStacked = setSwapped;
-            return V.Div(name: "swap-root", className: "relative", refCallback: s_recordBackLayerAtUnmount,
+            return V.Div(name: "swap-root", className: "relative", refCallback: s_recordBehindAtUnmount,
                 children: new VNode[]
             {
                 swapped ? null : V.Div(name: "behind", className: "absolute -z-10", key: "behind"),
@@ -389,30 +387,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedAnotherLayer_Then_TheEmptiedContainerIsStillRemoved()
+        public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsInThePassThatEmptiedTheBackBand_Then_TheDepartedElementIsStillRemoved()
         {
-            // Arrange — the back container's only member leaves in the same pass the front placement throws from.
-            // No boundary takes the throw, so the root unmounts the tree in a pass of its own; the stacking parent's
-            // ref cleanup reads its layers as that unmount removes it, ahead of that pass's own teardown drain.
-            // The expected exception fails the case when the arrangement stops throwing from that placement.
-            s_backLayerAtUnmount = null;
+            // Arrange — the back band's only element leaves in the same pass the front placement throws from. It
+            // stays in its parent past its placeholder's removal, until the pass ends. No boundary takes the
+            // throw, so the root unmounts the tree in a pass of its own; the stacking parent's ref cleanup reads
+            // its children as that unmount removes it, ahead of that pass's own end. The expected exception fails
+            // the case when the arrangement stops throwing from that placement.
+            s_behindAtUnmount = null;
             MountAndLayout(V.Component(StackedSwapHost, key: "host"));
-            var hadABackContainer = HasBackLayerContainer(_host.Root.Q<VisualElement>("swap-root"));
+            var heldBehindInTheBackBand = ZBandProbe.InBand(_host.Root.Q<VisualElement>("behind"), front: false);
             LogAssert.Expect(LogType.Exception, new Regex("attach callback"));
 
             // Act
             s_swapStacked.Invoke(true);
             FlushAndLayout();
 
-            // Assert — null where the mount made no back container to tear down, or where the tree never unmounted
-            Assert.That(hadABackContainer ? s_backLayerAtUnmount : null, Is.False);
+            // Assert — null where the mount put nothing in the back band, or where the tree never unmounted
+            Assert.That(heldBehindInTheBackBand ? s_behindAtUnmount : null, Is.False);
         }
 
-        private static bool HasBackLayerContainer(VisualElement parent)
+        private static bool HoldsBehind(VisualElement parent)
         {
             foreach (var child in parent.Children())
             {
-                if (FiberZLayerCoordinator.IsBackLayerContainer(child)) return true;
+                if (child.name == "behind") return true;
             }
             return false;
         }

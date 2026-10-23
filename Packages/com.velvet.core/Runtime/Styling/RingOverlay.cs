@@ -194,7 +194,7 @@ namespace Velvet
         }
 
         // Re-homes the overlay onto the element's CURRENT parent and re-sizes it. The host is re-derived on
-        // every call rather than captured at attach: a keyed move, a z-* relocation into a layer container, or
+        // every call rather than captured at attach: a keyed move, a z-* relocation among its siblings, or
         // an attach that had not happened yet at create time all change it, and each of those re-enters here.
         private static void Place(VisualElement element, RingBinding binding)
         {

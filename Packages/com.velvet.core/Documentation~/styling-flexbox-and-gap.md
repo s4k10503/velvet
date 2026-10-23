@@ -386,6 +386,20 @@ at 2.
 `basis-[..]` and `w-[..]` are a different thing and do not substitute for the grow and shrink factors:
 they fix a size, where the factors divide what is left over after every sibling's basis is taken.
 
+## Flex order
+
+`order-<N>`, `-order-<N>`, `order-[…]` (a signed integer), `order-first`, `order-last` and `order-none` set a
+child's flex order as Tailwind v4's `order` utility does: the children lay out and paint in ascending order, equal
+orders in declared order, so `order-first` puts a child ahead of every other and `order-last` after every other.
+`order-(--o)` and `order-[var(--o)]` read a custom property ([styling-custom-properties.md](styling-custom-properties.md)).
+The bare form is a whole number spelled as Tailwind spells it — `order-03` and `order-1.5` are not recognized. Each
+form takes the important modifier, and an important one wins over every plain one. An `absolute` child takes no part
+in flex layout, so its order changes nothing.
+
+The order moves the layout and the paint of a child, not its declared position: `first:` / `last:` / `nth-*`
+variants, `peer-*:` and Tab order still read the children in declared order, as CSS reads the document. The way the
+child is moved is the one [styling-z-index.md](styling-z-index.md#how-it-works) describes for `z-*`.
+
 ## A text item's margin, padding, wrapping and minimum size
 
 **Margin, padding, wrapping and shrinking.** Tailwind v4's preflight zeroes every element's margin and padding,

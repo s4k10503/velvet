@@ -91,17 +91,16 @@ namespace Velvet
             }
         }
 
-        // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child), a
-        // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
-        // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
-        // logical slot), a ring overlay (RingOverlay's band, hosted beside the element it rings rather than
-        // wrapped around it), OR a face border overlay (FaceBorderOverlay, hosted the same way).
+        // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child), a ring
+        // overlay (RingOverlay's band, hosted beside the element it rings rather than wrapped around it), a face
+        // border overlay (FaceBorderOverlay, hosted the same way), or one of FiberZLayerCoordinator's internal
+        // children (an anchor, or a retired placeholder awaiting removal).
         internal static bool IsSpacer(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
                     || child.ClassListContains(RingOverlay.MarkerClass)
                     || child.ClassListContains(FaceBorderOverlay.MarkerClass)
-                    || FiberZLayerCoordinator.IsLayerContainer(child));
+                    || FiberZLayerCoordinator.IsInternal(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement
         // invariant that keeps it outside the child reconciler's [0, renderedChildCount) index range.
@@ -114,7 +113,7 @@ namespace Velvet
             }
             for (var i = idx + 1; i < caster.childCount; i++)
             {
-                if (!IsSpacer(caster[i]))
+                if (!LogicalChildSlots.IsInvisible(caster[i]))
                 {
                     return false;
                 }
@@ -122,22 +121,13 @@ namespace Velvet
             return true;
         }
 
-        // The container's child count with a TRAILING run of spacers trimmed and a LEADING run of z-layer
-        // containers counted — the physical bound the reconciler used before it addressed slots logically.
-        // Superseded by LogicalChildSlots.Count, which counts rendered children wherever they sit and so
-        // does NOT count that leading container; the two disagree by exactly that, which is why this is not
-        // a synonym. FiberZLayerCoordinator is the one production caller left and wants exactly this reading —
-        // a z-managed element hosts its band and its own container, so the physical count is the question it
-        // asks. Anywhere else in reconciler code this gives the wrong number; reach for LogicalChildSlots.
+        // The container's child count with a TRAILING run of spacers trimmed — the physical bound the reconciler
+        // used before it addressed slots logically. Superseded by LogicalChildSlots.Count, which counts rendered
+        // children wherever they sit; reach for that in reconciler code.
         internal static int NonSpacerChildCount(VisualElement container)
         {
             var n = container.childCount;
-            var floor = 0;
-            while (floor < n && FiberZLayerCoordinator.IsLayerContainer(container[floor]))
-            {
-                floor++;
-            }
-            while (n > floor && IsSpacer(container[n - 1]))
+            while (n > 0 && IsSpacer(container[n - 1]))
             {
                 n--;
             }

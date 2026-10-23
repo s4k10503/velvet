@@ -66,6 +66,8 @@ namespace Velvet
         // for release; whether it loses the width + margins is the claim's answer, not this list's — see
         // ReconcilerContext.ChildBoxOwners.
         private readonly List<VisualElement> _sized = new();
+        // The children in flex order, refilled by each Apply.
+        private readonly List<VisualElement> _flow = new();
 
         private int _lastSignature;
         private bool _hasSignature;
@@ -137,12 +139,11 @@ namespace Velvet
                 ? Mathf.Max(0f, (width - (n - 1) * _spec.ColumnGap) / n - WrapSafetyPx)
                 : 0f;
 
-            var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
-            var count = container.childCount;
+            var last = StyleOutOfFlowChild.LastSpacedChild(container);
+            FiberZLayerCoordinator.FlowChildren(container, _flow);
             var logicalIndex = 0;
-            for (var i = 0; i < count; i++)
+            foreach (var child in _flow)
             {
-                var child = container[i];
                 // An out-of-flow child (a PopLayout-pinned ghost, or an app-authored .absolute child)
                 // takes no grid cell, so it is skipped rather than assigned a column/row and sized.
                 if (StyleOutOfFlowChild.IsOutOfFlow(child))
@@ -151,7 +152,7 @@ namespace Velvet
                 }
                 var col = logicalIndex % n;
                 var row = logicalIndex / n;
-                var spaced = i != lastIndex;
+                var spaced = !ReferenceEquals(child, last);
                 var spaceX = spaced ? _spec.Space.X : 0f;
                 var spaceY = spaced ? _spec.Space.Y : 0f;
                 var columnGap = col == 0 ? 0f : _spec.ColumnGap;

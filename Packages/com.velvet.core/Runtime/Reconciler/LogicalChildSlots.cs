@@ -5,7 +5,7 @@ namespace Velvet
     /// <summary>
     /// Translates between a container's LOGICAL child slots — the positions the reconciler addresses, one
     /// per rendered VNode — and the PHYSICAL child indices those occupy, with reconciler-invisible children
-    /// (<see cref="SilhouetteBoundsSpacer.IsSpacer"/>) allowed to sit anywhere among them.
+    /// (<see cref="IsInvisible"/>) allowed to sit anywhere among them.
     /// </summary>
     /// <remarks>
     /// The reconciler used to assume the invisible children were only ever a LEADING run (a z-index layer
@@ -39,6 +39,14 @@ namespace Velvet
     internal static class LogicalChildSlots
     {
         /// <summary>
+        /// Whether <paramref name="child"/> holds no logical slot: a Velvet-internal child
+        /// (<see cref="SilhouetteBoundsSpacer.IsSpacer"/>) or an element <see cref="FiberZLayerCoordinator"/>
+        /// relocated, whose placeholder holds its slot.
+        /// </summary>
+        internal static bool IsInvisible(VisualElement child)
+            => SilhouetteBoundsSpacer.IsSpacer(child) || FiberZLayerCoordinator.IsRelocatedReal(child);
+
+        /// <summary>
         /// The number of rendered children — the exclusive upper bound of the logical slot range. Replaces
         /// the physical <c>NonSpacerChildCount</c> wherever that was being read as "how many slots are there".
         /// </summary>
@@ -52,7 +60,7 @@ namespace Velvet
             var physicalCount = container.childCount;
             for (var i = 0; i < physicalCount; i++)
             {
-                if (!SilhouetteBoundsSpacer.IsSpacer(container[i]))
+                if (!IsInvisible(container[i]))
                 {
                     rendered++;
                 }
@@ -71,7 +79,7 @@ namespace Velvet
         {
             physical = ToPhysical(container, logical);
             return logical >= 0 && physical < container.childCount
-                && !SilhouetteBoundsSpacer.IsSpacer(container[physical]);
+                && !IsInvisible(container[physical]);
         }
 
         /// <summary>
@@ -81,9 +89,8 @@ namespace Velvet
         /// For <paramref name="logical"/> equal to (or past) <see cref="Count"/> this returns the position
         /// just AFTER the last rendered child rather than the end of the child list, so an append lands
         /// before a trailing invisible run instead of after it — the placement the filter bounds spacer
-        /// depends on. This is NOT always what the old <c>Insert(NonSpacerChildCount(parent), …)</c> idiom
-        /// answered: on a parent holding a back z-layer container and no rendered child that idiom said 0,
-        /// which would place the append ahead of a container that has to stay first.
+        /// depends on. An element in the back z band is the exception: an append steps over it, so slot 0 of a
+        /// parent holding nothing else resolves after it.
         /// Insert semantics follow from the same rule: inserting at a logical slot puts the new child
         /// immediately before the child currently holding that slot, so an invisible child sitting between
         /// two rendered ones stays attached to the rendered child it precedes.
@@ -101,19 +108,19 @@ namespace Velvet
             }
             var rendered = 0;
             // Where an append lands, decided by the invisible child's KIND rather than its position. The
-            // three kinds have opposite contracts: a z-index BACK container must stay the parent's first
-            // physical child, while a front container and a filter bounds spacer must stay last. So an
-            // append steps over a leading back container — slot 0 of a parent holding nothing else resolves
-            // AFTER it — and stops before everything else. Deciding this positionally instead ("anything
-            // invisible seen before the first rendered child is leading") sent an append past a bounds
-            // spacer on a parent whose rendered children had all been removed.
+            // kinds have opposite contracts: an element in the back z band must paint ahead of the declared
+            // slots, while the front band and a filter bounds spacer paint after them. So an append steps
+            // over a back-band element — slot 0 of a parent holding nothing else resolves AFTER it — and stops
+            // before everything else. Deciding this positionally instead ("anything invisible seen before the
+            // first rendered child is leading") sent an append past a bounds spacer on a parent whose rendered
+            // children had all been removed.
             var appendAt = 0;
             for (var i = 0; i < physicalCount; i++)
             {
                 var child = container[i];
-                if (SilhouetteBoundsSpacer.IsSpacer(child))
+                if (IsInvisible(child))
                 {
-                    if (FiberZLayerCoordinator.IsBackLayerContainer(child))
+                    if (FiberZLayerCoordinator.IsBackBandMember(child))
                     {
                         appendAt = i + 1;
                     }
@@ -143,7 +150,7 @@ namespace Velvet
             var rendered = 0;
             for (var i = 0; i < limit; i++)
             {
-                if (!SilhouetteBoundsSpacer.IsSpacer(container[i]))
+                if (!IsInvisible(container[i]))
                 {
                     rendered++;
                 }
@@ -204,7 +211,7 @@ namespace Velvet
             var physicalCount = container.childCount;
             for (physical = _physical; physical < physicalCount; physical++)
             {
-                if (SilhouetteBoundsSpacer.IsSpacer(container[physical]))
+                if (LogicalChildSlots.IsInvisible(container[physical]))
                 {
                     continue;
                 }

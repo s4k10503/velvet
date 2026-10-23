@@ -301,9 +301,10 @@ namespace Velvet
                 }
                 finally
                 {
-                    // After the drain, which places the z-* members this pass deferred, and in a finally of its own
-                    // so a drain that throws still leaves neither an emptied layer container nor a stacking parent
+                    // After the drain, which places the relocated elements this pass deferred, and in a finally of
+                    // its own so a drain that throws still leaves neither a retired child standing nor a parent
                     // pending into the next pass, and a coordinator call that throws still reaches the resets below.
+                    _cleaner.ReleaseRetiredZLayerReals();
                     FiberZLayerCoordinator.DrainTeardowns(_ctx);
                     FiberZLayerCoordinator.ResortLayers(_ctx);
                 }
@@ -933,12 +934,15 @@ namespace Velvet
             _ctx.PendingPortalMounts.Clear();
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.
             _ctx.PendingHostPlaceholders.Clear();
-            // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables); these two
-            // are not — a placeholder->real entry always accompanies a live container membership, and a
-            // pending teardown check references a container that may still be attached — so both are dropped
-            // explicitly here, mirroring PortalState/PendingPortalMounts above.
+            // ZLayerHosts/ZLayerMembers/StackingFacts are pure side-tables (dropped by ClearAllSideTables); these
+            // are not — a placeholder->real entry always accompanies a live relocation, and a retired child may
+            // still be attached — so they are dropped explicitly here, mirroring PortalState/PendingPortalMounts
+            // above.
             _ctx.ZLayerPlaceholders.Clear();
-            _ctx.PendingZLayerTeardownChecks.Clear();
+            _ctx.PendingZLayerRemovals.Clear();
+            _ctx.PendingZLayerDeadReals.Clear();
+            _ctx.PendingZLayerResorts.Clear();
+            _ctx.ParkedDiffParents.Clear();
             // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
             // hosts destroyed wholesale below — ReconcilerContext.SamePanelPortalBridges owns why.
             foreach (var bridge in _ctx.SamePanelPortalBridges.Values)

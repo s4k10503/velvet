@@ -142,7 +142,7 @@ namespace Velvet
 
         // Tailwind's isPositiveInteger: the digits must print back unchanged through a JavaScript number, so a
         // leading zero, a sign and a fraction are declined, and so is a long run the number prints differently.
-        private static bool TryParseBare(ReadOnlySpan<char> digits, out long value)
+        internal static bool TryParseBare(ReadOnlySpan<char> digits, out long value)
         {
             if ((digits.Length > 1 && digits[0] == '0') || !TryParseDigits(digits, out value))
             {
@@ -216,7 +216,7 @@ namespace Velvet
         }
 
         // A CSS <integer>: an optional sign, then digits.
-        private static bool TryParseSignedDigits(ReadOnlySpan<char> text, out long value)
+        internal static bool TryParseSignedDigits(ReadOnlySpan<char> text, out long value)
         {
             var sign = text.IsEmpty ? '\0' : text[0];
             var negative = sign == '-';

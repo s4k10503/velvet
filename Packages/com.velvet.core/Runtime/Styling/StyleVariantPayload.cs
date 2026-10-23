@@ -49,6 +49,8 @@ namespace Velvet
             // re-derives the grid from its FINAL token set instead of first building a one-column grid from
             // the half-applied one.
             var gateChanged = false;
+            // Set when this call toggled a position utility, which decides how the element's parent stacks it.
+            var positionChanged = false;
 
             for (var index = 0; index < payloads.Length; index++)
             {
@@ -79,6 +81,7 @@ namespace Velvet
                     continue;
                 }
                 // The condition belongs to the control and the paint to its input box (StyleInputBoxSurface).
+                positionChanged |= core == "absolute" || core == "relative";
                 var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
@@ -130,6 +133,10 @@ namespace Velvet
             if (boxChanged)
             {
                 ctx?.VariantGatedReSync?.Invoke(box!);
+            }
+            if (positionChanged && ctx != null)
+            {
+                FiberZLayerCoordinator.OnPositionToggled(ctx, control);
             }
 
             SilhouetteFaceStash.NotifyClassesChanged(control);
@@ -290,6 +297,7 @@ namespace Velvet
 
         private static bool IsImportanceAware(string core)
             => StyleFontClass.IsFontToken(core) || StyleTextEffectClass.IsTextEffectToken(core)
+                || IsStackingToken(core)
                 || StylePointerEventsClass.IsPointerEventsToken(core)
                 || StyleSkewClass.IsSkewClass(core)
                 || StyleShadowClass.IsShadowClass(core) || StyleShadowClass.IsInsetBoxShadowClass(core)
@@ -299,7 +307,8 @@ namespace Velvet
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
         // the three layout manipulators and the pointer-events scope (FiberNodePatcher.ApplyLayoutManipulators),
         // the six wrapper-less paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
-        // (FiberNodePatcher.ApplyFontLayer) and the text-effect cascade (FiberNodePatcher.ApplyTextEffects).
+        // (FiberNodePatcher.ApplyFontLayer), the text-effect cascade (FiberNodePatcher.ApplyTextEffects) and the
+        // sibling stacking (FiberZLayerCoordinator.OnResolved).
         // Each family answers for its own prefix set so this gate cannot drift from the array scans those
         // passes run.
         //
@@ -319,6 +328,13 @@ namespace Velvet
                 || StyleBorderStyleClass.IsBorderStyleClass(core)
                 || StyleRingClass.IsRingClass(core)
                 || StyleFontClass.IsFontToken(core)
-                || StyleTextEffectClass.IsTextEffectToken(core);
+                || StyleTextEffectClass.IsTextEffectToken(core)
+                || IsStackingToken(core);
+
+        // z-* and order-*, which FiberZLayerCoordinator reads out of the class source to arrange the element among
+        // its siblings.
+        private static bool IsStackingToken(string core)
+            => core.StartsWith("z-", System.StringComparison.Ordinal) || core.StartsWith("-z-", System.StringComparison.Ordinal)
+                || StyleOrderClass.IsOrderToken(core);
     }
 }

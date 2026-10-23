@@ -757,22 +757,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer()
+        public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsFrontBand()
         {
-            // A z-* absolute element is relocated out of its ordinary slot into a layer container, leaving a
-            // placeholder behind. The band is hosted on the element's parent, so it has to follow — placement
-            // is drained at the reconcile boundary, AFTER the relocation, and re-derives the host from the
-            // element rather than caching the parent it had at create time.
+            // A z-* absolute element is relocated out of its ordinary slot into its parent's front band, leaving
+            // a placeholder behind. The band is placed directly after the element, so it has to follow it there
+            // — the arrangement keeps a band after the element it sits after.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "absolute z-10 ring-2", name: "card") });
 
-            // Relocated AND accompanied: the band is beside the element in its ordinary slot too, so asking
-            // only where the band is holds equally for an element that never left.
+            // Relocated AND accompanied: the band sits after the element in its ordinary slot too, so asking only
+            // where the band is holds equally for an element that never left.
             var card = scope.Root.Q<VisualElement>("card");
-            Assert.That(
-                (FiberZLayerCoordinator.IsLayerContainer(card.parent), RingOverlayIn(card.parent) != null),
-                Is.EqualTo((true, true)));
+            Assert.That(ZBandProbe.Names(ZBandProbe.Band(card.parent, front: true)), Is.EqualTo("card,band"));
         }
 
         [Test]

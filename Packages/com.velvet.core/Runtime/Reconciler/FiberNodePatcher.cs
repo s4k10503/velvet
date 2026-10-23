@@ -62,22 +62,10 @@ namespace Velvet
             switch (oldNode)
             {
                 case ElementNode oldElem when newNode is ElementNode newElem:
-                    // z-* candidacy is a runtime property of the CLASS LIST, not the VNode type (unlike
-                    // Portal/WorldSpace, which dispatch on a distinct type) — CanPatch already says
-                    // "patch in place" for any two ElementNodes of the same ElementType/wrapper-presence
-                    // regardless of z-classes, so the four transitions (still z / z-to-none / none-to-z /
-                    // z-changed) must be intercepted HERE, before the ordinary element patch, or `element`
-                    // (a z-managed slot's PLACEHOLDER, whenever oldElem was z-managed) would be patched as if
-                    // it were the real content.
-                    if (!FiberZLayerCoordinator.TryClassify(oldElem.ClassNames, oldElem.Props, out _)
-                        && !FiberZLayerCoordinator.TryClassify(newElem.ClassNames, newElem.Props, out _))
-                    {
-                        PatchElement(element, oldElem, newElem);
-                    }
-                    else
-                    {
-                        PatchZLayerElement(element, oldElem, newElem);
-                    }
+                    // A relocated slot holds a PLACEHOLDER (FiberZLayerCoordinator), and whether a slot is
+                    // relocated depends on the element's siblings as well as its own classes, so the patch
+                    // always reads the slot through the registry rather than deciding from either class list.
+                    PatchZLayerElement(element, oldElem, newElem);
                     break;
                 case TextNode oldText when newNode is TextNode newText:
                     // Invariant: TextNode is always mapped to Label by CreateElement.
@@ -271,78 +259,36 @@ namespace Velvet
             ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames, clipActive);
         }
 
-        // Applies the oldNode -> newNode diff when EITHER side is z-managed (FiberZLayerCoordinator.
-        // TryClassify), covering the three reachable transitions (the caller already excludes "neither side is
-        // z-managed", which falls through to the ordinary PatchElement):
-        //   still z-managed (z -> z, possibly a different resolved value): `element` is the PLACEHOLDER;
-        //     the real element is patched normally, then repositioned only if its resolved z (or front/back
-        //     sign) actually changed.
-        //   z -> none: `element` is the PLACEHOLDER; the real element is patched normally, then relocated
-        //     back into the placeholder's own slot, replacing it.
-        //   none -> z: `element` IS the real, still-ordinary element; it is patched normally in place, then
-        //     relocated out into its layer, leaving a fresh placeholder at its old slot.
-        // Every branch patches the REAL element (props/children/styles) before any relocation, so a size or
-        // content change that a coordinate-neutral reposition depends on is already reflected.
-        // Contract-preserving: exactly like PatchElement, the net effect on `element`'s own parent's
-        // childCount/order is zero in every branch — a same-index swap (mirroring PatchNode's own MemoNode-
-        // branch precedent) or a pure container-membership move — so ProcessKeyedNode / CommitLeaf's post-
-        // patch re-fetch at the same slot (already written to tolerate a WrapElement-style reference swap)
-        // picks up the new occupant without any change to those call sites.
+        // Patches the element a slot stands for — the slot's element itself, or the real element its placeholder
+        // stands for — and hands the result to FiberZLayerCoordinator, which relocates it or returns it to its slot
+        // when its own z or flex order says so. Contract-preserving, exactly like PatchElement: the net effect on
+        // the slot's parent's logical children is zero — a placeholder inserted at the element's physical index
+        // with the element turned invisible, or the two exchanged by a sort — so ProcessKeyedNode / CommitLeaf's
+        // post-patch re-fetch at the same slot picks up the new occupant without any change to those call sites.
         private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
-            // Read off the placeholder registry rather than the old class list: a z-* class reading a custom
-            // property stacks or unstacks the element as that resolves, with no patch (FiberZLayerCoordinator.
-            // Restack), and the patch below can do the same before the relocation is decided.
             var real = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             PatchElement(real, oldNode, newNode);
-            var classified = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
-            var isZ = FiberZLayerCoordinator.Stacks(_ctx, FiberZLayerCoordinator.ClassElementOf(_ctx, real), classified,
-                ref newResolvedZ);
-            var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, real);
-            if (placeholder == null)
-            {
-                if (isZ)
-                {
-                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, real, newResolvedZ);
-                }
-            }
-            else if (isZ)
-            {
-                FiberZLayerCoordinator.Reposition(_ctx, placeholder, real, newResolvedZ);
-            }
-            else
-            {
-                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, placeholder, real);
-            }
+            var classElement = FiberZLayerCoordinator.ClassElementOf(_ctx, real);
+            FiberZLayerCoordinator.OnPatched(_ctx, real, classElement, newNode.ClassNames,
+                ResolveGateClasses(classElement, newNode.ClassNames), newNode.Props?.Anchored != null);
         }
 
         // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
-        // resolves, so the old side is read off the placeholder registry and the new side once the patch ran.
+        // resolves, so the new side is read once the patch ran.
         private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
             var motion = _ctx.ZLayerPlaceholders.TryGetValue(element, out var real) ? real : element;
             PatchMotion(motion, oldNode, newNode);
-            var classified = FiberZLayerCoordinator.TryClassify(
-                RestingClassSet(motion, newNode.ClassNames).Merged, newNode.Props, out var resolvedZ);
-            var isZ = FiberZLayerCoordinator.Stacks(_ctx, motion, classified, ref resolvedZ);
-            // Read again after the patch, for the reason PatchZLayerElement gives.
-            var placeholder = FiberZLayerCoordinator.PlaceholderOf(_ctx, motion);
-            if (placeholder == null)
-            {
-                if (isZ)
-                {
-                    FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, motion, resolvedZ);
-                }
-            }
-            else if (isZ)
-            {
-                FiberZLayerCoordinator.Reposition(_ctx, placeholder, motion, resolvedZ);
-            }
-            else
-            {
-                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, placeholder, motion);
-            }
+            var applied = RestingClassSet(motion, newNode.ClassNames).Merged;
+            FiberZLayerCoordinator.OnPatched(_ctx, motion, motion, applied, ResolveGateClasses(motion, applied),
+                newNode.Props?.Anchored != null);
         }
+
+        // The class source an element's stacking is read from: the reconciled array with the gate tokens a variant
+        // currently lights appended (ResolveGateClasses).
+        internal string[] ResolveStackingClasses(VisualElement element, string[] classNames)
+            => ResolveGateClasses(element, classNames);
 
         // The ordered post-children effect-pass sequence shared by PatchElement and PatchMotion, kept in
         // one place so the two patch paths cannot drift (a pass added here reaches both). The ORDER is
@@ -3237,17 +3183,15 @@ namespace Velvet
             // sibling index, not the wrapper's 1-child interior. On initial mount the element is not parented
             // yet, so the container post-children pass applies it once placed.
             var outer = ResolveOuter(element);
-            // A z-managed outer's PHYSICAL parent is its layer container (its position there is relative to
-            // unrelated same-layer siblings, not this element's true siblings) — TryGetLogicalPosition
-            // resolves to the stacking parent + the placeholder's slot instead; an ordinary outer resolves to
-            // its own parent/index unchanged, same as the previous outer.parent / outer.parent.IndexOf(outer).
+            // A relocated outer's PHYSICAL index is its band position, not its declared one — TryGetLogicalPosition
+            // resolves to the placeholder's slot instead; an ordinary outer resolves to its own parent/index
+            // unchanged, same as the previous outer.parent / outer.parent.IndexOf(outer).
             if (!FiberZLayerCoordinator.TryGetLogicalPosition(_ctx, outer, out var logicalParent, out var logicalIndex))
             {
                 return;
             }
-            // Exclude the trailing filter bounds-spacer(s) AND a leading back z-layer container (either may
-            // be present) from the sibling count: neither is part of the logical child list a
-            // first:/last:/nth match sees.
+            // Exclude the reconciler-invisible children (LogicalChildSlots.IsInvisible) from the sibling count:
+            // none is part of the logical child list a first:/last:/nth match sees.
             EvaluateStructural(_ctx, element, LogicalChildSlots.ToLogical(logicalParent!, logicalIndex),
                 LogicalChildSlots.Count(logicalParent!), rules);
         }
@@ -3276,8 +3220,8 @@ namespace Velvet
                 return;
             }
 
-            // The reconciler-invisible children — a filter bounds spacer, a z-index layer container, a ring
-            // band — are internal, not logical siblings, so first:/last:/nth must neither count them nor
+            // The reconciler-invisible children — a filter bounds spacer, a relocated z-* element, a ring
+            // band — are not logical siblings, so first:/last:/nth must neither count them nor
             // land on one. Walking logical slots and converting each to a physical index does both, wherever
             // in the child list they happen to sit.
             // One walk over the physical children, collecting the ruled ones before any payload is written:
@@ -3290,7 +3234,7 @@ namespace Velvet
             for (var physical = 0; physical < container.childCount; physical++)
             {
                 var slotOccupant = container[physical];
-                if (SilhouetteBoundsSpacer.IsSpacer(slotOccupant))
+                if (LogicalChildSlots.IsInvisible(slotOccupant))
                 {
                     continue;
                 }
@@ -3415,6 +3359,8 @@ namespace Velvet
             if (reconciled != null)
             {
                 StyleTextEffectResolver.Apply(_ctx, element, resolved);
+                FiberZLayerCoordinator.OnResolved(_ctx, FiberZLayerCoordinator.SlotOf(_ctx, element), element,
+                    reconciled, resolved, _ctx.AnchoredBindings.ContainsKey(element));
             }
             if (state == null || !state.PaintTail)
             {

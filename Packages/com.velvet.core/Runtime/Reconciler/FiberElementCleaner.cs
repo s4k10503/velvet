@@ -565,7 +565,7 @@ namespace Velvet
             {
                 var child = target.ElementAt(i);
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
-                if (SilhouetteBoundsSpacer.IsSpacer(child))
+                if (LogicalChildSlots.IsInvisible(child))
                 {
                     continue;
                 }
@@ -647,13 +647,15 @@ namespace Velvet
             PanelHostFactory.Destroy(record);
         }
 
-        // Tears down the real element owned by a departing z-layer placeholder — mirrors CleanupPortal: the
-        // real element is not a DOM descendant of the placeholder (it lives in a layer container elsewhere
-        // under the same stacking parent), so the ordinary CleanupDescendants walk below would never reach
-        // it on its own. A no-op when element is not (or no longer) a z-layer placeholder.
+        // Tears down the real element owned by a departing z-layer placeholder — mirrors CleanupPortal: the real
+        // element is not a DOM descendant of the placeholder (it is relocated elsewhere among the same parent's
+        // children), so the ordinary CleanupDescendants walk below would never reach it on its own. A no-op when
+        // element is not (or no longer) a z-layer placeholder. One still standing in the parent is left there until
+        // the pass ends (FiberZLayerCoordinator.TakeReal says why) and released by ReleaseRetiredZLayerReals, since
+        // a pooled element can be handed out again within the pass.
         private void CleanupZLayerPlaceholder(VisualElement element)
         {
-            var real = FiberZLayerCoordinator.TakeReal(_ctx, element);
+            var real = FiberZLayerCoordinator.TakeReal(_ctx, element, out var stillPlaced);
             if (real == null)
             {
                 return;
@@ -661,8 +663,30 @@ namespace Velvet
             var poolable = PoolableOccupantOf(real);
             // The real element shares its placeholder's panel.
             CleanupElement(real, element.panel);
-            // TakeReal already detached `real` from its layer container; nothing left to remove from the DOM.
+            if (stillPlaced)
+            {
+                _ctx.PendingZLayerDeadReals.Add((real, poolable));
+                return;
+            }
             ReturnOccupantToPool(real, poolable);
+        }
+
+        // Removes and pools the relocated elements CleanupZLayerPlaceholder left standing. Runs from
+        // Reconciler.FinishTopLevelPass, where no diff holds a physical index into their parents.
+        internal void ReleaseRetiredZLayerReals()
+        {
+            if (_ctx.PendingZLayerDeadReals.Count == 0)
+            {
+                return;
+            }
+            var retired = _ctx.PendingZLayerDeadReals.ToArray();
+            _ctx.PendingZLayerDeadReals.Clear();
+            foreach (var (real, poolable) in retired)
+            {
+                FiberZLayerCoordinator.ForgetRetired(real);
+                real.RemoveFromHierarchy();
+                ReturnOccupantToPool(real, poolable);
+            }
         }
 
         // Recursively cleans up the descendants of an element. DOM operations are the caller's
@@ -683,13 +707,11 @@ namespace Velvet
                     continue;
                 }
 
-                // A z-layer container's own members are z-managed REAL elements, each with a placeholder
-                // sitting elsewhere in this SAME child list (both are direct children of `element` whenever
-                // it is a stacking-context parent being torn down) — CleanupZLayerPlaceholder already reaches
-                // and fully cleans up every member via its placeholder in this very loop. Descending into the
-                // container here too would run the full CleanupElementResources + DisposeFibersUnder sequence
-                // on each member a second time.
-                if (FiberZLayerCoordinator.IsLayerContainer(child))
+                // A relocated element has a placeholder in this SAME child list, through which
+                // CleanupZLayerPlaceholder reaches and fully cleans it in this very loop; cleaning it here too
+                // would run the full CleanupElementResources + DisposeFibersUnder sequence on it a second time.
+                // A retired one was cleaned when it was retired, and an anchor is internal.
+                if (FiberZLayerCoordinator.IsRelocatedReal(child) || FiberZLayerCoordinator.IsInternal(child))
                 {
                     continue;
                 }

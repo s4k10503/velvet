@@ -46,14 +46,14 @@ Keyboard focus is untouched: a focusable element inside an ignored subtree is st
 
 When the utility goes away — the class is removed, a variant's gate shuts, the element unmounts — every
 element gets back the picking mode it had before. Some elements are `Ignore` before the utility arrives —
-Velvet's component wrappers and z-layer containers, a `Slider`'s root — and those stay `Ignore`.
+Velvet's component wrappers, the anchor a relocated `order-*` element lays out at, a `Slider`'s root — and those stay `Ignore`.
 
 ## Which elements it reaches
 
 The walk follows the element tree as it is mounted, so:
 
-- a `z-*` element hoisted into its layer container is covered with its siblings — the container sits under
-  the same parent ([styling-z-index.md](styling-z-index.md));
+- a `z-*` element is covered with its siblings wherever it paints — it stays a child of its parent
+  ([styling-z-index.md](styling-z-index.md));
 - a `V.Portal`'s content is covered when the Portal's target is inside the subtree, and not otherwise,
   wherever the `V.Portal` call itself sits.
 

@@ -190,8 +190,8 @@ namespace Velvet
         }
 
         // Offers every tracked child that has left the container for release, then prunes it. A child the
-        // reconciler removed was released by its cleanup already, so what this reaches is the reparents, such
-        // as a z-layer hoist. A clip wrapper inserted between container and child
+        // reconciler removed was released by its cleanup already, so what this reaches is a reparent. A clip
+        // wrapper inserted between container and child
         // stands in for the child rather than taking it out of the container.
         private void ResetStaleApplied(VisualElement container)
         {

@@ -40,7 +40,7 @@ namespace Velvet
     // Out-of-flow children (position: absolute) are excluded from the index walk — see
     // StyleOutOfFlowChild — the same way StyleGapManipulator excludes them: an out-of-flow child (a
     // PopLayout-pinned ghost, or an app-authored .absolute child) draws no divider, but it counts toward which
-    // child is last, as `:last-child` counts it — see StyleOutOfFlowChild.LastSpacedIndex.
+    // child is last, as `:last-child` counts it — see StyleOutOfFlowChild.LastSpacedChild.
     internal sealed class StyleDivideManipulator : Manipulator, IChildClassWatcher
     {
         private static readonly DivideEdge[] s_edges = (DivideEdge[])System.Enum.GetValues(typeof(DivideEdge));
@@ -63,6 +63,8 @@ namespace Velvet
         // element no longer a current child is offered for release; whether it loses the border is the
         // claim's answer, not this list's — see ReconcilerContext.ChildDividerOwners.
         private readonly List<VisualElement> _bordered = new();
+        // The children in flex order, refilled by each Apply.
+        private readonly List<VisualElement> _flow = new();
 
         private int _lastSignature;
         private bool _hasSignature;
@@ -166,18 +168,18 @@ namespace Velvet
             _everApplied |= 1 << (int)edge;
             _bordered.Clear();
 
-            var count = container.childCount;
-            var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
-            for (var i = 0; i < count; i++)
+            var last = StyleOutOfFlowChild.LastSpacedChild(container);
+            FiberZLayerCoordinator.FlowChildren(container, _flow);
+            foreach (var flowChild in _flow)
             {
                 // An out-of-flow child is not a layout sibling, so it draws no divider; it still takes the "last
                 // child" slot, as it does for Tailwind's `:not(:last-child)`.
-                if (StyleOutOfFlowChild.IsOutOfFlow(container[i]))
+                if (StyleOutOfFlowChild.IsOutOfFlow(flowChild))
                 {
                     continue;
                 }
-                var child = ClipPathLayoutBox.InnerOf(container[i]);
-                var isDivider = i != lastIndex;
+                var child = ClipPathLayoutBox.InnerOf(flowChild);
+                var isDivider = !ReferenceEquals(flowChild, last);
                 ApplyToChild(child, edge, isDivider);
                 StyleChildOwnership.Claim(_ctx.ChildDividerOwners, child, this);
                 _bordered.Add(child);

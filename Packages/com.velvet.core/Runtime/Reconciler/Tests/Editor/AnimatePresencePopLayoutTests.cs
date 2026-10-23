@@ -84,7 +84,7 @@ namespace Velvet.Tests
         }
 
         // "item-b" itself is z-managed (absolute + z-10): its real content relocates into "presence-host"'s own
-        // front layer container, with a Motion child (found via FindFirstMotionDescendant, since the presence
+        // front band, with a Motion child (found via FindFirstMotionDescendant, since the presence
         // child's own node is the Div wrapper, not a MotionNode) driving the actual enter/exit variants — an
         // "animated top-most modal" shape. The wrapper Div carries the name and the key; the z-layer placeholder
         // FiberZLayerCoordinator.CreatePlaceholder builds carries no name at all, so a query by name always
@@ -137,7 +137,7 @@ namespace Velvet.Tests
             var scheduler = ctx.BatchScheduler;
             var item = _window.rootVisualElement.Q<VisualElement>("item-b");
             Assume.That(ctx.ZLayerMembers.ContainsKey(item), Is.True,
-                "Precondition: item-b actually relocated into its layer container");
+                "Precondition: item-b actually relocated into the front band");
             Assume.That(float.IsFinite(item.layout.width), Is.True,
                 "Precondition: item-b's pre-exit rect is finite");
 

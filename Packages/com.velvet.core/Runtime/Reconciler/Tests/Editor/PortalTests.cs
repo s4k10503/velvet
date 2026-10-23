@@ -672,20 +672,17 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Target already carries a z-layer container
+        #region Target already carries a back-band z-* element
 
         [Test]
-        public void Given_APortalTargetThatAlreadyHasABackZLayerContainer_When_KeyedChildrenMount_Then_TheyLandAtTheCorrectPhysicalIndices()
+        public void Given_APortalTargetThatAlreadyHasABackBandElement_When_KeyedChildrenMount_Then_TheyLandAtTheCorrectPhysicalIndices()
         {
-            // Arrange — the target already carries a leading back z-layer container (as a negative-z absolute
-            // element relocated directly under it would leave behind), so NonSpacerChildCount(target) already
-            // counts it: the drain's own slotStart computation is already physically correct and must not be
-            // folded a second time by Reconcile's leading-offset entry gate, or a keyed tail-add indexes past
-            // childCount and throws.
+            // Arrange — the target already carries a back-band element (as a negative-z element relocated among
+            // its children would), which an append steps over: a keyed tail-add that counted it as a slot, or
+            // that resolved the append ahead of it, would land the labels out of place or throw.
             var target = new VisualElement();
-            var backContainer = new VisualElement();
-            backContainer.AddToClassList(FiberZLayerCoordinator.BackMarkerClass);
-            target.Add(backContainer);
+            var backElement = ZBandProbe.BackBandMember("back");
+            target.Add(backElement);
             FiberPortalRegistry.Register("z-managed-target", target);
             var children = new VNode[]
             {
@@ -699,7 +696,7 @@ namespace Velvet.Tests
             // Act — without the fix, this throws (List.Insert index > Count) before ever reaching the assert.
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), children);
 
-            // Assert — both keyed labels land right after the back container, in declared order.
+            // Assert — both keyed labels land right after the back-band element, in declared order.
             Assert.That(
                 (target.childCount, ((Label)target.ElementAt(1)).text, ((Label)target.ElementAt(2)).text),
                 Is.EqualTo((3, "A", "B")));

@@ -322,6 +322,12 @@ namespace Velvet
         internal static readonly EngineMember LayoutNodeHasNewLayout =
             ReadProperty(UIElements, LayoutNodeType, "HasNewLayout", "System.Boolean");
 
+        // ChildLayoutOrder's rebuild of a parent's layout children in an order other than its paint order.
+        internal static readonly EngineMember LayoutNodeClear = Method(UIElements, LayoutNodeType, "Clear", "System.Void");
+
+        internal static readonly EngineMember LayoutNodeInsert =
+            Method(UIElements, LayoutNodeType, "Insert", "System.Void", "System.Int32", LayoutNodeType);
+
         internal static readonly EngineMember ElementLastLayout = Field(UIElements, VisualElementType, "lastLayout", "UnityEngine.Rect");
 
         internal static readonly EngineMember ElementIncrementVersion = Method(UIElements, VisualElementType,

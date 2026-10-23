@@ -242,17 +242,11 @@ namespace Velvet
                 outer = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
             }
 
-            // z-* scope gate: only an ALSO-absolute element with an explicit z-* class routes into a
-            // layer container; everything else (the overwhelming majority) returns `outer` unchanged
-            // at the cost of one cheap prefix scan. Gated on the OUTERMOST element — a clip-path-*/
-            // ring/wrapElement wrapper is what physically occupies the slot, so it (not the inner
-            // `element`) is what must relocate.
-            var classified = FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ);
-            if (FiberZLayerCoordinator.Stacks(_ctx, element, classified, ref resolvedZ))
-            {
-                return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
-            }
-            return outer;
+            // Stacking: the OUTERMOST element is what relocates — a clip-path-*/wrapElement wrapper is what
+            // physically occupies the slot. An element whose classes name no z, order or position (the
+            // overwhelming majority) returns `outer` unchanged at the cost of one prefix scan.
+            return FiberZLayerCoordinator.OnCreated(_ctx, outer, element, elementNode.ClassNames, paintClasses,
+                elementNode.Props?.Anchored != null);
         }
 
         // Runs before either create path's text-effect pass: that pass rewrites the element's displayed text
@@ -430,12 +424,8 @@ namespace Velvet
                 MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
             }
             // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
-            var classified = FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out var resolvedZ);
-            if (FiberZLayerCoordinator.Stacks(_ctx, element, classified, ref resolvedZ))
-            {
-                return FiberZLayerCoordinator.EnqueueMount(_ctx, element, resolvedZ);
-            }
-            return element;
+            return FiberZLayerCoordinator.OnCreated(_ctx, element, element, appliedClasses,
+                _patcher.ResolveStackingClasses(element, appliedClasses), motionNode.Props?.Anchored != null);
         }
 
         // The variant enter a Motion plays as it mounts, from its own labels or inherited ones. DelaySec is the
@@ -836,7 +826,7 @@ namespace Velvet
             {
                 ContextProviderNode provider => provider.Children,
                 FragmentNode fragment => fragment.Children,
-                ElementNode elementNode when FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out _)
+                ElementNode elementNode when FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, out _)
                     => elementNode.Children,
                 _ => null,
             };

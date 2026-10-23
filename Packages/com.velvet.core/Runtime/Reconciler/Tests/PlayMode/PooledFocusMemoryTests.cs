@@ -152,7 +152,7 @@ namespace Velvet.Tests
             });
         }
 
-        // A z-indexed child leaves its slot for a layer container, so its teardown detaches it before releasing it.
+        // A z-indexed child leaves its slot for the front band, so its teardown detaches it before releasing it.
         [Component]
         private static VNode ZIndexedButton() => V.Div(children: new VNode[]
         {

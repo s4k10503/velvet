@@ -109,7 +109,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_APeerHoverChildAfterAZManagedPeer_When_TheRelocatedPeerIsHovered_Then_ThePayloadIsAppliedToTheChild()
         {
-            // Arrange — the peer is absolute with a z-* utility, so it relocates into its parent's front z-layer
+            // Arrange — the peer is absolute with a z-* utility, so it relocates into its parent's front band
             // and only its placeholder precedes the child.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(
                 "relative",
@@ -127,8 +127,7 @@ namespace Velvet.Tests
             // Assert — the relocation is a term: a peer left at its declared slot is found without the
             // placeholder ever being read.
             Assert.That(
-                (peer.parent != null && peer.parent.ClassListContains(FiberZLayerCoordinator.FrontMarkerClass),
-                    child.ClassListContains("bg-on")),
+                (ZBandProbe.InBand(peer, front: true), child.ClassListContains("bg-on")),
                 Is.EqualTo((true, true)));
         }
 

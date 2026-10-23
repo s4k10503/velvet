@@ -107,6 +107,8 @@ namespace Velvet
         // that is no longer a current child of the child container is offered for release; whether it loses
         // the margin is the claim's answer, not this list's — see ReconcilerContext.ChildBoxOwners.
         private readonly List<VisualElement> _margined = new();
+        // The children in flex order, refilled by each Apply.
+        private readonly List<VisualElement> _flow = new();
 
         // Whether the child container carries the wrap path's negative margin.
         private bool _containerHeld;
@@ -239,12 +241,11 @@ namespace Velvet
 
             // Tailwind's `:last-child` counts an absolutely positioned child, so the space rule reads the raw index;
             // CSS gap spaces only boxed in-flow children, so the gap reads its own count.
-            var lastIndex = StyleOutOfFlowChild.LastSpacedIndex(container);
-            var count = container.childCount;
+            var last = StyleOutOfFlowChild.LastSpacedChild(container);
+            FiberZLayerCoordinator.FlowChildren(container, _flow);
             var gapIndex = 0;
-            for (var i = 0; i < count; i++)
+            foreach (var child in _flow)
             {
-                var child = container[i];
                 // Out-of-flow children (a PopLayout-pinned exiting ghost, or an app-authored .absolute
                 // child) hold no slot in the flex line — see StyleOutOfFlowChild. Skip them entirely rather
                 // than resetting their margin: a pinned ghost's own margin is frozen into the compensated
@@ -264,7 +265,7 @@ namespace Velvet
                     SumGap(gapIndex, wrap, gapSlot);
                     gapIndex++;
                 }
-                if (i != lastIndex)
+                if (!ReferenceEquals(child, last))
                 {
                     SumSpace(child);
                 }

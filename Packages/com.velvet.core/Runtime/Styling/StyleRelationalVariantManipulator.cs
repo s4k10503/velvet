@@ -273,6 +273,11 @@ namespace Velvet
             for (var i = index - 1; i >= 0; i--)
             {
                 var sibling = parent!.ElementAt(i);
+                // A relocated element is read at its placeholder; where it paints says nothing of its order.
+                if (LogicalChildSlots.IsInvisible(sibling))
+                {
+                    continue;
+                }
                 if (ctx.ZLayerPlaceholders.TryGetValue(sibling, out var relocated))
                 {
                     sibling = relocated;

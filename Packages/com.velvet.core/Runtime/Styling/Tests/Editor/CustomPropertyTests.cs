@@ -73,13 +73,11 @@ namespace Velvet.Tests
             return _window.rootVisualElement.Q<VisualElement>("inner");
         }
 
-        // The order inner, or the wrapper holding it, and lit paint in within lit's layer.
+        // The order inner, or the wrapper holding it, and lit paint in within lit's band.
         private string PaintOrder()
         {
             var inner = _window.rootVisualElement.Q<VisualElement>("inner");
-            var slot = inner.parent.name == "outer" || inner.parent.ClassListContains(FiberZLayerCoordinator.FrontMarkerClass)
-                ? inner
-                : inner.parent;
+            var slot = inner.parent.name == "outer" ? inner : inner.parent;
             var lit = _window.rootVisualElement.Q<VisualElement>("lit");
             return string.Join(",", lit.parent.Children().Where(child => child == slot || child == lit)
                 .Select(child => child == lit ? "lit" : "inner"));
@@ -475,7 +473,7 @@ namespace Velvet.Tests
         {
             // Arrange — unstacked while nothing declares --z, as z-auto leaves it, then raised above lit.
             var child = MountStacked("", "absolute z-(--z)");
-            var unresolved = child.parent.name;
+            var unresolved = IsRelocated(child);
             s_setOuter.Invoke("[--z:20]");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
             var raised = PaintOrder();
@@ -485,7 +483,7 @@ namespace Velvet.Tests
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.That((unresolved, raised, PaintOrder()), Is.EqualTo(("outer", "lit,inner", "inner,lit")));
+            Assert.That((unresolved, raised, PaintOrder()), Is.EqualTo((false, "lit,inner", "inner,lit")));
         }
 
         // GREEN_ON_BASE(characterization): the base reads no z-* bracket holding a var(), so it leaves this element unstacked too.
@@ -499,8 +497,11 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
 
             // Assert
-            Assert.That(child.parent.name, Is.EqualTo("outer"));
+            Assert.That(IsRelocated(child), Is.False);
         }
+
+        // Whether child stacks out of its declared slot.
+        private bool IsRelocated(VisualElement child) => _mounted.Root.Reconciler.Context.ZLayerMembers.ContainsKey(child);
 
         [Test]
         public void Given_AClipPathWrappedZIndexReadingADeclaration_When_Resolved_Then_TheWrapperRestacks()
