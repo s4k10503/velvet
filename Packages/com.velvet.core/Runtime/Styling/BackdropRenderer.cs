@@ -21,6 +21,7 @@ namespace Velvet
         private static readonly FieldInfo? s_renderData = EngineMember.ElementRenderData.ResolveField();
         private static readonly FieldInfo? s_nestedRenderData = EngineMember.ElementNestedRenderData.ResolveField();
         private static readonly FieldInfo? s_childrenStencilRef = EngineMember.RenderDataChildrenStencilRef.ResolveField();
+        private static readonly FieldInfo? s_childrenMaskDepth = EngineMember.RenderDataChildrenMaskDepth.ResolveField();
 
         // The colour functions one pass applies, before its taps and after them: the shader's array length.
         internal const int MaxColorSteps = 16;
@@ -101,21 +102,33 @@ namespace Velvet
             material.SetVector(BackdropShader.Clip, new Vector4(clip.xMin, clip.yMin, clip.xMax, clip.yMax));
             material.SetFloat(BackdropShader.Opacity, CompositeOpacity(layer));
             material.SetFloat(BackdropShader.Encode, QualitySettings.activeColorSpace == ColorSpace.Linear ? 1f : 0f);
-            material.SetFloat(BackdropShader.StencilRef, StencilRef(layer.hierarchy.parent));
+            var (stencilRef, compare) = StencilTest(layer.hierarchy.parent);
+            material.SetFloat(BackdropShader.StencilRef, stencilRef);
+            material.SetFloat(BackdropShader.StencilCompare, (float)compare);
             material.SetPass(BackdropShader.FinalPass);
             frame.DrawQuad();
         }
 
-        // The reference the renderer tests the layer's siblings against, which a masking ancestor raises; 0 where the
-        // engine's members do not resolve, as for an element under no mask.
-        private static int StencilRef(VisualElement? host)
+        // The stencil test the renderer draws the layer's siblings under. A mask draws one past the reference into the
+        // stencil inside it, and where the children's mask depth stands one past their reference the renderer draws
+        // their shapes with the winding reversed, which its stencil state tests with Less where it tests front faces
+        // with Equal (BackdropFilterPlaybackTests' rounded-clip and clip-path cases): reference less than the stencil.
+        // Equal against 0, as for an element under no mask, where the engine's members do not resolve.
+        private static (int Reference, CompareFunction Compare) StencilTest(VisualElement? host)
         {
-            if (host == null || s_renderData == null || s_nestedRenderData == null || s_childrenStencilRef == null)
+            if (host == null || s_renderData == null || s_nestedRenderData == null || s_childrenStencilRef == null
+                || s_childrenMaskDepth == null)
             {
-                return 0;
+                return (0, CompareFunction.Equal);
             }
             var data = s_nestedRenderData.GetValue(host) ?? s_renderData.GetValue(host);
-            return data == null ? 0 : (int)s_childrenStencilRef.GetValue(data);
+            if (data == null)
+            {
+                return (0, CompareFunction.Equal);
+            }
+            var reference = (int)s_childrenStencilRef.GetValue(data);
+            var depth = (int)s_childrenMaskDepth.GetValue(data);
+            return (reference, depth > reference ? CompareFunction.Less : CompareFunction.Equal);
         }
 
         // The element's corner radii, scaled as CSS scales radii that overlap: top-left, top-right, bottom-right,
@@ -566,5 +579,6 @@ namespace Velvet
         public static readonly int Opacity = Shader.PropertyToID("_Opacity");
         public static readonly int Encode = Shader.PropertyToID("_Encode");
         public static readonly int StencilRef = Shader.PropertyToID("_StencilRef");
+        public static readonly int StencilCompare = Shader.PropertyToID("_StencilComp");
     }
 }

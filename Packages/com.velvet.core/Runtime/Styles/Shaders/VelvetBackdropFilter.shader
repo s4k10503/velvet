@@ -15,6 +15,7 @@ Shader "Velvet/BackdropFilter"
         _MainTex ("Source", 2D) = "black" {}
         _Shadow ("Shadow", 2D) = "black" {}
         _StencilRef ("Stencil reference", Float) = 0
+        _StencilComp ("Stencil comparison", Float) = 3
     }
 
     CGINCLUDE
@@ -175,7 +176,7 @@ Shader "Velvet/BackdropFilter"
             Stencil
             {
                 Ref [_StencilRef]
-                Comp Equal
+                Comp [_StencilComp]
             }
 
             CGPROGRAM
