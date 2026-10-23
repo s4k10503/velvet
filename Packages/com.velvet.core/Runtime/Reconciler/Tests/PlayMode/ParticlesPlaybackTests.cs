@@ -1094,8 +1094,6 @@ namespace Velvet.Tests
         {
             // Arrange
             var effect = CreateLoopEffect();
-            var capability = "";
-            yield return VfxGraphCapability.IgnoreIfCannotDraw(effect, reading => capability = reading);
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root,
                 V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]", playOn: PlayTrigger.Manual));
@@ -1105,6 +1103,9 @@ namespace Velvet.Tests
 
             // Act
             element.Play();
+            var capability = "";
+            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
+            yield return VfxGraphCapability.IgnoreIfCannotDraw(clone, reading => capability = reading);
             yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
             var playing = NotGreen();
             element.Stop();

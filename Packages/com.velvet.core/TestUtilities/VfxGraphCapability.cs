@@ -16,9 +16,9 @@ namespace Velvet.TestUtilities
         private const float WaitSeconds = 10f;
 
         /// <summary>
-        /// Call as the first yield of a test that needs the graph drawn: <c>yield return
+        /// Call once the graph is playing, before the test reads its pixels: <c>yield return
         /// VfxGraphCapability.IgnoreIfCannotDraw(effect, measured => reading = measured);</c>. The effect is the
-        /// scene's own, so the control draws what the test then mounts. <paramref name="report"/> receives the
+        /// mounted clone, which the caller has played. <paramref name="report"/> receives the
         /// measurement whether or not the test is ignored.
         /// </summary>
         public static IEnumerator IgnoreIfCannotDraw(VisualEffect effect, System.Action<string> report)
@@ -28,10 +28,7 @@ namespace Velvet.TestUtilities
             var alive = 0;
             var alpha = 0;
             var start = Time.realtimeSinceStartup;
-            // Reads a copy played the way V.Particles plays its clone, not the scene's own effect.
-            var copy = Object.Instantiate(effect, effect.transform.position, effect.transform.rotation);
-            copy.gameObject.SetActive(true);
-            copy.Play();
+            var renderers = effect.GetComponentsInChildren<Renderer>(true);
             try
             {
                 var camera = go.AddComponent<Camera>();
@@ -43,15 +40,14 @@ namespace Velvet.TestUtilities
                 camera.backgroundColor = Color.clear;
                 camera.targetTexture = texture;
                 go.transform.SetPositionAndRotation(
-                    copy.transform.position - copy.transform.forward * 100f, copy.transform.rotation);
+                    effect.transform.position - effect.transform.forward * 100f, effect.transform.rotation);
                 while (alpha == 0 && Time.realtimeSinceStartup < start + WaitSeconds)
                 {
                     yield return null;
-                    alive = copy.aliveParticleCount;
+                    alive = effect.aliveParticleCount;
                     if (alive > 0)
                     {
-                        camera.Render();
-                        alpha = AlphaTexels(texture);
+                        alpha = RenderAlpha(camera, texture, renderers);
                     }
                 }
             }
@@ -60,7 +56,6 @@ namespace Velvet.TestUtilities
                 texture.Release();
                 Object.Destroy(texture);
                 Object.Destroy(go);
-                Object.Destroy(copy.gameObject);
             }
             var reading = $"capability alive={alive} alpha={alpha} waited={Time.realtimeSinceStartup - start:F1}s "
                 + $"device={SystemInfo.graphicsDeviceType} {SystemInfo.graphicsDeviceVersion}";
@@ -68,6 +63,27 @@ namespace Velvet.TestUtilities
             if (alive > 0 && alpha == 0)
             {
                 Assert.Ignore($"A plain camera draws nothing from the graph: {reading}.");
+            }
+        }
+
+        // V.Particles keeps its clone's renderers off between its own renders, so they are switched on for this one.
+        private static int RenderAlpha(Camera camera, RenderTexture texture, Renderer[] renderers)
+        {
+            try
+            {
+                foreach (var renderer in renderers)
+                {
+                    renderer.forceRenderingOff = false;
+                }
+                camera.Render();
+                return AlphaTexels(texture);
+            }
+            finally
+            {
+                foreach (var renderer in renderers)
+                {
+                    renderer.forceRenderingOff = true;
+                }
             }
         }
 
