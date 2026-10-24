@@ -24,6 +24,9 @@ namespace Velvet.Tests
         private const string PanelSettingsKey = "Velvet.Preview.PanelSettings";
         private const int FramesBeforeReadback = 8;
 
+        // Milliseconds on the panel clock past any time a tick the window scheduled can be due.
+        private const long FarFuture = 10_000_000_000L;
+
         // ScaleWithScreenSize at a 1280x720 reference: a 128x72 screen lays the panel out at a tenth of a pixel
         // per unit.
         private const string StarterPanelSettings = "Assets/VelvetStarterSample/StarterAppPanelSettings.asset";
@@ -176,6 +179,129 @@ namespace Velvet.Tests
             var measured = (VisualElement)typeof(PreviewInspectOverlay).GetField("_measured", Private)
                 ?.GetValue(overlay);
             Assert.That(measured?.name, Is.EqualTo(MeasureTarget));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already shows the panel's texture on the canvas unfiltered.
+        [Test]
+        public void Given_AShownPanel_When_ItsTextureIsShownOnTheCanvas_Then_ItIsSampledWithoutFiltering()
+        {
+            // Arrange
+            var panel = Field<VelvetPreviewPanel>("_panel");
+
+            // Act
+            var filtering = panel.Texture.filterMode;
+
+            // Assert
+            Assert.That(filtering, Is.EqualTo(FilterMode.Point));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already replaces a panel a scene change destroyed when its tick
+        // runs. Disposing the panel is how the test destroys it.
+        [Test]
+        public void Given_ADestroyedPanel_When_TheWindowsTickRuns_Then_TheWindowShowsANewPanel()
+        {
+            // Arrange
+            var destroyed = Field<VelvetPreviewPanel>("_panel");
+            destroyed.Dispose();
+
+            // Act
+            RunScheduledTick();
+
+            // Assert
+            Assert.That(ReferenceEquals(Field<VelvetPreviewPanel>("_panel"), destroyed), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already puts the panel's texture back on a canvas that lost it
+        // when the tick runs.
+        [Test]
+        public void Given_ACanvasWithoutTheTexture_When_TheTickRuns_Then_TheCanvasShowsItAgain()
+        {
+            // Arrange
+            SetCustomViewport(100, 60);
+            SettleLayout();
+            ClearCanvasBackground();
+
+            // Act
+            typeof(VelvetPreviewWindow).GetMethod("TickPanel", Private)?.Invoke(_window, null);
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(
+                Field<VisualElement>("_canvas").resolvedStyle.backgroundImage.renderTexture,
+                Is.SameAs(Field<VelvetPreviewPanel>("_panel").Texture));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already puts the panel's texture back on a canvas that lost it
+        // when the canvas is sized again. The panel's clock is held still so the tick, which does the same, does not
+        // run in between.
+        [Test]
+        public void Given_ACanvasWithoutTheTexture_When_ItIsSizedAgain_Then_TheCanvasShowsItAgain()
+        {
+            // Arrange
+            SetCustomViewport(100, 60);
+            HoldPanelClock();
+            SettleLayout();
+            ClearCanvasBackground();
+
+            // Act
+            SetCustomViewport(100, 60);
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(
+                Field<VisualElement>("_canvas").resolvedStyle.backgroundImage.renderTexture,
+                Is.SameAs(Field<VelvetPreviewPanel>("_panel").Texture));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves a panel for a story without a size at the scaling
+        // its settings resolve for the texture, and pins the scale only for a story with a footprint.
+        [Test]
+        public void Given_ChosenPanelSettings_When_AStoryWithoutASizeIsShown_Then_ThePanelKeepsTheSettingsScaleMode()
+        {
+            // Arrange
+            var settings = AssetDatabase.LoadAssetAtPath<PanelSettings>(StarterPanelSettings);
+            Choose(settings);
+            SetCustomViewport(ScreenWidth, ScreenHeight);
+
+            // Act
+            Select(Story(nameof(LeftHalfRed)));
+
+            // Assert
+            var copy = (PanelSettings)typeof(VelvetPreviewPanel).GetField("_settings", Private)
+                ?.GetValue(Field<VelvetPreviewPanel>("_panel"));
+            Assert.That(
+                (settings.scaleMode, copy.scaleMode),
+                Is.EqualTo((PanelScaleMode.ScaleWithScreenSize, PanelScaleMode.ScaleWithScreenSize)));
+        }
+
+        // Fires the tick the window schedules on its panel once, by putting the panel's clock past the time it is due.
+        private void RunScheduledTick()
+        {
+            var panel = _window.rootVisualElement.panel;
+            UseFrameFakeClockHost.Ms = FarFuture;
+            EditorPanelTestHelpers.SetPanelTimeFunction(panel, UseFrameFakeClockHost.ReadFakeClock);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+        }
+
+        // A clock that never reaches the time the tick is due, so no layout pass runs it.
+        private void HoldPanelClock()
+        {
+            UseFrameFakeClockHost.Ms = 0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(
+                _window.rootVisualElement.panel, UseFrameFakeClockHost.ReadFakeClock);
+        }
+
+        // Two passes: the second takes up the geometry events the first raises.
+        private void SettleLayout()
+        {
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+        }
+
+        private void ClearCanvasBackground()
+        {
+            Field<VisualElement>("_canvas").style.backgroundImage = new StyleBackground(StyleKeyword.None);
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
         }
 
         private static VelvetPreviewStory Story(string method, int width = 0, int height = 0) =>
