@@ -201,7 +201,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AVisualEffectWithAnInactiveChildRenderer_When_Attached_Then_ThatRendererIsAmongTheHeldOnes()
         {
-            // Arrange — the source has its active quad and this inactive one.
+            // Arrange — the source has its active quad and this inactive one; the held set also carries a renderer the engine adds, so the case looks for the inactive quad's rather than counting.
             var effect = CreateVisualEffectSource("fx-vfx-inactive-child");
             var inactive = GameObject.CreatePrimitive(PrimitiveType.Quad);
             inactive.transform.SetParent(effect.transform, false);
@@ -211,7 +211,7 @@ namespace Velvet.Tests
             var binding = MountVisualEffect(effect, "px-vfx-inactive-child");
 
             // Assert
-            Assert.That(binding.EffectRenderers.Length, Is.EqualTo(2));
+            Assert.That(System.Array.Exists(binding.EffectRenderers, held => held is MeshRenderer && !held.gameObject.activeSelf), Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the layer drawing the texture takes the premultiplied blend material, as before.
