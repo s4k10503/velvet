@@ -87,7 +87,6 @@ namespace Velvet.Tests
             Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(25f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
-        // GREEN_ON_BASE(characterization): the base composed no stylesheet rotate, so it draws the skew alone either way.
         [Test]
         public void Given_ASkewedElementWithAStylesheetRotate_When_TheStylesheetIsDetached_Then_OnlyTheSkewIsDrawn()
         {
@@ -105,7 +104,6 @@ namespace Velvet.Tests
             Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
-        // GREEN_ON_BASE(characterization): an inline rotate outranks a stylesheet's, which the base composed the same way.
         [Test]
         public void Given_ASkewBesideAStylesheetRotateAndAnInlineRotate_When_ItIsDrawn_Then_TheInlineRotateIsComposed()
         {
