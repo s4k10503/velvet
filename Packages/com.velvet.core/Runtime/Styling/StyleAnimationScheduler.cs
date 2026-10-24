@@ -2003,9 +2003,7 @@ namespace Velvet
         // or a non-finite control point IS a misconfiguration and warns. A NaN/Infinity control point would
         // propagate into every inline style write (LerpUnclamped) and never reach a target, so the tick this
         // drives would run forever and its completion callback — the only thing that removes a presence exit's
-        // ghost — would never fire. The control points' x range ([0,1], a monotone timing function) is validated
-        // downstream in CubicBezierEvaluator instead: it degrades an out-of-range value to the default curve
-        // rather than the forever-tick failure mode this method exists to catch, so it is not re-checked here.
+        // ghost — would never fire.
         internal static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec)
         {
             if (durationSec == 0f)
