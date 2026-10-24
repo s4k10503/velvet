@@ -972,6 +972,14 @@ namespace Velvet
         // The automatic minimum size of a text flex item, one per Label / Button the reconciler creates.
         // Removed on cleanup / dispose like the manipulators above.
         public Dictionary<VisualElement, StyleFlexMinSizeManipulator> FlexMinSizeManipulators { get; } = new();
+
+        internal void RescanFlexMinSize(VisualElement element)
+        {
+            if (FlexMinSizeManipulators.TryGetValue(element, out var manipulator))
+            {
+                manipulator.Rescan();
+            }
+        }
         // Each element whose own class list carries pointer-events-none or pointer-events-auto. Not a pure
         // side-table: a scope holds picking off across a subtree, released on cleanup / dispose.
         public Dictionary<VisualElement, PointerEventsScope> PointerEventsScopes { get; } = new();
