@@ -616,6 +616,7 @@ namespace Velvet
             binding.Host = null;
             binding.SourceId = EntityId.None;
             binding.Systems = null;
+            // MUTANT_SURVIVES(equivalent): Batches is read only behind a non-null Host, and CreateHost assigns it before it assigns the Host, so the stale array is never read.
             binding.Batches = null;
             binding.Order.Clear();
             binding.Runs.Clear();
@@ -635,6 +636,7 @@ namespace Velvet
             if (binding.EffectHost != null)
             {
                 ParticlesEffectView.Play(binding);
+                // MUTANT_SURVIVES(equivalent): a VisualEffect's tick is started by the Sync that created the clone and stopped only when nothing is hosted or the element detaches, which also clears this handler, so it is already running here.
                 SyncRepaintTick(element, binding);
                 return;
             }
@@ -692,6 +694,7 @@ namespace Velvet
                     {
                         continue;
                     }
+                    // MUTANT_SURVIVES(equivalent): the view's position is one value for every batch, so its sign shifts every depth by the same amount, and Precedes only compares depths.
                     var depth = Vector3.Dot(hosted.System.transform.position - view.position, view.forward) + hosted.SortingFudge;
                     var placed = new OrderedBatch(batch, depth);
                     // Insertion keeps batches that tie in hierarchy order.
@@ -731,6 +734,7 @@ namespace Velvet
             }
             if (sa.SortingOrder != sb.SortingOrder)
             {
+                // MUTANT_SURVIVES(equivalent, boundary): the branch is entered only when the two orders differ, where `<` and `<=` agree.
                 return sa.SortingOrder < sb.SortingOrder;
             }
             var qa = SurfaceOf(binding, a.Batch).RenderQueue;
@@ -757,6 +761,7 @@ namespace Velvet
         {
             var first = FirstLayerRun(binding);
             var run = target == 0 ? (first == 1 ? 0 : -1) : target - 1 + first;
+            // MUTANT_SURVIVES(unreachable, boundary): every Arrange leaves one layer for each run the element does not draw, a layer's target is its index plus one, and DestroyHost clears the runs and the layers together, so no painted target names the run at Runs.Count.
             return run < binding.Runs.Count ? run : -1;
         }
 
@@ -787,8 +792,10 @@ namespace Velvet
                 {
                     var material = ParticleBlendMaterials.For(blend);
                     layers[i].style.unityMaterial = material != null ? new StyleMaterialDefinition(material) : StyleKeyword.Null;
+                    // MUTANT_SURVIVES(equivalent): the cache only skips assigning the material the layer already holds, so without it every Arrange assigns the same material again.
                     binding.LayerBlends[i] = blend;
                 }
+                // MUTANT_SURVIVES(equivalent, equality): flipping the parent clause re-inserts a layer at the index it already holds, and a layer that is not a child of the element still fails the index clause.
                 if (layers[i].parent != element || element.IndexOf(layers[i]) != i)
                 {
                     element.Insert(i, layers[i]);
