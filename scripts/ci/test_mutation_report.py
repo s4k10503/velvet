@@ -122,17 +122,31 @@ class SarifShapeTests(unittest.TestCase):
         sarif = sarif_of(verdict([BOUNDARY]))
 
         # Assert
-        self.assertEqual((sarif["version"], sarif["$schema"], len(sarif["runs"])),
-                         ("2.1.0", "https://json.schemastore.org/sarif-2.1.0.json", 1))
+        self.assertEqual({key: sarif[key] for key in ("version", "$schema")},
+                         {"version": "2.1.0", "$schema": "https://json.schemastore.org/sarif-2.1.0.json"})
+
+    def test_Given_ASurvivor_When_Built_Then_TheFileHoldsOneRun(self):
+        # Act
+        runs = sarif_of(verdict([BOUNDARY]))["runs"]
+
+        # Assert
+        self.assertEqual(len(runs), 1)
+
+    def test_Given_ASurvivor_When_Built_Then_TheResultIsUnderItsOperatorsRule(self):
+        # Act
+        rule = results_of(verdict([BOUNDARY]))[0]["ruleId"]
+
+        # Assert
+        self.assertEqual(rule, "boundary")
 
     def test_Given_ASurvivor_When_Built_Then_TheResultCarriesItsRuleAndRepoRelativeLocation(self):
         # Act
         result = results_of(verdict([BOUNDARY]))[0]
 
         # Assert
-        self.assertEqual((result["ruleId"], result["locations"]), ("boundary", [{"physicalLocation": {
+        self.assertEqual(result["locations"], [{"physicalLocation": {
             "artifactLocation": {"uri": "Runtime/A.cs", "uriBaseId": "%SRCROOT%"},
-            "region": {"startLine": 5}}}]))
+            "region": {"startLine": 5}}}])
 
     def test_Given_ASurvivor_When_Built_Then_TheMessageNamesTheMutationAndWhyItIsUnanswered(self):
         # Act
@@ -147,8 +161,9 @@ class SarifShapeTests(unittest.TestCase):
         result = results_of(verdict(stale=[("Runtime/C.cs", 11, 12)]))[0]
 
         # Assert
-        self.assertEqual((result["ruleId"], result["locations"][0]["physicalLocation"]["region"]["startLine"]),
-                         ("stale-declaration", 11))
+        self.assertEqual("{}:{}".format(result["ruleId"],
+                                        result["locations"][0]["physicalLocation"]["region"]["startLine"]),
+                         "stale-declaration:11")
 
     def test_Given_AnyRun_When_Built_Then_EveryResultNamesADeclaredRule(self):
         # Arrange
@@ -340,7 +355,7 @@ class MainTests(unittest.TestCase):
         status, sarif = self.run_main(None)
 
         # Assert
-        self.assertEqual((status, sarif.exists()), (0, False))
+        self.assertEqual(status if not sarif.exists() else "a file was written", 0)
 
     def test_Given_AVerdictWithNothingToAnswer_When_Run_Then_AnEmptyResultsListIsWritten(self):
         # Act
@@ -349,12 +364,19 @@ class MainTests(unittest.TestCase):
         # Assert
         self.assertEqual(self.written(sarif), [])
 
-    def test_Given_AVerdictWithASurvivor_When_Run_Then_TheSurvivorIsWrittenAndTheRunStillExitsZero(self):
+    def test_Given_AVerdictWithASurvivor_When_Run_Then_TheRunStillExitsZero(self):
         # Act
-        status, sarif = self.run_main(verdict([BOUNDARY]))
+        status, _ = self.run_main(verdict([BOUNDARY]))
 
         # Assert
-        self.assertEqual((status, len(self.written(sarif) or [])), (0, 1))
+        self.assertEqual(status, 0)
+
+    def test_Given_AVerdictWithASurvivor_When_Run_Then_OneResultIsWritten(self):
+        # Act
+        _, sarif = self.run_main(verdict([BOUNDARY]))
+
+        # Assert
+        self.assertEqual(len(self.written(sarif) or []), 1)
 
 
 class WorkflowTests(unittest.TestCase):
