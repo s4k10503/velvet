@@ -570,7 +570,6 @@ namespace Velvet
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
                     fiber.SuspendedInTransition = false;
-                    UnityEngine.Debug.Log($"DIAG407b commit: fiber={Hooks.ComponentName(fiber)} lane={FiberWorkLoop.RenderLane}");
                     FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
@@ -851,6 +850,17 @@ namespace Velvet
             if (context != null) context.SuspendDeclinedByRevealedBoundary = false;
         }
 
+        // A pass given up for a revealed boundary is retried on the Transition lane, which a render of this fiber on
+        // the boundary's own lane would pre-empt with the key the transition has not yet committed.
+        private static bool IsWaitedOnByAGivenUpTransitionPass(ComponentFiber fiber)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (current.SuspendedInTransition && ReferenceEquals(current.SuspendedOn, fiber)) return true;
+            }
+            return false;
+        }
+
         private static void SuspendWithoutBoundary(ComponentFiber fiber, bool transitionPass)
         {
             var context = fiber.Reconciler!.Context;
@@ -879,7 +889,6 @@ namespace Velvet
                     continue;
                 }
                 current.SuspendedOn = null;
-                UnityEngine.Debug.Log($"DIAG407b retry: fiber={Hooks.ComponentName(current)} transition={current.SuspendedInTransition} lanesBefore={current.LaneQueue.Count}");
                 if (current.SuspendedInTransition) FiberWorkLoop.RequestTransitionRerender(current);
                 else FiberWorkLoop.RequestRenderFromHook(current);
                 current.SuspendedInTransition = false;
@@ -916,8 +925,7 @@ namespace Velvet
             var boundary = fiber.IsOffscreen
                 ? fiber.OffscreenUnder
                 : ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
-            UnityEngine.Debug.Log($"DIAG407b notify: fiber={Hooks.ComponentName(fiber)} boundary={(boundary != null ? Hooks.ComponentName(boundary) : "none")} hostSuspendedOn={(boundary?.SuspendedOn != null)}");
-            if (boundary == null)
+            if (boundary == null || IsWaitedOnByAGivenUpTransitionPass(fiber))
             {
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
                 // renders, and a pass that suspended on another read takes this value up when it is retried.
