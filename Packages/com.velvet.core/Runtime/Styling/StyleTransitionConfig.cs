@@ -148,9 +148,8 @@ namespace Velvet
 
         /// <summary>
         /// First control point's X (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
-        /// CSS <c>cubic-bezier(x1,y1,x2,y2)</c> parameter order. X must stay in [0,1] (a timing function must be
-        /// monotone in time); a value outside that range is invalid per the <c>cubic-bezier()</c> spec and
-        /// degrades to the default curve below with a one-shot warning, rather than being silently clamped.
+        /// CSS <c>cubic-bezier(x1,y1,x2,y2)</c> parameter order. X may lie outside [0,1], as in Motion's
+        /// <c>cubicBezier</c>; a non-finite coordinate degrades to the default curve below with a one-shot warning.
         /// Defaults to <c>cubic-bezier(0.4, 0, 0.2, 1)</c> — the exact curve the
         /// bundled USS only approximates with the <c>ease-in-out</c> keyword.
         /// </summary>
@@ -164,7 +163,7 @@ namespace Velvet
 
         /// <summary>
         /// Second control point's X (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
-        /// Must stay in [0,1]. See <see cref="BezierX1"/>.
+        /// See <see cref="BezierX1"/>.
         /// </summary>
         public float BezierX2 { get; init; } = 0.2f;
 
@@ -250,10 +249,7 @@ namespace Velvet
         /// The passes a play makes after its first — Framer Motion's <c>repeat</c>, so <c>Repeat = 2</c> plays three
         /// times. <c>float.PositiveInfinity</c> repeats until a later play, an exit or an unmount replaces it; 0,
         /// the default, plays once. <see cref="RepeatType"/> decides each later pass's direction and
-        /// <see cref="RepeatDelaySec"/> the wait between passes. Played when <see cref="Type"/> is
-        /// <see cref="TransitionType.Bezier"/> or <see cref="TransitionType.Spring"/>; a
-        /// <see cref="TransitionType.Tween"/> play plays once, and the first in a mounted tree logs a warning.
-        /// <c>Documentation~/motion.md</c> owns the full contract, including where a play ends and what a
+        /// <see cref="RepeatDelaySec"/> the wait between passes. <c>Documentation~/motion.md</c> owns the full contract, including where a play ends and what a
         /// <c>layoutId</c> move does with it.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN, or neither a whole number nor

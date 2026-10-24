@@ -11,8 +11,8 @@ namespace Velvet.Tests
     /// Pins the bezier-driven variant enter/exit path end to end: the pure CSS <c>cubic-bezier(x1,y1,x2,y2)</c>
     /// evaluation (<see cref="CubicBezierEvaluator.Evaluate"/>) — boundary clamps, the linear/identity fast path,
     /// an exact front-loaded reference point no keyword easing could reproduce, unclamped overshoot, solver
-    /// monotonicity, and the reject-and-fall-back-to-default-curve path (with its one-shot warning) for an
-    /// out-of-range or non-finite control point; validation of user-supplied bezier parameters
+    /// monotonicity, the unrestricted x control points, and the fall-back-to-default-curve path (with its one-shot
+    /// warning) for a non-finite control point; validation of user-supplied bezier parameters
     /// (<c>StyleTransitionConfig.Type == Bezier</c>) mirroring the spring path's guard, since a non-finite control
     /// point would propagate into every inline style write and never reach the target, leaving the completion
     /// callback that removes a presence exit's ghost never firing; that a custom curve survives the config's copy
@@ -30,7 +30,7 @@ namespace Velvet.Tests
     /// in a loop. The reference midpoint (0.7756) was computed independently with a Python implementation of the
     /// same WebKit UnitBezier Newton/bisection algorithm every browser's <c>cubic-bezier()</c> is built on. The
     /// warn-once static is reset before/after every test (reflection, mirroring BoxShadowBakeTests) so the
-    /// out-of-range cases stay deterministic regardless of run order or of another fixture having already tripped
+    /// non-finite cases stay deterministic regardless of run order or of another fixture having already tripped
     /// the same one-shot flag. GWT, one assert per case: every fact a case depends on — channel recognition
     /// or a captured intermediate reading — folds into that single assertion via a nullable/NaN/tuple
     /// sentinel, so a regression in any of them turns the case red instead of skipping it (see
@@ -345,19 +345,30 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnX1AboveOne_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfClamping()
+        public void Given_AMonotoneCurveWithX1AboveOne_When_EvaluatedAtItsMidParameterX_Then_TheOutputIsTheMidParameterY()
         {
-            // Arrange — an x1 above 1 is invalid (a timing function's x must stay monotone); silently clamping
-            // it to 1 would evaluate a DIFFERENT curve, cubic-bezier(1,0,0.2,1), not the default one. The
-            // reference is a valid call, so it logs nothing.
-            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
-            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+            // Arrange — x(s) = 3(1-s)^2 s*1.2 + 3(1-s)s^2*0.8 + s^3 is 0.875 at s = 0.5 and y(0.5) is 0.5 for
+            // y1 = 0, y2 = 1, so progress 0.875 must come back as 0.5. The default curve gives a different value
+            // there, and no warning is expected: an unexpected one fails under the strict LogAssert mode.
 
             // Act
-            var output = CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.5f);
+            var output = CubicBezierEvaluator.Evaluate(1.2f, 0f, 0.8f, 1f, 0.875f);
 
             // Assert
-            Assert.That(output, Is.EqualTo(expected));
+            Assert.That(output, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AnX1BelowZeroAndAnX2AboveOne_When_EvaluatedAtHalfwayProgress_Then_TheOutputIsHalfway()
+        {
+            // Arrange — control points symmetric about (0.5, 0.5) put x(0.5) = y(0.5) = 0.5, so halfway progress
+            // must come back as 0.5 whatever the outward x1 and x2 are.
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(-0.2f, 0.3f, 1.2f, 0.7f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(0.5f).Within(1e-4f));
         }
 
         [Test]
@@ -395,6 +406,8 @@ namespace Velvet.Tests
             Assert.That(output, Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base also warns once for a non-finite point and then stays silent; only
+        // the control point that triggers the first call changed.
         [Test]
         public void Given_ASecondInvalidCall_When_Evaluated_Then_ItStaysSilentButStillFallsBack()
         {
@@ -403,11 +416,11 @@ namespace Velvet.Tests
             // No LogAssert.Expect is registered for the second call below, so an unexpected repeat warning would
             // fail this test under the project's strict LogAssert mode.
             LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
-            CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.3f);
+            CubicBezierEvaluator.Evaluate(float.NaN, 0f, 0.2f, 1f, 0.3f);
             var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.6f);
 
             // Act
-            var output = CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.6f);
+            var output = CubicBezierEvaluator.Evaluate(float.NaN, 0f, 0.2f, 1f, 0.6f);
 
             // Assert — the fallback still applies even though the diagnostic stays silent the second time.
             Assert.That(output, Is.EqualTo(expected));

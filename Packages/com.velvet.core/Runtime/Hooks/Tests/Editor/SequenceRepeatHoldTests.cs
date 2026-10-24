@@ -50,6 +50,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AToStepOnARepeatingTween_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd()
+        {
+            // Arrange — a 0.1 s delay, then three half-second passes with a quarter-second wait between each: 2.1 s.
+            var transition = new StyleTransitionConfig
+            {
+                DurationSec = 0.5f, DelaySec = 0.1f, Repeat = 2f, RepeatDelaySec = 0.25f,
+            };
+
+            // Act
+            var indices = StepIndexAfter(transition, 2f, 0.2f);
+
+            // Assert
+            Assert.That(indices, Is.EqualTo(new[] { 0, 1 }));
+        }
+
+        [Test]
         public void Given_AToStepOnARepeatingSpring_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd()
         {
             // Arrange — the sequence's spring travels 100 and rests at 1.05 s on Framer's default spring: two passes.

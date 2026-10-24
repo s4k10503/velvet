@@ -15,11 +15,12 @@ namespace Velvet
     //
     // The spec gives the automatic minimum as zero for a scroll container, and a grid item in a
     // grid-cols-N track is sized by minmax(0, 1fr), so those stand down, as does an item that declares its
-    // own min-width / min-height on the axis. A width or height declared as w-fit, w-min, w-max or w-auto is
-    // a content keyword, not a definite size, and caps nothing.
+    // own min-width / min-height on the axis, other than `auto`. A width or height declared as w-fit, w-min,
+    // w-max or w-auto is a content keyword, not a definite size, and caps nothing.
     //
     // Declarations are read from what Velvet owns: the live class list (scanned when the reconciled classes
-    // change), the arbitrary-value layers, and the inline style; the resolved style is not consulted.
+    // change or a variant moves a size or overflow class onto or off it), the arbitrary-value layers, and the inline
+    // style; the resolved style is not consulted.
     // TextItemBaselinePanelTests pins that a declaring class patched away is read at once.
     //
     // Ownership of the inline slot lasts only while a value this wrote sits in it: a bracket layer that
@@ -76,8 +77,8 @@ namespace Velvet
 
         // What the live class list declares, rebuilt by Scan when _scanStale.
         private bool _scanStale = true;
-        private bool _declaresMinWidth;
-        private bool _declaresMinHeight;
+        private Dim? _declaredMinWidth;
+        private Dim? _declaredMinHeight;
         private Dim? _specifiedWidth;
         private Dim? _specifiedHeight;
         private Dim? _maxWidth;
@@ -103,6 +104,13 @@ namespace Velvet
             Apply();
         }
 
+        // Re-reads the live classes after a variant moved a payload onto or off them outside any patch.
+        internal void Rescan()
+        {
+            _scanStale = true;
+            Apply();
+        }
+
         // Re-measures after the string the leaf shows changed, which no event of the target announces.
         internal void Rederive()
         {
@@ -120,7 +128,8 @@ namespace Velvet
             }
 
             var horizontal = parent.resolvedStyle.flexDirection is FlexDirection.Row or FlexDirection.RowReverse;
-            if (StyleArbitraryValueResolver.HasLayer(
+            ForgetOverwrittenSlot(textElement);
+            if (StyleArbitraryValueResolver.HasStandingLayer(
                     textElement, horizontal ? ArbitraryProperty.MinWidth : ArbitraryProperty.MinHeight))
             {
                 // The layer's own write is already in the slot, over any value of ours.
@@ -188,6 +197,22 @@ namespace Velvet
             _hasSignature = true;
         }
 
+        // A value another writer has put over this one's is theirs; the slot is then no longer owned, so a
+        // later release does not clear it and a later write is not skipped as unchanged.
+        private void ForgetOverwrittenSlot(TextElement textElement)
+        {
+            if (_owned == Owned.None)
+            {
+                return;
+            }
+            var inline = _owned == Owned.Width ? textElement.style.minWidth : textElement.style.minHeight;
+            if (inline.keyword != StyleKeyword.Undefined || Mathf.Abs(inline.value.value - _lastWritten) >= 0.01f)
+            {
+                _owned = Owned.None;
+                _hasSignature = false;
+            }
+        }
+
         private static bool IsUndrawableFontAsset(IResolvedStyle resolved)
         {
             var asset = resolved.unityFontDefinition.fontAsset;
@@ -246,7 +271,13 @@ namespace Velvet
 
         private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, bool clipped)
         {
-            if (clipped || (horizontal ? _declaresMinWidth : _declaresMinHeight))
+            if (clipped)
+            {
+                return true;
+            }
+            if ((horizontal ? _declaredMinWidth : _declaredMinHeight).HasValue
+                && !StyleArbitraryValueResolver.AutoLayerWins(
+                    textElement, horizontal ? ArbitraryProperty.MinWidth : ArbitraryProperty.MinHeight))
             {
                 return true;
             }
@@ -292,8 +323,8 @@ namespace Velvet
         // were added in.
         private void Scan(TextElement textElement)
         {
-            _declaresMinWidth = false;
-            _declaresMinHeight = false;
+            _declaredMinWidth = null;
+            _declaredMinHeight = null;
             _specifiedWidth = null;
             _specifiedHeight = null;
             _maxWidth = null;
@@ -305,17 +336,17 @@ namespace Velvet
             }
             var names = classes.ToArray();
             var ordinals = StyleRuleOrder.OrdinalsOf(names);
-            var ranks = new[] { -1, -1, -1, -1 };
+            var ranks = new[] { -1, -1, -1, -1, -1, -1 };
             for (var i = 0; i < names.Length; i++)
             {
                 var cls = names[i];
                 if (cls.StartsWith(MinWidthPrefix, System.StringComparison.Ordinal))
                 {
-                    _declaresMinWidth = true;
+                    Declare(ref _declaredMinWidth, ref ranks[4], MinimumDeclaration(cls), ordinals[i]);
                 }
                 else if (cls.StartsWith(MinHeightPrefix, System.StringComparison.Ordinal))
                 {
-                    _declaresMinHeight = true;
+                    Declare(ref _declaredMinHeight, ref ranks[5], MinimumDeclaration(cls), ordinals[i]);
                 }
                 else
                 {
@@ -324,8 +355,15 @@ namespace Velvet
             }
         }
 
-        // ranks holds the rule-order place of the class now declaring each of width, height, maximum width and
-        // maximum height; a class of an equal place, the same token written twice, replaces it.
+        // `min-w-auto` and `min-w-[auto]` are the keyword CSS gives an unset minimum, so they declare nothing
+        // and, ranking later than the scale steps, retire an earlier `min-w-*`.
+        private static Dim? MinimumDeclaration(string cls)
+            => cls.EndsWith("-[auto]", System.StringComparison.Ordinal) || cls.EndsWith("-auto", System.StringComparison.Ordinal)
+                ? null
+                : new Dim(0f, false);
+
+        // ranks holds the rule-order place of the class now declaring each of width, height, maximum width,
+        // maximum height, minimum width and minimum height; a class of an equal place, the same token written twice, replaces it.
         private void ScanLength(string cls, int rank, int[] ranks)
         {
             if (TryClassLength(cls, WidthPrefix, out var width))

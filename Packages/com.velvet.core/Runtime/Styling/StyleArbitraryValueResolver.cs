@@ -3138,6 +3138,31 @@ namespace Velvet
                 && map.TryGetValue(property, out var layers)
                 && layers.Count > 0;
 
+        // HasLayer, except that a layer whose winning value is the `auto` keyword does not count: it holds the
+        // property at the value an unset one has.
+        internal static bool HasStandingLayer(VisualElement element, ArbitraryProperty property)
+        {
+            if (!HasLayer(element, property))
+            {
+                return false;
+            }
+            return !AutoLayerWins(element, property);
+        }
+
+        // Whether the layer that holds property over the element's classes is the `auto` keyword.
+        internal static bool AutoLayerWins(VisualElement element, ArbitraryProperty property)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            if (!TryWinningLayer(map, property, out var winner))
+            {
+                return false;
+            }
+            return winner.Auto;
+        }
+
         // The element's own writers of the background image: a StyleOverrides member and the utilities
         // (bg-[addr:…] and the gradients, which coordinate between themselves). Neither is an ArbitraryProperty
         // layer, since a StyleBackground is no ArbitraryStyle payload, so they are ranked here instead, as

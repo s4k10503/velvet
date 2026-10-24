@@ -47,7 +47,7 @@ namespace Velvet
             // separate map field would only ever repeat that same choice.
             internal bool IsExit { get; init; }
             internal MotionPlayback? Playback { get; init; }
-            // How a bezier or spring play repeats; a tween does not read it.
+            // How the play repeats.
             internal MotionRepeat Repeat { get; init; }
             // The per-property timings a bezier or spring play gives the channels they name, with the easing and duration an
             // entry that names none takes.
@@ -159,8 +159,8 @@ namespace Velvet
         // and one cancelled before its swap never does.
         // appliedClasses: the element's whole resting class set once this play lands — its own classes and the
         // pose's — where the caller knows it (see CancelSwapAhead); the to classes stand in for it elsewhere.
-        // playback: the MotionPlayback a Spring, a Bezier or a driven Tween (DrivesTween) runs on; a Tween on the
-        // panel's clock runs on UI Toolkit's own transition and does not read it.
+        // playback: the MotionPlayback the play runs on. A Tween handed one is driven (RunsDriven), as one that
+        // repeats is, so UI Toolkit's own transition never meets it.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
             Action? onSwap = null, string[]? appliedClasses = null, MotionPlayback? playback = null)
@@ -248,7 +248,6 @@ namespace Velvet
                 PerValueDefaults = perValueDefaults,
             };
 
-            WarnRepeatNotPlayed(type, repeat);
             if (type == TransitionType.Spring)
             {
                 StartSpringVariant(in play, stiffness, damping, mass, springSettleSec, springDescription);
@@ -267,8 +266,8 @@ namespace Velvet
                 return;
             }
 
-            // From here the play is a Tween on the panel's clock, UI Toolkit's own transition, which runs on the
-            // panel's time whatever playback it was started on, or a Bezier of no duration, which lands at once.
+            // From here the play is a Tween on the panel's clock that repeats nothing and is on no playback, so UI
+            // Toolkit's own transition plays it, or a Bezier of no duration, which lands at once.
             if (!IsPlayableDuration(durationSec))
             {
                 CancelSwapAhead(element, resolvedTo, appliedClasses ?? resolvedTo);
@@ -502,7 +501,6 @@ namespace Velvet
                 PerValueDefaults = config.PerValueDefaults,
             };
 
-            WarnRepeatNotPlayed(config.Type, play.Repeat);
             // A spring landing at once takes the zero-duration path below.
             if (config.Type == TransitionType.Spring && !config.SpringLandsAtOnceAfter(additionalDelaySec))
             {
@@ -880,25 +878,30 @@ namespace Velvet
                 play.DelaySec + play.AdditionalDelaySec, removesToClasses: false);
         }
 
-        // A Tween on a mount whose clock is not the panel's, which UI Toolkit's transition would run on the panel's
-        // time instead: the bezier path's driver runs it, eased by the curve the transition eases by (UssEasing) on
-        // the transition's own timing, PropertyOverrides included. removesToClasses: a classic enter's, whose
-        // to-classes are a transient overlay its completion takes off, as PlayEnterInternal's does.
+        // A Tween that UI Toolkit's transition cannot play as asked: one on a mount whose clock is not the panel's,
+        // one on a playback, one that repeats. The bezier path's driver runs it, eased by the curve the transition
+        // eases by (UssEasing) on the transition's own timing, PropertyOverrides included. removesToClasses: a
+        // classic enter's, whose to-classes are a transient overlay its completion takes off, as PlayEnterInternal's
+        // does.
         private void StartDrivenTween(in VariantPlay play, float durationSec, EasingMode easing,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides, bool removesToClasses)
         {
             var timing = new DrivenTweenTiming(play.DelaySec, durationSec, easing, propertyOverrides);
+            // Copied out because a lambda cannot capture an `in` parameter.
+            var repeat = play.Repeat;
             StartDriven(in play, MotionPresetClasses.Expand(play.FromClasses), MotionPresetClasses.Expand(play.ToClasses),
-                plan => BezierTweenDriver.CreateTween(plan, timing),
+                plan => BezierTweenDriver.CreateTween(plan, timing, repeat),
                 play.AdditionalDelaySec + timing.StartDelaySec, removesToClasses);
         }
 
         private bool DrivesTween(float durationSec) => !Clock.StepsOnPanelTime && IsPlayableDuration(durationSec);
 
         // UI Toolkit's transition cannot move a skew angle, which no style slot holds, so a Tween that
-        // moves one runs on the driver that writes it, as a Tween on another clock does.
+        // moves one runs on the driver that writes it, as a Tween on another clock does. A Tween on a playback
+        // or with passes to repeat has no transition to hand either: the transition runs on the panel's time, once.
         private bool RunsDriven(in VariantPlay play, float durationSec)
             => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec)
+                || (IsPlayableDuration(durationSec) && (play.Playback != null || play.Repeat.Count > 0f))
                 || (play.IsExit && InsidePinnedGhost(play.Element));
 
         // An exit inside a pinned PopLayout ghost runs on the driver, whose inline values and recurring tick outlive the
@@ -1945,23 +1948,6 @@ namespace Velvet
             // They are the only values where durationSec < 0f and durationSec <= 0f disagree.
             => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
 
-        // Once per scheduler. A tween hands its interpolation to UI Toolkit's transitions, which play it once.
-        private bool _warnedRepeatNotPlayed;
-
-        internal const string RepeatNotPlayedWarning =
-            "StyleTransitionConfig.Repeat is not played by TransitionType.Tween; this transition plays once. Use "
-            + "Type = TransitionType.Bezier or TransitionType.Spring for a play that repeats.";
-
-        private void WarnRepeatNotPlayed(TransitionType type, MotionRepeat repeat)
-        {
-            if (type != TransitionType.Tween || repeat.Count == 0f || _warnedRepeatNotPlayed)
-            {
-                return;
-            }
-            _warnedRepeatNotPlayed = true;
-            FiberLogger.LogWarning("Motion", RepeatNotPlayedWarning);
-        }
-
         internal static bool ValidateDuration(float durationSec, Action? onComplete)
         {
             if (durationSec == 0f)
@@ -2003,9 +1989,7 @@ namespace Velvet
         // or a non-finite control point IS a misconfiguration and warns. A NaN/Infinity control point would
         // propagate into every inline style write (LerpUnclamped) and never reach a target, so the tick this
         // drives would run forever and its completion callback — the only thing that removes a presence exit's
-        // ghost — would never fire. The control points' x range ([0,1], a monotone timing function) is validated
-        // downstream in CubicBezierEvaluator instead: it degrades an out-of-range value to the default curve
-        // rather than the forever-tick failure mode this method exists to catch, so it is not re-checked here.
+        // ghost — would never fire.
         internal static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec)
         {
             if (durationSec == 0f)

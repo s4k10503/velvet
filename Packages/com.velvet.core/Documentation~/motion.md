@@ -324,7 +324,7 @@ new StyleTransitionConfig
   Framer Motion's spring by the time since the play started. **Interrupting a running spring — a
   label change mid-spring, or an exit cancelled mid-flight — releases a new one from the current
   value *and velocity***, as Framer starts an interrupted value's next animation. A spring that
-  interrupts a running `Bezier` play (or a `Tween` the mount's own clock drives) starts with the velocity of the
+  interrupts a running `Bezier` play (or a driven `Tween`) starts with the velocity of the
   curve at that moment. A spring that interrupts a native CSS transition starts with the
   transition's rate at that moment, read off the panel's style animation system. When the interrupted `Bezier` play is on
   a `MotionPlayback`, the velocity is scaled by that playback's rate, and a paused playback hands on none,
@@ -358,8 +358,8 @@ new StyleTransitionConfig
 ## Driven channels (Spring and Bezier)
 
 Both non-CSS drivers write inline styles every tick. A play reads its targets from the swapped-in
-classes and the element's classes left in place. A slot that a running Spring or Bezier play (a Tween
-on a clock other than the panel's, *Clocks*, counting as a Bezier), or a native transition, is moving
+classes and the element's classes left in place. A slot that a running Spring or Bezier play (a driven
+Tween, *Clocks*, counting as a Bezier), or a native transition, is moving
 starts from the value on screen: that play's current frame, or the transition's displayed value sampled
 before cancellation or the class swap. On an element that is off its panel, where the screen cannot be
 read, an enter or label change on a Spring or a Bezier that interrupts such a play starts each channel the
@@ -519,11 +519,11 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
   When it does, the play narrows the element's transitions: the longhands it writes come out of the list (an `all`
   or a shorthand becoming the other longhands it covers, on its own timing) and the element's other
   transitions keep running, as Framer Motion takes over only the values it animates. Off a panel the element's
-  transitions cannot be read, so none runs until the next tick reads them. A Tween on a clock other than the
-  panel's lands everything the swap changes, its other properties included, with the swap. Two overlapping plays
+  transitions cannot be read, so none runs until the next tick reads them. A driven Tween (*Clocks*) lands
+  everything the swap changes, its other properties included, with the swap. Two overlapping plays
   each hold their own claim, so the first to finish cannot release the second's, and the narrowing lifts as soon
-  as the last one settles or is cancelled. Reach for `Tween` on the default clock when you want the
-  class's own transition to do the work instead; on any other, a `Tween` is driven too (*Clocks* below).
+  as the last one settles or is cancelled. Reach for `Tween` on the default clock, on no sequence's playback and repeating nothing, when you want the
+  class's own transition to do the work instead; any other `Tween` is driven (*Clocks* below).
 
 ## Cubic-bezier easing
 
@@ -538,16 +538,17 @@ and `PropertyOverrides` gives the channels it names a timing of their own, each 
 (its curve where it names no easing, and the play's where it names no duration), which that channel plays once
 whatever the play repeats. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
-with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, since a CSS timing
-function is a function of time and so must be monotone; a value outside that range is invalid and
-falls back to the default curve with a one-shot console warning instead of being silently clamped.
+with the `ease-in-out` keyword. `BezierX1` / `BezierX2` accept any finite value, as Motion's `cubicBezier` does; when either lies outside
+`[0,1]` the curve parameter for a given progress is found by bisection over `[0,1]`. A non-finite coordinate falls
+back to the default curve with a one-shot console warning. The CSS `cubic-bezier()` token of an `animate-` class
+still requires `x1` and `x2` in `[0,1]`, as CSS does.
 `BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
 target mid-tween.
 
 ## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
 
 Framer Motion's `repeat`, `repeatType` and `repeatDelay`, on `StyleTransitionConfig`, played by
-`TransitionType.Bezier` and `TransitionType.Spring`:
+every `TransitionType`:
 
 ```csharp
 // A down-arrow that bobs for as long as it is on screen.
@@ -563,12 +564,12 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
   `float.PositiveInfinity` repeats until a later play, an exit or an unmount replaces the play. A
   negative, NaN or fractional value throws `ArgumentOutOfRangeException`; Framer accepts a fraction.
 - `RepeatType = Loop` (the default) starts every pass at the from-pose. `Reverse` plays every second
-  pass backwards in time: a bezier's easing comes back reversed, so an ease-out pass returns as an
-  ease-in one, as CSS's `animation-direction: alternate` does, and a spring retraces its own path,
-  overshoot included. `Mirror` plays every second pass from the to-pose back to the from-pose: a bezier
-  on the same easing, a spring released from the to-pose.
+  pass backwards in time: a bezier's or a tween's easing comes back reversed, so an ease-out pass
+  returns as an ease-in one, as CSS's `animation-direction: alternate` does, and a spring retraces its
+  own path, overshoot included. `Mirror` plays every second pass from the to-pose back to the
+  from-pose: a bezier or a tween on the same easing, a spring released from the to-pose.
 - `RepeatDelaySec` waits that many seconds after each pass but the last before the next one starts.
-  A bezier holds the value its pass ended on; a spring keeps being sampled past its pass, as Framer's
+  A bezier or a tween holds the value its pass ended on; a spring keeps being sampled past its pass, as Framer's
   is, so it shows whatever small motion its spring still has. A negative or non-finite value throws
   `ArgumentOutOfRangeException`.
 - A spring's pass is the duration Framer measures for it, which also ends a play that does not
@@ -604,8 +605,10 @@ V.Motion(variants: arrow, initial: "up", animate: "down", transition: bob);
   for a channel on Framer's main thread, the play can run longer or shorter, since a label tells the
   sequence nothing of the classes it plays between.
 
-A `Tween` does not play a repeat yet: a play on one with `Repeat` above zero plays once, and the first
-such play in a mounted tree logs a warning. A `layoutId` move plays once whatever its transition
+A `Tween` that repeats is played by the per-frame driver a `Bezier` plays on rather than by UI Toolkit's
+transition ([Clocks](#clocks-holding-motion-with-game-time)), on the tween's own `DurationSec`, `Easing`
+and `DelaySec`, the delay waited once before the first pass. A channel a `PropertyOverrides` entry names
+plays that entry once whatever the play repeats. A `layoutId` move plays once whatever its transition
 repeats.
 
 ## Shared-element layout animation (`layoutId`)
@@ -842,7 +845,8 @@ A mount chooses the clock its motion advances on, through `MountOptions.MotionCl
 V.Mount(root, tree, new MountOptions { MotionClock = MotionClock.GameTime });
 ```
 
-- `MotionClock.Realtime`, the default: a `Tween` runs on UI Toolkit's own transitions, spring and bezier
+- `MotionClock.Realtime`, the default: a `Tween` runs on UI Toolkit's own transitions unless it is on a
+  sequence's playback or repeats, which the driver a `Bezier` plays on plays instead (a driven `Tween`); spring and bezier
   plays, `layoutId` moves and `Hooks.UseFrame` step by the panel scheduler's own interval, and the
   `animate-*` loops and `filter-*` transitions read `Time.realtimeSinceStartupAsDouble`.
 - `MotionClock.GameTime` reads `Time.timeAsDouble`, Unity's scaled game time.
@@ -959,17 +963,18 @@ but the zero spring duration the `To` bullet above names, and not the same insta
   the element starts from outside the sequence, an exit included, starts from those values on the channels
   its classes name, as Framer's next animation starts from where the value sits, and the held values on the
   other channels stay where they are, through that play's end too. Translate is one style for both axes: a
-  play naming one axis leaves the other held. A play of no duration, a `Tween` on the panel's clock or a teardown takes
-  the held values off instead; a `Tween` the mount's own clock drives starts from them as a `Bezier` does. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
+  play naming one axis leaves the other held. A play of no duration, a `Tween` left to UI Toolkit's own transition or a teardown takes
+  the held values off instead; a driven `Tween` starts from them as a `Bezier` does. Inside the sequence, `controls.Play()` after a cancel starts it again from step 0 and
   `controls.Restart()` reseeds it at step 0 still paused: the plays the reseed starts begin from the held
   values on the channels they name, and every value the cancel held that is still on, whatever its channel,
   comes off once the reseed commits.
 
 A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
-names a transition -- follows the controls only on a mount whose clock is not the panel's, where the per-frame
-driver plays it ([Clocks](#clocks-holding-motion-with-game-time)). On the default `MotionClock.Realtime` it is
-UI Toolkit's own transition, and none of the controls reaches it: it runs on to its end. Give the steps a
-`Spring` or `Bezier` transition where the plays have to follow the controls on any clock.
+names a transition -- follows the controls on any clock: on a sequence's playback it is played by the per-frame
+driver a `Bezier` plays on, eased by the curve UI Toolkit's transition would ease it by
+([Clocks](#clocks-holding-motion-with-game-time)). A `Tween` the element starts from outside the sequence, an exit
+included, is not on the playback, and on the default clock it stays UI Toolkit's own transition unless it
+repeats.
 
 The handle also carries `controls.TimeSec`, the Web Animations API's
 `currentTime` and Framer Motion's `time`, read-only: seconds into the timeline, counting each hold at its
