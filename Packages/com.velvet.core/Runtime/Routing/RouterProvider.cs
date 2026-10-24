@@ -8,7 +8,8 @@ namespace Velvet
     {
         public sealed record Props(Router Router);
 
-        [Component]
+        // The location, loader data and errors are read from the router at render, which a cache hit would skip.
+        [Component(Compiler = false)]
         public static VNode Render(Props p)
         {
             var router = p.Router;

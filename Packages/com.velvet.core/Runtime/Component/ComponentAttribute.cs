@@ -63,16 +63,22 @@ namespace Velvet
         /// such a render a difference that comparison does not see — a list mutated in place, a field a value
         /// type's own <c>Equals</c> ignores — does not reach the tree, nor does anything else the body reads. The
         /// cache serves the component's own render; called as a plain method, the body runs uncached.
+        /// Parts of the body are cached on their own as well: a call that builds a VNode, with the code that builds
+        /// its arguments, is keyed on only the values it reads, so a render in which some inputs changed builds
+        /// again only the parts that read them and keeps the rest by instance. The memoization guide states what
+        /// keeps a part from being cached, and <see cref="MemoizationReportAttribute"/> records on each method what
+        /// was left out.
         /// A component that takes props and calls no hook is keyed on its props alone, and left unwoven where it
         /// also sets <see cref="Memoize"/>; one with neither props nor a hook has nothing to key on and is left
         /// unwoven. Auto-memoization needs no opt-in: set this to <c>false</c> to opt
-        /// out. The weaver also declines a component silently, with no diagnostic, where it finds a hook it
+        /// out. The weaver does not key the body as a whole, with no diagnostic, where it finds a hook it
         /// cannot memoize safely, and <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which
         /// assemblies it reaches at all. A component whose body the weaver fails to process is left unwoven with a
         /// build warning naming it. A call whose target the build cannot enumerate — through an interface,
         /// or to a virtual method an override can replace — is cached with the rest of the body where it follows
-        /// every hook call the body makes, and declines the component where it precedes one or sits inside a
-        /// custom hook, even after that hook's own <c>UseState</c>. Once such a call
+        /// every hook call the body makes, and keeps the body from being keyed as a whole where it precedes one or
+        /// sits inside a custom hook, even after that hook's own <c>UseState</c>; the parts that do not read its
+        /// result are still cached. Once such a call
         /// runs a hook while the body builds its tree, the component's body runs on every render from then on.
         /// <para>
         /// Set to <c>false</c> to opt this component out of the transform, so its body then runs in full on

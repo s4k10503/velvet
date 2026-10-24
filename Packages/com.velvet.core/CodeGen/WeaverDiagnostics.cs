@@ -33,6 +33,15 @@ namespace Velvet.CodeGen
                 + $" {exception.GetType().Name} while processing it: {exception.Message}";
         }
 
+        // Formats what the compiler weaver reports for a body with a part it left uncached: the method and every
+        // note, one per line, so that partial optimisation can be read off the build log.
+        public static string FormatMemoizationReport(MethodDefinition method, WeaveReport report)
+        {
+            var summary = report.BodyGate ? "keyed as a whole" : "not keyed as a whole";
+            return $"Velvet auto-memoization of '{method.FullName}' ({summary}, {report.Scopes} scopes cached on their own):\n"
+                + report.Joined();
+        }
+
         // Resolves fullName from one of module's referenced assemblies. Used when the type is not declared
         // in module itself (the case for every assembly except Velvet, which declares its own runtime
         // types directly). Returns null when no referenced assembly resolves or none declares the type.
