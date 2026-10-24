@@ -267,9 +267,8 @@ jobs:
           overwrite: true
 
       # How many of this shard's own mutants the EditMode pass left surviving. Run where the EditMode step
-      # passed, so a shard that failed its pass runs no PlayMode pass, and the verdict job names it. More
-      # than one job can measure after its own EditMode pass fails here, with the EditMode records already
-      # uploaded.
+      # passed, so a shard that failed its pass runs no PlayMode pass, and the verdict job names it. Survivors
+      # past what one job measures on PlayMode are left unmeasured there and named by the verdict job.
       - id: survivors
         env:
           BASE: ${{ steps.base.outputs.sha }}
@@ -286,7 +285,22 @@ jobs:
           [ "$status" -eq 0 ] || exit "$status"
           grep -E '^mutants=' survivors.txt >> "$GITHUB_OUTPUT"
 
-      # The same launch as the EditMode step, on the runner and Library that step left.
+      # The Library the EditMode step started from, put back. The PlayMode baseline over the Library
+      # that step's last launch left failed to compile in five shards of three runs, on Mono.Cecil for
+      # the CodeGen assembly or on package sources under Library/PackageCache; no EditMode baseline,
+      # which starts from the restored Library, failed so.
+      - if: steps.survivors.outputs.mutants != '' && steps.survivors.outputs.mutants != '0'
+        run: sudo rm -rf Library
+
+      - if: steps.survivors.outputs.mutants != '' && steps.survivors.outputs.mutants != '0'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      # The same launch as the EditMode step, on the runner and the Library restored above.
       - name: Measure PlayMode
         timeout-minutes: 165
         if: steps.survivors.outputs.mutants != '' && steps.survivors.outputs.mutants != '0'

@@ -72,7 +72,10 @@ TIMED_OUT = "not measured (timed out)"
 HUNG = "killed (the suite hung past --timeout)"
 CRASHED = "killed (the editor crashed)"
 
-HANG_MARGIN = 3
+# A suite still running at --timeout with no readable result is a hang, and a kill, only where the
+# baseline took at most 1/HANG_MARGIN of that bound. Two rather than three: the 900 s default then
+# reads a hang as one for a baseline up to 450 s, where three left it TIMED_OUT above 300 s.
+HANG_MARGIN = 2
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
@@ -2543,6 +2546,7 @@ class TreeState:
         self.launches = 0
         self.put_back = []
         self.after = None
+        self.first_left = []
 
     @classmethod
     def capture(cls, project, outside, stash):
@@ -2587,7 +2591,23 @@ class TreeState:
         """Records the tree a launch ended on, apart from what the campaign holds, which the next
         `restore` compares against."""
         kept = self.relative_kept(keep)
+        first = self.after is None
         self.after = {relative: content for relative, content in self.reading().items() if relative not in kept}
+        if first:
+            self.first_left = self.left_by_launch()
+
+    def left_by_launch(self):
+        """The files the launch that just ended left other than the tree this state was captured from.
+
+        Read after the first launch, the unmutated baseline: what it rewrites, a mutant cannot be blamed
+        for rewriting, so the session runner does not end its launch over them."""
+        reported = reported_paths(self.project)
+        found = []
+        for relative, content in (self.after or {}).items():
+            was = self.wanted(relative, reported.get(relative, False))
+            if content != (None if was is None else hashlib.sha256(was).hexdigest()):
+                found.append(relative)
+        return sorted(found)
 
     def released(self, paths):
         """Records `paths` as the campaign's release of them left them. A held source git already
@@ -3928,6 +3948,7 @@ def measure_reach(args, project, directory, whole_scope, total, holder, bound):
             stale.unlink()
     plan = reach_plan(reach, args.platform, whole_scope, min(args.timeout, bound))
     plan["watch"] = library_files(project)
+    plan["tolerate"] = holder.state.first_left if holder.state is not None else []
     runs, lost, stopped = run_session(args, project, plan, reach, holder)
     stage = ((read_item(reach, SESSION_OPENING) or {}).get("stages") or [None])[0]
     counts = stage_counts(stage) if stage else None
@@ -4016,6 +4037,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                                       args.timeout, directory, selection)
         plan["segments"] = segments
         plan["watch"] = library_files(project)
+        plan["tolerate"] = holder.state.first_left if holder.state is not None else []
         runs, lost, stopped = run_session(args, project, plan, directory, holder) \
             if launched else ({}, set(), None)
     finally:
@@ -5224,11 +5246,6 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
     per = SHARD_CEILING[args.platform]
     if args.survivors_shard is not None:
         # One job measures them all, after its own first pass.
-        if len(chosen) > per:
-            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
-                  "{} after it.\nWrite the tests they ask for, or split the change."
-                  .format(len(chosen), first, per, args.platform))
-            return CEILING_REFUSAL
         print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
             len(chosen), len(mutants), first, args.platform))
         print("mutants={}".format(len(chosen)))
@@ -5740,6 +5757,14 @@ def main():
                                                       project, scope)
             mutant.platform = first
         chosen = [index for index in first_chosen if mutants[index - 1].verdict in SURVIVING]
+        if args.survivors_shard is not None and len(chosen) > SHARD_CEILING[args.platform]:
+            # The rest are left unrecorded on this platform, which the decision names, rather than failing
+            # the shard job and with it the run's chain.
+            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
+                  "{} after it; the first {} are measured and the rest are left unmeasured."
+                  .format(len(chosen), first, SHARD_CEILING[args.platform], args.platform,
+                          SHARD_CEILING[args.platform]))
+            chosen = chosen[:SHARD_CEILING[args.platform]]
         if args.plan:
             return plan_survivors(args, coverage, mutants, chosen, first, project)
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
