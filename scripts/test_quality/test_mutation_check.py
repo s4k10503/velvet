@@ -6898,14 +6898,14 @@ class EditorRewrittenFilesTests(unittest.TestCase):
         state = self.launch_over(("Settings.asset", "rewritten by the editor"))
 
         # Assert
-        self.assertEqual(state.first_left, ["Settings.asset"])
+        self.assertEqual(getattr(state, "first_left", None), ["Settings.asset"])
 
     def test_Given_ABaselineLaunchThatLeftTheTreeAsItFoundIt_When_ItSettles_Then_NothingIsNamed(self):
         # Arrange / Act
         state = self.launch_over()
 
         # Assert
-        self.assertEqual(state.first_left, [])
+        self.assertEqual(getattr(state, "first_left", None), [])
 
     def test_Given_AFileOnlyALaterLaunchRewrote_When_ItSettles_Then_ItIsNotNamed(self):
         # Arrange
@@ -6916,7 +6916,7 @@ class EditorRewrittenFilesTests(unittest.TestCase):
         state.settled([])
 
         # Assert
-        self.assertEqual(state.first_left, [])
+        self.assertEqual(getattr(state, "first_left", None), [])
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
@@ -11736,6 +11736,7 @@ class KillSetShardTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(steps), spare is not None and spare >= 15), (1, True))
 
+    # GREEN_ON_BASE(refactor): renamed only, since the margin it reads is no longer three; the body is the base's.
     def test_Given_TheMeasuringStep_When_ItsTimeoutFlagIsRead_Then_ItIsHangMarginTimesTheBaselineAtLeast(self):
         # Arrange — a hang reads as one only where the baseline times mutation_check.HANG_MARGIN fits the flag.
         flag = self.timeout_flag()
