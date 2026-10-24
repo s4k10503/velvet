@@ -145,13 +145,21 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", reads) + " after " + _reads, Is.EqualTo("False,False after 2"));
         }
 
-        private struct FakeWindows : ApplicationVisibility.IWindowSource
+        private struct FakeWindowList : ApplicationVisibility.IWindowListSource
         {
             internal bool Hidden;
             internal bool[] Shown;
+            internal IntPtr Looked;
             internal int CountReads;
+            internal int Registrations;
 
-            public bool ApplicationIsHidden() => Hidden;
+            public IntPtr Application { get; set; }
+
+            public void RegisterSelectors() => Registrations++;
+
+            public IntPtr LookUpApplication() => Looked;
+
+            public byte ApplicationHidden() => (byte)(Hidden ? 1 : 0);
 
             public ulong WindowCount()
             {
@@ -159,21 +167,22 @@ namespace Velvet.Tests
                 return (ulong)Shown.Length;
             }
 
-            // Past the last window this throws, so a loop that reads one too many fails the case.
-            public bool WindowIsShown(ulong index) => Shown[(int)index];
+            // Past the last window these throw, so a loop that reads one too many fails the case.
+            public byte WindowVisible(ulong index) => (byte)(Shown[(int)index] ? 1 : 0);
+
+            public byte WindowMiniaturized(ulong index) => 0;
         }
 
-        private static bool HiddenFrom(bool applicationIsHidden, params bool[] shown)
-        {
-            var windows = new FakeWindows { Hidden = applicationIsHidden, Shown = shown };
-            return ApplicationVisibility.IsHiddenFrom(ref windows);
-        }
+        private static FakeWindowList ListOf(bool applicationIsHidden, params bool[] shown) =>
+            new() { Hidden = applicationIsHidden, Shown = shown, Looked = s_window, Application = s_window };
+
+        private static bool HiddenFrom(FakeWindowList list) => ApplicationVisibility.IsHidden(ref list);
 
         [Test]
         public void Given_ApplicationReportsItselfHidden_When_HiddenIsDecided_Then_ItIsHidden()
         {
             // Act
-            var hidden = HiddenFrom(true, true);
+            var hidden = HiddenFrom(ListOf(true, true));
 
             // Assert
             Assert.That(hidden, Is.True, "A hidden application is hidden whatever its windows say");
@@ -183,20 +192,20 @@ namespace Velvet.Tests
         public void Given_ApplicationReportsItselfHidden_When_HiddenIsDecided_Then_ItsWindowsAreNotCounted()
         {
             // Arrange
-            var windows = new FakeWindows { Hidden = true, Shown = new[] { true } };
+            var list = ListOf(true, true);
 
             // Act
-            ApplicationVisibility.IsHiddenFrom(ref windows);
+            ApplicationVisibility.IsHidden(ref list);
 
             // Assert
-            Assert.That(windows.CountReads, Is.EqualTo(0), "The windows are asked about only once the application is not hidden");
+            Assert.That(list.CountReads, Is.EqualTo(0), "The windows are asked about only once the application is not hidden");
         }
 
         [Test]
         public void Given_NoWindows_When_HiddenIsDecided_Then_ItIsNotHidden()
         {
             // Act
-            var hidden = HiddenFrom(false);
+            var hidden = HiddenFrom(ListOf(false));
 
             // Assert
             Assert.That(hidden, Is.False, "An application with no windows reads as visible");
@@ -206,7 +215,7 @@ namespace Velvet.Tests
         public void Given_WindowsNoneOfWhichIsShown_When_HiddenIsDecided_Then_ItIsHidden()
         {
             // Act
-            var hidden = HiddenFrom(false, false, false);
+            var hidden = HiddenFrom(ListOf(false, false, false));
 
             // Assert
             Assert.That(hidden, Is.True, "Windows that are all hidden or miniaturized hide the application");
@@ -216,164 +225,278 @@ namespace Velvet.Tests
         public void Given_OneShownWindowAmongOthers_When_HiddenIsDecided_Then_ItIsNotHidden()
         {
             // Act
-            var hidden = HiddenFrom(false, false, true, false);
+            var hidden = HiddenFrom(ListOf(false, false, true, false));
 
             // Assert
             Assert.That(hidden, Is.False, "One shown window is enough, wherever it sits");
         }
 
+        [Test]
+        public void Given_NoApplicationYet_When_HiddenIsDecided_Then_TheSelectorsAreRegisteredOnce()
+        {
+            // Arrange
+            var list = ListOf(false, true);
+            list.Application = IntPtr.Zero;
+
+            // Act
+            ApplicationVisibility.IsHidden(ref list);
+            ApplicationVisibility.IsHidden(ref list);
+
+            // Assert
+            Assert.That(list.Registrations, Is.EqualTo(1), "The application is looked up once and kept");
+        }
+
+        [Test]
+        public void Given_NoApplicationYet_When_TheLookUpFindsOne_Then_ItIsKept()
+        {
+            // Arrange
+            var list = ListOf(false, true);
+            list.Application = IntPtr.Zero;
+
+            // Act
+            ApplicationVisibility.IsHidden(ref list);
+
+            // Assert
+            Assert.That(list.Application, Is.EqualTo(s_window));
+        }
+
+        [Test]
+        public void Given_NoApplicationYet_When_TheLookUpFindsNone_Then_ItThrows()
+        {
+            // Arrange
+            var list = ListOf(false, true);
+            list.Application = IntPtr.Zero;
+            list.Looked = IntPtr.Zero;
+
+            // Act
+            TestDelegate read = () => ApplicationVisibility.IsHidden(ref list);
+
+            // Assert
+            Assert.That(read, Throws.InvalidOperationException, "Without NSApplication there is nothing to ask");
+        }
+
         private static readonly IntPtr s_window = new(7);
+
+        private struct FakeMainWindow : ApplicationVisibility.IMainWindowSource
+        {
+            internal IntPtr[] Windows;
+            internal HashSet<IntPtr> Visible;
+            internal Dictionary<IntPtr, IntPtr> Owners;
+            internal HashSet<IntPtr> Iconic;
+            internal int Collections;
+            internal List<IntPtr> OwnerLookups;
+
+            public IntPtr MainWindow { get; set; }
+
+            public void CollectWindows(List<IntPtr> into)
+            {
+                Collections++;
+                into.AddRange(Windows);
+            }
+
+            public bool IsVisible(IntPtr window) => Visible.Contains(window);
+
+            public IntPtr OwnerOf(IntPtr window)
+            {
+                OwnerLookups.Add(window);
+                return Owners.TryGetValue(window, out var owner) ? owner : IntPtr.Zero;
+            }
+
+            public bool IsIconic(IntPtr window) => Iconic.Contains(window);
+        }
+
+        private static readonly IntPtr s_first = new(1);
+        private static readonly IntPtr s_second = new(2);
+        private static readonly IntPtr s_third = new(3);
+
+        // Three windows: the first invisible, the second visible but owned, the third visible and free.
+        private static FakeMainWindow ThreeWindows() => new()
+        {
+            Windows = new[] { s_first, s_second, s_third },
+            Visible = new HashSet<IntPtr> { s_second, s_third },
+            Owners = new Dictionary<IntPtr, IntPtr> { [s_second] = s_first },
+            Iconic = new HashSet<IntPtr>(),
+            OwnerLookups = new List<IntPtr>(),
+        };
+
+        [Test]
+        public void Given_InvisibleAndOwnedWindowsAheadOfAFreeOne_When_TheMainWindowIsPicked_Then_ItIsTheFreeOne()
+        {
+            // Arrange
+            var main = ThreeWindows();
+
+            // Act
+            var picked = ApplicationVisibility.FirstMainWindow(ref main, new List<IntPtr>(main.Windows));
+
+            // Assert
+            Assert.That(picked, Is.EqualTo(s_third), "The first visible window with no owner");
+        }
+
+        [Test]
+        public void Given_NoVisibleUnownedWindow_When_TheMainWindowIsPicked_Then_ItIsNone()
+        {
+            // Arrange
+            var main = ThreeWindows();
+            main.Visible = new HashSet<IntPtr>();
+
+            // Act
+            var picked = ApplicationVisibility.FirstMainWindow(ref main, new List<IntPtr>(main.Windows));
+
+            // Assert
+            Assert.That(picked, Is.EqualTo(IntPtr.Zero));
+        }
+
+        [Test]
+        public void Given_AnInvisibleWindow_When_TheMainWindowIsPicked_Then_ItsOwnerIsNotLookedUp()
+        {
+            // Arrange
+            var main = ThreeWindows();
+
+            // Act
+            ApplicationVisibility.FirstMainWindow(ref main, new List<IntPtr>(main.Windows));
+
+            // Assert
+            Assert.That(main.OwnerLookups, Is.EqualTo(new[] { s_second, s_third }), "The owner is read only of a visible window");
+        }
+
+        [Test]
+        public void Given_NoMainWindowYet_When_MinimizedIsRead_Then_ItsIconicStateAnswers()
+        {
+            // Arrange
+            var main = ThreeWindows();
+            main.Iconic.Add(s_third);
+
+            // Act
+            var minimized = ApplicationVisibility.IsMinimized(ref main);
+
+            // Assert
+            Assert.That(minimized, Is.True, "The window the search picked is the one asked");
+        }
 
         [Test]
         public void Given_AMainWindowAlreadyFound_When_MinimizedIsRead_Then_NoSearchRuns()
         {
             // Arrange
-            var main = s_window;
-            var searches = 0;
+            var main = ThreeWindows();
+            main.MainWindow = s_third;
 
             // Act
-            ApplicationVisibility.IsMinimized(ref main, () => searches++, _ => false);
+            ApplicationVisibility.IsMinimized(ref main);
 
             // Assert
-            Assert.That(searches, Is.EqualTo(0), "A window found once is not searched for again");
+            Assert.That(main.Collections, Is.EqualTo(0), "A window found once is not searched for again");
         }
 
         [Test]
         public void Given_AMainWindowAlreadyFound_When_MinimizedIsRead_Then_ItsIconicStateAnswers()
         {
             // Arrange
-            var main = s_window;
+            var main = ThreeWindows();
+            main.MainWindow = s_third;
+            main.Iconic.Add(s_third);
 
             // Act
-            var minimized = ApplicationVisibility.IsMinimized(ref main, () => { }, window => window == s_window);
+            var minimized = ApplicationVisibility.IsMinimized(ref main);
 
             // Assert
-            Assert.That(minimized, Is.True, "The answer is the found window's own state");
+            Assert.That(minimized, Is.True);
         }
 
         [Test]
-        public void Given_NoMainWindowYet_When_TheSearchFindsOne_Then_ItsIconicStateAnswers()
+        public void Given_NoMainWindowYet_When_MinimizedIsRead_Then_TheWindowIsKept()
         {
             // Arrange
-            var main = IntPtr.Zero;
+            var main = ThreeWindows();
 
             // Act
-            var minimized = ApplicationVisibility.IsMinimized(ref main, () => main = s_window, window => window == s_window);
+            ApplicationVisibility.IsMinimized(ref main);
 
             // Assert
-            Assert.That(minimized, Is.True, "The window the search left is the one asked");
+            Assert.That(main.MainWindow, Is.EqualTo(s_third));
         }
 
         [Test]
         public void Given_NoMainWindowYet_When_TheSearchFindsNone_Then_ItThrows()
         {
             // Arrange
-            var main = IntPtr.Zero;
+            var main = ThreeWindows();
+            main.Windows = Array.Empty<IntPtr>();
 
             // Act
-            TestDelegate read = () => ApplicationVisibility.IsMinimized(ref main, () => { }, _ => false);
+            TestDelegate read = () => ApplicationVisibility.IsMinimized(ref main);
 
             // Assert
             Assert.That(read, Throws.InvalidOperationException, "A thread with no window has nothing to ask");
         }
 
-        private static bool KeepLooking(bool visible, IntPtr owner, ref IntPtr main) =>
-            ApplicationVisibility.KeepLooking(s_window, _ => visible, _ => owner, ref main);
-
-        [Test]
-        public void Given_AVisibleUnownedWindow_When_TheEnumerationAsks_Then_ItStops()
+        private struct NoWindowsAtAll : ApplicationVisibility.IMainWindowSource, ApplicationVisibility.IWindowListSource
         {
-            // Arrange
-            var main = IntPtr.Zero;
+            public IntPtr MainWindow { get; set; }
 
-            // Act
-            var keepLooking = KeepLooking(true, IntPtr.Zero, ref main);
+            public IntPtr Application { get; set; }
 
-            // Assert
-            Assert.That(keepLooking, Is.False, "The first visible window with no owner ends the search");
+            public void CollectWindows(List<IntPtr> into) => throw new InvalidOperationException("read");
+
+            public bool IsVisible(IntPtr window) => throw new InvalidOperationException("read");
+
+            public IntPtr OwnerOf(IntPtr window) => throw new InvalidOperationException("read");
+
+            public bool IsIconic(IntPtr window) => throw new InvalidOperationException("read");
+
+            public void RegisterSelectors() => throw new InvalidOperationException("read");
+
+            public IntPtr LookUpApplication() => throw new InvalidOperationException("read");
+
+            public byte ApplicationHidden() => throw new InvalidOperationException("read");
+
+            public ulong WindowCount() => throw new InvalidOperationException("read");
+
+            public byte WindowVisible(ulong index) => throw new InvalidOperationException("read");
+
+            public byte WindowMiniaturized(ulong index) => throw new InvalidOperationException("read");
         }
 
         [Test]
-        public void Given_AVisibleUnownedWindow_When_TheEnumerationAsks_Then_ItIsTheMainWindow()
+        public void Given_NoReading_When_HiddenIsDecided_Then_ItIsNotHiddenAndNothingIsRead()
         {
             // Arrange
-            var main = IntPtr.Zero;
+            var main = new NoWindowsAtAll();
+            var list = new NoWindowsAtAll();
 
             // Act
-            KeepLooking(true, IntPtr.Zero, ref main);
+            var hidden = ApplicationVisibility.IsHiddenOn(ApplicationVisibility.WindowReading.None, ref main, ref list);
 
             // Assert
-            Assert.That(main, Is.EqualTo(s_window));
+            Assert.That(hidden, Is.False, "A platform with no reading answers visible without asking");
         }
 
         [Test]
-        public void Given_AnInvisibleWindow_When_TheEnumerationAsks_Then_ItGoesOn()
+        public void Given_TheMainWindowReading_When_HiddenIsDecided_Then_TheMainWindowIsAsked()
         {
             // Arrange
-            var main = IntPtr.Zero;
+            var main = ThreeWindows();
+            main.Iconic.Add(s_third);
+            var list = new NoWindowsAtAll();
 
             // Act
-            var keepLooking = KeepLooking(false, IntPtr.Zero, ref main);
+            var hidden = ApplicationVisibility.IsHiddenOn(ApplicationVisibility.WindowReading.MainWindow, ref main, ref list);
 
             // Assert
-            Assert.That(keepLooking, Is.True);
+            Assert.That(hidden, Is.True, "A minimized main window is hidden, and the window list is not read");
         }
 
         [Test]
-        public void Given_AnInvisibleWindow_When_TheEnumerationAsks_Then_ItIsNotTheMainWindow()
+        public void Given_TheWindowListReading_When_HiddenIsDecided_Then_TheListIsAsked()
         {
             // Arrange
-            var main = IntPtr.Zero;
+            var main = new NoWindowsAtAll();
+            var list = ListOf(true);
 
             // Act
-            KeepLooking(false, IntPtr.Zero, ref main);
+            var hidden = ApplicationVisibility.IsHiddenOn(ApplicationVisibility.WindowReading.WindowList, ref main, ref list);
 
             // Assert
-            Assert.That(main, Is.EqualTo(IntPtr.Zero));
-        }
-
-        [Test]
-        public void Given_AnInvisibleWindow_When_TheEnumerationAsks_Then_ItsOwnerIsNotLookedUp()
-        {
-            // Arrange
-            var main = IntPtr.Zero;
-            var lookups = 0;
-
-            // Act
-            ApplicationVisibility.KeepLooking(s_window, _ => false, _ =>
-            {
-                lookups++;
-                return IntPtr.Zero;
-            }, ref main);
-
-            // Assert
-            Assert.That(lookups, Is.EqualTo(0), "The owner is read only of a visible window");
-        }
-
-        [Test]
-        public void Given_AnOwnedVisibleWindow_When_TheEnumerationAsks_Then_ItGoesOn()
-        {
-            // Arrange
-            var main = IntPtr.Zero;
-
-            // Act
-            var keepLooking = KeepLooking(true, new IntPtr(9), ref main);
-
-            // Assert
-            Assert.That(keepLooking, Is.True, "A window with an owner is not the main window");
-        }
-
-        [Test]
-        public void Given_AnOwnedVisibleWindow_When_TheEnumerationAsks_Then_ItIsNotTheMainWindow()
-        {
-            // Arrange
-            var main = IntPtr.Zero;
-
-            // Act
-            KeepLooking(true, new IntPtr(9), ref main);
-
-            // Assert
-            Assert.That(main, Is.EqualTo(IntPtr.Zero));
+            Assert.That(hidden, Is.True, "A hidden application is hidden, and the main window is not read");
         }
 
         [TestCase(0, true)]
