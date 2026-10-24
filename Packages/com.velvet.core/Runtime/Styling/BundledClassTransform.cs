@@ -114,6 +114,46 @@ namespace Velvet
             return (declared.Rotate, declared.Scale);
         }
 
+        // As OfClasses, with the rotate and scale a rule of the application's own gives the element in place of the
+        // classes' where such a rule could: what its last style pass matched, which holds the bundled classes' too.
+        // Where the bundled sheet is not attached that pass knows none of them, so a rule that gives nothing leaves
+        // the classes'. A rotate about an axis other than z is declined and the classes' rotate kept, since only its
+        // angle can be composed into a skew.
+        internal static (float RotateDegrees, Vector3 Scale) OfRules(VisualElement element)
+        {
+            var unread = 0;
+            var declared = ReadClasses(element, ref unread);
+            var rules = SheetRules.Unread(element, out var attached);
+            return (CascadedRotate(element, rules, attached) ?? declared.Rotate,
+                CascadedScale(element, rules, attached) ?? declared.Scale);
+        }
+
+        private static float? CascadedRotate(VisualElement element, int rules, bool attached)
+        {
+            var rotate = (rules & RotateBit) == 0 ? null : StyleCascade.Rotation(element);
+            if (rotate == null)
+            {
+                return null;
+            }
+            var angle = rotate.Value.angle;
+            if (angle.value == 0f)
+            {
+                return attached ? 0f : null;
+            }
+            return rotate.Value.Equals(new Rotate(angle)) ? angle.ToDegrees() : null;
+        }
+
+        private static Vector3? CascadedScale(VisualElement element, int rules, bool attached)
+        {
+            var scale = (rules & ScaleBit) == 0 ? null : StyleCascade.Scale(element);
+            if (scale == null)
+            {
+                return null;
+            }
+            var factors = new Vector3(scale.Value.value.x, scale.Value.value.y, 1f);
+            return attached || factors.x != 1f || factors.y != 1f ? factors : null;
+        }
+
         private static Declared ReadClasses(VisualElement element, ref int unread)
         {
             var declared = new Declared { Scale = Vector3.one, Origin = new Vector2(0.5f, 0.5f) };
@@ -231,10 +271,12 @@ namespace Velvet
 
             // The properties of the three that a rule other than a bundled utility could give the element, all three where
             // the bundled sheet is not attached at or above it or a sheet cannot be read.
-            public static int Unread(VisualElement element)
+            public static int Unread(VisualElement element) => Unread(element, out _);
+
+            public static int Unread(VisualElement element, out bool attached)
             {
                 var unread = 0;
-                var attached = false;
+                attached = false;
                 for (var e = element; e != null; e = e.hierarchy.parent)
                 {
                     for (var i = 0; i < e.styleSheets.count; i++)

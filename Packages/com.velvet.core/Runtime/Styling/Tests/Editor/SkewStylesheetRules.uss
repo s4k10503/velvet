@@ -1,0 +1,3 @@
+.sheet-rotated { rotate: 20deg; }
+.sheet-scaled { scale: 1.2 1.2; }
+.sheet-late { rotate: 25deg; }

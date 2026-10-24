@@ -3,8 +3,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // The skew-* utilities. A skewed element takes the skew as its inline rotate and scale slots, composed with the
-    // rotate and scale its classes and writers give it (AuthoredTransform), which UI Toolkit draws, picks and lays its
-    // descendants out under as the shear it stands for.
+    // rotate and scale its classes, rules and writers give it (AuthoredTransform), which UI Toolkit draws, picks and
+    // lays its descendants out under as the shear it stands for.
     internal sealed class FiberSkewApplier
     {
         private readonly ReconcilerContext _ctx;
