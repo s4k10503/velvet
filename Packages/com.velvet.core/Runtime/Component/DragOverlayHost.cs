@@ -45,6 +45,7 @@ namespace Velvet
             // drop animation shows them again.
             var retained = Hooks.UseRef<VNode?[]>();
             var (_, setVersion) = Hooks.UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): the version is discarded above, and a step of one either way differs from the value the slot holds, which is all the re-render asks.
             handle.Rerender = () => setVersion.Invoke(version => version + 1);
 
             var children = props.Children ?? Array.Empty<VNode?>();

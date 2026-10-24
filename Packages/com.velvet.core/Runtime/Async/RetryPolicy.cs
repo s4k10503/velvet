@@ -269,6 +269,7 @@ namespace Velvet
         /// </summary>
         /// <exception cref="ArgumentNullException"><paramref name="compute"/> is null.</exception>
         public static RetryDelayRule By(Func<int, Exception, TimeSpan> compute) =>
+            // MUTANT_SURVIVES(equivalent): Resolve takes `_compute` before it reads `_isConstant`, and this rule's `_compute` is never null.
             new(default, false, compute ?? throw new ArgumentNullException(nameof(compute)));
 
         /// <summary>As <see cref="Constant"/>.</summary>

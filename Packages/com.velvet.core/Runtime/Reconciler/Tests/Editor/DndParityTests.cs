@@ -433,6 +433,22 @@ namespace Velvet.Tests
             Assert.That(Q("ghost").parent.style.display.value, Is.EqualTo(DisplayStyle.Flex));
         }
 
+        // GREEN_ON_BASE(characterization): kills the DragOverlayHost.cs:95 equality survivor; main already keeps a root-mounted overlay in an editor panel in place.
+        [Test]
+        public void Given_ADragOverlayThatIsTheMountedRoot_When_MountedInAnEditorPanel_Then_ItsChildrenStayInTheMount()
+        {
+            // Arrange & Act — the overlay's own fiber is the tree's root, so the walk to the root fiber takes no
+            // step, and the first render is the one that decides whether to portal.
+            _mounted = V.Mount(_mountPoint, V.DragOverlay(key: "overlay", children: new VNode[]
+            {
+                V.Label("ghost", name: "ghost", key: "ghost"),
+            }));
+
+            // Assert
+            Assert.That(_mountPoint.Q<VisualElement>("ghost"), Is.Not.Null,
+                "In an editor panel the overlay stays where it is declared instead of portaling");
+        }
+
         [Test]
         public void Given_ADragOverlayAwayFromItsSource_When_TheDropClearsItsChildren_Then_ItKeepsThemForTheDropAnimation()
         {

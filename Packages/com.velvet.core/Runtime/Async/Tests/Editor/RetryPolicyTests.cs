@@ -631,6 +631,146 @@ namespace Velvet.Tests
                 "A retry waits for focus in every network mode");
         }
 
+        private static void OnAnotherThread(Action action)
+        {
+            var thread = new Thread(() => action());
+            thread.Start();
+            thread.Join();
+        }
+
+        private static Func<bool> RecordingThreadInto(List<int> readOn) => () =>
+        {
+            readOn.Add(Thread.CurrentThread.ManagedThreadId);
+            return true;
+        };
+
+        // GREEN_ON_BASE(characterization): kills the RetryPolicy.cs:89 equality survivor; main already moves a run that starts off the main thread before it reads the connection.
+        [Test]
+        public void Given_NoIsOnlineOnThePolicy_When_ARunStartsOffTheMainThread_Then_NetworkSignalsAreReadOnTheMainThread()
+        {
+            // Arrange
+            var previous = NetworkSignals.IsOnline;
+            var mainThread = Thread.CurrentThread.ManagedThreadId;
+            var readOn = new List<int>();
+            NetworkSignals.IsOnline = RecordingThreadInto(readOn);
+            try
+            {
+                OnAnotherThread(() => _ = (s_ready with { IsOnline = null }).RunAsync(_ => VelvetTask.FromResult(1)));
+
+                // Act
+                VelvetMainThread.RunHandoffs();
+
+                // Assert
+                Assert.That(readOn, Is.EqualTo(new[] { mainThread }),
+                    "The connection is read once, after the run has moved to the main thread");
+            }
+            finally
+            {
+                NetworkSignals.IsOnline = previous;
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): kills the RetryPolicy.cs:117 equality survivor (its first operand); main already moves a retry that falls due off the main thread before it reads the connection.
+        [Test]
+        public void Given_NoIsOnlineOnThePolicy_When_ARetryIsDueOffTheMainThread_Then_NetworkSignalsAreReadOnTheMainThread()
+        {
+            // Arrange — OfflineFirst, so nothing before the retry moves the run to the main thread, and a
+            // Wait that completes at once leaves it on the thread the first attempt failed on.
+            var previous = NetworkSignals.IsOnline;
+            var mainThread = Thread.CurrentThread.ManagedThreadId;
+            var readOn = new List<int>();
+            NetworkSignals.IsOnline = RecordingThreadInto(readOn);
+            try
+            {
+                var attempts = 0;
+                var policy = s_ready with
+                {
+                    NetworkMode = NetworkMode.OfflineFirst,
+                    IsOnline = null,
+                    Wait = (_, _) => VelvetTask.CompletedTask,
+                };
+                OnAnotherThread(() => _ = policy.RunAsync(_ =>
+                    ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(attempts)));
+
+                // Act
+                VelvetMainThread.RunHandoffs();
+
+                // Assert
+                Assert.That(readOn, Is.EqualTo(new[] { mainThread }),
+                    "The connection is read once, by the retry, after the run has moved to the main thread");
+            }
+            finally
+            {
+                NetworkSignals.IsOnline = previous;
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): pins the RetryPolicy.cs:117 clause the survivor leaves alone (its second operand); main already moves the retry before it reads the visibility.
+        [Test]
+        public void Given_NoIsFocusedOnThePolicy_When_ARetryIsDueOffTheMainThread_Then_NetworkSignalsAreReadOnTheMainThread()
+        {
+            // Arrange — as for the connection above, with the visibility read in its place.
+            var previous = NetworkSignals.IsVisible;
+            var mainThread = Thread.CurrentThread.ManagedThreadId;
+            var readOn = new List<int>();
+            NetworkSignals.IsVisible = RecordingThreadInto(readOn);
+            try
+            {
+                var attempts = 0;
+                var policy = s_ready with
+                {
+                    NetworkMode = NetworkMode.OfflineFirst,
+                    IsFocused = null,
+                    Wait = (_, _) => VelvetTask.CompletedTask,
+                };
+                OnAnotherThread(() => _ = policy.RunAsync(_ =>
+                    ++attempts == 1 ? throw new InvalidOperationException("transient") : VelvetTask.FromResult(attempts)));
+
+                // Act
+                VelvetMainThread.RunHandoffs();
+
+                // Assert
+                Assert.That(readOn, Is.EqualTo(new[] { mainThread }),
+                    "The visibility is read once, by the retry, after the run has moved to the main thread");
+            }
+            finally
+            {
+                NetworkSignals.IsVisible = previous;
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): kills the RetryPolicy.cs:150 line-removed survivor; main already rejects a pause whose caller left as the loop condition was met.
+        [Test]
+        public void Given_ARunPausedOffline_When_TheCallerCancelsAsTheConnectionReturns_Then_NoAttemptStarts()
+        {
+            // Arrange — the second read of the connection is the one that ends the pause, and it cancels the
+            // caller on its way out, so the pause's loop condition is met with the token already cancelled.
+            using var cts = new CancellationTokenSource();
+            var reads = 0;
+            var attempts = 0;
+            var policy = s_ready with
+            {
+                IsOnline = () =>
+                {
+                    if (++reads == 1)
+                    {
+                        return false;
+                    }
+
+                    cts.Cancel();
+                    return true;
+                },
+            };
+            var running = policy.RunAsync(_ => VelvetTask.FromResult(++attempts), cts.Token);
+
+            // Act
+            DrainFrames();
+
+            // Assert
+            Assert.That((running.Status, attempts), Is.EqualTo((VelvetTaskStatus.Canceled, 0)),
+                "A caller who left as the connection returned gets no attempt");
+        }
+
         [Test]
         public void Given_ARetryPausedOffline_When_TheCallerCancels_Then_TheRunRejectsAsCancelled()
         {
