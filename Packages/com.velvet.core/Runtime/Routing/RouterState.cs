@@ -11,9 +11,24 @@ namespace Velvet
         Forward,
     }
 
+    /// <summary>How a location was reached: React Router's <c>NavigationType</c>.</summary>
+    public enum NavigationType
+    {
+        /// <summary>Nothing has committed yet, or the location is a step along the history.</summary>
+        Pop,
+        /// <summary>A new history entry.</summary>
+        Push,
+        /// <summary>A replaced history entry.</summary>
+        Replace,
+    }
+
     public enum NavigationResult
     {
         Success,
+        /// <summary>
+        /// No route matched the path. The router has committed the 404 at the root, as
+        /// <see cref="Router.NavigateAsync(string, NavigationMode, System.Threading.CancellationToken)"/> states; a null path commits nothing.
+        /// </summary>
         NotFound,
         Error,
         /// <summary>Cancellation, supersession, or an unavailable history step stopped the attempt.</summary>

@@ -1058,6 +1058,122 @@ namespace Velvet
             return null;
         }
 
+        /// <summary>
+        /// Returns every route matched by the current location, parent first, each with the loader data and
+        /// <see cref="RouteDefinition.Handle"/> it carries: React Router's <c>useMatches</c>.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static IReadOnlyList<UiMatch> UseMatches()
+        {
+            _ = Resolve("UseMatches");
+            _ = UseRouterOrThrow("UseMatches");
+            var location = UseContext(RouterContext.Location);
+            var data = UseContext(RouterContext.LoaderData);
+            if (location?.Matches == null)
+            {
+                return System.Array.Empty<UiMatch>();
+            }
+            var matches = new UiMatch[location.Matches.Count];
+            for (var index = 0; index < matches.Length; index++)
+            {
+                var match = location.Matches[index];
+                object? routeData = null;
+                if (match.RouteId != null)
+                {
+                    data?.TryGetValue(match.RouteId, out routeData);
+                }
+                matches[index] = new UiMatch
+                {
+                    Id = match.RouteId ?? string.Empty,
+                    Pathname = match.PathnameBase,
+                    Params = match.Params,
+                    Data = routeData,
+                    Handle = match.Route?.Handle,
+                };
+            }
+            return matches;
+        }
+
+        /// <summary>
+        /// Returns the loader data of the route with the given <see cref="RouteDefinition.Id"/> (or
+        /// <see cref="RouteMatch.RouteId"/>) among the current location's matches, cast to
+        /// <typeparamref name="T"/>, from any component beneath the provider: React Router's
+        /// <c>useRouteLoaderData</c>. Returns <c>default</c> when that route has no data or is not matched.
+        /// </summary>
+        /// <typeparam name="T">Expected loader data type.</typeparam>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static T? UseRouteLoaderData<T>(string routeId)
+        {
+            if (routeId == null) throw new ArgumentNullException(nameof(routeId));
+            _ = Resolve("UseRouteLoaderData");
+            _ = UseRouterOrThrow("UseRouteLoaderData");
+            var data = UseContext(RouterContext.LoaderData);
+            object? value = null;
+            data?.TryGetValue(routeId, out value);
+            return value is T typed ? typed : default;
+        }
+
+        /// <summary>
+        /// True when a <c>V.RouterProvider</c> is mounted above the caller: React Router's
+        /// <c>useInRouterContext</c>.
+        /// </summary>
+        public static bool UseInRouterContext()
+        {
+            _ = Resolve("UseInRouterContext");
+            return UseContext(RouterContext.Router) != null;
+        }
+
+        /// <summary>
+        /// Returns how the current location was reached, and re-renders the component as the location
+        /// changes: React Router's <c>useNavigationType</c>.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static NavigationType UseNavigationType()
+        {
+            _ = Resolve("UseNavigationType");
+            var router = UseRouterOrThrow("UseNavigationType");
+            _ = UseContext(RouterContext.Location);
+            return router.NavigationType;
+        }
+
+        /// <summary>
+        /// Resolves <paramref name="to"/> to an absolute pathname, search and hash as <c>UseNavigate</c>
+        /// would navigate to it from the calling component's route: React Router's <c>useResolvedPath</c>.
+        /// </summary>
+        /// <param name="to">Absolute or relative target; the empty string is the calling route itself.</param>
+        /// <param name="relative">Whether a <c>..</c> drops a route or a URL segment.</param>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static ResolvedPath UseResolvedPath(string to, RelativeRoutingType relative = RelativeRoutingType.Route)
+        {
+            if (to == null) throw new ArgumentNullException(nameof(to));
+            _ = Resolve("UseResolvedPath");
+            var router = UseRouterOrThrow("UseResolvedPath");
+            _ = UseContext(RouterContext.Location);
+            return router.ResolveTarget(to.Length == 0 ? "." : to, UseBaseRouteIndex(), relative);
+        }
+
+        /// <summary>
+        /// Returns the string an anchor would link <paramref name="to"/> with, its resolved pathname, search
+        /// and hash joined: React Router's <c>useHref</c>.
+        /// </summary>
+        /// <param name="to">Absolute or relative target; the empty string is the calling route itself.</param>
+        /// <param name="relative">Whether a <c>..</c> drops a route or a URL segment.</param>
+        /// <exception cref="InvalidOperationException">No <c>V.RouterProvider</c> is mounted above the
+        /// caller.</exception>
+        public static string UseHref(string to, RelativeRoutingType relative = RelativeRoutingType.Route)
+        {
+            if (to == null) throw new ArgumentNullException(nameof(to));
+            _ = Resolve("UseHref");
+            var router = UseRouterOrThrow("UseHref");
+            _ = UseContext(RouterContext.Location);
+            var path = router.ResolveTarget(to.Length == 0 ? "." : to, UseBaseRouteIndex(), relative);
+            return path.Pathname + path.Search + path.Hash;
+        }
+
         private static readonly IReadOnlyDictionary<string, string> EmptyParams =
             new Dictionary<string, string>();
 
@@ -2078,7 +2194,9 @@ namespace Velvet
         /// <summary>
         /// CancellationToken-aware variant of <see cref="Use{T}(Func{VelvetTask{T}}, object)"/>.
         /// The token is cancelled when the resource is superseded (a new key) or the component unmounts;
-        /// loader implementations are responsible for honoring it and aborting.
+        /// loader implementations are responsible for honoring it and aborting. A resource a transition's render
+        /// started is not superseded by a render of another lane that presents the old key: it is kept, and
+        /// cancelled only when a later transition presents a different key, or on unmount.
         /// </summary>
         /// <typeparam name="T">Resolved value type.</typeparam>
         /// <param name="factory">Factory that receives a CancellationToken and returns a VelvetTask producing the value. Must not be null.</param>
@@ -2106,7 +2224,11 @@ namespace Velvet
             FiberAsyncResource<T> resource;
             if (index >= slots.Count)
             {
-                resource = new FiberAsyncResource<T>(resourceKey) { OnCompleted = onCompleted };
+                resource = new FiberAsyncResource<T>(resourceKey)
+                {
+                    OnCompleted = onCompleted,
+                    StartedByTransition = FiberWorkLoop.IsRenderingTransitionLane,
+                };
                 slots.Add(resource);
                 resource.Start(factory);
             }
@@ -2136,10 +2258,22 @@ namespace Velvet
                             "Pass a stable `resourceKey` (e.g. the query id) so the resource is not restarted every render.");
                     }
 #endif
-                    existing?.Dispose();
-                    resource = new FiberAsyncResource<T>(resourceKey) { OnCompleted = onCompleted };
-                    slots[index] = resource;
-                    resource.Start(factory);
+                    var restored = fiber.RestoreOrRetireAsync<T>(index, existing, resourceKey);
+                    if (restored != null)
+                    {
+                        resource = restored;
+                        slots[index] = restored;
+                    }
+                    else
+                    {
+                        resource = new FiberAsyncResource<T>(resourceKey)
+                        {
+                            OnCompleted = onCompleted,
+                            StartedByTransition = FiberWorkLoop.IsRenderingTransitionLane,
+                        };
+                        slots[index] = resource;
+                        resource.Start(factory);
+                    }
                 }
             }
 

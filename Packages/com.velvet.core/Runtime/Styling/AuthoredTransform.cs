@@ -17,7 +17,16 @@ namespace Velvet
             public float SkewYDeg;
             public StyleRotate Rotate;
             public StyleScale Scale;
+            // The rotate and scale the slots were last composed from, which a restyle is compared against.
+            public (float Degrees, Vector2 Scale) Composed;
         }
+
+        // Carries the custom property that makes UI Toolkit send CustomStyleResolvedEvent on a restyle, the way
+        // DivideDashPainter's marker does; a rule of the application's own that gives the element a rotate or a scale
+        // reaches the slots through that event.
+        internal const string MarkerClass = "velvet-skew-observed";
+
+        private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved = OnStyleResolved;
 
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
 
@@ -71,7 +80,9 @@ namespace Velvet
             {
                 state = new State { Rotate = element.style.rotate, Scale = element.style.scale };
                 s_states.Add(element, state);
+                element.RegisterCallback(s_onStyleResolved);
             }
+            element.AddToClassList(MarkerClass);
             (state.SkewXDeg, state.SkewYDeg) = (xDeg, yDeg);
             Write(element, state);
         }
@@ -82,6 +93,18 @@ namespace Velvet
         public static void Resync(VisualElement element)
         {
             if (s_states.TryGetValue(element, out var state))
+            {
+                element.AddToClassList(MarkerClass);
+                Write(element, state);
+            }
+        }
+
+        // Composes the slots again when a restyle left the rotate or scale the rules give the element different from
+        // the pair they were last composed from, and only then.
+        private static void OnStyleResolved(CustomStyleResolvedEvent evt)
+        {
+            var element = (VisualElement)evt.currentTarget;
+            if (s_states.TryGetValue(element, out var state) && Unskewed(element, state) != state.Composed)
             {
                 Write(element, state);
             }
@@ -96,23 +119,27 @@ namespace Velvet
                 return;
             }
             s_states.Remove(element);
+            element.UnregisterCallback(s_onStyleResolved);
+            element.RemoveFromClassList(MarkerClass);
             element.style.rotate = state.Rotate;
             element.style.scale = state.Scale;
         }
 
         private static void Write(VisualElement element, State state)
         {
-            ComposedSlots(element, state, out var rotate, out var scale);
+            state.Composed = Unskewed(element, state);
+            ComposedSlots(state, out var rotate, out var scale);
             element.style.rotate = rotate;
             element.style.scale = scale;
         }
 
         // R(theta) * diag(sx, sy) * skewX(x) skewY(y), the order CSS applies the individual `rotate` and `scale`
         // properties around `transform`, as the slots that draw it. A rotation about an axis other than z is read by
-        // its angle alone, as the 2D rotate utilities are the only writers.
-        private static void ComposedSlots(VisualElement element, State state, out Rotate rotate, out Scale scale)
+        // its angle alone, as the 2D rotate utilities are the only writers; a rule's own is declined
+        // (BundledClassTransform.OfRules).
+        private static void ComposedSlots(State state, out Rotate rotate, out Scale scale)
         {
-            var (theta, drawnScale) = Unskewed(element, state);
+            var (theta, drawnScale) = state.Composed;
             var tx = Mathf.Tan(state.SkewXDeg * Mathf.Deg2Rad);
             var ty = Mathf.Tan(state.SkewYDeg * Mathf.Deg2Rad);
             var cos = Mathf.Cos(theta * Mathf.Deg2Rad);
@@ -134,12 +161,12 @@ namespace Velvet
         }
 
         // The rotate in degrees and the scale on each axis the element would be drawn with had it no skew. An inline
-        // value outranks the stylesheet's, so the classes speak only for a slot no writer has set.
+        // value outranks the stylesheet's, so the rules speak only for a slot no writer has set.
         private static (float Degrees, Vector2 Scale) Unskewed(VisualElement element, State state)
         {
             var rotated = state.Rotate.keyword != StyleKeyword.Null;
             var scaled = state.Scale.keyword != StyleKeyword.Null;
-            var declared = rotated && scaled ? (RotateDegrees: 0f, Scale: Vector3.one) : BundledClassTransform.OfClasses(element);
+            var declared = rotated && scaled ? (RotateDegrees: 0f, Scale: Vector3.one) : BundledClassTransform.OfRules(element);
             var degrees = !rotated ? declared.RotateDegrees
                 : state.Rotate.keyword == StyleKeyword.Undefined ? state.Rotate.value.angle.ToDegrees() : 0f;
             var axes = !scaled ? new Vector2(declared.Scale.x, declared.Scale.y)

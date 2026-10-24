@@ -10,8 +10,7 @@
   `Mirror` ends on the from-pose and holds it, as Framer's does. `When = BeforeChildren` waits for every pass
   and every wait between them, and never releases its children under an endless repeat. A
   `Hooks.UseAnimationSequence` `To` step deriving its hold waits for a repeat below 20; one of 20 or more is
-  dropped from the transition the step hands out, with a warning, as Framer's sequence drops it. A `Tween`
-  transition with a `Repeat` plays once, and the first such play in a mounted tree logs a warning.
+  dropped from the transition the step hands out, with a warning, as Framer's sequence drops it.
 
 ### Fixed
 

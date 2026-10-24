@@ -63,3 +63,7 @@
 .origin-top { transform-origin: center top; }
 .origin-top-left { transform-origin: left top; }
 .origin-top-right { transform-origin: right top; }
+
+/* Gives a skewed element the custom property that makes UI Toolkit send it CustomStyleResolvedEvent; see
+   AuthoredTransform. */
+.velvet-skew-observed { --velvet-skew-observed: 1; }

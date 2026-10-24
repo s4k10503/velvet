@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -7,7 +6,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what <see cref="StyleAnimationScheduler"/> does with a repeating transition: a bezier or spring play that
     /// ends on its from-values holds them past its completion until a cancel, one that ends on its to-values hands
-    /// them back to the classes, and a tween play warns that it does not repeat. Also pins the wait
+    /// them back to the classes, and a tween play repeats as they do. Also pins the wait
     /// <see cref="TransitionWhen.BeforeChildren"/> derives from a repeating swap, and a play whose delay never runs
     /// out, which is what a child waiting on an endless one is handed.
     /// </summary>
@@ -36,26 +35,80 @@ namespace Velvet.Tests
             Type = TransitionType.Bezier, DurationSec = 0.2f, Repeat = repeat, RepeatType = type,
         };
 
-        private static int RepeatWarnings(System.Action play)
+        private static StyleTransitionConfig Tween(float durationSec, float repeat, TransitionRepeatType type) => new()
         {
-            var count = 0;
-            void OnLog(string condition, string stackTrace, LogType type)
+            DurationSec = durationSec, Easing = EasingMode.Linear, Repeat = repeat, RepeatType = type,
+        };
+
+        [Test]
+        public void Given_AnOddReverseRepeatTweenEnter_When_ItCompletes_Then_TheElementKeepsItsFromOpacityInline()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var completed = false;
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                Tween(0.2f, 1f, TransitionRepeatType.Reverse), onComplete: () => completed = true);
+
+            // Act
+            AdvancePast(0.4f);
+
+            // Assert
+            var opacity = element.style.opacity;
+            Assert.That((completed, opacity.keyword, opacity.value), Is.EqualTo((true, StyleKeyword.Undefined, 0f)));
+        }
+
+        [Test]
+        public void Given_ARepeatingTweenEnter_When_ItsFirstPassHasEnded_Then_ItHasNotCompleted()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var element = OnPanel();
+            var completed = false;
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                Tween(0.5f, 1f, TransitionRepeatType.Loop), onComplete: () => completed = true);
+
+            // Act
+            AdvancePast(0.5f);
+
+            // Assert
+            Assert.That(completed, Is.False);
+        }
+
+        [Test]
+        public void Given_ARepeatingTweenExit_When_ItsFirstPassHasEnded_Then_ItHasNotCompleted()
+        {
+            // Arrange
+            _scheduler = new StyleAnimationScheduler();
+            var leaving = OnPanel();
+            var completed = false;
+            var tween = Tween(0.5f, 1f, TransitionRepeatType.Loop).WithExitClasses("opacity-100", "opacity-0");
+            _scheduler.PlayExit(leaving, tween, onComplete: () => completed = true, restoreFromOnCancel: true);
+
+            // Act
+            AdvancePast(0.5f);
+
+            // Assert
+            Assert.That(completed, Is.False);
+        }
+
+        [Test]
+        public void Given_BeforeChildrenOnARepeatingTweenSwap_When_AChildClaimsItsSlot_Then_ItWaitsOutEveryPass()
+        {
+            // Arrange — a 0.1 s delay and two half-second passes with a quarter-second wait between them.
+            var swap = new StyleTransitionConfig
             {
-                if (type == LogType.Warning && condition.Contains(StyleAnimationScheduler.RepeatNotPlayedWarning))
-                {
-                    count++;
-                }
-            }
-            Application.logMessageReceived += OnLog;
-            try
-            {
-                play();
-            }
-            finally
-            {
-                Application.logMessageReceived -= OnLog;
-            }
-            return count;
+                DurationSec = 0.5f, DelaySec = 0.1f, Repeat = 1f, RepeatDelaySec = 0.25f,
+                When = TransitionWhen.BeforeChildren,
+            };
+
+            // Act
+            var frame = FiberNodePatcher.ResolveChildOrchestration(V.Motion(), swap, childLabelChanged: true,
+                ambientOrchestration: null, extraDelaySec: 0f, new[] { "opacity-0" }, new[] { "opacity-100" });
+            var delay = frame?.ClaimNextChildDelaySec() ?? float.NaN;
+
+            // Assert
+            Assert.That(delay, Is.EqualTo(1.35f).Within(1e-5f));
         }
 
         [Test]
@@ -113,58 +166,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARepeatingTween_When_TwoEntersPlay_Then_OneWarningSaysItPlaysOnce()
-        {
-            // Arrange
-            _scheduler = new StyleAnimationScheduler();
-            var first = OnPanel();
-            var second = OnPanel();
-            var tween = new StyleTransitionConfig { DurationSec = 0.2f, Repeat = 1f };
-
-            // Act
-            var warnings = RepeatWarnings(() =>
-            {
-                _scheduler.PlayVariantEnter(first, new[] { "opacity-0" }, new[] { "opacity-100" }, tween);
-                _scheduler.PlayVariantEnter(second, new[] { "opacity-0" }, new[] { "opacity-100" }, tween);
-            });
-
-            // Assert
-            Assert.That(warnings, Is.EqualTo(1));
-        }
-
-        [Test]
-        public void Given_ARepeatingTween_When_AnExitPlays_Then_AWarningSaysItPlaysOnce()
-        {
-            // Arrange
-            _scheduler = new StyleAnimationScheduler();
-            var leaving = OnPanel();
-            var tween = new StyleTransitionConfig { DurationSec = 0.2f, Repeat = 1f };
-
-            // Act
-            var warnings = RepeatWarnings(() => _scheduler.PlayExit(leaving,
-                tween.WithExitClasses("opacity-100", "opacity-0"), onComplete: null, restoreFromOnCancel: true));
-
-            // Assert
-            Assert.That(warnings, Is.EqualTo(1));
-        }
-
-        [Test]
-        public void Given_ATweenWithNoRepeat_When_AnEnterPlays_Then_NoRepeatWarningIsLogged()
-        {
-            // Arrange
-            _scheduler = new StyleAnimationScheduler();
-            var element = OnPanel();
-            var tween = new StyleTransitionConfig { DurationSec = 0.2f };
-
-            // Act
-            var warnings = RepeatWarnings(() =>
-                _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, tween));
-
-            // Assert
-            Assert.That(warnings, Is.EqualTo(0));
-        }
-
-        [Test]
         public void Given_AnOddMirrorRepeatSpringEnter_When_ItCompletes_Then_TheElementKeepsItsFromOpacityInline()
         {
             // Arrange — the opacity spring rests at 1.1 s, so two passes take 2.2 s.
@@ -184,44 +185,6 @@ namespace Velvet.Tests
             // Assert
             var opacity = element.style.opacity;
             Assert.That((completed, opacity.keyword, opacity.value), Is.EqualTo((true, StyleKeyword.Undefined, 0f)));
-        }
-
-        [Test]
-        public void Given_ARepeatingSpring_When_AnExitPlays_Then_NoRepeatWarningIsLogged()
-        {
-            // Arrange
-            _scheduler = new StyleAnimationScheduler();
-            var element = OnPanel();
-            var spring = new StyleTransitionConfig { Type = TransitionType.Spring, Repeat = 1f }
-                .WithExitClasses("opacity-100", "opacity-0");
-
-            // Act
-            var warnings = RepeatWarnings(() =>
-                _scheduler.PlayExit(element, spring, onComplete: null, restoreFromOnCancel: true));
-
-            // Assert
-            Assert.That(warnings, Is.EqualTo(0));
-        }
-
-        [Test]
-        public void Given_ARepeatingBezier_When_AnEnterAndAnExitPlay_Then_NoRepeatWarningIsLogged()
-        {
-            // Arrange
-            _scheduler = new StyleAnimationScheduler();
-            var entering = OnPanel();
-            var leaving = OnPanel();
-            var bezier = Bezier(1f, TransitionRepeatType.Loop);
-
-            // Act
-            var warnings = RepeatWarnings(() =>
-            {
-                _scheduler.PlayVariantEnter(entering, new[] { "opacity-0" }, new[] { "opacity-100" }, bezier);
-                _scheduler.PlayExit(leaving, bezier.WithExitClasses("opacity-100", "opacity-0"), onComplete: null,
-                    restoreFromOnCancel: true);
-            });
-
-            // Assert
-            Assert.That(warnings, Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(characterization): the base already waits out every pass of a bezier swap; the opacity pair

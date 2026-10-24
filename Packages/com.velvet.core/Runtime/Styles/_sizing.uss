@@ -170,6 +170,7 @@
 .min-w-72 { min-width: var(--space-72); }
 .min-w-80 { min-width: var(--space-80); }
 .min-w-96 { min-width: var(--space-96); }
+.min-w-auto { min-width: auto; }
 .min-w-full { min-width: 100%; }
 .min-w-px { min-width: var(--space-px); }
 
@@ -252,6 +253,7 @@
 .min-h-72 { min-height: var(--space-72); }
 .min-h-80 { min-height: var(--space-80); }
 .min-h-96 { min-height: var(--space-96); }
+.min-h-auto { min-height: auto; }
 .min-h-full { min-height: 100%; }
 .min-h-px { min-height: var(--space-px); }
 

@@ -188,6 +188,9 @@ namespace Velvet
         /// </summary>
         internal ComponentFiber? SuspendedOn { get; set; }
 
+        // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
+        internal bool SuspendedInTransition { get; set; }
+
         /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
         /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
@@ -242,8 +245,63 @@ namespace Velvet
 
         internal void ResetAsyncSlotCursor() => _asyncSlotCursor = 0;
 
+        // Pending resources a transition's render started, kept by slot index while a render of another lane shows
+        // the slot's other key. The transition's retry takes its resource back; a later transition presenting a
+        // different key, and an unmount, dispose it.
+        private Dictionary<int, IFiberAsyncResource>? _stashedAsync;
+
+        // Replaces the slot's resource, which presented another key than the one now asked for. Returns the stashed
+        // resource of that key when there is one; otherwise null, and the caller starts a new one.
+        internal FiberAsyncResource<T>? RestoreOrRetireAsync<T>(int index, IFiberAsyncResource? existing, object key)
+        {
+            var inTransition = FiberWorkLoop.IsRenderingTransitionLane;
+            FiberAsyncResource<T>? restored = null;
+            var stashed = TakeStashedAsync(index);
+            if (stashed != null)
+            {
+                restored = WhenKeyed<T>(stashed, key);
+                if (restored == null) RetainOrDisposeStashed(index, stashed, inTransition);
+            }
+            if (existing == null) return restored;
+            if (inTransition || !existing.StartedByTransition || existing.Status != FiberAsyncResourceStatus.Pending)
+            {
+                existing.Dispose();
+                return restored;
+            }
+            _stashedAsync ??= new Dictionary<int, IFiberAsyncResource>();
+            TakeStashedAsync(index)?.Dispose();
+            _stashedAsync[index] = existing;
+            return restored;
+        }
+
+        private IFiberAsyncResource? TakeStashedAsync(int index)
+        {
+            if (_stashedAsync == null) return null;
+            if (!_stashedAsync.TryGetValue(index, out var stashed)) return null;
+            _stashedAsync.Remove(index);
+            return stashed;
+        }
+
+        private void RetainOrDisposeStashed(int index, IFiberAsyncResource stashed, bool inTransition)
+        {
+            if (inTransition) stashed.Dispose();
+            else _stashedAsync![index] = stashed;
+        }
+
+        private static FiberAsyncResource<T>? WhenKeyed<T>(IFiberAsyncResource resource, object key)
+        {
+            var typed = resource as FiberAsyncResource<T>;
+            if (typed == null) return null;
+            return ObjectIs.AreEqualObjects(typed.ResourceKey, key) ? typed : null;
+        }
+
         internal void DisposeAsyncSlots()
         {
+            if (_stashedAsync != null)
+            {
+                foreach (var stashed in _stashedAsync.Values) stashed.Dispose();
+                _stashedAsync.Clear();
+            }
             for (var i = 0; i < AsyncSlots.Count; i++)
             {
                 AsyncSlots[i]?.Dispose();

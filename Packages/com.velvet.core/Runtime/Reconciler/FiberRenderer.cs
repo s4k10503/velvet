@@ -569,6 +569,7 @@ namespace Velvet
                     retainedOutput = true;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
+                    fiber.SuspendedInTransition = false;
                     FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
@@ -614,7 +615,7 @@ namespace Velvet
                         // Delegate to the parent reconcile's SuspenseNode handling. The finally's PopFiber runs.
                         throw;
                     }
-                    SuspendWithoutBoundary(fiber);
+                    SuspendWithoutBoundary(fiber, FiberWorkLoop.IsRenderingTransitionLane);
                     // MUTANT_SURVIVES(equivalent): the one caller reading the result never renders a parentless fiber.
                     // That caller is NotifyAsyncResourceCompleted, which renders only below a boundary found from the parent.
                     return false;
@@ -819,12 +820,20 @@ namespace Velvet
         // this fiber's update again where that expansion catches the suspend: a memoized fiber left clean
         // would bail there on equal props, and the update it holds would never render. Searched from the
         // parent: a boundary this fiber renders has already caught whatever suspended inside it.
-        internal static void SuspendPassOwner(ComponentFiber fiber)
+        // A transition's pass under a boundary that shows its primary is given up as one with no boundary is, since
+        // the boundary rendering again would hide that primary.
+        internal static void SuspendPassOwner(ComponentFiber fiber, bool transitionPass)
         {
+            var context = fiber.Reconciler!.Context;
             var boundary = ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
-            if (boundary == null)
+            if (boundary != null && transitionPass && !fiber.IsOffscreen
+                && !context.IsBoundaryShowingFallback(boundary))
             {
-                SuspendWithoutBoundary(fiber);
+                context.SuspendDeclinedByRevealedBoundary = true;
+            }
+            if (boundary == null || context.SuspendDeclinedByRevealedBoundary)
+            {
+                SuspendWithoutBoundary(fiber, transitionPass);
                 return;
             }
             // A boundary whose own pass a read outside every Suspense gave up renders when that read resolves; asked
@@ -835,9 +844,34 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(boundary);
         }
 
-        private static void SuspendWithoutBoundary(ComponentFiber fiber)
+        internal static void BeginPass(ComponentFiber fiber)
         {
-            fiber.SuspendedOn = fiber.Reconciler!.Context.SuspendingReader;
+            var context = fiber.Reconciler?.Context;
+            if (context != null) context.SuspendDeclinedByRevealedBoundary = false;
+        }
+
+        // A pass given up for a revealed boundary is retried on the Transition lane, which a render of this fiber on
+        // the boundary's own lane would pre-empt with the key the transition has not yet committed.
+        private static bool IsWaitedOnByAGivenUpTransitionPass(ComponentFiber fiber)
+        {
+            for (var current = fiber; current != null; current = current.Parent)
+            {
+                if (current.SuspendedInTransition && ReferenceEquals(current.SuspendedOn, fiber)) return true;
+            }
+            return false;
+        }
+
+        private static void SuspendWithoutBoundary(ComponentFiber fiber, bool transitionPass)
+        {
+            var context = fiber.Reconciler!.Context;
+            fiber.SuspendedOn = context.SuspendingReader;
+            fiber.SuspendedInTransition = transitionPass;
+            if (context.SuspendDeclinedByRevealedBoundary)
+            {
+                context.SuspendDeclinedByRevealedBoundary = false;
+                FiberHookCommit.UndoStateCommits(fiber.StateSlots);
+                return;
+            }
             FiberLogger.LogWarning("Suspense",
                 $"FiberRenderer: {Hooks.ComponentName(fiber)} suspended with no Suspense boundary above it;" +
                 " it renders again when the resource resolves. Wrap with V.Suspense().");
@@ -855,7 +889,9 @@ namespace Velvet
                     continue;
                 }
                 current.SuspendedOn = null;
-                FiberWorkLoop.RequestRenderFromHook(current);
+                if (current.SuspendedInTransition) FiberWorkLoop.RequestTransitionRerender(current);
+                else FiberWorkLoop.RequestRenderFromHook(current);
+                current.SuspendedInTransition = false;
             }
         }
 
@@ -889,7 +925,7 @@ namespace Velvet
             var boundary = fiber.IsOffscreen
                 ? fiber.OffscreenUnder
                 : ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
-            if (boundary == null)
+            if (boundary == null || IsWaitedOnByAGivenUpTransitionPass(fiber))
             {
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
                 // renders, and a pass that suspended on another read takes this value up when it is retried.

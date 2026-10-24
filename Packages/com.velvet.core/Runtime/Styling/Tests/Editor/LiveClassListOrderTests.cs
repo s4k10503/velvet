@@ -1131,8 +1131,8 @@ namespace Velvet.Tests
             var reversed = Carrying("scale-125", "scale-150");
 
             // Act
-            var fromAdded = BundledClassTransform.OfClasses(added).Scale.x;
-            var fromReversed = BundledClassTransform.OfClasses(reversed).Scale.x;
+            var fromAdded = BundledClassTransform.OfRules(added).Scale.x;
+            var fromReversed = BundledClassTransform.OfRules(reversed).Scale.x;
 
             // Assert
             Assert.That((fromAdded, fromReversed), Is.EqualTo((1.5f, 1.5f)));

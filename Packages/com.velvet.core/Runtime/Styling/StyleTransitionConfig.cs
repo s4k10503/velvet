@@ -249,10 +249,7 @@ namespace Velvet
         /// The passes a play makes after its first — Framer Motion's <c>repeat</c>, so <c>Repeat = 2</c> plays three
         /// times. <c>float.PositiveInfinity</c> repeats until a later play, an exit or an unmount replaces it; 0,
         /// the default, plays once. <see cref="RepeatType"/> decides each later pass's direction and
-        /// <see cref="RepeatDelaySec"/> the wait between passes. Played when <see cref="Type"/> is
-        /// <see cref="TransitionType.Bezier"/> or <see cref="TransitionType.Spring"/>; a
-        /// <see cref="TransitionType.Tween"/> play plays once, and the first in a mounted tree logs a warning.
-        /// <c>Documentation~/motion.md</c> owns the full contract, including where a play ends and what a
+        /// <see cref="RepeatDelaySec"/> the wait between passes. <c>Documentation~/motion.md</c> owns the full contract, including where a play ends and what a
         /// <c>layoutId</c> move does with it.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN, or neither a whole number nor

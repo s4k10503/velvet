@@ -362,11 +362,16 @@ individual `rotate` and `scale` properties and then `skewX() skewY()` (`R(θ) ·
 carried as a reflection in the scale's y). The rotate and scale come from whichever of these the element has, behind a
 variant or not, and the slots are written again when any of them changes:
 
-- a `rotate-*` or uniform `scale-*` class, read off the element's class list (`BundledClassTransform`) — a rule of your
-  own stylesheet that sets `rotate` or `scale` on a skewed element is not read, since the inline composite outranks
-  it;
+- a `rotate-*` or uniform `scale-*` class, read off the element's class list (`BundledClassTransform`);
+- a `rotate` or `scale` that a stylesheet of your own declares for the element, `:hover` and the other pseudo-classes
+  included, read from the rules the last style pass matched. The slots are written again when a restyle moves it. A
+  `rotate` about an axis other than z is declined: the element is drawn with its skew and the classes' rotate, not that
+  one;
 - an inline rotate or scale, which is where `rotate-[…]`, `scale-[…]`, `scale-x-*` and `scale-y-*` land, and what an
   `animate-*` preset, a `V.Motion` channel or a `layoutId` move writes (`AuthoredTransform`).
+
+A skewed element carries the `velvet-skew-observed` class for as long as the skew is composed, which the bundled
+stylesheet gives the custom property that tells Velvet a restyle happened.
 
 UI Toolkit then draws the element sheared about the pivot `origin-*` names, with its text and descendants under the
 same transform. The sheared face keeps its overhang under a hidden overflow (`SkewTransformPlaybackTests` measures it),

@@ -86,6 +86,15 @@ namespace Velvet
             }
         }
 
+        internal static void UndoStateCommits(List<HookStateSlot>? slots)
+        {
+            if (slots == null) return;
+            for (var i = 0; i < slots.Count; i++)
+            {
+                slots[i].UndoCommit();
+            }
+        }
+
         internal static void CommitStoreSlots(List<HookStoreSlot>? slots)
         {
             if (slots == null) return;

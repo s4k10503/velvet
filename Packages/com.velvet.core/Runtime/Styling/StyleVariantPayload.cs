@@ -21,6 +21,24 @@ namespace Velvet
 
         private static bool IsContainerUtility(string core) => core == "flex" || core == "grid";
 
+        // The families StyleFlexMinSizeManipulator reads off the live class list.
+        private static readonly string[] s_flexMinSizePrefixes =
+        {
+            "min-w-", "min-h-", "max-w-", "max-h-", "w-", "h-", "size-", "overflow-", "truncate",
+        };
+
+        private static bool IsMinimumSizeUtility(string core)
+        {
+            foreach (var prefix in s_flexMinSizePrefixes)
+            {
+                if (core.StartsWith(prefix, System.StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // A gate class just appeared on (or left) the live class list without passing through the reconciler, so
         // the layout manipulators and paint layers those tokens gate must be re-derived here — nothing else will
         // run until the element's next patch, which may never come (a breakpoint crossing re-renders nothing).
@@ -86,6 +104,8 @@ namespace Velvet
             var positionChanged = false;
             // Set when this call toggled flex or grid, which decides whether the element's children take a flex order.
             var containerChanged = false;
+            // Set when this call toggled a class a text item's automatic minimum reads.
+            var minimumChanged = false;
 
             for (var index = 0; index < payloads.Length; index++)
             {
@@ -118,6 +138,7 @@ namespace Velvet
                 // The condition belongs to the control and the paint to its input box (StyleInputBoxSurface).
                 positionChanged |= IsPositionUtility(core);
                 containerChanged |= IsContainerUtility(core);
+                minimumChanged |= IsMinimumSizeUtility(core);
                 var dest = DestinationOf(ctx, control, core, on);
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
@@ -159,6 +180,10 @@ namespace Velvet
             }
 
             SignalToggles(ctx, control, gateChanged, boxChanged ? box : null, positionChanged, containerChanged);
+            if (minimumChanged)
+            {
+                ctx?.RescanFlexMinSize(control);
+            }
 
             SilhouetteFaceStash.NotifyClassesChanged(control);
             if (box != null)

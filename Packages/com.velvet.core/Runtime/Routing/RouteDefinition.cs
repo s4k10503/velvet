@@ -10,6 +10,14 @@ namespace Velvet
     public sealed class RouteDefinition
     {
         /// <summary>
+        /// Identifies this route among the matches: the key of its loader data, its action data and its error,
+        /// and what <c>Hooks.UseRouteLoaderData</c> takes. When null the route takes its position in the tree,
+        /// the indexes from the top-level array down joined by <c>-</c> (<c>"0"</c>, <c>"0-1"</c>). Two routes of
+        /// one tree sharing an id make the tree throw.
+        /// </summary>
+        public string? Id { get; init; }
+
+        /// <summary>
         /// Route pattern matched against the URL, e.g. <c>"users/:id"</c> (<c>"/"</c> for the root,
         /// <c>""</c> for an index route). Supports <c>:param</c>, optional <c>:param?</c>, and splat <c>*</c>.
         /// </summary>
@@ -55,6 +63,12 @@ namespace Velvet
         /// and before the Action and Loaders.
         /// </summary>
         public Func<RouteLoaderContext, string>? Guard { get; init; }
+
+        /// <summary>
+        /// Application data this route carries for <c>Hooks.UseMatches</c> to surface with its match; never read
+        /// by the router itself.
+        /// </summary>
+        public object? Handle { get; init; }
 
         /// <summary>
         /// Whether this route's literal path segments match case-sensitively. Defaults to false
