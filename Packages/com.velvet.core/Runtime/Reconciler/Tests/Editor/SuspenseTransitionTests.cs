@@ -83,6 +83,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATransitionThatSuspendedARevealedPrimary_When_AnotherTransitionSupersedesIt_Then_ThePrimaryStaysShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            s_start.Invoke(() => s_setKey.Invoke(1));
+            FlushTwice(mounted);
+            s_start.Invoke(() => s_setKey.Invoke(2));
+
+            // Act
+            FlushTwice(mounted);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("value:0"));
+        }
+
+        [Test]
         public void Given_ATransitionThatSuspendedARevealedPrimary_When_AnotherTransitionSupersedesItAndTheFirstResolves_Then_ThePrimaryStaysShown()
         {
             // Arrange

@@ -188,6 +188,9 @@ namespace Velvet
         /// </summary>
         internal ComponentFiber? SuspendedOn { get; set; }
 
+        // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
+        internal bool SuspendedInTransition { get; set; }
+
         /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
         /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the

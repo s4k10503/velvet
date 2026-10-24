@@ -569,6 +569,7 @@ namespace Velvet
                     retainedOutput = true;
                     // A pass of this fiber that completes renders whatever an earlier one suspended on.
                     fiber.SuspendedOn = null;
+                    fiber.SuspendedInTransition = false;
                     FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, prevPendingOldTree, deferReconcile);
 #if UNITY_EDITOR
                     // The double-invoke diagnostic compares this fiber's own body output against a re-render of
@@ -614,7 +615,7 @@ namespace Velvet
                         // Delegate to the parent reconcile's SuspenseNode handling. The finally's PopFiber runs.
                         throw;
                     }
-                    SuspendWithoutBoundary(fiber);
+                    SuspendWithoutBoundary(fiber, FiberWorkLoop.IsRenderingTransitionLane);
                     // MUTANT_SURVIVES(equivalent): the one caller reading the result never renders a parentless fiber.
                     // That caller is NotifyAsyncResourceCompleted, which renders only below a boundary found from the parent.
                     return false;
@@ -832,7 +833,7 @@ namespace Velvet
             }
             if (boundary == null || context.SuspendDeclinedByRevealedBoundary)
             {
-                SuspendWithoutBoundary(fiber);
+                SuspendWithoutBoundary(fiber, transitionPass);
                 return;
             }
             // A boundary whose own pass a read outside every Suspense gave up renders when that read resolves; asked
@@ -849,10 +850,11 @@ namespace Velvet
             if (context != null) context.SuspendDeclinedByRevealedBoundary = false;
         }
 
-        private static void SuspendWithoutBoundary(ComponentFiber fiber)
+        private static void SuspendWithoutBoundary(ComponentFiber fiber, bool transitionPass)
         {
             var context = fiber.Reconciler!.Context;
             fiber.SuspendedOn = context.SuspendingReader;
+            fiber.SuspendedInTransition = transitionPass;
             if (context.SuspendDeclinedByRevealedBoundary)
             {
                 context.SuspendDeclinedByRevealedBoundary = false;
@@ -875,7 +877,9 @@ namespace Velvet
                     continue;
                 }
                 current.SuspendedOn = null;
-                FiberWorkLoop.RequestRenderFromHook(current);
+                if (current.SuspendedInTransition) FiberWorkLoop.RequestTransitionRerender(current);
+                else FiberWorkLoop.RequestRenderFromHook(current);
+                current.SuspendedInTransition = false;
             }
         }
 
