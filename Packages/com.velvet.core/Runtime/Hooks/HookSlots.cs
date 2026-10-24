@@ -594,6 +594,7 @@ namespace Velvet
             _beforeValue = Value;
             _beforeBaseState = _baseState;
             _beforeBaseQueue = _baseQueue;
+            UnityEngine.Debug.Log($"DIAG407b process: slot={GetType().Name} renderLane={renderLane} queue={_baseQueue?.Count ?? -1} value={Value} lanes={string.Join(",", _baseQueue?.ConvertAll(u => u.Lane.ToString()) ?? new List<string>())}");
             if (_baseQueue == null || _baseQueue.Count == 0) return Value;
 
             var state = _baseState;
@@ -632,6 +633,7 @@ namespace Velvet
 
         public override void UndoCommit()
         {
+            UnityEngine.Debug.Log($"DIAG407b undo: slot={GetType().Name} before.queue={_beforeBaseQueue?.Count ?? -1} cur.queue={_baseQueue?.Count ?? -1} before.value={_beforeValue} cur.value={Value}");
             Value = _beforeValue;
             _baseState = _beforeBaseState;
             _baseQueue = _beforeBaseQueue;
