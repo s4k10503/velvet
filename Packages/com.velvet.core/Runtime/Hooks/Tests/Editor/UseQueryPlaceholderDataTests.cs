@@ -315,7 +315,7 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(1);
             mounted.FlushStateForTest();
             TurnTo(mounted, 2);
-            s_placeholder = (previous, previousQuery) => QueryPlaceholder.KeepPreviousData(previous, previousQuery);
+            s_placeholder = (previous, previousKey) => QueryPlaceholder.KeepPreviousData(previous, previousKey);
 
             // Act
             s_setTick.Invoke(tick => tick + 1);

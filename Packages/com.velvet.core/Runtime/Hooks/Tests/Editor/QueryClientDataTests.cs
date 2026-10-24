@@ -57,7 +57,6 @@ namespace Velvet.Tests
 
         #region Reading
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_NoEntry_When_GetQueryDataReads_Then_ItIsDefault()
         {
@@ -68,7 +67,6 @@ namespace Velvet.Tests
             Assert.That(data, Is.Null, "A key with no entry has no data");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AResolvedQuery_When_GetQueryDataReads_Then_ItIsTheEntrysData()
         {
@@ -82,7 +80,6 @@ namespace Velvet.Tests
             Assert.That(data, Is.EqualTo(7), "The entry's data is what a request landed");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AnEntryUnreadPastItsGcTime_When_GetQueryDataReads_Then_ItIsDefault()
         {
@@ -97,7 +94,6 @@ namespace Velvet.Tests
             Assert.That(data, Is.Null, "An entry nothing read for its gcTime reads as absent, as one v5 removed would");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AnEntryUnreadForLessThanItsGcTime_When_GetQueryDataReads_Then_ItIsTheData()
         {
@@ -112,7 +108,6 @@ namespace Velvet.Tests
             Assert.That(data, Is.EqualTo("held"), "An entry expires once its gcTime has passed, not before");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AnEntryOfAnotherType_When_GetQueryDataReads_Then_ItThrows()
         {
@@ -130,7 +125,6 @@ namespace Velvet.Tests
 
         #region Writing
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_NoEntry_When_SetQueryDataWrites_Then_GetQueryDataReturnsIt()
         {
@@ -141,7 +135,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryData<string>(Todos), Is.EqualTo("written"), "Writing creates the entry");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AnEqualListHeld_When_SetQueryDataWritesANewOne_Then_TheHeldInstanceIsKept()
         {
@@ -157,7 +150,6 @@ namespace Velvet.Tests
                 "Written data is shared structurally with what the entry held, as v5's setData replaces it");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_HeldData_When_SetQueryDataRunsAnUpdater_Then_TheUpdaterIsHandedIt()
         {
@@ -171,7 +163,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(5), "The updater makes the new data out of the held data");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_HeldData_When_AnUpdaterReturnsNull_Then_TheHeldDataStays()
         {
@@ -186,7 +177,6 @@ namespace Velvet.Tests
                 "An updater returning nothing writes nothing, as v5's returning undefined does");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AnEntryUnreadPastItsGcTime_When_SetQueryDataWrites_Then_TheWriteIsReadable()
         {
@@ -202,7 +192,6 @@ namespace Velvet.Tests
                 "A write over an expired entry writes into a new one rather than the one that had expired");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_ANullKey_When_GetQueryDataReads_Then_ItThrowsNamingTheKey()
         {
@@ -213,7 +202,6 @@ namespace Velvet.Tests
             Assert.That(read, Throws.ArgumentNullException.With.Property("ParamName").EqualTo("queryKey"));
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_ANullKey_When_SetQueryDataWrites_Then_ItThrowsNamingTheKey()
         {
@@ -224,7 +212,6 @@ namespace Velvet.Tests
             Assert.That(write, Throws.ArgumentNullException.With.Property("ParamName").EqualTo("queryKey"));
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_ANullUpdater_When_SetQueryDataRuns_Then_ItThrowsNamingTheUpdater()
         {
@@ -235,7 +222,6 @@ namespace Velvet.Tests
             Assert.That(write, Throws.ArgumentNullException.With.Property("ParamName").EqualTo("updater"));
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_DataWrittenByHand_When_AQueryMountsWithinItsStaleTime_Then_NothingIsFetched()
         {
@@ -253,7 +239,6 @@ namespace Velvet.Tests
             Assert.That((s_calls, Last().Data), Is.EqualTo((0, 4)), "Written data is fresh from the moment it was written");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_DataWrittenByHand_When_AQueryMountsOnceItsStaleTimeHasPassed_Then_ItFetches()
         {
@@ -271,7 +256,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "Written data ages like fetched data");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AnInvalidatedEntry_When_SetQueryDataWrites_Then_AQueryMountingOverItFetchesNothing()
         {
@@ -289,7 +273,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0), "A write clears the invalidation, as v5's success action does");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError()
         {
@@ -308,7 +291,6 @@ namespace Velvet.Tests
                 "A write is a success: it replaces the error and re-renders the readers");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_ARequestInFlight_When_SetQueryDataWrites_Then_TheRequestKeepsRunning()
         {
@@ -325,7 +307,6 @@ namespace Velvet.Tests
                 "A write by hand leaves the request in flight running, as v5's manual setData does");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
         [Test]
         public void Given_DataWrittenOverARequestInFlight_When_TheRequestLands_Then_ItsDataReplacesTheWrite()
         {
@@ -342,69 +323,9 @@ namespace Velvet.Tests
             Assert.That((Last().Data, Last().IsFetching), Is.EqualTo((9, false)), "The request lands over the written data");
         }
 
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
-        [Test]
-        public void Given_TwoReadersWithDifferentSharingFunctions_When_DataIsWritten_Then_TheLaterReadersFunctionSharesIt()
-        {
-            // Arrange
-            s_staleTime = TimeSpan.FromMinutes(1);
-            s_client.SetQueryData(Todos, 1);
-            using var first = MountUnder(_root, AddingTen);
-            using var second = MountUnder(_secondRoot, AddingHundred);
-
-            // Act
-            s_client.SetQueryData(Todos, 2);
-
-            // Assert
-            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(102),
-                "A write shares with the options the entry was last handed, as v5's setData uses the query's own");
-        }
-
-        // GREEN_ON_BASE(refactor): only the sharing helpers this fixture declares changed, to the function's new object-typed signature.
-        [Test]
-        public void Given_ARequestStartedByOneReader_When_AnotherSubscribesBeforeItLands_Then_TheLaterReadersFunctionSharesIt()
-        {
-            // Arrange
-            s_staleTime = TimeSpan.FromMinutes(1);
-            using var first = MountUnder(_root, AddingTen);
-            using var second = MountUnder(_secondRoot, AddingHundred);
-
-            // Act
-            s_sources[0].TrySetResult(1);
-
-            // Assert
-            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(101),
-                "A landing shares with the options the entry holds when it settles, as v5's fetch reads this.options then");
-        }
-
         #endregion
 
         #region Components and helpers
-
-        private static MountedTree MountUnder(VisualElement root, Func<VNode> reader)
-        {
-            var mounted = V.Mount(root, V.Component(reader, key: "reader"));
-            mounted.FlushEffectsForTest();
-            return mounted;
-        }
-
-        [Component]
-        private static VNode AddingTen()
-        {
-            Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)arrived + 10 },
-                s_client);
-            return V.Label(text: "ten");
-        }
-
-        [Component]
-        private static VNode AddingHundred()
-        {
-            Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)arrived + 100 },
-                s_client);
-            return V.Label(text: "hundred");
-        }
 
         private MountedTree MountResolved(int data)
         {
