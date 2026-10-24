@@ -371,7 +371,7 @@ namespace Velvet.Tests
         private static VNode AddingTen()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => arrived + 10 },
+                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)arrived + 10 },
                 s_client);
             return V.Label(text: "ten");
         }
@@ -380,7 +380,7 @@ namespace Velvet.Tests
         private static VNode AddingHundred()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => arrived + 100 },
+                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)arrived + 100 },
                 s_client);
             return V.Label(text: "hundred");
         }

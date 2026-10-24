@@ -101,10 +101,10 @@
 [Velvet] ctor Velvet.MountOptions.ctor(): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
 [Velvet] ctor Velvet.MutateOptions`2[TVariables, TData].ctor(): System.Void
-[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`3[TVariables, TData, TContext].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`2[TVariables, TContext]?, System.Action`3[TData, TVariables, TContext?]?, System.Action`3[System.Exception, TVariables, TContext?]?, System.Action`4[TData?, System.Exception?, TVariables, TContext?]?): System.Void
+[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Func`1[Velvet.VelvetTask]?, System.Func`2[System.Exception, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Func`2[TVariables, Velvet.VelvetTask]?, System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`3[TData, TVariables, Velvet.VelvetTask]?, System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`3[TVariables, TData, TContext].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`2[TVariables, Velvet.VelvetTask`1[TContext]]?, System.Func`4[TData, TVariables, TContext?, Velvet.VelvetTask]?, System.Func`4[System.Exception, TVariables, TContext?, Velvet.VelvetTask]?, System.Func`5[TData?, System.Exception?, TVariables, TContext?, Velvet.VelvetTask]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.NavigateFunction.ctor(System.Object~, System.IntPtr): System.Void
 [Velvet] ctor Velvet.NavigateOptions.ctor(): System.Void
@@ -119,6 +119,7 @@
 [Velvet] ctor Velvet.PortalNode.ctor(): System.Void
 [Velvet] ctor Velvet.QueryClient.ctor(Velvet.QueryClientOptions?): System.Void
 [Velvet] ctor Velvet.QueryClientOptions.ctor(): System.Void
+[Velvet] ctor Velvet.QueryFilters.ctor(): System.Void
 [Velvet] ctor Velvet.QueryKey.ctor(System.Object?[]): System.Void
 [Velvet] ctor Velvet.QueryOptions`1[T].ctor(Velvet.QueryKey, System.Func`1[Velvet.VelvetTask`1[T]]): System.Void
 [Velvet] ctor Velvet.QueryOptions`1[T].ctor(Velvet.QueryKey, System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]]): System.Void
@@ -126,6 +127,7 @@
 [Velvet] ctor Velvet.QueryOptions`2[TQueryFnData, TData].ctor(Velvet.QueryKey, System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[TQueryFnData]]): System.Void
 [Velvet] ctor Velvet.QueryPlaceholder`1[T].ctor(T): System.Void
 [Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
+[Velvet] ctor Velvet.RefetchOptions.ctor(): System.Void
 [Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
 [Velvet] ctor Velvet.RetryPolicy.ctor(): System.Void
 [Velvet] ctor Velvet.RouteActionContext.ctor(): System.Void
@@ -267,6 +269,8 @@
 [Velvet] field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
 [Velvet] field Velvet.PlayTrigger.Mount: Velvet.PlayTrigger
 [Velvet] field Velvet.QueryClientContext.Ref: Velvet.ComponentContext`1[Velvet.QueryClient?]
+[Velvet] field Velvet.QueryFetchStatus.Fetching: Velvet.QueryFetchStatus
+[Velvet] field Velvet.QueryFetchStatus.Idle: Velvet.QueryFetchStatus
 [Velvet] field Velvet.QueryProperties.All: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.Data: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.Error: Velvet.QueryProperties
@@ -286,6 +290,9 @@
 [Velvet] field Velvet.QueryStatus.Error: Velvet.QueryStatus
 [Velvet] field Velvet.QueryStatus.Pending: Velvet.QueryStatus
 [Velvet] field Velvet.QueryStatus.Success: Velvet.QueryStatus
+[Velvet] field Velvet.QueryTypeFilter.Active: Velvet.QueryTypeFilter
+[Velvet] field Velvet.QueryTypeFilter.All: Velvet.QueryTypeFilter
+[Velvet] field Velvet.QueryTypeFilter.Inactive: Velvet.QueryTypeFilter
 [Velvet] field Velvet.RelativeRoutingType.Path: Velvet.RelativeRoutingType
 [Velvet] field Velvet.RelativeRoutingType.Route: Velvet.RelativeRoutingType
 [Velvet] field Velvet.ResolvedFont.Asset: UnityEngine.TextCore.Text.FontAsset?
@@ -559,16 +566,27 @@
 [Velvet] method Velvet.NullStoreLogger.LogWarning(System.String): System.Void
 [Velvet] method Velvet.ParticlesElement.Play(): System.Void
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
+[Velvet] method Velvet.QueryClient.CancelQueries(Velvet.QueryFilters?, System.Boolean): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.Clear(): System.Void
+[Velvet] method Velvet.QueryClient.EnsureQueryData`1(Velvet.QueryOptions`2[T, T], System.Boolean): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.QueryClient.FetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.QueryClient.GetQueriesData`1(Velvet.QueryFilters?): System.Collections.Generic.IReadOnlyList`1[System.Collections.Generic.KeyValuePair`2[Velvet.QueryKey, T?]]
 [Velvet] method Velvet.QueryClient.GetQueryData`1(Velvet.QueryKey): T?
-[Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryKey?): System.Void
+[Velvet] method Velvet.QueryClient.GetQueryState`1(Velvet.QueryKey): Velvet.QueryState`1[T]?
+[Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryKey?): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.PrefetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.RefetchQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.RemoveQueries(Velvet.QueryFilters?): System.Void
+[Velvet] method Velvet.QueryClient.ResetQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.SetQueriesData`1(Velvet.QueryFilters?, System.Func`2[T?, T]): System.Collections.Generic.IReadOnlyList`1[System.Collections.Generic.KeyValuePair`2[Velvet.QueryKey, T?]]
 [Velvet] method Velvet.QueryClient.SetQueryData`1(Velvet.QueryKey, System.Func`2[T?, T]): T?
 [Velvet] method Velvet.QueryClient.SetQueryData`1(Velvet.QueryKey, T): T?
 [Velvet] method Velvet.QueryKey.Equals(System.Object?): System.Boolean
 [Velvet] method Velvet.QueryKey.Equals(Velvet.QueryKey?): System.Boolean
 [Velvet] method Velvet.QueryKey.GetHashCode(): System.Int32
 [Velvet] method Velvet.QueryKey.ToString(): System.String
-[Velvet] method Velvet.QueryPlaceholder.KeepPreviousData`1(T?, Velvet.QueryKey?): Velvet.QueryPlaceholder`1[T]
+[Velvet] method Velvet.QueryPlaceholder.KeepPreviousData`1(T?, System.Nullable`1[Velvet.QueryInfo]): Velvet.QueryPlaceholder`1[T]
 [Velvet] method Velvet.QueryResult`1[T].Refetch(): System.Void
 [Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
 [Velvet] method Velvet.RetryDelayRule.By(System.Func`3[System.Int32, System.Exception, System.TimeSpan]): Velvet.RetryDelayRule
@@ -1211,25 +1229,25 @@
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, System.Object?]?
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSuccess: System.Action`3[TData, TVariables, System.Object?]?
 [Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
-[Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
-[Velvet] property Velvet.MutationOptions.OnSettled: System.Action`1[System.Exception?]?
-[Velvet] property Velvet.MutationOptions.OnSuccess: System.Action?
+[Velvet] property Velvet.MutationOptions.OnError: System.Func`2[System.Exception, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions.OnSettled: System.Func`2[System.Exception?, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions.OnSuccess: System.Func`1[Velvet.VelvetTask]?
 [Velvet] property Velvet.MutationOptions.Retry: Velvet.RetryPolicy?
 [Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
-[Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Action`2[System.Exception, TVariables]?
-[Velvet] property Velvet.MutationOptions`1[TVariables].OnSettled: System.Action`2[System.Exception?, TVariables]?
-[Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Action`1[TVariables]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSettled: System.Func`3[System.Exception?, TVariables, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Func`2[TVariables, Velvet.VelvetTask]?
 [Velvet] property Velvet.MutationOptions`1[TVariables].Retry: Velvet.RetryPolicy?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Action`2[System.Exception, TVariables]?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSettled: System.Action`3[TData?, System.Exception?, TVariables]?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Action`2[TData, TVariables]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSettled: System.Func`4[TData?, System.Exception?, TVariables, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Func`3[TData, TVariables, Velvet.VelvetTask]?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].Retry: Velvet.RetryPolicy?
 [Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnError: System.Action`3[System.Exception, TVariables, TContext?]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnMutate: System.Func`2[TVariables, TContext]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, TContext?]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSuccess: System.Action`3[TData, TVariables, TContext?]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnError: System.Func`4[System.Exception, TVariables, TContext?, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnMutate: System.Func`2[TVariables, Velvet.VelvetTask`1[TContext]]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSettled: System.Func`5[TData?, System.Exception?, TVariables, TContext?, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSuccess: System.Func`4[TData, TVariables, TContext?, Velvet.VelvetTask]?
 [Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].Retry: Velvet.RetryPolicy?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Error: System.Exception?
@@ -1289,6 +1307,12 @@
 [Velvet] property Velvet.QueryClientOptions.Retry: System.Int32
 [Velvet] property Velvet.QueryClientOptions.RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
 [Velvet] property Velvet.QueryClientOptions.StaleTime: System.TimeSpan
+[Velvet] property Velvet.QueryFilters.Exact: System.Boolean
+[Velvet] property Velvet.QueryFilters.FetchStatus: System.Nullable`1[Velvet.QueryFetchStatus]
+[Velvet] property Velvet.QueryFilters.Predicate: System.Func`2[Velvet.QueryInfo, System.Boolean]?
+[Velvet] property Velvet.QueryFilters.QueryKey: Velvet.QueryKey?
+[Velvet] property Velvet.QueryFilters.Stale: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.QueryFilters.Type: System.Nullable`1[Velvet.QueryTypeFilter]
 [Velvet] property Velvet.QueryInfo.Data: System.Object?
 [Velvet] property Velvet.QueryInfo.Error: System.Exception?
 [Velvet] property Velvet.QueryInfo.IsFetching: System.Boolean
@@ -1297,7 +1321,7 @@
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Enabled: System.Boolean
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].GcTime: System.Nullable`1[System.TimeSpan]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].NotifyOnChangeProps: System.Nullable`1[Velvet.QueryProperties]
-[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].PlaceholderData: System.Func`3[TQueryFnData?, Velvet.QueryKey?, Velvet.QueryPlaceholder`1[TQueryFnData]]?
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].PlaceholderData: System.Func`3[TQueryFnData?, System.Nullable`1[Velvet.QueryInfo], Velvet.QueryPlaceholder`1[TQueryFnData]]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].QueryFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[TQueryFnData]]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].QueryKey: Velvet.QueryKey
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RefetchInterval: System.Nullable`1[System.TimeSpan]
@@ -1311,7 +1335,7 @@
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Select: System.Func`2[TQueryFnData, TData]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].StaleTime: System.Nullable`1[System.TimeSpan]
-[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].StructuralSharing: System.Func`3[TQueryFnData?, TQueryFnData, TQueryFnData]?
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].StructuralSharing: System.Func`3[System.Object?, System.Object, System.Object]?
 [Velvet] property Velvet.QueryPlaceholder`1[T].HasValue: System.Boolean
 [Velvet] property Velvet.QueryPlaceholder`1[T].Value: T
 [Velvet] property Velvet.QueryResult`1[T].Data: T?
@@ -1325,8 +1349,19 @@
 [Velvet] property Velvet.QueryResult`1[T].IsStale: System.Boolean
 [Velvet] property Velvet.QueryResult`1[T].IsSuccess: System.Boolean
 [Velvet] property Velvet.QueryResult`1[T].Status: Velvet.QueryStatus
+[Velvet] property Velvet.QueryState`1[T].Data: T?
+[Velvet] property Velvet.QueryState`1[T].DataUpdatedAt: System.TimeSpan
+[Velvet] property Velvet.QueryState`1[T].Error: System.Exception?
+[Velvet] property Velvet.QueryState`1[T].FailureCount: System.Int32
+[Velvet] property Velvet.QueryState`1[T].FailureReason: System.Exception?
+[Velvet] property Velvet.QueryState`1[T].HasData: System.Boolean
+[Velvet] property Velvet.QueryState`1[T].IsFetching: System.Boolean
+[Velvet] property Velvet.QueryState`1[T].IsInvalidated: System.Boolean
+[Velvet] property Velvet.QueryState`1[T].Status: Velvet.QueryStatus
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
+[Velvet] property Velvet.RefetchOptions.CancelRefetch: System.Boolean
+[Velvet] property Velvet.RefetchOptions.ThrowOnError: System.Boolean
 [Velvet] property Velvet.RetryPolicy.IsFocused: System.Func`1[System.Boolean]?
 [Velvet] property Velvet.RetryPolicy.IsOnline: System.Func`1[System.Boolean]?
 [Velvet] property Velvet.RetryPolicy.NetworkMode: Velvet.NetworkMode
@@ -1681,6 +1716,8 @@
 [Velvet] type Velvet.QueryClient
 [Velvet] type Velvet.QueryClientContext
 [Velvet] type Velvet.QueryClientOptions
+[Velvet] type Velvet.QueryFetchStatus
+[Velvet] type Velvet.QueryFilters
 [Velvet] type Velvet.QueryInfo
 [Velvet] type Velvet.QueryKey
 [Velvet] type Velvet.QueryOptions`1[T]
@@ -1690,8 +1727,11 @@
 [Velvet] type Velvet.QueryProperties
 [Velvet] type Velvet.QueryRefetchMode
 [Velvet] type Velvet.QueryResult`1[T]
+[Velvet] type Velvet.QueryState`1[T]
 [Velvet] type Velvet.QueryStatus
+[Velvet] type Velvet.QueryTypeFilter
 [Velvet] type Velvet.Ref`1[T]
+[Velvet] type Velvet.RefetchOptions
 [Velvet] type Velvet.RelativeRoutingType
 [Velvet] type Velvet.ResolvedFont
 [Velvet] type Velvet.RetryDelayRule

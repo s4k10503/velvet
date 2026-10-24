@@ -34,7 +34,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class UseQueryPlaceholderDataTests
     {
-        private static readonly Func<int, QueryKey?, QueryPlaceholder<int>> Nine = (_, _) =>
+        private static readonly Func<int, QueryInfo?, QueryPlaceholder<int>> Nine = (_, _) =>
         {
             s_placeholderCalls++;
             return 9;
@@ -42,7 +42,7 @@ namespace Velvet.Tests
 
         private VisualElement _root = null!;
         private static QueryClient s_client = null!;
-        private static Func<int, QueryKey?, QueryPlaceholder<int>>? s_placeholder;
+        private static Func<int, QueryInfo?, QueryPlaceholder<int>>? s_placeholder;
         private static int s_placeholderCalls;
         private static string? s_previousKey;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
@@ -188,12 +188,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APlaceholderFunction_When_TheKeyChanges_Then_ItIsHandedThePreviousKey()
+        public void Given_APlaceholderFunction_When_TheKeyChanges_Then_ItIsHandedThePreviousQueryKey()
         {
             // Arrange
-            s_placeholder = (previous, previousKey) =>
+            s_placeholder = (previous, previousQuery) =>
             {
-                s_previousKey = previousKey?.ToString();
+                s_previousKey = previousQuery?.QueryKey.ToString();
                 return previous;
             };
             using var mounted = Mount();
@@ -205,6 +205,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_previousKey, Is.EqualTo("[page, 1]"), "The function is handed the key of the entry the previous data came from");
+        }
+
+        [Test]
+        public void Given_APlaceholderFunction_When_TheKeyChanges_Then_ThePreviousQueryCarriesItsStatusAndData()
+        {
+            // Arrange
+            (QueryStatus Status, object? Data)? seen = null;
+            s_placeholder = (previous, previousQuery) =>
+            {
+                if (previousQuery is { } query) seen = (query.Status, query.Data);
+                return previous;
+            };
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            TurnTo(mounted, 2);
+
+            // Assert
+            Assert.That(seen, Is.EqualTo((QueryStatus.Success, (object?)1)),
+                "The previous query exposes the state of the entry the previous data came from");
+        }
+
+        [Test]
+        public void Given_NothingReadYet_When_ThePlaceholderIsAsked_Then_ThePreviousQueryIsNull()
+        {
+            // Arrange
+            var handedQuery = true;
+            s_placeholder = (_, previousQuery) =>
+            {
+                handedQuery = previousQuery.HasValue;
+                return 7;
+            };
+
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(handedQuery, Is.False, "A component that has read no entry with data is handed no previous query");
         }
 
         [Test]
@@ -275,7 +315,7 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(1);
             mounted.FlushStateForTest();
             TurnTo(mounted, 2);
-            s_placeholder = (previous, previousKey) => QueryPlaceholder.KeepPreviousData(previous, previousKey);
+            s_placeholder = (previous, previousQuery) => QueryPlaceholder.KeepPreviousData(previous, previousQuery);
 
             // Act
             s_setTick.Invoke(tick => tick + 1);

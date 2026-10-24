@@ -141,10 +141,10 @@ namespace Velvet
         /// Pass it as <c>PlaceholderData = QueryPlaceholder.KeepPreviousData</c>.
         /// </summary>
         /// <param name="previousData">That entry's data.</param>
-        /// <param name="previousQueryKey">That entry's key; null when there is no such entry.</param>
+        /// <param name="previousQuery">That entry; null when there is no such entry.</param>
         /// <returns>The previous data, or no data when there is none.</returns>
-        public static QueryPlaceholder<T> KeepPreviousData<T>(T? previousData, QueryKey? previousQueryKey)
-            => previousQueryKey == null ? default : new QueryPlaceholder<T>(previousData!);
+        public static QueryPlaceholder<T> KeepPreviousData<T>(T? previousData, QueryInfo? previousQuery)
+            => previousQuery == null ? default : new QueryPlaceholder<T>(previousData!);
     }
 
     /// <summary>
@@ -202,16 +202,17 @@ namespace Velvet
         public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
         /// <summary>
-        /// Chooses the data an entry holds when a request lands, from the data it held, default when it held
+        /// Chooses the data an entry holds when a request lands, from the data it held, null when it held
         /// none, and the data that arrived: TanStack Query's <c>structuralSharing</c> given as a function.
         /// When null, the data that arrived keeps the instance the entry held where the two are deeply equal
         /// and keeps the equal parts of it where they are not; <c>(_, arrived) =&gt; arrived</c> turns that
         /// off. The same choice is made between a result's data and what <see cref="Select"/> or
-        /// <see cref="PlaceholderData"/> produces next, where a function given here applies when
-        /// <typeparamref name="TData"/> is <typeparamref name="TQueryFnData"/>. What counts as deeply equal is
-        /// described in react-migration.md §1-2b.
+        /// <see cref="PlaceholderData"/> produces next. The values are boxed, as v5 hands its function
+        /// <c>unknown</c>: a function is handed <typeparamref name="TQueryFnData"/> values when it chooses the
+        /// entry's data and <typeparamref name="TData"/> values when it chooses the result's, and has to return
+        /// the type it was handed. What counts as deeply equal is described in react-migration.md §1-2b.
         /// </summary>
-        public Func<TQueryFnData?, TQueryFnData, TQueryFnData>? StructuralSharing { get; init; }
+        public Func<object?, object, object>? StructuralSharing { get; init; }
 
         /// <summary>
         /// The result properties whose change re-renders the component, TanStack Query's
@@ -239,13 +240,13 @@ namespace Velvet
 
         /// <summary>
         /// TanStack Query's <c>placeholderData</c> given as a function: data the result shows while the entry
-        /// has none and is pending, handed the data and key of the last entry this component read that had
-        /// data and still has it — default and null when there is none. The result is then <see cref="QueryStatus.Success"/>
+        /// has none and is pending, handed the data and the <see cref="QueryInfo"/> of the last entry this
+        /// component read that had data and still has it — default and null when there is none. The result is then <see cref="QueryStatus.Success"/>
         /// with <see cref="QueryResult{T}.IsPlaceholderData"/> true, and the entry is left without data.
         /// <see cref="QueryPlaceholder.KeepPreviousData{T}"/> keeps the previous key's data; <c>(_, _) =&gt; value</c>
         /// is the value form.
         /// </summary>
-        public Func<TQueryFnData?, QueryKey?, QueryPlaceholder<TQueryFnData>>? PlaceholderData { get; init; }
+        public Func<TQueryFnData?, QueryInfo?, QueryPlaceholder<TQueryFnData>>? PlaceholderData { get; init; }
 
         /// <summary>
         /// TanStack Query's <c>refetchInterval</c> given as a number: an enabled query fetches again each time
@@ -482,7 +483,7 @@ namespace Velvet
         internal TimeSpan StaleTime { get; }
         internal TimeSpan GcTime { get; }
         internal bool Enabled { get; }
-        internal Func<TQueryFnData?, QueryKey?, QueryPlaceholder<TQueryFnData>>? Placeholder { get; }
+        internal Func<TQueryFnData?, QueryInfo?, QueryPlaceholder<TQueryFnData>>? Placeholder { get; }
         internal QueryRefetchRule RefetchOnWindowFocus { get; }
         internal QueryRefetchRule RefetchOnReconnect { get; }
         internal TimeSpan? RefetchInterval { get; }
@@ -535,7 +536,7 @@ namespace Velvet
         internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; private set; } = null!;
         internal int MaxRetries { get; private set; }
         internal Func<int, Exception, TimeSpan> RetryDelay { get; private set; } = null!;
-        internal Func<T?, T, T>? StructuralSharing { get; private set; }
+        internal Func<object?, object, object>? StructuralSharing { get; private set; }
         internal bool TakesToken { get; private set; }
 
         internal QueryFetchOptions<T> Assign<TData>(QueryOptions<T, TData> options, QueryClient client)
@@ -547,6 +548,8 @@ namespace Velvet
             StructuralSharing = options.StructuralSharing;
             return this;
         }
+
+        internal void SetRetries(int maxRetries) => MaxRetries = maxRetries;
 
         internal QueryFetchOptions<T> Copy() => (QueryFetchOptions<T>)MemberwiseClone();
     }
@@ -619,7 +622,7 @@ namespace Velvet
         private Exception? _selectError;
 
         // The placeholder function the latest result was made with, and TanStack's #lastQueryWithDefinedData.
-        private Func<TQueryFnData?, QueryKey?, QueryPlaceholder<TQueryFnData>>? _currentPlaceholder;
+        private Func<TQueryFnData?, QueryInfo?, QueryPlaceholder<TQueryFnData>>? _currentPlaceholder;
         private QueryEntry<TQueryFnData>? _lastWithData;
 
         public void Refetch() => Entry?.Fetch(FetchOptions, cancelRefetch: true);
@@ -929,7 +932,7 @@ namespace Velvet
             if (settings.Placeholder != null && status == QueryStatus.Pending && TryPlaceholder(settings, out placeholder))
             {
                 status = QueryStatus.Success;
-                data = Share(_hasCurrent ? _current.Data : default, placeholder, settings.Options.StructuralSharing);
+                data = Share(_hasCurrent && _current.HasData, _hasCurrent ? _current.Data : default, placeholder, settings.Options.StructuralSharing);
                 hasData = true;
                 isPlaceholderData = true;
                 _currentPlaceholder = settings.Placeholder;
@@ -983,7 +986,7 @@ namespace Velvet
             _selectedFrom = source;
             try
             {
-                data = Share(_hasCurrent ? _current.Data : default, select(source), settings.Options.StructuralSharing);
+                data = Share(_hasCurrent && _current.HasData, _hasCurrent ? _current.Data : default, select(source), settings.Options.StructuralSharing);
                 _selectResult = data;
                 _hasSelectResult = true;
                 _selectError = null;
@@ -1011,7 +1014,7 @@ namespace Velvet
             // An entry that has lost its data since hands none, as v5's state.data reads undefined.
             var previous = _lastWithData is { HasData: true } held ? held : null;
             var produced = settings.Placeholder!(
-                previous != null ? previous.Data : default, previous?.Key);
+                previous != null ? previous.Data : default, previous?.Describe());
             placeholder = default!;
             if (!produced.HasValue) return false;
             var select = settings.Select;
@@ -1033,12 +1036,11 @@ namespace Velvet
             return true;
         }
 
-        // TanStack's replaceData: a function given as structuralSharing replaces the default comparison, and
-        // can only be handed data of the type it was written for.
-        private static TData Share(TData? previous, TData next, Func<TQueryFnData?, TQueryFnData, TQueryFnData>? sharing)
+        // TanStack's replaceData: a function given as structuralSharing replaces the default comparison.
+        private static TData Share(bool hasPrevious, TData? previous, TData next, Func<object?, object, object>? sharing)
         {
             if (sharing == null) return QueryStructuralSharing.Replace(previous, next);
-            return sharing is Func<TData?, TData, TData> sameType ? sameType(previous, next) : next;
+            return (TData)sharing(hasPrevious ? (object?)previous : null, next!);
         }
     }
 }

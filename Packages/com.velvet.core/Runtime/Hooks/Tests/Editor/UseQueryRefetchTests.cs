@@ -77,7 +77,7 @@ namespace Velvet.Tests
         private static int s_otherCalls;
         private static StateUpdater<bool> s_setShowOther;
         private static readonly List<VelvetTaskCompletionSource<int>> s_otherSources = new();
-        private static Func<int, QueryKey?, QueryPlaceholder<int>>? s_placeholder;
+        private static Func<int, QueryInfo?, QueryPlaceholder<int>>? s_placeholder;
 
         [SetUp]
         public void SetUp()

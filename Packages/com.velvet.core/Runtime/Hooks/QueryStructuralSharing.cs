@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Velvet
 {
@@ -21,7 +22,9 @@ namespace Velvet
             List,
             // Exactly Dictionary<TKey, TValue>.
             Dictionary,
-            // Any other class, a record included: kept only as the very instance already held, as v5 treats a class instance.
+            // A class or record declared by the application, shared member by member through its instance fields.
+            Object,
+            // Any other class: kept only as the very instance already held.
             Reference,
         }
 
@@ -37,10 +40,18 @@ namespace Velvet
 
         private static readonly ConcurrentDictionary<Type, Shape> s_shapes = new();
         private static readonly Func<Type, Shape> s_classify = Classify;
+        private static readonly ConcurrentDictionary<Type, FieldInfo[]> s_fields = new();
+        private static readonly Func<Type, FieldInfo[]> s_declaredFields = DeclaredFields;
+        private static readonly MethodInfo s_memberwiseClone
+            = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        internal static T Replace<T>(T? previous, T next) => (T)ReplaceEqualDeep(previous, next, 0)!;
+        // The namespaces whose classes are not the application's: a collection, a task, an engine object. Their
+        // fields are the framework's to keep consistent, so they are kept whole or replaced whole.
+        private static readonly string[] s_foreignNamespaces = { "System", "Microsoft", "UnityEngine", "UnityEditor", "Unity" };
 
-        private static object? ReplaceEqualDeep(object? previous, object? next, int depth)
+        internal static T Replace<T>(T? previous, T next) => (T)ReplaceEqualDeep(previous, next, 0, null)!;
+
+        private static object? ReplaceEqualDeep(object? previous, object? next, int depth, List<object>? path)
         {
             if (ReferenceEquals(previous, next)) return previous;
             if (previous == null || next == null || depth > MaxDepth || previous.GetType() != next.GetType())
@@ -53,11 +64,13 @@ namespace Velvet
                 case Shape.Leaf:
                     return previous.Equals(next) ? previous : next;
                 case Shape.Array:
-                    return ReplaceArray((Array)previous, (Array)next, depth);
+                    return ReplaceArray((Array)previous, (Array)next, depth, path);
                 case Shape.List:
-                    return ReplaceList((IList)previous, (IList)next, depth);
+                    return ReplaceList((IList)previous, (IList)next, depth, path);
                 case Shape.Dictionary:
-                    return ReplaceDictionary((IDictionary)previous, (IDictionary)next, depth);
+                    return ReplaceDictionary((IDictionary)previous, (IDictionary)next, depth, path);
+                case Shape.Object:
+                    return ReplaceObject(previous, next, depth, path);
                 default:
                     return next;
             }
@@ -73,7 +86,81 @@ namespace Velvet
                 if (definition == typeof(Dictionary<,>)) return Shape.Dictionary;
             }
 
-            return type.IsValueType || type == typeof(string) ? Shape.Leaf : Shape.Reference;
+            if (type.IsValueType || type == typeof(string)) return Shape.Leaf;
+            return IsApplicationClass(type) ? Shape.Object : Shape.Reference;
+        }
+
+        private static bool IsApplicationClass(Type type)
+        {
+            if (typeof(Delegate).IsAssignableFrom(type) || typeof(UnityEngine.Object).IsAssignableFrom(type))
+            {
+                return false;
+            }
+
+            var ns = type.Namespace;
+            if (ns == null) return true;
+            foreach (var foreign in s_foreignNamespaces)
+            {
+                if (ns == foreign || ns.StartsWith(foreign + ".", StringComparison.Ordinal)) return false;
+            }
+            return true;
+        }
+
+        private static FieldInfo[] DeclaredFields(Type type)
+        {
+            var fields = new List<FieldInfo>();
+            for (var level = type; level != null && level != typeof(object); level = level.BaseType)
+            {
+                fields.AddRange(level.GetFields(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly));
+            }
+            return fields.ToArray();
+        }
+
+        // The held instance when every field is shared, otherwise a copy of the arrived one with the shared fields
+        // written over it. A class cannot be rebuilt through a constructor, so the copy is a shallow clone. An
+        // instance already being compared further up the walk is a cycle and is not entered again.
+        private static object ReplaceObject(object previous, object next, int depth, List<object>? path)
+        {
+            path ??= new List<object>();
+            foreach (var active in path)
+            {
+                if (ReferenceEquals(active, next)) return next;
+            }
+
+            var fields = s_fields.GetOrAdd(next.GetType(), s_declaredFields);
+            var items = new object?[fields.Length];
+            var shared = new bool[fields.Length];
+            var kept = 0;
+            var replaced = 0;
+            path.Add(next);
+            try
+            {
+                for (var i = 0; i < fields.Length; i++)
+                {
+                    var held = fields[i].GetValue(previous);
+                    var arrived = fields[i].GetValue(next);
+                    var item = ReplaceEqualDeep(held, arrived, depth + 1, path);
+                    items[i] = item;
+                    if (ReferenceEquals(item, held)) kept++;
+                    // A value or a string carries nothing to share, so only another reference taken from the held instance counts.
+                    shared[i] = item != null && !ReferenceEquals(item, arrived) && item is not string && !item.GetType().IsValueType;
+                    if (shared[i]) replaced++;
+                }
+            }
+            finally
+            {
+                path.RemoveAt(path.Count - 1);
+            }
+
+            if (kept == fields.Length) return previous;
+            if (replaced == 0) return next;
+            var copy = s_memberwiseClone.Invoke(next, null)!;
+            for (var i = 0; i < fields.Length; i++)
+            {
+                if (shared[i]) fields[i].SetValue(copy, items[i]);
+            }
+            return copy;
         }
 
         // Elements of these types hold nothing to share, so two collections of them are the held one or the new
@@ -110,10 +197,10 @@ namespace Velvet
             return true;
         }
 
-        private static object ReplaceArray(Array previous, Array next, int depth)
+        private static object ReplaceArray(Array previous, Array next, int depth, List<object>? path)
         {
             if (TryCompareUnmanaged(previous, next, out var same)) return same ? previous : next;
-            switch (ShareItems(previous, next, depth, out var items))
+            switch (ShareItems(previous, next, depth, path, out var items))
             {
                 case Outcome.Previous:
                     return previous;
@@ -129,10 +216,10 @@ namespace Velvet
             }
         }
 
-        private static object ReplaceList(IList previous, IList next, int depth)
+        private static object ReplaceList(IList previous, IList next, int depth, List<object>? path)
         {
             if (TryCompareUnmanaged(previous, next, out var same)) return same ? previous : next;
-            switch (ShareItems(previous, next, depth, out var items))
+            switch (ShareItems(previous, next, depth, path, out var items))
             {
                 case Outcome.Previous:
                     return previous;
@@ -148,7 +235,7 @@ namespace Velvet
             }
         }
 
-        private static Outcome ShareItems(IList previous, IList next, int depth, out object?[] items)
+        private static Outcome ShareItems(IList previous, IList next, int depth, List<object>? path, out object?[] items)
         {
             items = new object?[next.Count];
             var kept = 0;
@@ -157,7 +244,7 @@ namespace Velvet
             {
                 var held = i < previous.Count ? previous[i] : null;
                 var arrived = next[i];
-                var item = ReplaceEqualDeep(held, arrived, depth + 1);
+                var item = ReplaceEqualDeep(held, arrived, depth + 1, path);
                 items[i] = item;
                 if (i < previous.Count && ReferenceEquals(item, held)) kept++;
                 if (!ReferenceEquals(item, arrived)) replaced++;
@@ -167,7 +254,7 @@ namespace Velvet
             return replaced == 0 ? Outcome.Next : Outcome.Mixed;
         }
 
-        private static object ReplaceDictionary(IDictionary previous, IDictionary next, int depth)
+        private static object ReplaceDictionary(IDictionary previous, IDictionary next, int depth, List<object>? path)
         {
             var keys = new object[next.Count];
             var items = new object?[next.Count];
@@ -180,7 +267,7 @@ namespace Velvet
                 var arrived = entries.Value;
                 var has = previous.Contains(entries.Key);
                 var held = has ? previous[entries.Key] : null;
-                var item = ReplaceEqualDeep(held, arrived, depth + 1);
+                var item = ReplaceEqualDeep(held, arrived, depth + 1, path);
                 keys[index] = entries.Key;
                 items[index++] = item;
                 if (has && ReferenceEquals(item, held)) kept++;
