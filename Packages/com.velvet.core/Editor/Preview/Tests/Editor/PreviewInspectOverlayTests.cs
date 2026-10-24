@@ -58,15 +58,10 @@ namespace Velvet.Tests
             var overlay = new PreviewInspectOverlay(_canvas, new PreviewPanelBridge(_canvas, () => null));
             _window.rootVisualElement.Add(overlay);
             SetMeasured(overlay, new VisualElement());
-            using var leave = PointerLeaveEvent.GetPooled(new Event
-            {
-                type = EventType.MouseMove,
-                mousePosition = new Vector2(10f, 10f),
-                button = 0,
-            });
+            using var leave = PointerLeaveEvent.GetPooled();
 
             // Act
-            _canvas.SendEvent(leave);
+            _canvas.SimulateEvent(leave);
 
             // Assert
             Assert.That(typeof(PreviewInspectOverlay).GetField("_measured", Private)?.GetValue(overlay), Is.Null);
@@ -122,10 +117,10 @@ namespace Velvet.Tests
             var kept = new VisualElement();
             SetMeasured(overlay, kept);
             overlay.RemoveFromHierarchy();
-            using var leave = PointerLeaveEvent.GetPooled(Pointer(EventType.MouseMove));
+            using var leave = PointerLeaveEvent.GetPooled();
 
             // Act
-            _canvas.SendEvent(leave);
+            _canvas.SimulateEvent(leave);
 
             // Assert
             Assert.That(Measured(overlay), Is.SameAs(kept));
@@ -146,10 +141,10 @@ namespace Velvet.Tests
             var kept = new VisualElement();
             SetMeasured(overlay, kept);
             overlay.RemoveFromHierarchy();
-            using var move = PointerMoveEvent.GetPooled(Pointer(EventType.MouseMove));
+            using var move = PointerMoveEvent.GetPooled();
 
             // Act
-            _canvas.SendEvent(move);
+            _canvas.SimulateEvent(move);
 
             // Assert
             Assert.That(Measured(overlay), Is.SameAs(kept));
@@ -276,9 +271,6 @@ namespace Velvet.Tests
                 yield return null;
             }
         }
-
-        private static Event Pointer(EventType type) =>
-            new() { type = type, mousePosition = new Vector2(10f, 10f), button = 0 };
 
         private static VisualElement Measured(PreviewInspectOverlay overlay) =>
             (VisualElement)typeof(PreviewInspectOverlay).GetField("_measured", Private)?.GetValue(overlay);

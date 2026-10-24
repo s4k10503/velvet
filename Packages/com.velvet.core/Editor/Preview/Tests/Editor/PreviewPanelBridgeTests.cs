@@ -30,7 +30,6 @@ namespace Velvet.Tests
         private readonly List<KeyCode> _keysUp = new();
         private int _submits;
         private int _cancels;
-        private int _movesReachingTheWindow;
 
         private VelvetPreviewPanel _panel;
         private VisualElement _canvas;
@@ -46,7 +45,6 @@ namespace Velvet.Tests
             _keysUp.Clear();
             _submits = 0;
             _cancels = 0;
-            _movesReachingTheWindow = 0;
             _canvas = new VisualElement
             {
                 style =
@@ -120,18 +118,17 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already stops a navigation move at the canvas, so the window
         // around it does not also move its own focus.
-        [UnityTest]
-        public IEnumerator Given_ANavigationMoveOnTheCanvas_When_ItIsSent_Then_TheWindowAroundItDoesNotReceiveIt()
+        [Test]
+        public void Given_ANavigationMoveOnTheCanvas_When_TheBridgeHandlesIt_Then_ItStopsAtTheCanvas()
         {
             // Arrange
-            yield return Listen();
-            _window.rootVisualElement.RegisterCallback<NavigationMoveEvent>(_ => _movesReachingTheWindow++);
+            using var move = NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.Right);
 
             // Act
-            SendToCanvas(NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.Right));
+            _canvas.SimulateEvent(move);
 
             // Assert
-            Assert.That(_movesReachingTheWindow, Is.EqualTo(0));
+            Assert.That(move.isPropagationStopped, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base already lets go of the pointer when it is released over the
@@ -209,12 +206,7 @@ namespace Velvet.Tests
             yield return Listen();
 
             // Act
-            SendToCanvas(PointerMoveEvent.GetPooled(new Event
-            {
-                type = EventType.MouseMove,
-                mousePosition = new Vector2(10f, 10f),
-                button = 0,
-            }));
+            SendToCanvas(PointerMoveEvent.GetPooled());
 
             // Assert
             Assert.That(_pointerMoves.ConvertAll(move => move.Type), Is.EqualTo(new[] { EventType.MouseMove }));
@@ -229,12 +221,7 @@ namespace Velvet.Tests
             yield return Listen();
 
             // Act
-            SendToCanvas(PointerLeaveEvent.GetPooled(new Event
-            {
-                type = EventType.MouseMove,
-                mousePosition = new Vector2(10f, 10f),
-                button = 0,
-            }));
+            SendToCanvas(PointerLeaveEvent.GetPooled());
 
             // Assert
             Assert.That(
@@ -342,26 +329,43 @@ namespace Velvet.Tests
                 Is.EqualTo((new Vector2(CanvasWidth, CanvasHeight), new Vector2(10f, 20f))));
         }
 
-        // The panel needs a few frames before it has a panel of its own to take events.
+        // The recorder covers the whole panel and holds its focus, so a pointer or wheel at any position picks it and
+        // a key or navigation event, which goes to the focused element, reaches it. The callbacks sit on the panel's
+        // root, which the event bubbles up to.
         private IEnumerator Listen()
         {
-            for (var frame = 0; frame < FramesBeforePanel; frame++) yield return null;
-            var tree = _panel.Root.panel.visualTree;
-            tree.RegisterCallback<WheelEvent>(evt => _wheels.Add(evt.delta), TrickleDown.TrickleDown);
-            tree.RegisterCallback<NavigationMoveEvent>(evt => _moves.Add(evt.direction), TrickleDown.TrickleDown);
-            tree.RegisterCallback<NavigationSubmitEvent>(_ => _submits++, TrickleDown.TrickleDown);
-            tree.RegisterCallback<NavigationCancelEvent>(_ => _cancels++, TrickleDown.TrickleDown);
-            tree.RegisterCallback<KeyDownEvent>(evt => _keysDown.Add(evt.keyCode), TrickleDown.TrickleDown);
-            tree.RegisterCallback<KeyUpEvent>(evt => _keysUp.Add(evt.keyCode), TrickleDown.TrickleDown);
-            tree.RegisterCallback<PointerMoveEvent>(
-                evt => _pointerMoves.Add((evt.imguiEvent.type, evt.imguiEvent.mousePosition)), TrickleDown.TrickleDown);
+            var recorder = new VisualElement
+            {
+                focusable = true,
+                style = { position = Position.Absolute, left = 0, top = 0, right = 0, bottom = 0 },
+            };
+            _panel.Root.Add(recorder);
+            for (var frame = 0; frame < FramesBeforePanel; frame++)
+            {
+                EditorApplication.QueuePlayerLoopUpdate();
+                yield return null;
+            }
+
+            recorder.Focus();
+            var root = _panel.Root;
+            root.RegisterCallback<WheelEvent>(evt => _wheels.Add(evt.delta));
+            root.RegisterCallback<NavigationMoveEvent>(evt => _moves.Add(evt.direction));
+            root.RegisterCallback<NavigationSubmitEvent>(_ => _submits++);
+            root.RegisterCallback<NavigationCancelEvent>(_ => _cancels++);
+            root.RegisterCallback<KeyDownEvent>(evt => _keysDown.Add(evt.keyCode));
+            root.RegisterCallback<KeyUpEvent>(evt => _keysUp.Add(evt.keyCode));
+            root.RegisterCallback<PointerMoveEvent>(
+                evt => _pointerMoves.Add((evt.imguiEvent.type, evt.imguiEvent.mousePosition)));
         }
 
-        private void SendToCanvas(EventBase evt)
+        // SendEvent is not routed to an element's callbacks here, so the event is handed to them the way the
+        // repository's other fixtures do.
+        private void SendToCanvas<TEvent>(TEvent evt)
+            where TEvent : EventBase<TEvent>, new()
         {
             using (evt)
             {
-                _canvas.SendEvent(evt);
+                _canvas.SimulateEvent(evt);
             }
         }
     }
