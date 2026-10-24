@@ -900,19 +900,25 @@ namespace Velvet.Tests
                 {
                     Record("mutate", 0, null, v, null);
                     if (s_onMutateThrows != null) throw s_onMutateThrows;
-                    return $"ctx{v}";
+                    return VelvetTask.FromResult($"ctx{v}");
                 },
-                OnSuccess: (data, v, context) => Record("success", data, null, v, context),
+                OnSuccess: (data, v, context) =>
+                {
+                    Record("success", data, null, v, context);
+                    return VelvetTask.CompletedTask;
+                },
                 OnError: (error, v, context) =>
                 {
                     Record("error", 0, error, v, context);
                     if (s_onErrorThrows != null) throw s_onErrorThrows;
+                    return VelvetTask.CompletedTask;
                 },
                 OnSettled: (data, error, v, context) =>
                 {
                     Record("settled", data, error, v, context);
                     if (error == null && s_settledThrowsOnSuccess != null) throw s_settledThrowsOnSuccess;
                     if (error != null && s_settledThrowsOnFailure != null) throw s_settledThrowsOnFailure;
+                    return VelvetTask.CompletedTask;
                 }));
             return V.Label(text: "ok");
         }
@@ -922,7 +928,11 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn)
             {
-                OnSettled = (data, error, v) => Record("settled", data, error, v, null),
+                OnSettled = (data, error, v) =>
+                {
+                    Record("settled", data, error, v, null);
+                    return VelvetTask.CompletedTask;
+                },
             });
             return V.Label(text: "ok");
         }
@@ -932,7 +942,11 @@ namespace Velvet.Tests
         {
             s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(MutationFn: s_voidMutationFn)
             {
-                OnSettled = (error, v) => Record("settled", 0, error, v, null),
+                OnSettled = (error, v) =>
+                {
+                    Record("settled", 0, error, v, null);
+                    return VelvetTask.CompletedTask;
+                },
             });
             return V.Label(text: "ok");
         }
@@ -942,7 +956,11 @@ namespace Velvet.Tests
         {
             s_noInputCaptured = Hooks.UseMutation(new MutationOptions(MutationFn: _ => VelvetTask.CompletedTask)
             {
-                OnSettled = error => Record("settled", 0, error, 0, null),
+                OnSettled = error =>
+                {
+                    Record("settled", 0, error, 0, null);
+                    return VelvetTask.CompletedTask;
+                },
             });
             return V.Label(text: "ok");
         }

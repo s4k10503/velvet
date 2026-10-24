@@ -195,33 +195,33 @@ namespace Velvet
     public sealed record MutationOptions<TVariables, TData>(
         global::System.Func<TVariables, global::System.Threading.CancellationToken,
             global::Velvet.VelvetTask<TData>> MutationFn,
-        global::System.Action<TData, TVariables>? OnSuccess = null,
-        global::System.Action<global::System.Exception, TVariables>? OnError = null)
+        global::System.Func<TData, TVariables, global::Velvet.VelvetTask>? OnSuccess = null,
+        global::System.Func<global::System.Exception, TVariables, global::Velvet.VelvetTask>? OnError = null)
     {
-        public global::System.Action<TData, global::System.Exception, TVariables>? OnSettled { get; init; }
+        public global::System.Func<TData, global::System.Exception, TVariables, global::Velvet.VelvetTask>? OnSettled { get; init; }
     }
     public sealed record MutationOptions<TVariables, TData, TContext>(
         global::System.Func<TVariables, global::System.Threading.CancellationToken,
             global::Velvet.VelvetTask<TData>> MutationFn,
-        global::System.Func<TVariables, TContext>? OnMutate = null,
-        global::System.Action<TData, TVariables, TContext>? OnSuccess = null,
-        global::System.Action<global::System.Exception, TVariables, TContext>? OnError = null,
-        global::System.Action<TData, global::System.Exception, TVariables, TContext>? OnSettled = null);
+        global::System.Func<TVariables, global::Velvet.VelvetTask<TContext>>? OnMutate = null,
+        global::System.Func<TData, TVariables, TContext, global::Velvet.VelvetTask>? OnSuccess = null,
+        global::System.Func<global::System.Exception, TVariables, TContext, global::Velvet.VelvetTask>? OnError = null,
+        global::System.Func<TData, global::System.Exception, TVariables, TContext, global::Velvet.VelvetTask>? OnSettled = null);
     public sealed record MutationOptions<TVariables>(
         global::System.Func<TVariables, global::System.Threading.CancellationToken,
             global::Velvet.VelvetTask> MutationFn,
-        global::System.Action<TVariables>? OnSuccess = null,
-        global::System.Action<global::System.Exception, TVariables>? OnError = null)
+        global::System.Func<TVariables, global::Velvet.VelvetTask>? OnSuccess = null,
+        global::System.Func<global::System.Exception, TVariables, global::Velvet.VelvetTask>? OnError = null)
     {
-        public global::System.Action<global::System.Exception, TVariables>? OnSettled { get; init; }
+        public global::System.Func<global::System.Exception, TVariables, global::Velvet.VelvetTask>? OnSettled { get; init; }
     }
     public sealed record MutationOptions(
         global::System.Func<global::System.Threading.CancellationToken,
             global::Velvet.VelvetTask> MutationFn,
-        global::System.Action? OnSuccess = null,
-        global::System.Action<global::System.Exception>? OnError = null)
+        global::System.Func<global::Velvet.VelvetTask>? OnSuccess = null,
+        global::System.Func<global::System.Exception, global::Velvet.VelvetTask>? OnError = null)
     {
-        public global::System.Action<global::System.Exception>? OnSettled { get; init; }
+        public global::System.Func<global::System.Exception, global::Velvet.VelvetTask>? OnSettled { get; init; }
     }
 }
 ";

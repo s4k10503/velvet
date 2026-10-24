@@ -2543,7 +2543,7 @@ namespace Velvet
             {
                 // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
                 // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
-                context = slot.InvokeOnMutate(variables);
+                context = await slot.InvokeOnMutate(variables);
                 // Each attempt reads the slot's MutationFn, so a re-render during the wait is the one
                 // that runs. The token is the caller's: unmount retires the slot and leaves the wait running.
                 var data = await (slot.Retry ?? RetryPolicy.NoRetry).RunWithStateAsync(
@@ -2561,8 +2561,8 @@ namespace Velvet
                 // their own result. Either one throwing leaves the call a failure with nothing of its own
                 // written, and the failure path below then runs OnError and OnSettled with that exception —
                 // a throwing OnSettled included, as TanStack's catch does.
-                slot.InvokeOnSuccess(data, variables, context);
-                slot.InvokeOnSettled(data, null, variables, context);
+                await slot.InvokeOnSuccess(data, variables, context);
+                await slot.InvokeOnSettled(data, null, variables, context);
                 if (CommitOutcome(fiber, slot, mine, data, error: null))
                 {
                     callOptions?.Deliver(data, null, variables, slot.BoxContext(context));
@@ -2571,7 +2571,7 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                DeliverFailure(slot, ex, variables, context);
+                await DeliverFailure(slot, ex, variables, context);
                 // Committed after the handlers for the same reason as a success.
                 if (CommitOutcome(fiber, slot, mine, default!, ex))
                 {
@@ -2583,8 +2583,9 @@ namespace Velvet
         }
 
         // Contained one by one, as TanStack contains them: a throwing OnError must not cost the call its
-        // OnSettled, and neither may cost it the outcome the caller commits after this returns.
-        private static void DeliverFailure<TVariables, TData, TContext>(
+        // OnSettled, and neither may cost it the outcome the caller commits after this returns. A task a
+        // handler returns is waited for before the next one runs, and a fault in it is contained as a throw is.
+        private static async VelvetTask DeliverFailure<TVariables, TData, TContext>(
             HookMutationSlot<TVariables, TData, TContext> slot,
             Exception error,
             TVariables variables,
@@ -2592,7 +2593,7 @@ namespace Velvet
         {
             try
             {
-                slot.InvokeOnError(error, variables, context);
+                await slot.InvokeOnError(error, variables, context);
             }
             catch (Exception handlerEx)
             {
@@ -2600,7 +2601,7 @@ namespace Velvet
             }
             try
             {
-                slot.InvokeOnSettled(default!, error, variables, context);
+                await slot.InvokeOnSettled(default!, error, variables, context);
             }
             catch (Exception handlerEx)
             {

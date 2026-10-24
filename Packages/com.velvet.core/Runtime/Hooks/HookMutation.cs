@@ -23,18 +23,20 @@ namespace Velvet
     /// Options passed to <see cref="Hooks.UseMutation{TVariables, TData}"/>. The <see cref="MutationFn"/>
     /// is the async function invoked by <see cref="MutationResult{TVariables, TData}.Mutate"/> /
     /// <see cref="MutationResult{TVariables, TData}.MutateAsync"/>. For a value carried from before the call to
-    /// its callbacks, use <see cref="MutationOptions{TVariables, TData, TContext}"/>.
+    /// its callbacks, use <see cref="MutationOptions{TVariables, TData, TContext}"/>. Each callback returns a
+    /// task the call waits for before the next stage, as TanStack Query awaits the promise its callbacks return;
+    /// a callback with nothing to wait for returns <see cref="VelvetTask.CompletedTask"/>.
     /// </summary>
     public sealed record MutationOptions<TVariables, TData>(
         Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
-        Action<TData, TVariables>? OnSuccess = null,
-        Action<Exception, TVariables>? OnError = null)
+        Func<TData, TVariables, VelvetTask>? OnSuccess = null,
+        Func<Exception, TVariables, VelvetTask>? OnError = null)
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the data and a null exception on
         /// success and default data and the exception on failure.
         /// </summary>
-        public Action<TData?, Exception?, TVariables>? OnSettled { get; init; }
+        public Func<TData?, Exception?, TVariables, VelvetTask>? OnSettled { get; init; }
 
         /// <summary>
         /// Retries a failed <see cref="MutationFn"/> within the same call: <see cref="MutationResult{TVariables, TData}.Status"/>,
@@ -53,15 +55,17 @@ namespace Velvet
     /// <c>onMutate</c> / <c>onSuccess</c> / <c>onError</c> / <c>onSettled</c> quartet. <see cref="OnMutate"/> runs
     /// before <see cref="MutationFn"/>, and what it returns is the context each later callback of that call
     /// receives — the place to snapshot and write an optimistic value, roll it back in <see cref="OnError"/>,
-    /// and finish in <see cref="OnSettled"/>. Where <see cref="OnMutate"/> throws, or the options declare none,
-    /// the callbacks receive a default context.
+    /// and finish in <see cref="OnSettled"/>. Where <see cref="OnMutate"/> throws or its task faults, or the
+    /// options declare none, the callbacks receive a default context. Every callback returns a task the call
+    /// waits for before the next stage, <see cref="OnMutate"/> included, so a context built from a request is
+    /// the task's result.
     /// </summary>
     public sealed record MutationOptions<TVariables, TData, TContext>(
         Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
-        Func<TVariables, TContext>? OnMutate = null,
-        Action<TData, TVariables, TContext?>? OnSuccess = null,
-        Action<Exception, TVariables, TContext?>? OnError = null,
-        Action<TData?, Exception?, TVariables, TContext?>? OnSettled = null)
+        Func<TVariables, VelvetTask<TContext>>? OnMutate = null,
+        Func<TData, TVariables, TContext?, VelvetTask>? OnSuccess = null,
+        Func<Exception, TVariables, TContext?, VelvetTask>? OnError = null,
+        Func<TData?, Exception?, TVariables, TContext?, VelvetTask>? OnSettled = null)
     {
         /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
         public RetryPolicy? Retry { get; init; }
@@ -73,14 +77,14 @@ namespace Velvet
     /// </summary>
     public sealed record MutationOptions<TVariables>(
         Func<TVariables, CancellationToken, VelvetTask> MutationFn,
-        Action<TVariables>? OnSuccess = null,
-        Action<Exception, TVariables>? OnError = null)
+        Func<TVariables, VelvetTask>? OnSuccess = null,
+        Func<Exception, TVariables, VelvetTask>? OnError = null)
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
         /// success.
         /// </summary>
-        public Action<Exception?, TVariables>? OnSettled { get; init; }
+        public Func<Exception?, TVariables, VelvetTask>? OnSettled { get; init; }
 
         /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
         public RetryPolicy? Retry { get; init; }
@@ -92,14 +96,14 @@ namespace Velvet
     /// </summary>
     public sealed record MutationOptions(
         Func<CancellationToken, VelvetTask> MutationFn,
-        Action? OnSuccess = null,
-        Action<Exception>? OnError = null)
+        Func<VelvetTask>? OnSuccess = null,
+        Func<Exception, VelvetTask>? OnError = null)
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
         /// success.
         /// </summary>
-        public Action<Exception?>? OnSettled { get; init; }
+        public Func<Exception?, VelvetTask>? OnSettled { get; init; }
 
         /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
         public RetryPolicy? Retry { get; init; }
