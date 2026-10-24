@@ -219,17 +219,20 @@ namespace Velvet.Tests
                 Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/other")));
         }
 
+        // GREEN_ON_BASE(characterization): the base also ends a resumed navigation without a commit, by an
+        // unmatched redirect target where this one reaches the redirect limit; the blocker blocks the next either way.
         [Test]
         public void Given_AResumedNavigationThatCommitsNothing_When_NavigatingAgain_Then_TheBlockerBlocksIt()
         {
             // Arrange — the Guard is asked only once the Blocker has let an attempt through, and it sends the
-            // resumed one at a path no route matches, so the resume ends without a commit.
+            // resumed one round in a circle until the redirect limit refuses it, so the resume ends without a
+            // commit.
             var guardChecks = 0;
             var router = BuildRouter("/home", Route("home"),
                 Route("other", guard: _ =>
                 {
                     guardChecks++;
-                    return "/nowhere";
+                    return "/other";
                 }),
                 Route("third"));
             var state = new RouteBlockerState();
@@ -243,8 +246,8 @@ namespace Velvet.Tests
             // Assert — the Guard count rides along because a Proceed() that re-issued nothing also leaves
             // the next navigation blocked, and the Guard reading is what says the resume happened.
             Assert.That(
-                (blockedResult, guardChecks, nextResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, 1, NavigationResult.Blocked, "/home")));
+                (blockedResult, guardChecks > 0, nextResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, true, NavigationResult.Blocked, "/home")));
         }
 
         [Test]

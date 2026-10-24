@@ -805,7 +805,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 (result[0].RouteId, result[1].RouteId),
-                Is.EqualTo(("/room", "/room/?index")),
+                Is.EqualTo(("0", "0-0")),
                 "The index route id is disambiguated from its parent's id");
         }
 

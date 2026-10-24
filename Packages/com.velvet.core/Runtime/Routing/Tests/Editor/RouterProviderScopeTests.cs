@@ -78,6 +78,12 @@ namespace Velvet.Tests
                     "UseRouteError" => RouteError,
                     "UseSubmit" => Submit,
                     "UseActionData" => ActionData,
+                    "UseMatches" => Matches,
+                    "UseRouteLoaderData" => RouteLoaderData,
+                    "UseNavigationType" => NavigationTypeHook,
+                    "UseResolvedPath" => ResolvedPathHook,
+                    "UseHref" => Href,
+                    "UseInRouterContext" => InRouterContext,
                     "UseParams" => Params,
                     "UseOutletContext" => OutletContext,
                     "Outlet" => Outlet,
@@ -155,6 +161,48 @@ namespace Velvet.Tests
             private static VNode ActionData()
             {
                 _ = Hooks.UseActionData<string>();
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode Matches()
+            {
+                _ = Hooks.UseMatches();
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode RouteLoaderData()
+            {
+                _ = Hooks.UseRouteLoaderData<string>("root");
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode NavigationTypeHook()
+            {
+                _ = Hooks.UseNavigationType();
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode ResolvedPathHook()
+            {
+                _ = Hooks.UseResolvedPath(".");
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode Href()
+            {
+                _ = Hooks.UseHref(".");
+                return Rendered();
+            }
+
+            [Component]
+            private static VNode InRouterContext()
+            {
+                _ = Hooks.UseInRouterContext();
                 return Rendered();
             }
 
@@ -281,6 +329,11 @@ namespace Velvet.Tests
         [TestCase("UseRouteError")]
         [TestCase("UseSubmit")]
         [TestCase("UseActionData")]
+        [TestCase("UseMatches")]
+        [TestCase("UseRouteLoaderData")]
+        [TestCase("UseNavigationType")]
+        [TestCase("UseResolvedPath")]
+        [TestCase("UseHref")]
         public void Given_NoRouterProviderAbove_When_AComponentCallsTheHook_Then_ItsRenderThrowsNamingTheHook(string hook)
         {
             // Arrange
@@ -293,11 +346,13 @@ namespace Velvet.Tests
             Assert.That(caught?.Message, Is.EqualTo($"{hook} may be used only beneath a V.RouterProvider."));
         }
 
-        // GREEN_ON_BASE(characterization): these three already answered without a router, as React Router's
-        // useParams, useOutletContext and Outlet do; the branch makes the hooks beside them throw there.
+        // GREEN_ON_BASE(characterization): UseParams, UseOutletContext and Outlet already answered without a
+        // router, as React Router's do; the branch makes the hooks beside them throw there. UseInRouterContext
+        // is the one that answers there by definition, and the base has no such hook.
         [TestCase("UseParams")]
         [TestCase("UseOutletContext")]
         [TestCase("Outlet")]
+        [TestCase("UseInRouterContext")]
         public void Given_NoRouterProviderAbove_When_AComponentCallsTheHook_Then_ItRenders(string hook)
         {
             // Arrange

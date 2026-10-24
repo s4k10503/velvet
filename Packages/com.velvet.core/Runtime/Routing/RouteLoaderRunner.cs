@@ -20,7 +20,7 @@ namespace Velvet
             // Keyed on RouteId rather than MatchedPath, which is the route's own trimmed path and so is
             // shared by two levels of one chain whenever their paths trim alike — a pathless layout above
             // an index child, both "", or a segment repeated as in "users" under "users". RouteId is
-            // cumulative and keeps them apart; one key would let the second loader's result win.
+            // unique per route and keeps them apart; one key would let the second loader's result win.
             internal readonly Dictionary<string?, object> Results = new();
 
             internal readonly Dictionary<string?, Exception> Errors = new();

@@ -218,7 +218,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsUnchanged()
+        public void Given_GuardRedirectToMissingRouteDuringBack_When_Committed_Then_TheNotFoundTakesTheSteppedToSlot()
         {
             // Arrange
             var router = new Router(new[]
@@ -235,7 +235,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That((router.CurrentLocation.Path, router.HistoryIndex), Is.EqualTo(("/a", 1)));
+            Assert.That((router.CurrentLocation.Path, router.HistoryIndex), Is.EqualTo(("/nonexistent", 0)));
         }
 
         #endregion
@@ -290,6 +290,8 @@ namespace Velvet.Tests
 
         #region Push with failed redirect
 
+        // GREEN_ON_BASE(characterization): the base also keeps the forward entry when a push's redirect ends without
+        // a commit, by an unmatched target where this one reaches the redirect limit.
         [Test]
         public void Given_PushRedirectFailsWithForwardHistory_When_RolledBack_Then_ForwardEntryIsPreserved()
         {
@@ -298,7 +300,7 @@ namespace Velvet.Tests
             {
                 Route("home"),
                 Route("page"),
-                Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/nonexistent")),
+                Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/admin")),
             });
             router.NavigateSync("/home");
             router.NavigateSync("/page");
@@ -309,7 +311,7 @@ namespace Velvet.Tests
             // Act
             enableGuard();
             var pushResult = router.NavigateSync("/admin");
-            Assume.That(pushResult, Is.EqualTo(NavigationResult.NotFound),
+            Assume.That(pushResult, Is.EqualTo(NavigationResult.Error),
                 "Precondition: the push's guard redirect failed");
 
             // Assert

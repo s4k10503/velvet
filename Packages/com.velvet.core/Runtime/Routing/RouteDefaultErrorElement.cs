@@ -15,7 +15,7 @@ namespace Velvet
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             Hooks.UseEffect(() =>
             {
-                if (error != null)
+                if (error is not null and not ErrorResponse)
                 {
                     UnityEngine.Debug.LogException(error);
                 }

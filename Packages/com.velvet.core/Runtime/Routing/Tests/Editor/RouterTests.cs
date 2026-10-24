@@ -110,10 +110,8 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ACommittedLocation_When_AnUnmatchedPathIsNavigatedTo_Then_TheRouterStillDescribesThatLocation()
+        public void Given_ACommittedLocation_When_AnUnmatchedPathIsNavigatedTo_Then_TheRouterDescribesTheNotFoundLocation()
         {
-            // The router's state describes the committed location and the navigation in flight, and an
-            // attempt that matched nothing is neither: it answers its own caller and leaves both as they were.
             // Arrange
             var router = BuildRouter("/home", _routes);
             var published = new List<NavigationLifecycle>();
@@ -126,13 +124,13 @@ namespace Velvet.Tests
             Assert.That(
                 $"result={result} path={router.CurrentLocation?.Path} state={router.Navigation.State} "
                 + $"published={string.Join(",", published)}",
-                Is.EqualTo("result=NotFound path=/home state=Idle published="));
+                Is.EqualTo("result=NotFound path=/nonexistent state=Idle published=Loading,Idle"));
         }
 
         [Test]
         public void Given_ACommittedLocation_When_APathThatResolvesToNothingIsNavigatedTo_Then_TheRouterStillDescribesThatLocation()
         {
-            // The case above is refused by the match; this one is refused before it, by a separate branch.
+            // The case above commits a 404; this one is refused before the match, by a separate branch.
             // Arrange
             var router = BuildRouter("/home", _routes);
             var published = new List<NavigationLifecycle>();
@@ -359,7 +357,7 @@ namespace Velvet.Tests
             router.NavigateSync("/data");
 
             // Assert
-            Assert.That(router.GetLoaderData("/data"), Is.EqualTo("loaded"));
+            Assert.That(router.GetLoaderData("0"), Is.EqualTo("loaded"));
         }
 
         #endregion
@@ -595,7 +593,7 @@ namespace Velvet.Tests
             router.GoForwardSync();
 
             // Assert
-            Assert.That(router.GetLoaderData("/data"), Is.EqualTo("loaded-2"));
+            Assert.That(router.GetLoaderData("0-1"), Is.EqualTo("loaded-2"));
         }
 
         [Test]
@@ -641,7 +639,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That(router.GetLoaderData("/page1"), Is.EqualTo("page1-2"));
+            Assert.That(router.GetLoaderData("0-0"), Is.EqualTo("page1-2"));
         }
 
         [Test]
@@ -713,7 +711,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors["/boom"].Message, Is.EqualTo("boom-2"));
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, Is.EqualTo("boom-2"));
         }
 
         #endregion
@@ -1079,7 +1077,7 @@ namespace Velvet.Tests
             router.NavigateSync("/ready");
 
             // Assert
-            Assert.That(router.GetLoaderData("/ready"), Is.EqualTo("ready-data"),
+            Assert.That(router.GetLoaderData("0-0"), Is.EqualTo("ready-data"),
                 "A result produced before the commit belongs to the location that commit establishes");
         }
 

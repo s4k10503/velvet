@@ -91,7 +91,7 @@ namespace Velvet
 
         /// <summary>
         /// The navigation in flight, as React Router's <c>router.state.navigation</c> describes it: from the
-        /// moment its path has matched a route until it commits or gives up, and <c>default</c> — Idle, every
+        /// moment its path has matched a route, or matched none, until it commits or gives up, and <c>default</c> — Idle, every
         /// other member null — while none is. It describes that attempt and nothing else: an attempt that
         /// ends without committing changes nothing <see cref="CurrentLocation"/>,
         /// <see cref="CurrentLoaderData"/> or <see cref="CurrentLoaderErrors"/> holds, and reports how it ended
@@ -122,6 +122,11 @@ namespace Velvet
         // React Router's isRevalidationRequired: set when an action starts, cleared by a commit, so a navigation
         // that takes over from a submission whose action has started keeps no loader data.
         private bool _revalidationRequired;
+        /// <summary>
+        /// How the committed location was reached, as React Router's <c>historyAction</c>: a step along the
+        /// history is <see cref="NavigationType.Pop"/>, as is a router that has committed nothing yet.
+        /// </summary>
+        public NavigationType NavigationType { get; private set; } = NavigationType.Pop;
         /// <summary>True when the history stack can be moved backward.</summary>
         public bool CanGoBack => _historyIndex > 0;
         /// <summary>True when the history stack can be moved forward.</summary>
@@ -247,7 +252,9 @@ namespace Velvet
         /// <returns>
         /// A <see cref="NavigationResult"/> indicating the outcome:
         /// <see cref="NavigationResult.Success"/> on completion,
-        /// <see cref="NavigationResult.NotFound"/> when no route matches,
+        /// <see cref="NavigationResult.NotFound"/> when no route matches, after committing the 404 that
+        /// <see cref="RouterContext.Errors"/> carries as an <see cref="ErrorResponse"/> (and when
+        /// <paramref name="path"/> is null, which commits nothing),
         /// <see cref="NavigationResult.Blocked"/> when a Blocker rejects the attempt,
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
         /// when it is asked of a router already disposed,
@@ -540,6 +547,19 @@ namespace Velvet
                 : ResolveWithoutHash(path.Substring(0, hashAt), baseRouteIndex, relative) + path.Substring(hashAt);
         }
 
+        // The target split into the parts React Router's Path carries.
+        internal ResolvedPath ResolveTarget(string path, int baseRouteIndex, RelativeRoutingType relative)
+        {
+            var withoutHash = SplitHash(ResolvePath(path, baseRouteIndex, relative)!, out var hash);
+            var pathname = RouteQuery.StripQuery(withoutHash);
+            return new ResolvedPath
+            {
+                Pathname = pathname,
+                Search = withoutHash.Substring(pathname.Length),
+                Hash = hash,
+            };
+        }
+
         private string ResolveWithoutHash(string path, int baseRouteIndex, RelativeRoutingType relative)
         {
             // Absolute paths pass through. An empty string is invalid and handled downstream by RouteTree.
@@ -802,11 +822,10 @@ namespace Velvet
             var pathForMatch = RouteQuery.StripQuery(path);
             var matches = _routeTree.Match(pathForMatch);
 
-            if (matches == null)
-            {
-                EndInitiatorsNavigation(initiator);
-                return NavigationResult.NotFound;
-            }
+            // A path no route matches commits like any other, at the chain the tree names for it, and runs
+            // no guard, action or loader.
+            var unmatched = matches == null;
+            matches ??= _routeTree.NotFoundMatches;
 
             PendingNavigation pending;
             if (initiator.HasValue)
@@ -845,32 +864,39 @@ namespace Velvet
             ActionOutcome? action = null;
             try
             {
-                var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken);
-                if (guardResult.HasValue)
+                if (!unmatched)
                 {
-                    return guardResult.Value;
+                    var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken);
+                    if (guardResult.HasValue)
+                    {
+                        return guardResult.Value;
+                    }
+
+                    // An attempt a newer navigation took over from — one a Guard started, say — or whose caller
+                    // cancelled it unwinds here rather than starting a loader round: beginning one retires the
+                    // round current before it, which can be the round of the navigation that took over.
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        ReleaseClaim(pending);
+                        return NavigationResult.Cancelled;
+                    }
+
+                    action = await RunAction(matches, path, submission, cancellationToken);
+                    PublishActionData(matches, action);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        ReleaseClaim(pending);
+                        return NavigationResult.Cancelled;
+                    }
+                    mode = ModeAfterAction(mode, submission, action);
                 }
 
-                // An attempt a newer navigation took over from — one a Guard started, say — or whose caller
-                // cancelled it unwinds here rather than starting a loader round: beginning one retires the
-                // round current before it, which can be the round of the navigation that took over.
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    ReleaseClaim(pending);
-                    return NavigationResult.Cancelled;
-                }
-
-                action = await RunAction(matches, path, submission, cancellationToken);
-                PublishActionData(matches, action);
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    ReleaseClaim(pending);
-                    return NavigationResult.Cancelled;
-                }
-                mode = ModeAfterAction(mode, submission, action);
-
-                var (loaderResult, loaderRound) = await RunLoaderPhase(matches, pending, cancellationToken,
-                    KeptFrom(path), LaunchLimit(matches, action));
+                // The empty chain still begins a round, which is what retires the loads of the location this
+                // one replaces.
+                var (loaderResult, loaderRound) = unmatched
+                    ? await RunLoaderPhase(NoMatches, pending, cancellationToken, null, int.MaxValue)
+                    : await RunLoaderPhase(matches, pending, cancellationToken,
+                        KeptFrom(path), LaunchLimit(matches, action));
                 if (loaderResult.HasValue)
                 {
                     return loaderResult.Value;
@@ -898,6 +924,17 @@ namespace Velvet
                 throw;
             }
 
+            return CommitLocation(location, matches, action, round, path, unmatched);
+        }
+
+        private NavigationResult CommitLocation(
+            RouterLocation location,
+            IReadOnlyList<RouteMatch> matches,
+            ActionOutcome? action,
+            RouteLoaderRunner.LoaderRound round,
+            string path,
+            bool unmatched)
+        {
             // Written once the history entry has committed, so an attempt whose commit throws leaves the loader
             // state of the location it was on.
             // Copied rather than aliased: a Suspend loader of this round that resolves after the commit writes
@@ -905,6 +942,10 @@ namespace Velvet
             // snapshot.
             _loaderData = new Dictionary<string?, object>(round.Results);
             _loaderErrors = new Dictionary<string?, Exception>(round.Errors);
+            if (unmatched)
+            {
+                _loaderErrors[matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(path));
+            }
             CurrentLocation = location;
             _revalidationRequired = false;
             CommitAction(matches, action);
@@ -922,8 +963,10 @@ namespace Velvet
             // one that has committed.
             AnnounceLocation(location);
 
-            return NavigationResult.Success;
+            return unmatched ? NavigationResult.NotFound : NavigationResult.Success;
         }
+
+        private static readonly RouteMatch[] NoMatches = Array.Empty<RouteMatch>();
 
         #region Per-attempt navigation state
 
@@ -1219,8 +1262,10 @@ namespace Velvet
             {
                 case NavigationMode.Push:
                     PushHistoryEntry(new HistoryEntry(location));
+                    NavigationType = NavigationType.Push;
                     break;
                 case NavigationMode.Replace:
+                    NavigationType = NavigationType.Replace;
                     if (pending.CommitIndex >= 0)
                     {
                         _history[pending.CommitIndex] = new HistoryEntry(location);
@@ -1235,6 +1280,7 @@ namespace Velvet
                 case NavigationMode.Back:
                 case NavigationMode.Forward:
                     _historyIndex = pending.CommitIndex;
+                    NavigationType = NavigationType.Pop;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);

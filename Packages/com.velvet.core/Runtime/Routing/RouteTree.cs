@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Velvet
 {
@@ -24,7 +25,7 @@ namespace Velvet
         {
             _routes = routes ?? throw new ArgumentNullException(nameof(routes));
             _rankedBranches = new List<RouteBranch>();
-            FlattenBranches(_routes, new List<RouteDefinition>(), _rankedBranches);
+            FlattenBranches(_routes, new List<RouteDefinition>(), new List<string>(), null, _rankedBranches);
 
             // Stable sort by descending score so that, among branches of equal specificity, the earlier
             // declaration order is preserved (List.Sort is not stable, so encode the original index).
@@ -57,11 +58,25 @@ namespace Velvet
             return null;
         }
 
+        /// <summary>
+        /// The chain a navigation to a path no route matches commits: the one route a 404 renders at, whose
+        /// boundary shows the error. It is the only top-level route when there is one, else the first with an
+        /// empty path or <c>/</c>, else a route of no element.
+        /// </summary>
+        internal IReadOnlyList<RouteMatch> NotFoundMatches => _notFoundMatches ??= BuildNotFoundMatches(_routes);
+
+        private IReadOnlyList<RouteMatch>? _notFoundMatches;
+
         #region Branch flattening
+
+        private const string NotFoundShimId = "__shim-error-route__";
+
+        private readonly HashSet<string> _ids = new();
 
         private sealed class RouteBranch
         {
             public readonly RouteDefinition[] Chain;
+            public readonly string[] Ids;
             public readonly List<RouteSegment> Pattern;
 
             /// <summary>How many of <see cref="Pattern"/>'s segments each chain entry contributed, so a
@@ -71,9 +86,11 @@ namespace Velvet
             public int Score;
             public int Order;
 
-            public RouteBranch(RouteDefinition[] chain, List<RouteSegment> pattern, int[] segmentCounts)
+            public RouteBranch(
+                RouteDefinition[] chain, string[] ids, List<RouteSegment> pattern, int[] segmentCounts)
             {
                 Chain = chain;
+                Ids = ids;
                 Pattern = pattern;
                 SegmentCounts = segmentCounts;
             }
@@ -100,12 +117,29 @@ namespace Velvet
         private int _branchCounter;
 
         private void FlattenBranches(
-            RouteDefinition[]? routes, List<RouteDefinition> ancestors, List<RouteBranch> output)
+            RouteDefinition[]? routes,
+            List<RouteDefinition> ancestors,
+            List<string> ancestorIds,
+            string? parentPath,
+            List<RouteBranch> output)
         {
             if (routes == null) return;
-            foreach (var route in routes)
+            for (var position = 0; position < routes.Length; position++)
             {
+                var route = routes[position];
+                // The position down the tree, whatever ids the routes above carry.
+                var treePath = parentPath == null
+                    ? position.ToString(CultureInfo.InvariantCulture)
+                    : string.Concat(parentPath, "-", position.ToString(CultureInfo.InvariantCulture));
+                var id = route.Id ?? treePath;
+                if (!_ids.Add(id))
+                {
+                    throw new ArgumentException(
+                        $"Found a route id collision on id \"{id}\". Route ids must be unique; give the routes "
+                        + "that share it distinct Id values.");
+                }
                 ancestors.Add(route);
+                ancestorIds.Add(id);
 
                 var hasChildren = route.Children is { Length: > 0 };
 
@@ -123,18 +157,25 @@ namespace Velvet
                         + "declared. Move the children beside the splat route rather than under it.");
                 }
 
-                // Every route is a candidate so a parent can match with an empty Outlet. An index child is
-                // scored above its bare parent and joins the chain when both consume the same path.
-                output.Add(BuildBranch(ancestors));
+                // A parent matches on its own with an empty Outlet, but a pathless layout does not: it
+                // consumes no path, so it is reached only through a child.
+                if (!IsPathlessLayout(route))
+                {
+                    output.Add(BuildBranch(ancestors, ancestorIds));
+                }
 
                 if (hasChildren)
                 {
-                    FlattenBranches(route.Children, ancestors, output);
+                    FlattenBranches(route.Children, ancestors, ancestorIds, treePath, output);
                 }
 
                 ancestors.RemoveAt(ancestors.Count - 1);
+                ancestorIds.RemoveAt(ancestorIds.Count - 1);
             }
         }
+
+        private static bool IsPathlessLayout(RouteDefinition route) =>
+            string.IsNullOrEmpty(route.Path) && route.Children is { Length: > 0 };
 
         private static bool EndsWithSplat(RouteDefinition route)
         {
@@ -147,7 +188,7 @@ namespace Velvet
             return last;
         }
 
-        private RouteBranch BuildBranch(List<RouteDefinition> chain)
+        private RouteBranch BuildBranch(List<RouteDefinition> chain, List<string> ids)
         {
             var pattern = new List<RouteSegment>();
             var counts = new int[chain.Count];
@@ -164,7 +205,7 @@ namespace Velvet
             var leaf = chain[chain.Count - 1];
             var isIndexLeaf = leaf.Path == "";
 
-            return new RouteBranch(chain.ToArray(), pattern, counts)
+            return new RouteBranch(chain.ToArray(), ids.ToArray(), pattern, counts)
             {
                 Score = ComputeScore(pattern, isIndexLeaf),
                 Order = _branchCounter++,
@@ -433,7 +474,6 @@ namespace Velvet
         {
             var chain = branch.Chain;
             var matches = new List<RouteMatch>(chain.Length);
-            var cumulativeId = string.Empty;
             // Each level stores a cumulative base because route-relative `..` pops a whole route level,
             // not one URL segment.
             var cumulativeResolved = string.Empty;
@@ -444,7 +484,6 @@ namespace Velvet
             for (var level = 0; level < chain.Length; level++)
             {
                 var route = chain[level];
-                cumulativeId = AppendRouteId(cumulativeId, route);
 
                 var resolvedSegment = ResolveRouteSegments(
                     branch.Pattern, branch.SegmentCounts[level], segments, captured, taken, ref patternOffset);
@@ -462,7 +501,7 @@ namespace Velvet
                     Params = captured,
                     MatchedPath = ComputeMatchedPath(route),
                     PathnameBase = cumulativeResolved.Length == 0 ? "/" : "/" + cumulativeResolved,
-                    RouteId = cumulativeId,
+                    RouteId = branch.Ids[level],
                 });
             }
 
@@ -531,26 +570,35 @@ namespace Velvet
         // code between filling it and joining it.
         private static readonly List<string> ScratchSegments = new();
 
-        private static string AppendRouteId(string parentId, RouteDefinition route)
+        private static IReadOnlyList<RouteMatch> BuildNotFoundMatches(RouteDefinition[] routes)
         {
-            // Index routes would otherwise reuse their parent's id, so disambiguate them explicitly.
-            if (route.Path == "")
+            var position = -1;
+            if (routes.Length == 1)
             {
-                return parentId.Length == 0 ? "/?index" : parentId + "/?index";
+                position = 0;
+            }
+            else
+            {
+                for (var index = 0; index < routes.Length && position < 0; index++)
+                {
+                    if (string.IsNullOrEmpty(routes[index].Path) || routes[index].Path == "/")
+                    {
+                        position = index;
+                    }
+                }
             }
 
-            if (route.Path == "/")
+            var route = position < 0 ? new RouteDefinition { Path = "" } : routes[position];
+            return new[]
             {
-                return "/";
-            }
-
-            var segment = TrimSlashes(route.Path ?? string.Empty);
-            if (parentId.Length == 0 || parentId == "/")
-            {
-                return "/" + segment;
-            }
-
-            return parentId + "/" + segment;
+                new RouteMatch
+                {
+                    Route = route,
+                    Params = new Dictionary<string, string>(),
+                    MatchedPath = ComputeMatchedPath(route),
+                    RouteId = position < 0 ? NotFoundShimId : route.Id ?? position.ToString(CultureInfo.InvariantCulture),
+                },
+            };
         }
 
         private static string ComputeMatchedPath(RouteDefinition route)
