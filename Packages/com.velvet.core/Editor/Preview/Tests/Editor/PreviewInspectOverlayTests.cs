@@ -67,8 +67,6 @@ namespace Velvet.Tests
             Assert.That(typeof(PreviewInspectOverlay).GetField("_measured", Private)?.GetValue(overlay), Is.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base already puts the label at the left edge of the margin box, which
-        // is the measured element's left edge less its left margin.
         [Test]
         public void Given_AMeasuredElementWithALeftMargin_When_TheOverlayDraws_Then_TheLabelSitsAtTheMarginBoxsLeftEdge()
         {
@@ -167,8 +165,6 @@ namespace Velvet.Tests
             Assert.That(inStory, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(characterization): the base already writes the measured element's content size and its
-        // padding and margins into the label. The content box is the border box less the padding on each side.
         [Test]
         public void Given_AMeasuredElementWithPadding_When_TheOverlayDraws_Then_TheLabelNamesTheContentSizeAndTheBoxes()
         {
@@ -211,9 +207,8 @@ namespace Velvet.Tests
             Assert.That(overlay.Q<Label>().text, Is.EqualTo("34×21   p 6 2 3 4   m 5 6 7 10"));
         }
 
-        // GREEN_ON_BASE(characterization): the base already draws the margin band to the right of the measured
-        // element. The overlay sits in the panel it measures, over a canvas the size of the panel, and the texture
-        // is read where only the right margin band reaches.
+        // The overlay sits in the panel it measures, over a canvas the size of the panel, and the texture is read
+        // where only the right margin band reaches.
         [UnityTest]
         public IEnumerator Given_AMeasuredElementWithARightMargin_When_TheOverlayDraws_Then_TheMarginBandIsPaintedRightOfIt()
         {
