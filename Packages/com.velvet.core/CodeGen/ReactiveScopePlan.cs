@@ -7,7 +7,7 @@ namespace Velvet.CodeGen
     {
         // Every scope costs an array of dependencies and a slot on each render, so a body is cut into few enough
         // that the bookkeeping does not outweigh what the cache saves.
-        internal const int MaxScopes = 24;
+        internal const int MaxScopes = 32;
 
         // A scope earns its slot where it can be reused while the run around it is rebuilt: it depends on something
         // that run does not. One that depends on exactly the values the run around it does is rebuilt exactly when

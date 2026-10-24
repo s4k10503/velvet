@@ -232,7 +232,7 @@ namespace Velvet.CodeGen
         // not a whole statement at the depth the run begins at.
         private int PreviousStatement(int start)
         {
-            if (start == 0) return -1;
+            if (start == 0 || !_flow.Reached(start)) return -1;
             var depth = _flow.Before[start]!.Length;
             for (var i = start - 1; i >= 0; i--)
             {
@@ -284,6 +284,7 @@ namespace Velvet.CodeGen
 
         private string? CheckShape(int start, int end)
         {
+            if (!_flow.Reached(start) || !_flow.Reached(end)) return "it holds code nothing reaches";
             if (_flow.DepthAfter(end) != _flow.Before[start]!.Length + 1) return "it leaves more than its value on the stack";
             for (var i = start; i <= end; i++)
             {
