@@ -1,3 +1,4 @@
+#nullable enable
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -15,11 +16,19 @@ namespace Velvet.Tests
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
-        private static StyleSheet Rules()
+        private static StyleSheet? Rules() => AssetDatabase.LoadAssetAtPath<StyleSheet>(RulesPath);
+
+        // The slots' matrix, or NaN throughout where the rules did not load, so a missing sheet fails the comparison
+        // rather than skipping it.
+        private static float[] Measured(StyleSheet? rules, VisualElement caster)
+            => rules != null ? SkewCompositeMath.Drawn(caster) : new[] { float.NaN, float.NaN, float.NaN, float.NaN };
+
+        private void Attach(StyleSheet? rules)
         {
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(RulesPath);
-            Assume.That(sheet, Is.Not.Null, "Precondition: the test's own rules load");
-            return sheet;
+            if (rules != null)
+            {
+                _window.rootVisualElement.styleSheets.Add(rules);
+            }
         }
 
         private VisualElement Mount(string className)
@@ -36,11 +45,12 @@ namespace Velvet.Tests
         public void Given_ASkewBesideAStylesheetRotate_When_ItIsDrawn_Then_TheMatrixIsTheRotateComposedWithTheSkew()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(Rules());
+            var rules = Rules();
+            Attach(rules);
             var caster = Mount("w-[200px] h-[48px] skew-x-12 sheet-rotated");
 
             // Act
-            var drawn = SkewCompositeMath.Drawn(caster);
+            var drawn = Measured(rules, caster);
 
             // Assert
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(20f, 1f, 1f, 12f, 0f)).Within(1e-3f));
@@ -50,11 +60,12 @@ namespace Velvet.Tests
         public void Given_ASkewBesideAStylesheetScale_When_ItIsDrawn_Then_TheMatrixIsTheScaleComposedWithTheSkew()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(Rules());
+            var rules = Rules();
+            Attach(rules);
             var caster = Mount("w-[200px] h-[48px] skew-x-12 sheet-scaled");
 
             // Act
-            var drawn = SkewCompositeMath.Drawn(caster);
+            var drawn = Measured(rules, caster);
 
             // Assert
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(0f, 1.2f, 1.2f, 12f, 0f)).Within(1e-3f));
@@ -65,14 +76,15 @@ namespace Velvet.Tests
         {
             // Arrange
             var caster = Mount("w-[200px] h-[48px] skew-x-12 sheet-late");
+            var rules = Rules();
 
             // Act
-            _window.rootVisualElement.styleSheets.Add(Rules());
+            Attach(rules);
             ForcePanelUpdate(caster.panel);
             ForcePanelUpdate(caster.panel);
 
             // Assert
-            Assert.That(SkewCompositeMath.Drawn(caster), Is.EqualTo(SkewCompositeMath.Composite(25f, 1f, 1f, 12f, 0f)).Within(1e-3f));
+            Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(25f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): the base composed no stylesheet rotate, so it draws the skew alone either way.
@@ -81,16 +93,16 @@ namespace Velvet.Tests
         {
             // Arrange
             var rules = Rules();
-            _window.rootVisualElement.styleSheets.Add(rules);
+            Attach(rules);
             var caster = Mount("w-[200px] h-[48px] skew-x-12 sheet-rotated");
 
             // Act
-            _window.rootVisualElement.styleSheets.Remove(rules);
+            if (rules != null) _window.rootVisualElement.styleSheets.Remove(rules);
             ForcePanelUpdate(caster.panel);
             ForcePanelUpdate(caster.panel);
 
             // Assert
-            Assert.That(SkewCompositeMath.Drawn(caster), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, 1f, 12f, 0f)).Within(1e-3f));
+            Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): an inline rotate outranks a stylesheet's, which the base composed the same way.
@@ -98,11 +110,12 @@ namespace Velvet.Tests
         public void Given_ASkewBesideAStylesheetRotateAndAnInlineRotate_When_ItIsDrawn_Then_TheInlineRotateIsComposed()
         {
             // Arrange
-            _window.rootVisualElement.styleSheets.Add(Rules());
+            var rules = Rules();
+            Attach(rules);
             var caster = Mount("w-[200px] h-[48px] skew-x-12 sheet-rotated rotate-[10deg]");
 
             // Act
-            var drawn = SkewCompositeMath.Drawn(caster);
+            var drawn = Measured(rules, caster);
 
             // Assert
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(10f, 1f, 1f, 12f, 0f)).Within(1e-3f));
