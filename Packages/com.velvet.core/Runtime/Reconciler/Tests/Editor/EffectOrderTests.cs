@@ -757,6 +757,45 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_KeyedContainersEachHoldingTwoComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheTwoInAContainerKeepTheirOrder()
+        {
+            // Arrange — as the test above, with two components in each container: a container's two share a
+            // row, so only their place in the parent's child list can order them.
+            using var mounted = V.Mount(_root, V.Component(ReorderingPairContainersHost, key: "host"));
+            s_setters["host"].Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_log.Clear();
+            s_setters["first-a"].Invoke(1);
+            s_setters["first-b"].Invoke(1);
+            s_setters["second-a"].Invoke(1);
+            s_setters["second-b"].Invoke(1);
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(string.Join(", ", s_log), Is.EqualTo("second-a:setup, second-b:setup, first-a:setup, first-b:setup"));
+        }
+
+        [Component]
+        private static VNode ReorderingPairContainersHost()
+        {
+            var (flipped, setFlipped) = Hooks.UseState(0);
+            s_setters["host"] = setFlipped;
+            var first = V.Div(key: "first", children: new VNode[]
+            {
+                V.Component(OwnStateSibling, "first-a", key: "first-a"),
+                V.Component(OwnStateSibling, "first-b", key: "first-b"),
+            });
+            var second = V.Div(key: "second", children: new VNode[]
+            {
+                V.Component(OwnStateSibling, "second-a", key: "second-a"),
+                V.Component(OwnStateSibling, "second-b", key: "second-b"),
+            });
+            return V.Div(children: flipped == 0 ? new VNode[] { first, second } : new VNode[] { second, first });
+        }
+
+        [Test]
         public void Given_SiblingsWhoseUpdatesAreEnqueuedOutOfTreeOrder_When_TheirPassiveEffectsFlush_Then_TheyRunInTreeOrder()
         {
             // Arrange — no component above the three stages a passive effect, so each is a root of the order
