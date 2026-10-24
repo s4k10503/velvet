@@ -420,17 +420,18 @@ namespace Velvet.CodeGen
 
         // Records the outcome on the method itself, where a test or a tool can read it back, and as a build
         // warning where the assembly asks for it.
-        private static void Publish(MethodDefinition method, WeaverContext context, WeaveReport report,
+        // True where the report was attached, which the module has to be written back for.
+        private static bool Publish(MethodDefinition method, WeaverContext context, WeaveReport report,
             List<DiagnosticMessage> diagnostics)
         {
-            context.AttachReport(method, report);
-            if (report.Notes.Count == 0) return;
-            if (!WarnsOnReport(method.Module.Assembly)) return;
+            var attached = context.AttachReport(method, report);
+            if (report.Notes.Count == 0 || !WarnsOnReport(method.Module.Assembly)) return attached;
             diagnostics.Add(new DiagnosticMessage
             {
                 DiagnosticType = DiagnosticType.Warning,
                 MessageData = WeaverDiagnostics.FormatMemoizationReport(method, report),
             });
+            return attached;
         }
     }
 }

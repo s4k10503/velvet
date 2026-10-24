@@ -279,8 +279,7 @@ namespace Velvet.CodeGen
                 if (plan == null)
                 {
                     snapshot.Restore();
-                    Publish(method, context, report, diagnostics);
-                    return false;
+                    return Publish(method, context, report, diagnostics);
                 }
 
                 InjectPlan(method, plan, context);
@@ -1351,16 +1350,18 @@ namespace Velvet.CodeGen
 
         public bool HasScopes => ReserveScopes != null && TryGetScope != null && StoreScope != null;
 
-        // Marks a method with what the weaver made of it, for a test or a tool to read back.
-        public void AttachReport(MethodDefinition method, WeaveReport report)
+        // Marks a method with what the weaver made of it, for a test or a tool to read back. True where it did, since
+        // the module then differs from the one that was read.
+        public bool AttachReport(MethodDefinition method, WeaveReport report)
         {
-            if (ReportConstructor == null) return;
+            if (ReportConstructor == null) return false;
             var types = method.Module.TypeSystem;
             var attribute = new CustomAttribute(ReportConstructor);
             attribute.ConstructorArguments.Add(new CustomAttributeArgument(types.Boolean, report.BodyGate));
             attribute.ConstructorArguments.Add(new CustomAttributeArgument(types.Int32, report.Scopes));
             attribute.ConstructorArguments.Add(new CustomAttributeArgument(types.String, report.Joined()));
             method.CustomAttributes.Add(attribute);
+            return true;
         }
 
         // Resolves the Velvet runtime members the weaver injects calls to. On failure, returns null and

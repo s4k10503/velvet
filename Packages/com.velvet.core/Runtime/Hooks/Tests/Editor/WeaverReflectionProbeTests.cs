@@ -1432,6 +1432,28 @@ namespace Velvet.Tests
                 + "and the one beside it is, where the same shape around another factory caches both");
         }
 
+        [Test]
+        public void Given_ARefusedComponentInAnOtherwiseUnchangedModule_When_CompilerWeaverRuns_Then_ItCarriesTheReasonAndTheModuleIsWritten()
+        {
+            // Arrange — the body has no return, which is refused outright, and nothing else in the module is woven
+            using var module = BuildHookShapeProbeModule("RefusedReportProbe", out var method, out _, out _, out _);
+            AddScopeSurface(module, out _, out _);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Throw));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module, out var changed);
+
+            // Assert
+            var report = method.CustomAttributes.SingleOrDefault(a => a.AttributeType.Name == "MemoizationReportAttribute");
+            Assert.That((changed, report != null && ((string)report.ConstructorArguments[2].Value).Contains("no return")),
+                Is.EqualTo((true, true)));
+        }
+
         // Marks the probe's assembly with [assembly: AssemblyMetadata(key, value)].
         private static void CarryAssemblyMetadata(ModuleDefinition module, string key, string value)
         {
