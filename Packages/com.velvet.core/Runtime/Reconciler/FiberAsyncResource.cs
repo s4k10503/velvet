@@ -19,6 +19,9 @@ namespace Velvet
         // Hooks.UseCore compares the key a later render presents against this one and recreates the
         // slot when they differ.
         object ResourceKey { get; }
+
+        // Set when the render that started the resource was a transition's.
+        bool StartedByTransition { get; }
     }
 
     // State machine representing a single async fetch.
@@ -42,6 +45,8 @@ namespace Velvet
         public Exception? Error { get; private set; }
 
         public Action? OnCompleted { get; set; }
+
+        public bool StartedByTransition { get; set; }
 
         public FiberAsyncResource(object resourceKey)
         {

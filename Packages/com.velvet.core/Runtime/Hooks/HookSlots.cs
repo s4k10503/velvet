@@ -495,6 +495,10 @@ namespace Velvet
 
         public abstract void Commit();
 
+        // Puts back what the committed state was when the render that last committed began, for a render whose
+        // output nothing shows, so the updates it folded are folded again by the render that retries.
+        public abstract void UndoCommit();
+
         // Whether a render at lane would skip an update still queued here that asked for a render.
         public abstract bool HoldsUpdateBeyond(FiberUpdatePriority lane);
     }
@@ -543,6 +547,11 @@ namespace Velvet
         private TState _nextBaseState;
         private List<HookUpdate<TState, TAction>>? _nextBaseQueue;
 
+        // The committed fields as the last Process found them, which UndoCommit puts back.
+        private TState _beforeValue;
+        private TState _beforeBaseState;
+        private List<HookUpdate<TState, TAction>>? _beforeBaseQueue;
+
         // React's useState computes an update's result at the call while nothing is scheduled and bails out of
         // rendering on an equal one; its useReducer dispatch never does either.
         private readonly bool _computesAtTheCall;
@@ -551,7 +560,7 @@ namespace Velvet
 
         protected HookUpdateQueueSlot(TState seed, Func<TState, TAction, TState> reducer, bool computesAtTheCall)
         {
-            Value = _baseState = _nextValue = _nextBaseState = seed;
+            Value = _baseState = _nextValue = _nextBaseState = _beforeValue = _beforeBaseState = seed;
             Reducer = reducer;
             _computesAtTheCall = computesAtTheCall;
         }
@@ -582,6 +591,9 @@ namespace Velvet
                 (_baseQueue ??= new List<HookUpdate<TState, TAction>>()).AddRange(_pending);
                 _pending.Clear();
             }
+            _beforeValue = Value;
+            _beforeBaseState = _baseState;
+            _beforeBaseQueue = _baseQueue;
             if (_baseQueue == null || _baseQueue.Count == 0) return Value;
 
             var state = _baseState;
@@ -616,6 +628,13 @@ namespace Velvet
             Value = _nextValue;
             _baseState = _nextBaseState;
             _baseQueue = _nextBaseQueue;
+        }
+
+        public override void UndoCommit()
+        {
+            Value = _beforeValue;
+            _baseState = _beforeBaseState;
+            _baseQueue = _beforeBaseQueue;
         }
 
         private bool HoldsScheduledUpdate() => AnyScheduled(_baseQueue) || AnyScheduled(_pending);

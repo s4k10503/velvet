@@ -545,6 +545,7 @@ namespace Velvet
             TransitionDrainFiber = drainsTransitionWork ? fiber : null;
             RenderLane = renderLane;
             var suspended = false;
+            FiberRenderer.BeginPass(fiber);
             try
             {
                 FiberRenderer.RenderAndReconcile(fiber, flushBudget);
@@ -552,7 +553,7 @@ namespace Velvet
             catch (FiberSuspendSignal)
             {
                 // A flush of this fiber alone has no ancestor walk on the stack to hand the signal to.
-                FiberRenderer.SuspendPassOwner(fiber);
+                FiberRenderer.SuspendPassOwner(fiber, drainsTransitionWork);
                 suspended = true;
             }
             finally
@@ -677,6 +678,7 @@ namespace Velvet
                 var resumeContext = fiber.Reconciler.Context;
                 var enclosingFiberTree = resumeContext.CurrentFiberTree;
                 resumeContext.CurrentFiberTree = fiber.PreviousTree;
+                resumeContext.SuspendDeclinedByRevealedBoundary = false;
                 try
                 {
                     if (fiber.IsInlineMounted)
@@ -750,7 +752,7 @@ namespace Velvet
                 if (ex is FiberSuspendSignal)
                 {
                     // Same exit as FlushState's: the transition this slice belonged to has not committed.
-                    FiberRenderer.SuspendPassOwner(fiber);
+                    FiberRenderer.SuspendPassOwner(fiber, fiber.PendingReconcileDrainsTransitionWork);
                     var suspendedContext = fiber.Reconciler?.Context;
                     if (suspendedContext != null) FiberEffects.CommitStrandedLayoutWork(suspendedContext);
                     return;

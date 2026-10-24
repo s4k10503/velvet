@@ -1769,6 +1769,10 @@ namespace Velvet
         // reaches with no boundary suspended on — see FiberRenderer.SuspendPassOwner.
         internal ComponentFiber? SuspendingReader;
 
+        // Set where a Suspense gives a transition's pass up rather than hide the primary it shows, so the pass that
+        // receives the signal with no boundary above it does not report a missing boundary.
+        internal bool SuspendDeclinedByRevealedBoundary;
+
         // The Suspense primaries open on the walk, innermost last, each of which catches a signal raised inside it,
         // so a pass with none open is one the signal abandons — see ComponentRegistry.ReconcileExistingFiber.
         private readonly List<SuspensePrimaryFrame> _suspensePrimaries = new();
@@ -1850,7 +1854,11 @@ namespace Velvet
             return true;
         }
 
-        internal void MarkSuspensePrimarySuspended() => _suspensePrimaries[^1].Suspended = true;
+        internal void MarkSuspensePrimarySuspended()
+        {
+            _suspensePrimaries[^1].Suspended = true;
+            SuspendDeclinedByRevealedBoundary = false;
+        }
 
         private sealed class SuspensePrimaryFrame
         {
