@@ -3146,8 +3146,21 @@ namespace Velvet
             {
                 return false;
             }
-            return !(TryWinningLayer(s_layers.GetValue(element, static _ => new LayerMap()), property, out var winner)
-                && winner.Auto);
+            return !AutoLayerWins(element, property);
+        }
+
+        // Whether the layer that holds property over the element's classes is the `auto` keyword.
+        internal static bool AutoLayerWins(VisualElement element, ArbitraryProperty property)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            if (!TryWinningLayer(map, property, out var winner))
+            {
+                return false;
+            }
+            return winner.Auto;
         }
 
         // The element's own writers of the background image: a StyleOverrides member and the utilities

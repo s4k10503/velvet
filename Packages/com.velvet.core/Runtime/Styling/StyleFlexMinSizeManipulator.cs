@@ -19,7 +19,8 @@ namespace Velvet
     // w-max or w-auto is a content keyword, not a definite size, and caps nothing.
     //
     // Declarations are read from what Velvet owns: the live class list (scanned when the reconciled classes
-    // change), the arbitrary-value layers, and the inline style; the resolved style is not consulted.
+    // change or a variant moves a minimum size onto or off it), the arbitrary-value layers, and the inline
+    // style; the resolved style is not consulted.
     // TextItemBaselinePanelTests pins that a declaring class patched away is read at once.
     //
     // Ownership of the inline slot lasts only while a value this wrote sits in it: a bracket layer that
@@ -100,6 +101,13 @@ namespace Velvet
                 _scanStale = true;
             }
             _lastClassNames = classNames;
+            Apply();
+        }
+
+        // Re-reads the live classes after a variant moved a payload onto or off them outside any patch.
+        internal void Rescan()
+        {
+            _scanStale = true;
             Apply();
         }
 
@@ -263,7 +271,13 @@ namespace Velvet
 
         private bool StandsDown(TextElement textElement, VisualElement parent, bool horizontal, bool clipped)
         {
-            if (clipped || (horizontal ? _declaredMinWidth : _declaredMinHeight).HasValue)
+            if (clipped)
+            {
+                return true;
+            }
+            if ((horizontal ? _declaredMinWidth : _declaredMinHeight).HasValue
+                && !StyleArbitraryValueResolver.AutoLayerWins(
+                    textElement, horizontal ? ArbitraryProperty.MinWidth : ArbitraryProperty.MinHeight))
             {
                 return true;
             }
@@ -341,10 +355,12 @@ namespace Velvet
             }
         }
 
-        // `min-w-[auto]` is the keyword CSS gives an unset minimum, so it declares nothing and, being the later
-        // class, retires an earlier `min-w-*`.
+        // `min-w-auto` and `min-w-[auto]` are the keyword CSS gives an unset minimum, so they declare nothing
+        // and, ranking later than the scale steps, retire an earlier `min-w-*`.
         private static Dim? MinimumDeclaration(string cls)
-            => cls.EndsWith("-[auto]", System.StringComparison.Ordinal) ? null : new Dim(0f, false);
+            => cls.EndsWith("-[auto]", System.StringComparison.Ordinal) || cls.EndsWith("-auto", System.StringComparison.Ordinal)
+                ? null
+                : new Dim(0f, false);
 
         // ranks holds the rule-order place of the class now declaring each of width, height, maximum width,
         // maximum height, minimum width and minimum height; a class of an equal place, the same token written twice, replaces it.

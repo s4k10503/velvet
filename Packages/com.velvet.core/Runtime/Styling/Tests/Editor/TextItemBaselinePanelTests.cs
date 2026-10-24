@@ -543,6 +543,97 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
+        [Test]
+        public void Given_ALabelWithAnAutoMinWidthClass_When_Resolved_Then_ItsMinWidthIsItsWidestWord()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row w-[20px]", "min-w-auto", Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        [Test]
+        public void Given_ALabelWithAnAutoMinHeightClass_When_ResolvedInAColumn_Then_ItsMinHeightIsItsWrappedHeight()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-col h-[10px] w-[60px]", "min-h-auto", ManyShortWords);
+            var wrapped = MeasuredHeight(label, ManyShortWords, label.resolvedStyle.width - HorizontalFrame(label));
+
+            // Assert
+            Assert.That(label.style.minHeight.value.value, Is.EqualTo(Mathf.Ceil(wrapped) + VerticalFrame(label)));
+        }
+
+        // Tailwind orders min-w-0 before min-w-[auto] and min-w-auto, whatever order the classes are written in.
+        [TestCase("min-w-0 min-w-[auto]")]
+        [TestCase("min-w-[auto] min-w-0")]
+        [TestCase("min-w-4 min-w-auto")]
+        [TestCase("min-w-auto min-w-4")]
+        public void Given_AnAutoMinWidthSortingAfterAScaleStep_When_Resolved_Then_ItsMinWidthIsItsWidestWord(
+            string classes)
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row w-[20px]", classes, Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stands down for any min-w-* class; what reddens it is the
+        // manipulator keeping a floor under an auto minimum that sorts before the class that declares one.
+        [TestCase("min-w-[auto] min-w-full")]
+        [TestCase("min-w-full min-w-[auto]")]
+        [TestCase("min-w-auto min-w-full")]
+        [TestCase("min-w-full min-w-auto")]
+        public void Given_AScaleMinWidthSortingAfterAnAutoOne_When_Resolved_Then_NoMinWidthIsWritten(string classes)
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row w-[20px]", classes, Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALabelWithAMdMinWidthZero_When_ThePanelWidensPastMd_Then_ItsFloorIsReleased()
+        {
+            // Arrange
+            _window.position = new Rect(0, 0, 500, 600);
+            var label = MountLabel("flex flex-row w-[20px]", "md:min-w-0", Sentence);
+            var floored = label.style.minWidth.value.value == WidestWordMinimum(label, LongWord);
+
+            // Act
+            _window.position = new Rect(0, 0, 1000, 600);
+            ForcePanelUpdate(label.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            label.panel.visualTree.SimulateEvent(evt);
+            Settle(label);
+
+            // Assert
+            Assert.That((floored, label.style.minWidth.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALabelWithAScaleMinWidthAndAMdAutoOne_When_ThePanelWidensPastMd_Then_ItGetsTheFloor()
+        {
+            // Arrange
+            _window.position = new Rect(0, 0, 500, 600);
+            var label = MountLabel("flex flex-row w-[20px]", "min-w-4 md:min-w-[auto]", Sentence);
+            var heldBack = label.style.minWidth.keyword == StyleKeyword.Null;
+
+            // Act
+            _window.position = new Rect(0, 0, 1000, 600);
+            ForcePanelUpdate(label.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            label.panel.visualTree.SimulateEvent(evt);
+            Settle(label);
+
+            // Assert
+            Assert.That(
+                (heldBack, label.style.minWidth.value.value),
+                Is.EqualTo((true, WidestWordMinimum(label, LongWord))));
+        }
+
         // GREEN_ON_BASE(characterization): the base stands down for any min-w-* class; what reddens it is the
         // manipulator keeping a floor over a declared pixel minimum once the auto bracket leaves.
         [Test]
