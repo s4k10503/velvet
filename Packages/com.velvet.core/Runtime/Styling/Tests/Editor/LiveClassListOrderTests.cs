@@ -279,7 +279,6 @@ namespace Velvet.Tests
             return (Color)arguments[3];
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(SelectionDrawingClassesReader)]
         public void Given_AnInputsClassesInEitherOrder_When_ItsSelectionDrawingIsPlaced_Then_TheDrawingCarriesTheSameSet()
@@ -292,7 +291,6 @@ namespace Velvet.Tests
             Assert.That((added == reversed, added.Contains("theme-one")), Is.EqualTo((true, true)), added + " | " + reversed);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(TextInputColorReader)]
         public void Given_TwoSelectionColorsInEitherOrder_When_TheSelectionColorIsResolved_Then_TheOneTailwindEmitsLastWinsBoth()
@@ -444,7 +442,7 @@ namespace Velvet.Tests
                 + "signs that reader off is a line rather than a body that gets to it");
         }
 
-        // GREEN_ON_BASE(construction): both sides here are the runtime assembly's own IL. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(construction): both sides here are the runtime assembly's own IL.
         // The two therefore agree on a base run, which cannot separate them. Add a write to
         // `state.PaintTail` in a body that records no class array and this is what reddens.
         [Test]
@@ -479,7 +477,6 @@ namespace Velvet.Tests
                 + "live-class-list stand-in stops being confined to the layout gates");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is one more applier beside them — measured with an
         // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
         // rides on the stand-in array with every other case in this fixture still green.
@@ -511,7 +508,7 @@ namespace Velvet.Tests
                 + "a case here and the reading belongs in this list; one leaving it takes its line with it");
         }
 
-        // GREEN_ON_BASE(refactor): only the constructor call changed, to fill a parameter MotionSlotContext gained. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(refactor): only the constructor call changed, to fill a parameter MotionSlotContext gained.
         // Writing `cls` for `"!" + cls` in MotionSlotContext.RestingClasses reddens this case.
         [Test]
         [ReaderVerdict(MotionRestingReader)]
@@ -540,7 +537,7 @@ namespace Velvet.Tests
                 Is.EqualTo(((float?)320f, (float?)320f, (float?)0.5f, (float?)0.5f)));
         }
 
-        // GREEN_ON_BASE(refactor): only the constructor call changed, to fill a parameter MotionSlotContext gained. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(refactor): only the constructor call changed, to fill a parameter MotionSlotContext gained.
         // A `break` after the first class MotionSlotContext.HoldsRestingVariant's loop reads reddens this case.
         [Test]
         [ReaderVerdict(MotionRestingVariantReader)]
@@ -563,7 +560,6 @@ namespace Velvet.Tests
             Assert.That(holdsBothWays, Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is CarriesPose reading only the first class on the list: neither arrangement
         // then carries the whole pose. The verdict is that only the set decides.
         [Test]
@@ -583,7 +579,7 @@ namespace Velvet.Tests
             Assert.That(carries, Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.
         // What shows the case can fail is a `break` after the first match in TryExtractLive: measured,
         // each arrangement then resolves the shape it was handed first and the pair inverts.
         [Test]
@@ -606,7 +602,6 @@ namespace Velvet.Tests
                 "this reading resolves whichever clip token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(OwnBorderStyleReader)]
         public void Given_TwoBorderStylesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheStyleThatResolvesIsTheOneAddedLast()
@@ -627,7 +622,6 @@ namespace Velvet.Tests
                 "this reading resolves whichever border-style token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(FamilyOrderRestoreReader)]
         public void Given_TwoClipShapesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheRestoreLeavesThemInTailwindsOrderBothWays()
@@ -649,7 +643,7 @@ namespace Velvet.Tests
                 "the restore puts a family in Tailwind's order whichever order the live list holds it in");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list, through The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last gap token on the list, through
         // the scan the gap manipulator now reads its gaps from too. What shows the case can fail is a `break`
         // after the first match in StyleGridClass.ExtractGaps: each arrangement then takes the gap it was
         // handed first and the pair inverts.
@@ -672,7 +666,7 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last grid-cols token on the list. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last grid-cols token on the list.
         // What shows the case can fail is a `break` after the first match in StyleGridClass.TryExtract:
         // measured, each arrangement then takes the column count it was handed first and the pair inverts.
         [Test]
@@ -694,7 +688,7 @@ namespace Velvet.Tests
                 + "class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already prefers a parsed count to the bare marker. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already prefers a parsed count to the bare marker.
         // What shows the case can fail is assigning `columns = 1` where the marker is seen rather than in
         // the tail of the scan: measured, the arrangement ending on the marker then resolves one column.
         [Test]
@@ -719,7 +713,7 @@ namespace Velvet.Tests
                 + "so where one did the marker cannot decide the count from either end of the list");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap-x token on the list. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last gap-x token on the list.
         // What shows the case can fail is a first-wins guard on the horizontal arm of the scan in
         // StyleGridClass.ExtractGaps: measured, each arrangement then takes the gap it was handed first.
         [Test]
@@ -741,7 +735,7 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last gap-y token on the list. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last gap-y token on the list.
         // What shows the case can fail is a first-wins guard on the vertical arm of the same scan:
         // measured, each arrangement then takes the gap it was handed first and the pair inverts.
         [Test]
@@ -763,7 +757,7 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last divide axis token on the list. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last divide axis token on the list.
         // What shows the case can fail is a `break` after the first match in StyleDivideClass.TryExtract:
         // measured, each arrangement then takes the width it was handed first and the pair inverts.
         [Test]
@@ -785,7 +779,7 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last divide style token. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last divide style token.
         // What shows the case can fail is a first-wins guard on the style arm of the same scan: measured,
         // each arrangement then takes the style it was handed first and the pair inverts.
         [Test]
@@ -809,7 +803,7 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(characterization): the base already resolves the last divide colour token. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already resolves the last divide colour token.
         // What shows the case can fail is a first-wins guard on the colour arm of the same scan: measured,
         // each arrangement then takes the colour it was handed first and the pair inverts.
         [Test]
@@ -836,7 +830,6 @@ namespace Velvet.Tests
                 + "token the class list hands over last");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is a first-wins guard in StylePointerEventsClass.Read: each arrangement
         // then takes the utility it was handed first and the pair inverts.
         [Test]
@@ -858,7 +851,6 @@ namespace Velvet.Tests
                 + "utilities the class list hands over last");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(ClipWrapperMirrorReader)]
         public void Given_TwoClassesOnAClippedElement_When_TheOrderTheyWereAddedInIsReversed_Then_ItsWrapperCarriesTheSameClassesBothWays()
@@ -883,7 +875,6 @@ namespace Velvet.Tests
                 "the wrapper mirrors the set of the element's classes, whatever order they arrived in");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is IsSource answering from the first class on the list: the arrangement
         // that opens with p-2 then finds no source. The verdict is that only the set decides.
         [Test]
@@ -903,7 +894,6 @@ namespace Velvet.Tests
                 "a group or peer marker makes its element a relational source wherever it sits in the class list");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is Scan taking the last width token in the list again: the two orders
         // then declare the two widths in turn. The verdict is that only the set decides, the later rule in
         // StyleRuleOrder winning.
@@ -925,7 +915,6 @@ namespace Velvet.Tests
                 "the automatic minimum caps at the same width wherever its token sits in the list");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is trading the `return true` in DeclaresOwn for an answer each class
         // overwrites: the arrangement ending on w-32 then answers false.
         [Test]
@@ -946,7 +935,6 @@ namespace Velvet.Tests
                 "a space margin or a divider gives way to the child's own class wherever it sits in the list");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is OwnClaimant taking the last width class on the list rather than the one
         // the stylesheet declares last: the arrangement ending on w-40 then grows 160px rather than 320px.
         [Test]
@@ -967,7 +955,6 @@ namespace Velvet.Tests
                 "the width a wrapping gap grows is the class the cascade declares last wherever it sits in the list");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is IsContainer answering from the first class on the list: the arrangement
         // that opens with p-2 then finds no container. The verdict is that only the set decides.
         [Test]
@@ -993,7 +980,6 @@ namespace Velvet.Tests
                 "an unnamed container query finds a marked ancestor wherever the marker sits in its class list");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is the signature taken in list order: reordering the two markers then reads as
         // a change and announces again.
         [Test]
@@ -1024,7 +1010,6 @@ namespace Velvet.Tests
                 "markers are a set, so the order they sit on the class list in announces nothing");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(UniformScaleReader)]
         public void Given_TwoUniformScalePresets_When_TheirOrderAndTheAxisPriorityChange_Then_TheFallbackFollowsTheVisibleCascadeBothWays()
@@ -1081,7 +1066,6 @@ namespace Velvet.Tests
                     1f, 0.2f, 0.3f, 0.2f, 0.3f, 0.75f, 0.8f, 0.2f, 0.3f, 0.2f, 0.3f, 1f }).Within(0.0001f));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(CascadeKeyReader)]
         public void Given_TwoClassesOnAnElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheCascadeKeyIsTheSameBothWaysAndMovesWithTheSet()
@@ -1101,7 +1085,6 @@ namespace Velvet.Tests
                 "a loop re-reads the cascade when the set of classes changes, and a reorder alone changes nothing it reads");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(ClassTransformSignatureReader)]
         public void Given_TwoClassesOnAMotion_When_TheOrderTheyWereAddedInIsReversed_Then_TheClassTransformSignatureIsTheSameBothWaysAndMovesWithTheSet()
@@ -1138,7 +1121,6 @@ namespace Velvet.Tests
             Assert.That((fromAdded, fromReversed), Is.EqualTo((1.5f, 1.5f)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(HostClassesReader)]
         public void Given_TwoClassesOnADocumentRoot_When_TheOrderTheyWereAddedInIsReversed_Then_APortalHostTakesTheSameClasses()
@@ -1156,7 +1138,6 @@ namespace Velvet.Tests
                 "a portal host takes the set of the document root's classes, whatever order they arrived in");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         [Test]
         [ReaderVerdict(HostStampReader)]
         public void Given_TwoClassesOnADocumentRoot_When_TheOrderTheyWereAddedInIsReversed_Then_TheFollowsStampMoves()
@@ -1176,7 +1157,6 @@ namespace Velvet.Tests
                 "the follow re-syncs a portal host when the document root's classes change order");
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is widening `rule.CascadePosition > position` in DeclaredKind to take
         // every match: the class arriving last then decides, which the two arrangements put in different places.
         [Test]
@@ -1204,7 +1184,6 @@ namespace Velvet.Tests
             => ReadDeclaredKind.Invoke(null, new object[] { element, StyleLonghand.Height, element.style.height })!
                 .ToString();
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the class-transform reader handle and its spelling changed in the fixture.
         // What shows the case can fail is widening `position > winningPosition` to take every match:
         // measured, the two arrangements then declare different slots.
         [Test]
@@ -1229,7 +1208,7 @@ namespace Velvet.Tests
                 "the later cascade position wins this reading, not the later place in the class list");
         }
 
-        // GREEN_ON_BASE(characterization): the base already ranks a base class against the bands above. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already ranks a base class against the bands above.
         // What shows the case can fail is `JudgeBand` claiming each entry's properties as it goes:
         // measured, the second padding token is then judged dead against the first and leaves the list.
         [Test]
@@ -1255,7 +1234,7 @@ namespace Velvet.Tests
                 + "beside it, so the seed order cannot decide which of them survives");
         }
 
-        // GREEN_ON_BASE(characterization): the base already routes a resolver-owned token to inline style. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already routes a resolver-owned token to inline style.
         // What shows the case can fail is either routing sending every token to StyleClassProjection.Add:
         // measured on each of the two, all five then reach that path's class list.
         [Test]
@@ -1279,7 +1258,7 @@ namespace Velvet.Tests
                 + "value re-applied from the live list, in whatever order that list holds it");
         }
 
-        // GREEN_ON_BASE(characterization): the base already composes the pair in live-class-list order. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(characterization): the base already composes the pair in live-class-list order.
         // What shows the case can fail is collecting the classes with `Insert(0, cls)` rather than
         // `Add(cls)` in the settle re-apply: each arrangement then composes the two the other way round.
         [Test]
@@ -1305,7 +1284,7 @@ namespace Velvet.Tests
                 + "there for the first time that list's order is the compose order");
         }
 
-        // GREEN_ON_BASE(construction): the table and the family predicates are both the repository's own content. The branch changed only the spelling of the class-transform reader the roster names.
+        // GREEN_ON_BASE(construction): the table and the family predicates are both the repository's own content.
         // Adding a `divide-dashed` entry with a nonempty property set would make this guard fail.
         [Test]
         public void Given_TheGeneratedStyleTable_When_ItIsFilteredToTheFamiliesAnOrderDecidedReadingResolvesFrom_Then_OnlyTheBareGridMarkerDeclaresAProperty()

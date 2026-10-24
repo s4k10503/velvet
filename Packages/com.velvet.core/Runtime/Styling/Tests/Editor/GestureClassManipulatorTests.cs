@@ -45,7 +45,7 @@ namespace Velvet.Tests
 
         private static readonly long HoverGesture = StyleLayerPriority.GestureOf(StyleLayerPriority.Hover);
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AGestureLayerOnTheBackground_When_APlayDrivesTheBackground_Then_TheGesturesColorStays()
         {
@@ -61,7 +61,7 @@ namespace Velvet.Tests
             Assert.That(_element.style.backgroundColor.value, Is.EqualTo(Color.red));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AGestureLayerOnTheBackground_When_AnExitDrivesTheBackground_Then_TheExitsColorShows()
         {
@@ -81,7 +81,7 @@ namespace Velvet.Tests
 
         #region VNode Builder
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_DivWithWhileHoverClass_When_Built_Then_NodeExposesHoverClass()
         {
@@ -92,7 +92,7 @@ namespace Velvet.Tests
             Assert.That(node.WhileHoverClass, Is.EqualTo("hover-glow"));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_DivWithWhileTapClass_When_Built_Then_NodeExposesTapClass()
         {
@@ -103,7 +103,7 @@ namespace Velvet.Tests
             Assert.That(node.WhileTapClass, Is.EqualTo("tap-shrink"));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ButtonWithHoverAndTapClasses_When_Built_Then_NodeExposesBothClasses()
         {
@@ -114,7 +114,7 @@ namespace Velvet.Tests
             Assert.That((node.WhileHoverClass, node.WhileTapClass), Is.EqualTo(("btn-hover", "btn-tap")));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_LabelWithWhileHoverClass_When_Built_Then_NodeExposesHoverClass()
         {
@@ -125,7 +125,7 @@ namespace Velvet.Tests
             Assert.That(node.WhileHoverClass, Is.EqualTo("label-hover"));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_MotionWithHoverAndTapClasses_When_Built_Then_NodeExposesBothClasses()
         {
@@ -136,7 +136,7 @@ namespace Velvet.Tests
             Assert.That((node.WhileHoverClass, node.WhileTapClass), Is.EqualTo(("motion-hover", "motion-tap")));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ImageWithHoverAndTapClasses_When_Built_Then_NodeExposesBothClasses()
         {
@@ -147,7 +147,7 @@ namespace Velvet.Tests
             Assert.That((node.WhileHoverClass, node.WhileTapClass), Is.EqualTo(("img-hover", "img-tap")));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ButtonWithWhileFocusClass_When_Built_Then_NodeExposesFocusClass()
         {
@@ -158,7 +158,7 @@ namespace Velvet.Tests
             Assert.That(node.WhileFocusClass, Is.EqualTo("focus-ring"));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_DivWithoutGestureClasses_When_Built_Then_BothGesturePropertiesAreNull()
         {
@@ -173,7 +173,7 @@ namespace Velvet.Tests
 
         #region StyleGestureClassManipulator Unit
 
-        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself.
         // What reddens it is UpdateClasses leaving the old hover classes on, or not putting the new ones on.
         [Test]
         public void Given_HoveredElement_When_HoverClassesUpdated_Then_SwapsOldHoverForNew()
@@ -193,7 +193,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_NotHoveredElement_When_HoverClassesUpdated_Then_NewClassIsNotApplied()
         {
@@ -211,7 +211,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, false)));
         }
 
-        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself.
         // What reddens it is UpdateClasses leaving the old tap classes on, or not putting the new ones on.
         [Test]
         public void Given_TappedElement_When_TapClassesUpdated_Then_SwapsOldTapForNew()
@@ -231,7 +231,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself.
         // What reddens it is UpdateClasses swapping one state's classes and not the other's.
         [Test]
         public void Given_HoveredAndTappedElement_When_BothClassesUpdated_Then_SwapsBothStatesClasses()
@@ -253,7 +253,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, false, true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base swaps the classes on the class list itself.
         // What reddens it is UpdateClasses leaving the old focus classes on, or not putting the new ones on.
         [Test]
         public void Given_FocusedElement_When_FocusClassesUpdated_Then_SwapsOldFocusForNew()
@@ -273,7 +273,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base takes the classes off the class list itself. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base takes the classes off the class list itself.
         // What reddens it is the manipulator's removal leaving one state's classes on.
         [Test]
         public void Given_AHoveredTappedAndFocusedElement_When_TheManipulatorIsRemoved_Then_EveryStatesClassesGo()
@@ -296,7 +296,7 @@ namespace Velvet.Tests
                 : new[] { "hovered", "tapped", "focused" }, Is.Empty);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_NullClassArrays_When_ManipulatorConstructedAndAttached_Then_DoesNotThrow()
         {
@@ -312,7 +312,7 @@ namespace Velvet.Tests
 
         #region Signal-Driven Edge Detection (ElementLocalVariantSignals wiring)
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_UnhoveredElement_When_PointerOverFires_Then_HoverClassIsApplied()
         {
@@ -328,7 +328,7 @@ namespace Velvet.Tests
             Assert.That(_element.ClassListContains("hover-glow"), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_HoveredElement_When_PointerLeavesItsBounds_Then_HoverClassIsRemoved()
         {
@@ -346,7 +346,7 @@ namespace Velvet.Tests
             Assert.That(_element.ClassListContains("hover-glow"), Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_UntappedElement_When_PointerDownFires_Then_TapClassIsApplied()
         {
@@ -362,7 +362,7 @@ namespace Velvet.Tests
             Assert.That(_element.ClassListContains("tap-shrink"), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_TappedElement_When_PointerUpFires_Then_TapClassIsRemoved()
         {
@@ -379,7 +379,7 @@ namespace Velvet.Tests
             Assert.That(_element.ClassListContains("tap-shrink"), Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_TappedElement_When_PointerIsCancelled_Then_TapClassIsRemoved()
         {
@@ -396,7 +396,7 @@ namespace Velvet.Tests
             Assert.That(_element.ClassListContains("tap-shrink"), Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_UnfocusedElement_When_FocusEventFires_Then_FocusClassIsApplied()
         {
@@ -412,7 +412,7 @@ namespace Velvet.Tests
             Assert.That(_element.ClassListContains("focus-ring"), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_FocusedElement_When_BlurEventFires_Then_FocusClassIsRemoved()
         {
@@ -433,7 +433,7 @@ namespace Velvet.Tests
 
         #region ParseClassNames
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_SpaceSeparatedString_When_Parsed_Then_ReturnsTokenArray()
         {
@@ -448,7 +448,7 @@ namespace Velvet.Tests
 
         #region Reconciler Integration
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ElementWithGestureClasses_When_Reconciled_Then_RegistersOneManipulator()
         {
@@ -466,7 +466,7 @@ namespace Velvet.Tests
             Assert.That(GetGestureManipulatorCount(scope.Reconciler), Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_NonMotionButtonWithGestureClasses_When_Reconciled_Then_RegistersOneManipulator()
         {
@@ -484,7 +484,7 @@ namespace Velvet.Tests
             Assert.That(GetGestureManipulatorCount(scope.Reconciler), Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ElementWithWhileFocusClass_When_Reconciled_Then_RegistersOneManipulator()
         {
@@ -502,7 +502,7 @@ namespace Velvet.Tests
             Assert.That(GetGestureManipulatorCount(scope.Reconciler), Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ElementWithoutGestureClasses_When_Reconciled_Then_RegistersNoManipulator()
         {
@@ -520,7 +520,7 @@ namespace Velvet.Tests
             Assert.That(GetGestureManipulatorCount(scope.Reconciler), Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the branch removed only the painted-skew cases and the probe branch beside it, which this one does not read.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_RegisteredManipulator_When_GestureClassesPatchedAway_Then_ManipulatorIsRemoved()
         {
@@ -619,7 +619,7 @@ namespace Velvet.Tests
             Hover(child, false);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ABaseColorClassTheStylesheetDeclaresLater_When_Hovered_Then_TheHoverClassWins()
         {
@@ -633,7 +633,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ABaseColorClassTheStylesheetDeclaresLater_When_ThePointerLeaves_Then_TheBaseColorComesBack()
         {
@@ -648,7 +648,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(resting));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ABaseBracketColor_When_Hovered_Then_TheHoverClassWins()
         {
@@ -662,7 +662,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ABaseBracketColor_When_ThePointerLeaves_Then_TheBracketColorComesBack()
         {
@@ -684,7 +684,7 @@ namespace Velvet.Tests
             _ => throw new ArgumentOutOfRangeException(nameof(property), property, null),
         };
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         // The row's w-[20px] is the bracket width the w-8 case contends with.
         [TestCase("", "w-8", "width")]
         [TestCase("p-[10px]", "p-4", "paddingTop")]
@@ -701,7 +701,7 @@ namespace Velvet.Tests
             Assert.That(Read(child, property), Is.EqualTo(Read(reference, property)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [TestCase("", "w-8", "width")]
         [TestCase("p-[10px]", "p-4", "paddingTop")]
         public void Given_ABaseBracketValue_When_AHoverClassOfItsFamilyHolds_Then_TheBaseComesBackWhenThePointerLeaves(
@@ -718,7 +718,7 @@ namespace Velvet.Tests
             Assert.That(Read(child, property), Is.EqualTo(resting));
         }
 
-        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
         // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
         [TestCase("", "w-8", "width")]
         [TestCase("p-[10px]", "p-4", "paddingTop")]
@@ -736,7 +736,7 @@ namespace Velvet.Tests
             Assert.That(Read(child, property), Is.EqualTo(Read(reference, property)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value. The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base already lets a className hover: class outrank a bracket base value.
         // The case holds the same verdict for the className's own hover: rule that the gesture channel now shares.
         [TestCase("", "w-8", "width")]
         [TestCase("p-[10px]", "p-4", "paddingTop")]
@@ -755,7 +755,7 @@ namespace Velvet.Tests
             Assert.That(Read(child, property), Is.EqualTo(resting));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoverBracketColor_When_Hovered_Then_ItApplies()
         {
@@ -769,7 +769,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(Color.red));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoverBracketColor_When_ThePointerLeaves_Then_TheRestingColorComesBack()
         {
@@ -784,7 +784,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(resting));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ADividedChild_When_AHoverClassGivesItABorderColor_Then_ItWinsOverTheDivideColor()
         {
@@ -799,7 +799,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.borderRightColor, Is.EqualTo(reference.resolvedStyle.borderRightColor));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_ADividedChild_When_AHoverClassGivesItABorderColor_Then_TheDivideColorComesBackWhenThePointerLeaves()
         {
@@ -814,7 +814,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.borderRightColor, Is.EqualTo(resting));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoveredAndTappedChild_When_BothClassesSetTheColor_Then_TheTapClassWins()
         {
@@ -834,7 +834,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoveredAndFocusedChild_When_BothClassesSetTheColor_Then_TheHoverClassWins()
         {
@@ -865,7 +865,7 @@ namespace Velvet.Tests
             _ => throw new ArgumentOutOfRangeException(nameof(paint), paint, null),
         };
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [TestCase("shadow-lg", "shadow")]
         [TestCase("ring-2", "ring")]
         [TestCase("skew-x-6", "skew")]
@@ -884,7 +884,7 @@ namespace Velvet.Tests
             Assert.That(Painted(_mounted.Root.Reconciler.Context, child, paint), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [TestCase("shadow-lg", "shadow")]
         [TestCase("ring-2", "ring")]
         [TestCase("skew-x-6", "skew")]
@@ -906,7 +906,7 @@ namespace Velvet.Tests
             Assert.That(shown ? Painted(_mounted.Root.Reconciler.Context, child, paint) : (bool?)null, Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AShadowTapClass_When_Pressed_Then_TheShadowPaints()
         {
@@ -924,7 +924,7 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(child), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AShadowFocusClass_When_Focused_Then_TheShadowPaints()
         {
@@ -942,7 +942,7 @@ namespace Velvet.Tests
             Assert.That(_mounted.Root.Reconciler.Context.ShadowBindings.ContainsKey(child), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoverRuleOfTheClassName_When_AHoverClassSetsTheSameColor_Then_TheHoverClassWins()
         {
@@ -956,7 +956,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoverBracketOfTheClassName_When_AHoverBracketSetsTheSameColor_Then_TheHoverClassWins()
         {
@@ -1001,8 +1001,8 @@ namespace Velvet.Tests
             ForcePanelUpdate(child.panel);
         }
 
-        // GREEN_ON_BASE(characterization): the base's gesture class builds no class projection, so nothing adopts the The branch removed only the painted-skew cases and the probe branch beside it.
-        // play's starting class. What reddens it is a play's removal leaving that class adopted at the base layer.
+        // GREEN_ON_BASE(characterization): the base's gesture class builds no class projection, so nothing adopts
+        // the play's starting class. What reddens it is a play's removal leaving that class adopted at the base layer.
         [Test]
         public void Given_AnEnteringMotionHoveredBeforeItsSwap_When_ThePlayEndsAndThePointerLeaves_Then_ItShowsTheEnteredColor()
         {
@@ -1018,7 +1018,7 @@ namespace Velvet.Tests
             Assert.That(child.resolvedStyle.backgroundColor, Is.EqualTo(reference.resolvedStyle.backgroundColor));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AnEnteringMotionWithAHoverRuleHoveredBeforeItsSwap_When_ThePlayEndsAndThePointerLeaves_Then_ItShowsTheEnteredColor()
         {
@@ -1050,7 +1050,7 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; only the fixture's shared skew-binding probe changed.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AHoveredMotion_When_AVariantSwapPlaysOut_Then_TheHoverClassStillWins()
         {
@@ -1134,7 +1134,7 @@ namespace Velvet.Tests
         private static readonly FieldInfo s_carries =
             typeof(SilhouetteFaceStash).GetField("_carries", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         // The rules are read again only once the rules matched to the element change (StyleCascade.RulesHash), which
         // the panel's check asks each frame; a colour written over the carried one stands until then.
         [Test]
@@ -1154,7 +1154,7 @@ namespace Velvet.Tests
             Assert.That(face.CurrentBg, Is.EqualTo(Color.magenta));
         }
 
-        // GREEN_ON_BASE(characterization): the base captures the face from the element's resolved style, an id rule's The branch removed only the painted-skew cases and the probe branch beside it.
+        // GREEN_ON_BASE(characterization): the base captures the face from the element's resolved style, an id rule's
         // colour included. Reading the face off an element that copies the shadowed one's classes reddens this case.
         [Test]
         public void Given_AShadowedElementAnIdRuleColors_When_ThePanelResolves_Then_ItsFaceTakesTheRulesColor()
@@ -1171,7 +1171,7 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(new Color(0f, 128f / 255f, 0f)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AShadowedCardWithAHoverBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {
@@ -1185,7 +1185,7 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AShadowedCardWithAHoverClassBackground_When_Hovered_Then_ItsFaceTakesTheHoverColor()
         {
@@ -1199,7 +1199,7 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AShadowedCardWithADarkBackground_When_TheThemeTurnsDark_Then_ItsFaceTakesTheDarkColor()
         {
@@ -1214,7 +1214,7 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         // The theme's colours are custom properties the root sets, which the card inherits: its matched rules stay the
         // same, and the face is read again because StyleCascade.RulesHash keys on the inherited variables too.
         [Test]
@@ -1232,7 +1232,7 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(dark != light ? dark : new Color(float.NaN, 0f, 0f, 0f)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AShadowedCard_When_APlayShowsABackgroundClass_Then_ItsFaceTakesThePlaysColor()
         {
@@ -1247,7 +1247,7 @@ namespace Velvet.Tests
             Assert.That(ShadowFace(card), Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture's shared helpers lost their painted-skew branch.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's painted-skew cases were deleted and its shared probe stopped consulting the painted-skew bindings.
         [Test]
         public void Given_AMotionWithAShadowHoverClass_When_Hovered_Then_TheShadowPaints()
         {
