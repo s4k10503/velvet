@@ -2078,7 +2078,9 @@ namespace Velvet
         /// <summary>
         /// CancellationToken-aware variant of <see cref="Use{T}(Func{VelvetTask{T}}, object)"/>.
         /// The token is cancelled when the resource is superseded (a new key) or the component unmounts;
-        /// loader implementations are responsible for honoring it and aborting.
+        /// loader implementations are responsible for honoring it and aborting. A resource a transition's render
+        /// started is not superseded by a render of another lane that presents the old key: it is kept, and
+        /// cancelled only when a later transition presents a different key, or on unmount.
         /// </summary>
         /// <typeparam name="T">Resolved value type.</typeparam>
         /// <param name="factory">Factory that receives a CancellationToken and returns a VelvetTask producing the value. Must not be null.</param>
@@ -2106,7 +2108,11 @@ namespace Velvet
             FiberAsyncResource<T> resource;
             if (index >= slots.Count)
             {
-                resource = new FiberAsyncResource<T>(resourceKey) { OnCompleted = onCompleted };
+                resource = new FiberAsyncResource<T>(resourceKey)
+                {
+                    OnCompleted = onCompleted,
+                    StartedByTransition = FiberWorkLoop.IsRenderingTransitionLane,
+                };
                 slots.Add(resource);
                 resource.Start(factory);
             }
@@ -2136,10 +2142,22 @@ namespace Velvet
                             "Pass a stable `resourceKey` (e.g. the query id) so the resource is not restarted every render.");
                     }
 #endif
-                    existing?.Dispose();
-                    resource = new FiberAsyncResource<T>(resourceKey) { OnCompleted = onCompleted };
-                    slots[index] = resource;
-                    resource.Start(factory);
+                    var restored = fiber.RestoreOrRetireAsync<T>(index, existing, resourceKey);
+                    if (restored != null)
+                    {
+                        resource = restored;
+                        slots[index] = restored;
+                    }
+                    else
+                    {
+                        resource = new FiberAsyncResource<T>(resourceKey)
+                        {
+                            OnCompleted = onCompleted,
+                            StartedByTransition = FiberWorkLoop.IsRenderingTransitionLane,
+                        };
+                        slots[index] = resource;
+                        resource.Start(factory);
+                    }
                 }
             }
 

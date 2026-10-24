@@ -245,8 +245,49 @@ namespace Velvet
 
         internal void ResetAsyncSlotCursor() => _asyncSlotCursor = 0;
 
+        // Pending resources a transition's render started, kept by slot index while a render of another lane shows
+        // the slot's other key. The transition's retry takes its resource back; a later transition presenting a
+        // different key, and an unmount, dispose it.
+        private Dictionary<int, IFiberAsyncResource>? _stashedAsync;
+
+        // Replaces the slot's resource, which presented another key than the one now asked for. Returns the stashed
+        // resource of that key when there is one; otherwise null, and the caller starts a new one.
+        internal FiberAsyncResource<T>? RestoreOrRetireAsync<T>(int index, IFiberAsyncResource? existing, object key)
+        {
+            var inTransition = FiberWorkLoop.IsRenderingTransitionLane;
+            FiberAsyncResource<T>? restored = null;
+            if (_stashedAsync != null && _stashedAsync.TryGetValue(index, out var stashed))
+            {
+                if (stashed is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, key))
+                {
+                    restored = typed;
+                    _stashedAsync.Remove(index);
+                }
+                else if (inTransition)
+                {
+                    stashed.Dispose();
+                    _stashedAsync.Remove(index);
+                }
+            }
+            if (existing == null) return restored;
+            if (inTransition || !existing.StartedByTransition || existing.Status != FiberAsyncResourceStatus.Pending)
+            {
+                existing.Dispose();
+                return restored;
+            }
+            _stashedAsync ??= new Dictionary<int, IFiberAsyncResource>();
+            if (_stashedAsync.TryGetValue(index, out var replaced)) replaced.Dispose();
+            _stashedAsync[index] = existing;
+            return restored;
+        }
+
         internal void DisposeAsyncSlots()
         {
+            if (_stashedAsync != null)
+            {
+                foreach (var stashed in _stashedAsync.Values) stashed.Dispose();
+                _stashedAsync.Clear();
+            }
             for (var i = 0; i < AsyncSlots.Count; i++)
             {
                 AsyncSlots[i]?.Dispose();
