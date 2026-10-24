@@ -711,7 +711,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors["0-0"].Message, Is.EqualTo("boom-2"));
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, Is.EqualTo("boom-2"));
         }
 
         #endregion

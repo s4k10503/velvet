@@ -290,6 +290,8 @@ namespace Velvet.Tests
 
         #region Push with failed redirect
 
+        // GREEN_ON_BASE(characterization): the base also keeps the forward entry when a push's redirect ends without
+        // a commit, by an unmatched target where this one reaches the redirect limit.
         [Test]
         public void Given_PushRedirectFailsWithForwardHistory_When_RolledBack_Then_ForwardEntryIsPreserved()
         {
