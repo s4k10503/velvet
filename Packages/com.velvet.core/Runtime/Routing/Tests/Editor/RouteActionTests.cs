@@ -162,7 +162,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", PostToItems);
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors["/items"].Message, router.CurrentActionData.Count),
+            Assert.That((router.CurrentLoaderErrors["0-0"].Message, router.CurrentActionData.Count),
                 Is.EqualTo(("action-failed", 0)));
         }
 
@@ -199,8 +199,8 @@ namespace Velvet.Tests
             Submit(router, null, PostToItems);
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo(
-                "You made a POST request to \"/items\" but did not provide an `action` for route \"/items\", so there "
+            Assert.That(router.CurrentLoaderErrors["0"].Message, Is.EqualTo(
+                "You made a POST request to \"/items\" but did not provide an `action` for route \"0\", so there "
                 + "is no way to handle the request."));
         }
 
@@ -238,7 +238,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", PostToItems);
 
             // Assert
-            Assert.That((string.Join(",", _log), router.GetLoaderData("/items")), Is.EqualTo(("root", (object)"items")));
+            Assert.That((string.Join(",", _log), router.GetLoaderData("0-0")), Is.EqualTo(("root", (object)"items")));
         }
 
         [Test]
@@ -733,7 +733,7 @@ namespace Velvet.Tests
             Submit(router, new ThrowingBody(), new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors["/items"].Message, Is.EqualTo("Unable to encode submission body"));
+            Assert.That(router.CurrentLoaderErrors["0-0"].Message, Is.EqualTo("Unable to encode submission body"));
         }
 
         // GREEN_ON_BASE(characterization): the base already left a post's one-shot sequence unenumerated; this
@@ -773,7 +773,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (router.CurrentLocation!.Path, router.CurrentLoaderErrors["/items"].Message, _log.Contains("action")),
+                (router.CurrentLocation!.Path, router.CurrentLoaderErrors["0-0"].Message, _log.Contains("action")),
                 Is.EqualTo(("/items", "Unable to encode submission body", false)));
         }
 
@@ -800,7 +800,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", new SubmitOptions { Method = "head", Action = "/items" });
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors["/items"].Message, _log.Contains("action")),
+            Assert.That((router.CurrentLoaderErrors["0-0"].Message, _log.Contains("action")),
                 Is.EqualTo(("Invalid request method \"HEAD\"", false)));
         }
 

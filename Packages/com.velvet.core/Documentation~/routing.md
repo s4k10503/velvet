@@ -176,6 +176,37 @@ propagates to the nearest error boundary. After a throw while rendering the valu
 for whatever deferred value that `V.Await` is handed next, as React Router's AwaitErrorBoundary keeps it,
 until the `V.Await` remounts — give it a new `key`. Any number of `V.Await` may read one `Deferred<T>`.
 
+## Route ids, matches and unmatched paths
+
+Every route has an id, React Router's `route.id`: `RouteDefinition.Id` when it sets one, and otherwise its
+position in the tree, the indexes from the top-level array down joined by `-`, so a root route is `"0"` and
+its second child `"0-1"`. `RouteMatch.RouteId` carries it, and it is the key of the route's loader data, action
+data and error. No two routes of a tree share one: a tree that gives two the same id, or an id equal to another
+route's position, throws `ArgumentException` when the `Router` is built. A pathless layout, a route with an empty
+path and children, is never the end of a matched chain: it is in the chain of every path a child matches, and a
+path only it would have taken does not match through it.
+
+| Hook | Returns | React Router |
+|------|---------|--------------|
+| `Hooks.UseMatches()` | every matched route, parent first, as a `UiMatch`: `Id`, `Pathname` (the pathname up to that route), `Params`, loader `Data` and the route's `Handle` | `useMatches` |
+| `Hooks.UseRouteLoaderData<T>(routeId)` | the loader data of the matched route with that id, from any component beneath the provider; `default` when the route is not matched or has none | `useRouteLoaderData` |
+| `Hooks.UseResolvedPath(to, relative)` | `to` resolved from the calling component's route as `UseNavigate` resolves it, as a `ResolvedPath` of `Pathname`, `Search` and `Hash` | `useResolvedPath` |
+| `Hooks.UseHref(to, relative)` | the same, joined into one string | `useHref` |
+| `Hooks.UseNavigationType()` | `NavigationType.Push` or `Replace` for a location the router pushed or replaced, `Pop` before the router has committed anything and for a step along the history (`Router.NavigationType`) | `useNavigationType` |
+| `Hooks.UseInRouterContext()` | whether a `V.RouterProvider` is above the caller | `useInRouterContext` |
+
+`RouteDefinition.Handle` is data the application attaches to a route, read back through `UiMatch.Handle`; the
+router reads nothing from it. `V.Route` takes `id` and `handle` beside the other options.
+
+A navigation to a path no route matches commits, as React Router's data router does. The location becomes that
+path and takes a history entry, the loader data empties, and no guard, action or loader runs. The chain it holds
+is one route: the only top-level route, else the first with an empty path or `/`, else a route of no element. That
+route carries an `ErrorResponse` with status 404, `StatusText` `"Not Found"` and a `Detail` naming the path, as
+its error, so its `errorElement` renders in place of its `element` and `Hooks.UseRouteError` returns the
+`ErrorResponse`; with no `errorElement` the default error element shows `404 Not Found`. A guard redirect to a
+path no route matches commits the same way. `Router.NavigateAsync` reports `NavigationResult.NotFound` for it,
+after the commit; a null path is the one case that commits nothing.
+
 ## Route actions
 
 A route's `action` is React Router's route `action`: it runs for a submission, and its result is what
@@ -273,14 +304,14 @@ A `Router` keeps the location it has committed apart from the navigation in flig
 
 - **The committed location** — `Router.CurrentLocation`, `Router.CurrentLoaderData`,
   `Router.CurrentLoaderErrors` — is React Router's `location`, `loaderData` and `errors`. An attempt
-  that does not commit — blocked, matching no route, cancelled or superseded, or thrown out of — leaves
-  it as it was. Within a committed location, a `Suspend` loader settling is what changes it.
+  that does not commit — blocked, cancelled or superseded, or thrown out of — leaves
+  it as it was; one matching no route commits its 404 like any other. Within a committed location, a `Suspend` loader settling is what changes it.
   `Hooks.UseLocation`, `Hooks.UseLoaderData` and `Hooks.UseRouteError` read it. `Router.CurrentActionData`
   is the exception the route actions section gives: an action's result is published before the
   loaders run.
 - **The navigation in flight** — `Router.Navigation`, raised through `Router.OnNavigationChanged` — is
-  React Router's `navigation`. It describes one attempt, from the moment its path has matched a route
-  until it commits or gives up, and is `Idle` the rest of the time.
+  React Router's `navigation`. It describes one attempt, from the moment its path has matched a route, or
+  matched none, until it commits or gives up, and is `Idle` the rest of the time.
 
 How an attempt ended is not router state: `Router.NavigateAsync` and `Router.SubmitAsync` hand it to
 their caller, as a `NavigationResult` or as the exception the attempt threw.
@@ -293,7 +324,7 @@ their caller, as a `NavigationResult` or as the exception the attempt threw.
   submission has matched a route until its action returns, `NavigationLifecycle.Loading` from the moment
   a navigation has matched a route until it commits or gives up, and `NavigationLifecycle.Idle`
   otherwise. A `get` submission, and one whose method no form takes, report `Loading` throughout. A
-  path that matches none never reports either.
+  path that matches none reports `Loading` until its 404 commits.
 - `Location` is the location being navigated **to** while `State` is not `Idle` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
   `Idle`, as `navigation.location` is `undefined` then.

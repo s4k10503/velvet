@@ -37,7 +37,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheLoadingEvent_When_TheAttemptGoesOn_Then_ItIsNotDispossessed()
+        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheLoadingEvent_When_TheAttemptGoesOn_Then_ItIsSupersededByTheNotFoundCommit()
         {
             // The navigation is published from inside the attempt that made it, so a subscriber navigating
             // from there reaches the router while that attempt holds the claim and has committed nothing. The
@@ -61,7 +61,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 $"inner={innerResult} outer={outerResult} path={router.CurrentLocation?.Path}",
-                Is.EqualTo("inner=NotFound outer=Success path=/about"));
+                Is.EqualTo("inner=NotFound outer=Cancelled path=/no-such-route"));
         }
 
         [Test]

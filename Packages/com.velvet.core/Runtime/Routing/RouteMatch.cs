@@ -20,8 +20,8 @@ namespace Velvet
         /// </summary>
         public string PathnameBase { get; init; } = "/";
         /// <summary>
-        /// Pattern identifier used as the key for loader data and errors. Index routes are disambiguated
-        /// from their parent.
+        /// The route's <see cref="RouteDefinition.Id"/>, or its position in the tree when it has none. Unique
+        /// among a tree's routes, and the key of loader data, action data and errors.
         /// </summary>
         public string? RouteId { get; init; }
     }

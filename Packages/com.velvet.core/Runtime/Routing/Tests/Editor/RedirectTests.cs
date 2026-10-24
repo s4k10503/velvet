@@ -218,7 +218,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsUnchanged()
+        public void Given_GuardRedirectToMissingRouteDuringBack_When_Committed_Then_TheNotFoundTakesTheSteppedToSlot()
         {
             // Arrange
             var router = new Router(new[]
@@ -235,7 +235,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That((router.CurrentLocation.Path, router.HistoryIndex), Is.EqualTo(("/a", 1)));
+            Assert.That((router.CurrentLocation.Path, router.HistoryIndex), Is.EqualTo(("/nonexistent", 0)));
         }
 
         #endregion
@@ -298,7 +298,7 @@ namespace Velvet.Tests
             {
                 Route("home"),
                 Route("page"),
-                Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/nonexistent")),
+                Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/admin")),
             });
             router.NavigateSync("/home");
             router.NavigateSync("/page");
@@ -309,7 +309,7 @@ namespace Velvet.Tests
             // Act
             enableGuard();
             var pushResult = router.NavigateSync("/admin");
-            Assume.That(pushResult, Is.EqualTo(NavigationResult.NotFound),
+            Assume.That(pushResult, Is.EqualTo(NavigationResult.Error),
                 "Precondition: the push's guard redirect failed");
 
             // Assert

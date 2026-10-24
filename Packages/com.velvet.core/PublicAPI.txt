@@ -71,6 +71,7 @@
 [Velvet] ctor Velvet.DroppableState.ctor(System.Boolean, Velvet.DraggableInfo?, Velvet.DroppableInfo?): System.Void
 [Velvet] ctor Velvet.ElementNode.ctor(): System.Void
 [Velvet] ctor Velvet.ErrorInfo.ctor(System.String): System.Void
+[Velvet] ctor Velvet.ErrorResponse.ctor(System.Int32, System.String, System.Object?): System.Void
 [Velvet] ctor Velvet.Experimental.VButton.ctor(System.String?): System.Void
 [Velvet] ctor Velvet.Experimental.VCustom`1[T].ctor(System.String?): System.Void
 [Velvet] ctor Velvet.Experimental.VDiv.ctor(System.String?): System.Void
@@ -127,6 +128,7 @@
 [Velvet] ctor Velvet.QueryPlaceholder`1[T].ctor(T): System.Void
 [Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
+[Velvet] ctor Velvet.ResolvedPath.ctor(): System.Void
 [Velvet] ctor Velvet.RetryPolicy.ctor(): System.Void
 [Velvet] ctor Velvet.RouteActionContext.ctor(): System.Void
 [Velvet] ctor Velvet.RouteBlockerManager.ctor(): System.Void
@@ -160,6 +162,7 @@
 [Velvet] ctor Velvet.SuspenseNode.ctor(): System.Void
 [Velvet] ctor Velvet.TextFieldSettings.ctor(System.Nullable`1[System.Boolean], System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): System.Void
 [Velvet] ctor Velvet.TextNode.ctor(): System.Void
+[Velvet] ctor Velvet.UiMatch.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetFontFamily.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetFontFamily.ctor(System.String, Velvet.VelvetFontWeightEntry[]): System.Void
 [Velvet] ctor Velvet.VelvetFontWeightEntry.ctor(): System.Void
@@ -258,6 +261,9 @@
 [Velvet] field Velvet.NavigationResult.Error: Velvet.NavigationResult
 [Velvet] field Velvet.NavigationResult.NotFound: Velvet.NavigationResult
 [Velvet] field Velvet.NavigationResult.Success: Velvet.NavigationResult
+[Velvet] field Velvet.NavigationType.Pop: Velvet.NavigationType
+[Velvet] field Velvet.NavigationType.Push: Velvet.NavigationType
+[Velvet] field Velvet.NavigationType.Replace: Velvet.NavigationType
 [Velvet] field Velvet.NetworkMode.Always: Velvet.NetworkMode
 [Velvet] field Velvet.NetworkMode.OfflineFirst: Velvet.NetworkMode
 [Velvet] field Velvet.NetworkMode.Online: Velvet.NetworkMode
@@ -492,9 +498,11 @@
 [Velvet] method Velvet.Hooks.UseFocusManager(): Velvet.FocusManager
 [Velvet] method Velvet.Hooks.UseFocusRing(): Velvet.FocusRing
 [Velvet] method Velvet.Hooks.UseFrame(System.Action`1[System.Single], System.Int32): System.Void
+[Velvet] method Velvet.Hooks.UseHref(System.String, Velvet.RelativeRoutingType): System.String
 [Velvet] method Velvet.Hooks.UseId(System.String?): System.String
 [Velvet] method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle]): System.Void
 [Velvet] method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseInRouterContext(): System.Boolean
 [Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
@@ -502,6 +510,7 @@
 [Velvet] method Velvet.Hooks.UseLoaderData`1(): T?
 [Velvet] method Velvet.Hooks.UseLocation(): Velvet.RouterLocation?
 [Velvet] method Velvet.Hooks.UseMatch(System.String): Velvet.RouteMatch?
+[Velvet] method Velvet.Hooks.UseMatches(): System.Collections.Generic.IReadOnlyList`1[Velvet.UiMatch]
 [Velvet] method Velvet.Hooks.UseMemo`1(System.Func`1[T]): T
 [Velvet] method Velvet.Hooks.UseMemo`1(System.Func`1[T], System.Object?[]?): T
 [Velvet] method Velvet.Hooks.UseMutableRef`1(System.Func`1[T]): Velvet.MutableRef`1[T]
@@ -512,6 +521,7 @@
 [Velvet] method Velvet.Hooks.UseMutation`3(Velvet.MutationOptions`3[TVariables, TData, TContext]): Velvet.MutationResult`2[TVariables, TData]
 [Velvet] method Velvet.Hooks.UseNavigate(): Velvet.NavigateFunction
 [Velvet] method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
+[Velvet] method Velvet.Hooks.UseNavigationType(): Velvet.NavigationType
 [Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseOutletContext`1(): T?
 [Velvet] method Velvet.Hooks.UseParams(): System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
@@ -521,7 +531,9 @@
 [Velvet] method Velvet.Hooks.UseReducer`3(System.Func`3[TState, TAction, TState], TArg, System.Func`2[TArg, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseRef`1(): Velvet.Ref`1[T]
 [Velvet] method Velvet.Hooks.UseRef`1(System.Func`1[T]?): Velvet.Ref`1[T]
+[Velvet] method Velvet.Hooks.UseResolvedPath(System.String, Velvet.RelativeRoutingType): Velvet.ResolvedPath
 [Velvet] method Velvet.Hooks.UseRouteError(): System.Exception?
+[Velvet] method Velvet.Hooks.UseRouteLoaderData`1(System.String): T?
 [Velvet] method Velvet.Hooks.UseSearchParams(): System.ValueTuple`2[Velvet.ISearchParams, Velvet.SearchParamsSetter]
 [Velvet] method Velvet.Hooks.UseService`1(): T
 [Velvet] method Velvet.Hooks.UseSortable(System.String): Velvet.SortableState
@@ -717,7 +729,7 @@
 [Velvet] method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode?[]?, System.String?): Velvet.ContextProviderNode`1[T]
 [Velvet] method Velvet.V.RadioButton(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
 [Velvet] method Velvet.V.RadioButtonGroup(System.String?, System.Nullable`1[System.Int32], System.Collections.Generic.List`1[System.String]?, System.Action`1[System.Int32]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
-[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean, System.Func`3[Velvet.RouteActionContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?): Velvet.RouteDefinition
+[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean, System.Func`3[Velvet.RouteActionContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, System.String?, System.Object?): Velvet.RouteDefinition
 [Velvet] method Velvet.V.RouterProvider(Velvet.Router, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Routes(Velvet.RouteDefinition[]): Velvet.RouteDefinition[]
 [Velvet] method Velvet.V.SceneView(UnityEngine.Camera?, System.String?, System.String?, System.String?, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, Velvet.FiberEventBinding[]?): Velvet.ElementNode
@@ -1072,6 +1084,9 @@
 [Velvet] property Velvet.ErrorBoundaryResetDetails.Reason: Velvet.ErrorBoundaryResetReason
 [Velvet] property Velvet.ErrorInfo.ComponentStack: System.String
 [Velvet] property Velvet.ErrorInfo.ErrorBoundary: System.String
+[Velvet] property Velvet.ErrorResponse.Detail: System.Object?
+[Velvet] property Velvet.ErrorResponse.Status: System.Int32
+[Velvet] property Velvet.ErrorResponse.StatusText: System.String
 [Velvet] property Velvet.Experimental.VBuilder.Class: System.String?
 [Velvet] property Velvet.Experimental.VBuilder.Events: Velvet.FiberEventBinding[]?
 [Velvet] property Velvet.Experimental.VBuilder.Key: System.String?
@@ -1327,6 +1342,9 @@
 [Velvet] property Velvet.QueryResult`1[T].Status: Velvet.QueryStatus
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
+[Velvet] property Velvet.ResolvedPath.Hash: System.String
+[Velvet] property Velvet.ResolvedPath.Pathname: System.String
+[Velvet] property Velvet.ResolvedPath.Search: System.String
 [Velvet] property Velvet.RetryPolicy.IsFocused: System.Func`1[System.Boolean]?
 [Velvet] property Velvet.RetryPolicy.IsOnline: System.Func`1[System.Boolean]?
 [Velvet] property Velvet.RetryPolicy.NetworkMode: Velvet.NetworkMode
@@ -1347,6 +1365,8 @@
 [Velvet] property Velvet.RouteDefinition.Element: Velvet.ComponentNode?
 [Velvet] property Velvet.RouteDefinition.ErrorElement: Velvet.ComponentNode?
 [Velvet] property Velvet.RouteDefinition.Guard: System.Func`2[Velvet.RouteLoaderContext, System.String]?
+[Velvet] property Velvet.RouteDefinition.Handle: System.Object?
+[Velvet] property Velvet.RouteDefinition.Id: System.String?
 [Velvet] property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?
 [Velvet] property Velvet.RouteDefinition.LoaderMode: Velvet.LoaderMode
 [Velvet] property Velvet.RouteDefinition.Path: System.String?
@@ -1367,6 +1387,7 @@
 [Velvet] property Velvet.Router.CurrentLoaderErrors: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Exception]
 [Velvet] property Velvet.Router.CurrentLocation: Velvet.RouterLocation?
 [Velvet] property Velvet.Router.Navigation: Velvet.NavigationState
+[Velvet] property Velvet.Router.NavigationType: Velvet.NavigationType
 [Velvet] property Velvet.Router.RouteBlockerManager: Velvet.RouteBlockerManager
 [Velvet] property Velvet.RouterLocation.Hash: System.String
 [Velvet] property Velvet.RouterLocation.Key: System.String
@@ -1467,6 +1488,11 @@
 [Velvet] property Velvet.TextFieldSettings.Multiline: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.Placeholder: System.String?
 [Velvet] property Velvet.TextNode.Text: System.String
+[Velvet] property Velvet.UiMatch.Data: System.Object?
+[Velvet] property Velvet.UiMatch.Handle: System.Object?
+[Velvet] property Velvet.UiMatch.Id: System.String
+[Velvet] property Velvet.UiMatch.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] property Velvet.UiMatch.Pathname: System.String
 [Velvet] property Velvet.VNode.Key: System.String?
 [Velvet] property Velvet.VelvetFonts.DefaultFamily: System.String?
 [Velvet] property Velvet.VelvetPreviewAttribute.Group: System.String?
@@ -1602,6 +1628,7 @@
 [Velvet] type Velvet.ErrorBoundaryResetDetails
 [Velvet] type Velvet.ErrorBoundaryResetReason
 [Velvet] type Velvet.ErrorInfo
+[Velvet] type Velvet.ErrorResponse
 [Velvet] type Velvet.Experimental.VBuilder
 [Velvet] type Velvet.Experimental.VButton
 [Velvet] type Velvet.Experimental.VCustom`1[T]
@@ -1665,6 +1692,7 @@
 [Velvet] type Velvet.NavigationMode
 [Velvet] type Velvet.NavigationResult
 [Velvet] type Velvet.NavigationState
+[Velvet] type Velvet.NavigationType
 [Velvet] type Velvet.NetworkMode
 [Velvet] type Velvet.NetworkSignals
 [Velvet] type Velvet.NullStoreLogger
@@ -1694,6 +1722,7 @@
 [Velvet] type Velvet.Ref`1[T]
 [Velvet] type Velvet.RelativeRoutingType
 [Velvet] type Velvet.ResolvedFont
+[Velvet] type Velvet.ResolvedPath
 [Velvet] type Velvet.RetryDelayRule
 [Velvet] type Velvet.RetryPolicy
 [Velvet] type Velvet.RetryRule
@@ -1747,6 +1776,7 @@
 [Velvet] type Velvet.TransitionType
 [Velvet] type Velvet.TransitionWhen
 [Velvet] type Velvet.UILayer
+[Velvet] type Velvet.UiMatch
 [Velvet] type Velvet.Unit
 [Velvet] type Velvet.V
 [Velvet] type Velvet.VNode
