@@ -44,6 +44,8 @@ namespace Velvet.Tests
             Array.Clear(s_calls, 0, s_calls.Length);
             s_setFirst = null!;
             s_setSecond = null!;
+            s_source.Set("first");
+            s_force = null!;
         }
 
         private static string Describe(int slot, object value)
@@ -434,6 +436,67 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(LabelTexts(), Is.EqualTo(new[] { "0:0", "1:2", "2:3" }));
+        }
+
+        #endregion
+
+        #region A render that stands for something the body reads some other way
+
+        private sealed class TextSource
+        {
+            private string _text = "first";
+
+            public string Text => _text;
+
+            public void Set(string text) => _text = text;
+        }
+
+        private static readonly TextSource s_source = new();
+        private static Action<int> s_force = null!;
+
+        [Component]
+        private static VNode ForcedRenderKeptInALocal()
+        {
+            var (_, force) = Hooks.UseState(0);
+            s_force = force;
+            return V.Label(text: s_source.Text);
+        }
+
+        [Component]
+        private static VNode ForcedRenderOffTheStack()
+        {
+            s_force = Hooks.UseState(0).Item2;
+            return V.Label(text: s_source.Text);
+        }
+
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_TheSourceChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderKeptInALocal, key: "forced"));
+            s_source.Set("second");
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "second" }));
+        }
+
+        [Test]
+        public void Given_OnlyTheSetterReadOffTheReturnedTuple_When_TheSourceChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderOffTheStack, key: "forced"));
+            s_source.Set("second");
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "second" }));
         }
 
         #endregion

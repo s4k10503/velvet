@@ -697,9 +697,9 @@ namespace Velvet.Tests
                 "The module was rewritten, so the post-processor has to write it");
         }
 
-        // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does.
-        // What it pins is the analysis result being honoured: `true` in place of `false` for the failed analysis
-        // in `TryWeaveMethod` reports a change.
+        // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does;
+        // the body has no return, which it refuses there as well. What it pins is the plan being honoured: `true`
+        // in place of `false` for the refused plan in `TryWeaveMethod` reports a change.
         [Test]
         public void Given_AModuleWhereNoBodyIsWoven_When_CompilerWeaverRuns_Then_ItReportsNoChange()
         {
@@ -710,7 +710,7 @@ namespace Velvet.Tests
             {
                 il.Append(Instruction.Create(OpCodes.Call, UndeclaredMethodOf(module)));
                 il.Append(Instruction.Create(OpCodes.Ldnull));
-                il.Append(Instruction.Create(OpCodes.Ret));
+                il.Append(Instruction.Create(OpCodes.Throw));
             });
 
             // Act
@@ -1080,11 +1080,10 @@ namespace Velvet.Tests
             Assert.That((woven: gate >= 0, gateFirst: gate < regionStart), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base bails a callee whose type declares no such method, as here.
-        // What it pins is the safety fold's null guard: deleting `if (definition == null) return true;` from
-        // `NonSafeHookFold.TryLeaf` hands the null on to `IsDispatchOpen`, and the weave throws.
+        // Deleting `if (definition == null) return true;` from `NonSafeHookFold.TryLeaf` hands the null on to
+        // `IsDispatchOpen`, and the weave throws.
         [Test]
-        public void Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        public void Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsWovenWithoutFailing()
         {
             // Arrange — one parameter, and a call naming a method Probe.Fixture does not declare
             using var module = BuildHookShapeProbeModule("UndeclaredMethodProbe",
@@ -1101,8 +1100,8 @@ namespace Velvet.Tests
             var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
-            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((false, 0)),
-                "A callee Resolve() returns nothing for cannot be inspected, so the weaver bails without failing");
+            Assert.That((BodyCallsTryGetMemoizedVNode(method), FailureWarnings(messages)), Is.EqualTo((true, 0)),
+                "A callee Resolve() returns nothing for is opaque, which does not keep a body without a hook from being woven");
         }
 
         // GREEN_ON_BASE(characterization): the base reads such a callee inside a Velvet.Hooks member as no hook.
@@ -1387,6 +1386,50 @@ namespace Velvet.Tests
             Assert.That(((bool)report.ConstructorArguments[0].Value, (int)report.ConstructorArguments[1].Value,
                     ((string)report.ConstructorArguments[2].Value).Contains("cannot see")),
                 Is.EqualTo((false, 1, true)));
+        }
+
+        // `Name(arg0)` mounted by `around`, beside `Name(arg1)`, under a pair: two parameters, so each label reads a
+        // value of its own.
+        private static MethodDefinition AddComponentOver(ModuleDefinition module, string name, MethodReference labelOf,
+            MethodReference around, MethodReference pair)
+        {
+            var method = AddProbeComponent(module, name, il =>
+            {
+                il.Append(Instruction.Create(OpCodes.Ldarg_0));
+                il.Append(Instruction.Create(OpCodes.Call, labelOf));
+                il.Append(Instruction.Create(OpCodes.Call, around));
+                il.Append(Instruction.Create(OpCodes.Ldarg_1));
+                il.Append(Instruction.Create(OpCodes.Call, labelOf));
+                il.Append(Instruction.Create(OpCodes.Call, pair));
+                il.Append(Instruction.Create(OpCodes.Ret));
+            });
+            method.Parameters.Add(new ParameterDefinition("q", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            return method;
+        }
+
+        [Test]
+        public void Given_ALabelMountedByAPortal_When_CompilerWeaverRuns_Then_OnlyTheLabelBesideItIsCachedOnItsOwn()
+        {
+            // Arrange — the same shape twice, around a portal and around a factory that is not one
+            using var module = BuildHookShapeProbeModule("PortalChildProbe", out _, out _, out _, out _);
+            AddScopeSurface(module, out _, out var pair);
+            var factories = module.GetType("Velvet.V");
+            var vnode = module.GetType("Velvet.VNode");
+            var labelOf = AddStaticMethod(factories, "LabelOf", vnode, module.TypeSystem.Object);
+            var portal = AddStaticMethod(factories, "Portal", vnode, vnode);
+            var wrap = AddStaticMethod(factories, "Wrap", vnode, vnode);
+            var aroundPortal = AddComponentOver(module, "AroundPortal", labelOf, portal, pair);
+            var aroundWrap = AddComponentOver(module, "AroundWrap", labelOf, wrap, pair);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That((CallsTo(aroundPortal, "TryGetScope"), CallsTo(aroundWrap, "TryGetScope")),
+                Is.EqualTo((2, 3)),
+                "Each count is the gate on the body and the scopes under it: the label a portal mounts is not cached, "
+                + "and the one beside it is, where the same shape around another factory caches both");
         }
 
         // Marks the probe's assembly with [assembly: AssemblyMetadata(key, value)].
