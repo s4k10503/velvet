@@ -108,7 +108,7 @@ namespace Velvet.Tests
             Submit(router, "lamp", PostToItems);
 
             // Assert
-            Assert.That(router.CurrentActionData["/items"], Is.EqualTo("POST lamp"));
+            Assert.That(router.CurrentActionData["0-0"], Is.EqualTo("POST lamp"));
         }
 
         [Test]
@@ -262,7 +262,7 @@ namespace Velvet.Tests
             router.SubmitAsync("second", PostToItems).Forget();
 
             // Assert
-            Assert.That((router.Navigation.State, router.CurrentActionData["/items"]),
+            Assert.That((router.Navigation.State, router.CurrentActionData["0-0"]),
                 Is.EqualTo((NavigationLifecycle.Loading, (object)"saved")));
         }
 
@@ -901,7 +901,7 @@ namespace Velvet.Tests
             Submit(router, null, new SubmitOptions { Method = "post" });
 
             // Assert
-            Assert.That(router.CurrentActionData["/"], Is.EqualTo("root"));
+            Assert.That(router.CurrentActionData["0"], Is.EqualTo("root"));
         }
 
         [Test]
