@@ -32,7 +32,7 @@ namespace Velvet.Tests
 
         // Creation — wrapper-less paint
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowLg_When_Reconciled_Then_TheElementSitsDirectlyInTheRootWithNoWrapper()
         {
@@ -46,7 +46,7 @@ namespace Velvet.Tests
             Assert.That(scope.Root[0].name, Is.EqualTo("card"));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowLg_When_Reconciled_Then_APaintBindingIsTracked()
         {
@@ -60,7 +60,7 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AGatedShadow_When_TheReconcilerIsDisposed_Then_NoShadowBindingSurvives()
         {
@@ -97,7 +97,7 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowLg_When_Reconciled_Then_ThePaintBindingIsKeyedByTheElement()
         {
@@ -111,7 +111,7 @@ namespace Velvet.Tests
             Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowOnMotion_When_Reconciled_Then_APaintBindingIsCreated()
         {
@@ -125,7 +125,7 @@ namespace Velvet.Tests
             Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Not.Null);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AMotion_When_ShadowClassAddedByPatch_Then_APaintBindingIsCreated()
         {
@@ -143,7 +143,7 @@ namespace Velvet.Tests
             Assert.That(unbound ? BoxShadowSilhouette.TryGet(scope.Root[0]) : null, Is.Not.Null);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowLg_When_Reconciled_Then_BlurPresetIsApplied()
         {
@@ -157,7 +157,7 @@ namespace Velvet.Tests
             Assert.That(Binding(scope, scope.Root[0]).Layers[0].Blur, Is.EqualTo(15f));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowLg_When_Reconciled_Then_ColorAlphaPresetIsApplied()
         {
@@ -171,7 +171,7 @@ namespace Velvet.Tests
             Assert.That(Binding(scope, scope.Root[0]).Layers[0].Color.a, Is.EqualTo(0.1f).Within(0.001f));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowLg_When_Reconciled_Then_SpreadPresetIsApplied()
         {
@@ -185,7 +185,7 @@ namespace Velvet.Tests
             Assert.That(Binding(scope, scope.Root[0]).Layers[0].Spread, Is.EqualTo(-3f));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_Rounded2xlShadow_When_Reconciled_Then_CornerRadiusFollowsRoundedScale()
         {
@@ -199,7 +199,7 @@ namespace Velvet.Tests
             Assert.That(Binding(scope, scope.Root[0]).CornerRadii.x, Is.EqualTo(16f));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_NoShadowClass_When_Reconciled_Then_NoPaintBindingIsCreated()
         {
@@ -213,7 +213,7 @@ namespace Velvet.Tests
             Assert.That(BoxShadowSilhouette.TryGet(scope.Root[0]), Is.Null);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_ShadowNone_When_Reconciled_Then_NoPaintBindingIsCreated()
         {
@@ -229,7 +229,7 @@ namespace Velvet.Tests
 
         // Parity win: a shadow is non-structural — it must not shift a sibling's layout.
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_TwoSiblings_When_OneGainsShadow_Then_TheNextSiblingKeepsItsSlotIndex()
         {
@@ -255,7 +255,7 @@ namespace Velvet.Tests
             Assert.That(scope.Root[1].name, Is.EqualTo("b"));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AShadowedElement_When_Reconciled_Then_NoWrapperElementIsAddedAroundIt()
         {
@@ -269,7 +269,7 @@ namespace Velvet.Tests
 
         // Patch: preset change
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AShadowedElement_When_PresetChangedByPatch_Then_BlurUpdatesInPlace()
         {
@@ -288,7 +288,7 @@ namespace Velvet.Tests
 
         // Patch: class removal (detach)
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AShadowedElement_When_ShadowClassRemovedByPatch_Then_PaintBindingIsDetached()
         {
@@ -306,7 +306,7 @@ namespace Velvet.Tests
             Assert.That(BoxShadowSilhouette.TryGet(element), Is.Null);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AShadowedElement_When_ShadowClassRemovedByPatch_Then_BindingIsUntracked()
         {
@@ -325,7 +325,7 @@ namespace Velvet.Tests
 
         // Unmount
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AShadowedElement_When_Unmounted_Then_BindingIsUntracked()
         {
@@ -344,7 +344,7 @@ namespace Velvet.Tests
 
         // User wrapElement composition: a paint composes with a user wrapper (no opt-out needed).
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its skew cases and this shadow case reads none of them. The branch changed only the fixture's shared skew probe.
+        // GREEN_ON_BASE(refactor): no line of this case changed; the fixture's skew cases, constants and skew-angle helper were deleted, and none of them is read here.
         [Test]
         public void Given_AUserWrapElementWithShadowClass_When_Reconciled_Then_TheInnerCarriesTheShadowPaint()
         {

@@ -226,7 +226,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its shear-growth cases and this one reads none of them.
+        // GREEN_ON_BASE(refactor): the base already holds `SilhouetteFace.SuppressedColor`; this case now reads it directly where `SkewSilhouette.SuppressedColor` only forwarded to it.
         [Test]
         public void Given_AColorInTheEpsilonBandAroundTheSentinel_When_Tested_Then_ItIsNotTheSentinel()
         {
@@ -240,7 +240,7 @@ namespace Velvet.Tests
             Assert.That(SilhouetteFace.IsSentinel(nearButReal), Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): the base already runs this case; the fixture lost its shear-growth cases and this one reads none of them.
+        // GREEN_ON_BASE(refactor): the base already holds `SilhouetteFace.SuppressedColor`; this case now reads it directly where `SkewSilhouette.SuppressedColor` only forwarded to it.
         [Test]
         public void Given_TheExactSentinelColor_When_Tested_Then_ItIsTheSentinel()
         {
