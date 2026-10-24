@@ -433,6 +433,7 @@ namespace Velvet.Tests
             Assert.That(Q("ghost").parent.style.display.value, Is.EqualTo(DisplayStyle.Flex));
         }
 
+        // GREEN_ON_BASE(characterization): kills the DragOverlayHost.cs:95 equality survivor; main already keeps a root-mounted overlay in an editor panel in place.
         [Test]
         public void Given_ADragOverlayThatIsTheMountedRoot_When_MountedInAnEditorPanel_Then_ItsChildrenStayInTheMount()
         {

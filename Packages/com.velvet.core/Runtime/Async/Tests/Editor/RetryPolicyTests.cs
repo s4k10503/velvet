@@ -644,6 +644,7 @@ namespace Velvet.Tests
             return true;
         };
 
+        // GREEN_ON_BASE(characterization): kills the RetryPolicy.cs:89 equality survivor; main already moves a run that starts off the main thread before it reads the connection.
         [Test]
         public void Given_NoIsOnlineOnThePolicy_When_ARunStartsOffTheMainThread_Then_NetworkSignalsAreReadOnTheMainThread()
         {
@@ -669,6 +670,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): kills the RetryPolicy.cs:117 equality survivor (its first operand); main already moves a retry that falls due off the main thread before it reads the connection.
         [Test]
         public void Given_NoIsOnlineOnThePolicy_When_ARetryIsDueOffTheMainThread_Then_NetworkSignalsAreReadOnTheMainThread()
         {
@@ -703,6 +705,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): pins the RetryPolicy.cs:117 clause the survivor leaves alone (its second operand); main already moves the retry before it reads the visibility.
         [Test]
         public void Given_NoIsFocusedOnThePolicy_When_ARetryIsDueOffTheMainThread_Then_NetworkSignalsAreReadOnTheMainThread()
         {
@@ -736,6 +739,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): kills the RetryPolicy.cs:150 line-removed survivor; main already rejects a pause whose caller left as the loop condition was met.
         [Test]
         public void Given_ARunPausedOffline_When_TheCallerCancelsAsTheConnectionReturns_Then_NoAttemptStarts()
         {

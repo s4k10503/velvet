@@ -756,6 +756,7 @@ namespace Velvet.Tests
             return V.Div(children: flipped == 0 ? new VNode[] { first, second } : new VNode[] { second, first });
         }
 
+        // GREEN_ON_BASE(characterization): kills the ComponentRegistry.cs:572 line-removed survivor; main already keeps two components of one row in their parent's child-list order.
         [Test]
         public void Given_KeyedContainersEachHoldingTwoComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheTwoInAContainerKeepTheirOrder()
         {
