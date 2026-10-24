@@ -429,7 +429,8 @@ still wraps at its widest run instead of refusing to shrink, and one in a column
 text.
 
 The item keeps whatever its cascade gives it when it is clipped (`overflow-hidden`, `truncate`), declares
-its own `min-w-*` / `min-h-*` on that axis, sits in a `grid` column, has children, or is
+its own `min-w-*` / `min-h-*` on that axis (`min-w-[auto]` and `min-h-[auto]` declare none, as in CSS, where
+`auto` is the unset value), sits in a `grid` column, has children, or is
 absolutely positioned or hidden. A clipped item and a grid item have an automatic minimum of zero in CSS.
 
 Not covered: a minimum the theme or a stylesheet of your own declares on a label is not seen, and the

@@ -478,6 +478,95 @@ namespace Velvet.Tests
             Assert.That(label.style.minHeight.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        [Test]
+        public void Given_ALabelWithAnAutoBracketMinWidth_When_Resolved_Then_ItsMinWidthIsItsWidestWord()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-row w-[20px]", "min-w-[auto]", Sentence);
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        [Test]
+        public void Given_ALabelWithAnAutoBracketMinHeight_When_ResolvedInAColumn_Then_ItsMinHeightIsItsWrappedHeight()
+        {
+            // Arrange / Act
+            var label = MountLabel("flex flex-col h-[10px] w-[60px]", "min-h-[auto]", ManyShortWords);
+            var wrapped = MeasuredHeight(label, ManyShortWords, label.resolvedStyle.width - HorizontalFrame(label));
+
+            // Assert
+            Assert.That(label.style.minHeight.value.value, Is.EqualTo(Mathf.Ceil(wrapped) + VerticalFrame(label)));
+        }
+
+        [Test]
+        public void Given_ALabelWithAFloor_When_AnAutoBracketMinWidthIsPatchedIn_Then_TheFloorStays()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(string labelClass) => new VNode[]
+            {
+                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
+            };
+            var before = Tree("");
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            Settle(label);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree("min-w-[auto]"));
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        [Test]
+        public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedAway_Then_TheFloorStays()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(string labelClass) => new VNode[]
+            {
+                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
+            };
+            var before = Tree("min-w-[auto]");
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            Settle(label);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree(""));
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stands down for any min-w-* class; what reddens it is the
+        // manipulator keeping a floor over a declared pixel minimum once the auto bracket leaves.
+        [Test]
+        public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedToAPixelBracket_Then_NoFloorIsWritten()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            _window.rootVisualElement.Add(scope.Root);
+            VNode[] Tree(string labelClass) => new VNode[]
+            {
+                V.Div("flex flex-row w-[20px]", V.Label(className: labelClass, text: Sentence)),
+            };
+            var before = Tree("min-w-[auto]");
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
+            var label = scope.Root.Q<Label>();
+            Settle(label);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Tree("min-w-[5px]"));
+
+            // Assert
+            Assert.That(label.style.minWidth.value.value, Is.EqualTo(5f));
+        }
+
         // GREEN_ON_BASE(characterization): the base writes no minimum at all; what reddens it is the manipulator
         // writing for an item that is not in the flow.
         [Test]
