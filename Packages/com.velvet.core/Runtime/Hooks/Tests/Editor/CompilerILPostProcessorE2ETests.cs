@@ -11,8 +11,10 @@ namespace Velvet.Tests
     /// Specifies the default-on inner auto-memoization weaver (the <c>Unity.Velvet.CodeGen</c> ILPostProcessor)
     /// at the IL level: which <c>[Component]</c> bodies it weaves and which it leaves untouched.
     /// <list type="bullet">
-    /// <item>Weaving a body means injecting both the <c>TryGetMemoizedVNode</c> gate and the
-    /// <c>StoreMemoizedVNode</c> commit; an unwoven body has neither.</item>
+    /// <item>Weaving a body means keying it as a whole: injecting both the <c>TryGetMemoizedVNode</c> gate and the
+    /// <c>StoreMemoizedVNode</c> commit, or, where the body has scopes of its own, slot 0 of the run it reserves.
+    /// An unwoven body has no such gate; it may still have scopes that read neither the hook outside the
+    /// allow-lists nor the call the build cannot see that kept the gate off it.</item>
     /// <item>An analyzable body — one with a hook whose captured value keys the cache — is woven independently
     /// of the props-bail flag. Single-element deconstruction of a hook result, multiple returns after the hook
     /// section, props prepended to the deps array, a captured <c>UseContext</c> value, a captured
@@ -25,16 +27,15 @@ namespace Velvet.Tests
     /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
     /// <item>An open virtual / interface dispatch outside the BCL / Unity carve-out — made directly or through a
     /// helper — is woven past the gate: after the last hook call, or anywhere in a body with no hook.</item>
-    /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
-    /// hook to key a cache on, a props-only body left to its props bail, a discarded hook value, a whole-tuple
-    /// capture (compared structurally, not by reference, so a fresh-but-equal record would be a stale hit), a
-    /// body with void hooks alone and no parameter (empty deps would freeze it on an unconditional hit), a body
-    /// that reaches the suspend-unsafe <c>Use</c> hook or
-    /// <c>UseMutation</c> — directly or transitively through a custom hook — a hook inside a loop (head-tested
-    /// or do-while), a hook section overlapping a try/catch region, and an open dispatch — made directly or
-    /// through a helper — ahead of a hook call, where a hook its runtime target composes would feed the body a
-    /// value the deps array does not capture. A delegate invocation (virtual Invoke on a sealed type) is not an
-    /// open dispatch.</item>
+    /// <item>A body the weaver cannot prove correct has no gate on the whole (graceful bailout): neither a
+    /// parameter nor a hook to key a cache on, a props-only body left to its props bail, a discarded hook value, a
+    /// whole tuple handed on whole (an element read one at a time is a dep of its own), a body with void hooks
+    /// alone and no parameter (empty deps would freeze it on an unconditional hit), a body that reaches the
+    /// suspend-unsafe <c>Use</c> hook or <c>UseMutation</c> — directly or transitively through a custom hook — a
+    /// hook inside a loop (head-tested or do-while), a hook section overlapping a try/catch region, and an open
+    /// dispatch — made directly or through a helper — ahead of a hook call, where a hook its runtime target
+    /// composes would feed the body a value the deps array does not capture. A delegate invocation (virtual
+    /// Invoke on a sealed type) is not an open dispatch.</item>
     /// <item>A body opting out with <c>[Component(Compiler = false)]</c> is left unwoven even when it is provably
     /// analyzable; the opt-out is honored ahead of analysis.</item>
     /// <item>Every component — woven, opted-out, or bailed — still renders normally and produces visible output
@@ -89,10 +90,10 @@ namespace Velvet.Tests
 
         public sealed record TupleStateRecord(int Value);
 
-        // Capturing the whole UseState tuple (no deconstruction) whose value is a record: the boxed tuple is
+        // Capturing the whole UseState tuple (no deconstruction) whose value is a record: the boxed tuple would be
         // compared structurally per element, diverging from the reference equality the reconciler uses to drive a
-        // re-render, so a fresh-but-equal record set would be a stale hit. The weaver must bail; single-element
-        // deconstruction is required.
+        // re-render, so a fresh-but-equal record set would be a stale hit. The weaver keys the cache on the
+        // element the body reads instead, which is compared as the record it is.
         [Component]
         public static VNode WholeTupleStateComponent()
         {
@@ -1191,7 +1192,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base leaves this body unwoven too, and this change keeps it so.
         // What changed is the message, which gave the missing hook as the reason where a body with a parameter
-        // and no hook is woven now. Removing the guard in `TryAnalyze` that refuses an empty deps array reddens it.
+        // and no hook is woven now. Removing the guard in `AnalyzeHooks` that refuses an empty deps array reddens it.
         [Test]
         public void Given_NoHookComponent_When_Analyzed_Then_IsLeftUnwoven()
         {
@@ -1226,11 +1227,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_WholeTupleCapture_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_WholeTupleReadOneElementAtATime_When_Woven_Then_InjectsBothMemoCalls()
         {
             // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(WholeTupleStateComponent))), Is.False,
-                "A whole-tuple capture is compared structurally, diverging from the reference equality the reconciler uses, so the weaver bails and requires single-element deconstruction");
+            Assert.That(IsWoven(LoadMethod(nameof(WholeTupleStateComponent))), Is.True,
+                "The elements a whole tuple is read through are deps of their own, so the tuple is never compared as a tuple");
         }
 
         [Test]
@@ -1250,7 +1251,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base bails a body making an open dispatch, and this one stays bailed.
-        // What it pins is the ahead-of-gate refusal: removing the `HasOpaqueCallAhead` check from `TryAnalyze`
+        // What it pins is the ahead-of-gate refusal: removing the `HasOpaqueCallAhead` check from `AnalyzeHooks`
         // reddens it.
         [Test]
         public void Given_InterfaceDispatchAheadOfTheHook_When_Analyzed_Then_IsLeftUnwoven()
@@ -1906,11 +1907,23 @@ namespace Velvet.Tests
 
         #region Helpers
 
-        // A body is woven iff both the gate (TryGetMemoizedVNode) and the commit (StoreMemoizedVNode) are
-        // injected; an unwoven body has neither.
+        // A body is keyed as a whole iff both its gate and its commit are injected: TryGetMemoizedVNode and
+        // StoreMemoizedVNode, or, in a body that also has scopes of its own, slot 0 of the run it reserves, which
+        // the report says is its gate. A body without that may still have scopes.
         private static bool IsWoven(MethodDefinition method) =>
-            InjectsHookCall(method, nameof(Hooks.TryGetMemoizedVNode))
-            && InjectsHookCall(method, nameof(Hooks.StoreMemoizedVNode));
+            (InjectsHookCall(method, nameof(Hooks.TryGetMemoizedVNode))
+                && InjectsHookCall(method, nameof(Hooks.StoreMemoizedVNode)))
+            || (HasBodyGate(method)
+                && InjectsHookCall(method, nameof(Hooks.TryGetScope))
+                && InjectsHookCall(method, nameof(Hooks.StoreScope)));
+
+        // What the weaver recorded about the body: whether it is keyed as a whole.
+        private static bool HasBodyGate(MethodDefinition method)
+        {
+            var report = method.CustomAttributes.FirstOrDefault(
+                a => a.AttributeType.FullName == typeof(MemoizationReportAttribute).FullName);
+            return report != null && (bool)report.ConstructorArguments[0].Value;
+        }
 
         private static MethodDefinition LoadMethod(string name)
         {

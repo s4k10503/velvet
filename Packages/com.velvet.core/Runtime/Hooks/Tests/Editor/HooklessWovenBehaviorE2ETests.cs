@@ -273,7 +273,8 @@ namespace Velvet.Tests
 
         private string LeafText() => _root.Q<Label>(name: "leaf")?.text;
 
-        // Whether the weaver injected its gate into the named method of this fixture.
+        // Whether the weaver injected its gate into the named method of this fixture: the single gate of a body
+        // with no scope of its own, or the reservation a body with scopes opens with.
         private static bool IsWoven(string methodName)
         {
             using var assembly = AssemblyDefinition.ReadAssembly(typeof(HooklessWovenBehaviorE2ETests).Assembly.Location);
@@ -282,7 +283,7 @@ namespace Velvet.Tests
             return method.Body.Instructions.Any(instr => instr.OpCode == OpCodes.Call
                 && instr.Operand is MethodReference callee
                 && callee.DeclaringType.FullName == typeof(Hooks).FullName
-                && callee.Name == nameof(Hooks.TryGetMemoizedVNode));
+                && (callee.Name == nameof(Hooks.TryGetMemoizedVNode) || callee.Name == nameof(Hooks.ReserveScopes)));
         }
 
         #region Reuse on an equal parameter

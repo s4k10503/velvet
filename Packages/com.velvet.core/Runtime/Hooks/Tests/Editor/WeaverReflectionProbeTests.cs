@@ -194,7 +194,7 @@ namespace Velvet.Tests
 
         // --- CompilerWeaver hook-return consumption shape probes ---
         //
-        // TryAnalyze recognizes exactly four ways a hook call's return value can be consumed: discarded via
+        // ScanHooks recognizes exactly four ways a hook call's return value can be consumed: discarded via
         // a bare Pop (bail — an uncaptured reactive input cannot be tracked), a direct stloc capture, an
         // Item1-only tuple deconstruction (`var (v, _) = ...`), and a two-element tuple deconstruction
         // (`var (v, setV) = ...`, the Dup shape). These probes hand-assemble one Cecil method body per shape
@@ -299,7 +299,7 @@ namespace Velvet.Tests
         }
 
         // A hand-built body's instructions carry no Offset (real offsets exist only for IL parsed from an
-        // actual compiled stream); TryAnalyze's return-after-hook-boundary check compares Offset, so a probe
+        // actual compiled stream); the return-after-hook-boundary check compares Offset, so a probe
         // body must assign a strictly increasing Offset per instruction to reproduce real program order.
         private static void AssignSequentialOffsets(MethodDefinition method)
         {
@@ -1228,22 +1228,15 @@ namespace Velvet.Tests
             return new MethodReference("Undeclared", module.TypeSystem.Void, leafType);
         }
 
-        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.
-        // What this pins is the safety gate running ahead of the entry gate. An unresolvable callee is read as
-        // no hook by the hook scan and as unverifiable by the safety gate, so moving the hookless branch of
-        // `TryAnalyze` above its `ReachesAnyNonSafeHook` call reddens this case.
         [Test]
-        public void Given_AHooklessBodyCallingAnUnresolvableMethod_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        public void Given_AHooklessBodyCallingAnUnresolvableMethod_When_CompilerWeaverRuns_Then_MethodIsWoven()
         {
             // Arrange — one parameter, and a call into an assembly no resolver can find
             using var module = BuildHookShapeProbeModule("UnresolvableCalleeProbe",
                 out var method, out _, out _, out _);
             method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
                 module.TypeSystem.Object));
-            var missingScope = new AssemblyNameReference("Velvet.WeaverProbe.Missing", new Version(1, 0, 0, 0));
-            module.AssemblyReferences.Add(missingScope);
-            var missingType = new TypeReference("Probe.Missing", "Service", module, missingScope);
-            var missingMethod = new MethodReference("Run", module.TypeSystem.Void, missingType);
+            var missingMethod = UnresolvableMethodOf(module, "Run", module.TypeSystem.Void);
             var il = method.Body.GetILProcessor();
             il.Append(Instruction.Create(OpCodes.Call, missingMethod));
             il.Append(Instruction.Create(OpCodes.Ldnull));
@@ -1254,8 +1247,194 @@ namespace Velvet.Tests
             InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
 
             // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A callee the weaver cannot inspect is read like an open dispatch: past the gate, the runtime stops "
+                + "serving hits once it has run a hook");
+        }
+
+        // A reference to a method of a type in an assembly no resolver can find.
+        private static MethodReference UnresolvableMethodOf(ModuleDefinition module, string name, TypeReference returnType)
+        {
+            var missingScope = new AssemblyNameReference("Velvet.WeaverProbe.Missing", new Version(1, 0, 0, 0));
+            module.AssemblyReferences.Add(missingScope);
+            var missingType = new TypeReference("Probe.Missing", "Service", module, missingScope);
+            return new MethodReference(name, returnType, missingType);
+        }
+
+        // Adds to a probe module the surface the scope-cutting weaver resolves: the run of slots a body reserves,
+        // the gate and the commit of one of them, the report attribute, and two factories building a VNode.
+        private static void AddScopeSurface(ModuleDefinition module, out MethodReference label, out MethodReference pair)
+        {
+            var vnode = module.GetType("Velvet.VNode");
+            var hooks = module.GetType("Velvet.Hooks");
+            var factories = new TypeDefinition("Velvet", "V",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Abstract
+                | Mono.Cecil.TypeAttributes.Sealed | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+            module.Types.Add(factories);
+            label = AddStaticMethod(factories, "Label", vnode, module.TypeSystem.String);
+            pair = AddStaticMethod(factories, "Pair", vnode, vnode, vnode);
+
+            var handle = module.ImportReference(typeof(RuntimeMethodHandle));
+            var objects = new ArrayType(module.TypeSystem.Object);
+            AddStaticMethod(hooks, "ReserveScopes", module.TypeSystem.Int32, handle, module.TypeSystem.Int32);
+            var tryGet = AddStaticMethod(hooks, "TryGetScope", module.TypeSystem.Boolean, module.TypeSystem.Int32,
+                module.TypeSystem.Int32, objects, new ByReferenceType(vnode));
+            tryGet.Parameters[3].Attributes = Mono.Cecil.ParameterAttributes.Out;
+            AddStaticMethod(hooks, "StoreScope", module.TypeSystem.Void, module.TypeSystem.Int32,
+                module.TypeSystem.Int32, objects, vnode);
+
+            var report = new TypeDefinition("Velvet", "MemoizationReportAttribute",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class, module.ImportReference(typeof(Attribute)));
+            var constructor = new MethodDefinition(".ctor",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.HideBySig
+                | Mono.Cecil.MethodAttributes.SpecialName | Mono.Cecil.MethodAttributes.RTSpecialName,
+                module.TypeSystem.Void);
+            constructor.Parameters.Add(new ParameterDefinition("bodyGate", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.Boolean));
+            constructor.Parameters.Add(new ParameterDefinition("scopes", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.Int32));
+            constructor.Parameters.Add(new ParameterDefinition("bailouts", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.String));
+            report.Methods.Add(constructor);
+            module.Types.Add(report);
+        }
+
+        private static MethodDefinition AddStaticMethod(TypeDefinition type, string name, TypeReference returnType,
+            params TypeReference[] parameters)
+        {
+            var method = new MethodDefinition(name,
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, returnType);
+            foreach (var parameter in parameters)
+            {
+                method.Parameters.Add(new ParameterDefinition(parameter));
+            }
+            type.Methods.Add(method);
+            return method;
+        }
+
+        private static int CallsTo(MethodDefinition method, string name)
+            => method.Body.Instructions.Count(instr => (instr.OpCode == OpCodes.Call || instr.OpCode == OpCodes.Callvirt)
+                && instr.Operand is MethodReference callee && callee.Name == name);
+
+        // `Name()` into an assembly no resolver can find stored into a local ahead of the hook, then two labels,
+        // one reading that local and one reading the hook's value, under a pair.
+        private static MethodDefinition BuildUnresolvableAheadOfTheHookBody(ModuleDefinition module,
+            MethodDefinition method, MethodReference useId, MethodReference label, MethodReference pair)
+        {
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, UnresolvableMethodOf(module, "Name", module.TypeSystem.String)));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_1));
+            il.Append(Instruction.Create(OpCodes.Ldloc_0));
+            il.Append(Instruction.Create(OpCodes.Call, label));
+            il.Append(Instruction.Create(OpCodes.Ldloc_1));
+            il.Append(Instruction.Create(OpCodes.Call, label));
+            il.Append(Instruction.Create(OpCodes.Call, pair));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+            return method;
+        }
+
+        [Test]
+        public void Given_AnUnresolvableCalleeAheadOfTheLastHook_When_CompilerWeaverRuns_Then_NoGateIsPlacedOnTheBody()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvableAheadGateProbe",
+                out var method, out var useId, out _, out _);
+            AddScopeSurface(module, out var label, out var pair);
+            BuildUnresolvableAheadOfTheHookBody(module, method, useId, label, pair);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
             Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
-                "A callee the weaver cannot inspect bails a body with no hook as it bails one with a hook");
+                "A callee the weaver cannot inspect, ahead of the last hook, may feed the body a hook value the deps array does not capture");
+        }
+
+        [Test]
+        public void Given_AnUnresolvableCalleeAheadOfTheLastHook_When_CompilerWeaverRuns_Then_OnlyTheLabelNotReadingItsResultIsCachedOnItsOwn()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvableAheadScopeProbe",
+                out var method, out var useId, out _, out _);
+            AddScopeSurface(module, out var label, out var pair);
+            BuildUnresolvableAheadOfTheHookBody(module, method, useId, label, pair);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(CallsTo(method, "TryGetScope"), Is.EqualTo(1),
+                "The label that reads the hook's value is cached on it; the label that reads the callee's result is not, and neither is the pair that takes both");
+        }
+
+        [Test]
+        public void Given_AnUnresolvableCalleeAheadOfTheLastHook_When_CompilerWeaverRuns_Then_TheMethodCarriesAReportNamingIt()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvableAheadReportProbe",
+                out var method, out var useId, out _, out _);
+            AddScopeSurface(module, out var label, out var pair);
+            BuildUnresolvableAheadOfTheHookBody(module, method, useId, label, pair);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            var report = method.CustomAttributes.Single(a => a.AttributeType.Name == "MemoizationReportAttribute");
+            Assert.That(((bool)report.ConstructorArguments[0].Value, (int)report.ConstructorArguments[1].Value,
+                    ((string)report.ConstructorArguments[2].Value).Contains("cannot see")),
+                Is.EqualTo((false, 1, true)));
+        }
+
+        // Marks the probe's assembly with [assembly: AssemblyMetadata(key, value)].
+        private static void CarryAssemblyMetadata(ModuleDefinition module, string key, string value)
+        {
+            var attributeType = new TypeReference("System.Reflection", "AssemblyMetadataAttribute", module,
+                module.TypeSystem.CoreLibrary);
+            var constructor = new MethodReference(".ctor", module.TypeSystem.Void, attributeType) { HasThis = true };
+            constructor.Parameters.Add(new ParameterDefinition(module.TypeSystem.String));
+            constructor.Parameters.Add(new ParameterDefinition(module.TypeSystem.String));
+            var attribute = new CustomAttribute(constructor);
+            attribute.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, key));
+            attribute.ConstructorArguments.Add(new CustomAttributeArgument(module.TypeSystem.String, value));
+            module.Assembly.CustomAttributes.Add(attribute);
+        }
+
+        [Test]
+        public void Given_AnAssemblyAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_ItIsAlsoABuildWarningNamingTheMethod()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvableAheadWarningProbe",
+                out var method, out var useId, out _, out _);
+            AddScopeSurface(module, out var label, out var pair);
+            BuildUnresolvableAheadOfTheHookBody(module, method, useId, label, pair);
+            CarryAssemblyMetadata(module, MemoizationReportAttribute.MetadataKey, MemoizationReportAttribute.WarnValue);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(messages.Any(message => message.Contains("Probe.Fixture::Component") && message.Contains("cannot see")),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_AnAssemblyNotAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_NoBuildWarningIsRaised()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("UnresolvableAheadQuietProbe",
+                out var method, out var useId, out _, out _);
+            AddScopeSurface(module, out var label, out var pair);
+            BuildUnresolvableAheadOfTheHookBody(module, method, useId, label, pair);
+
+            // Act
+            var messages = InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(messages, Is.Empty);
         }
 
         private static int IndexOfCallTo(MethodDefinition method, string name)
