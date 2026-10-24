@@ -23,7 +23,7 @@ namespace Velvet
     /// is rebuilt: give the collection a key part of its own. A collection part is enumerated when the key is
     /// built and again on every comparison, so pass a materialised collection rather than a lazy query.
     /// <para/>
-    /// <see cref="QueryClient.InvalidateQueries"/> reads its key as a filter, v5's <c>partialMatchKey</c>: the
+    /// <see cref="QueryClient.InvalidateQueries(QueryKey)"/> reads its key as a filter, v5's <c>partialMatchKey</c>: the
     /// filter's parts lead the key's, and a filter part that is an array or a list matches an array or a list
     /// that starts with it, one that is a dictionary matches a dictionary holding at least its entries, each
     /// value matched the same way.

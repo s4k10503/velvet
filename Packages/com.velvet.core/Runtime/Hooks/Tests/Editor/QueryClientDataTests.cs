@@ -323,67 +323,9 @@ namespace Velvet.Tests
             Assert.That((Last().Data, Last().IsFetching), Is.EqualTo((9, false)), "The request lands over the written data");
         }
 
-        [Test]
-        public void Given_TwoReadersWithDifferentSharingFunctions_When_DataIsWritten_Then_TheLaterReadersFunctionSharesIt()
-        {
-            // Arrange
-            s_staleTime = TimeSpan.FromMinutes(1);
-            s_client.SetQueryData(Todos, 1);
-            using var first = MountUnder(_root, AddingTen);
-            using var second = MountUnder(_secondRoot, AddingHundred);
-
-            // Act
-            s_client.SetQueryData(Todos, 2);
-
-            // Assert
-            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(102),
-                "A write shares with the options the entry was last handed, as v5's setData uses the query's own");
-        }
-
-        [Test]
-        public void Given_ARequestStartedByOneReader_When_AnotherSubscribesBeforeItLands_Then_TheLaterReadersFunctionSharesIt()
-        {
-            // Arrange
-            s_staleTime = TimeSpan.FromMinutes(1);
-            using var first = MountUnder(_root, AddingTen);
-            using var second = MountUnder(_secondRoot, AddingHundred);
-
-            // Act
-            s_sources[0].TrySetResult(1);
-
-            // Assert
-            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(101),
-                "A landing shares with the options the entry holds when it settles, as v5's fetch reads this.options then");
-        }
-
         #endregion
 
         #region Components and helpers
-
-        private static MountedTree MountUnder(VisualElement root, Func<VNode> reader)
-        {
-            var mounted = V.Mount(root, V.Component(reader, key: "reader"));
-            mounted.FlushEffectsForTest();
-            return mounted;
-        }
-
-        [Component]
-        private static VNode AddingTen()
-        {
-            Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => arrived + 10 },
-                s_client);
-            return V.Label(text: "ten");
-        }
-
-        [Component]
-        private static VNode AddingHundred()
-        {
-            Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => arrived + 100 },
-                s_client);
-            return V.Label(text: "hundred");
-        }
 
         private MountedTree MountResolved(int data)
         {

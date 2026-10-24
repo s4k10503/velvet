@@ -185,16 +185,208 @@ namespace Velvet
         /// takes no token, is left to land.
         /// </summary>
         /// <param name="queryKey">The filter; null matches every entry.</param>
-        public void InvalidateQueries(QueryKey? queryKey = null)
+        /// <returns>A task that completes once the requests this started have settled, whatever they did, so
+        /// a mutation callback can return it to wait for the refetch as v5's <c>onSuccess</c> does.</returns>
+        public VelvetTask InvalidateQueries(QueryKey? queryKey = null)
+            => InvalidateQueries(queryKey == null ? null : new QueryFilters { QueryKey = queryKey }, null);
+
+        /// <summary>
+        /// <see cref="InvalidateQueries(QueryKey)"/> over the entries <paramref name="filters"/> selects, TanStack
+        /// Query's <c>invalidateQueries(filters, options)</c>. Only entries an enabled query reads are fetched
+        /// again.
+        /// </summary>
+        /// <param name="filters">The entries to mark stale; null selects every entry.</param>
+        /// <param name="options">Whether the requests it starts cancel those in flight, and whether the task
+        /// faults with their failure.</param>
+        public VelvetTask InvalidateQueries(QueryFilters? filters, RefetchOptions? options = null)
         {
-            CollectGarbage();
-            foreach (var entry in SnapshotEntries())
+            options ??= new RefetchOptions();
+            var tasks = new List<VelvetTask>();
+            foreach (var entry in SelectEntries(filters))
             {
-                if (queryKey == null || entry.Key.Matches(queryKey))
-                {
-                    entry.Invalidate();
-                }
+                tasks.Add(entry.Invalidate(options.CancelRefetch));
             }
+            return Settle(tasks, options.ThrowOnError);
+        }
+
+        /// <summary>
+        /// Fetches again the entries <paramref name="filters"/> selects that can be: those an enabled query reads,
+        /// and, for an entry nothing reads, those that were fetched before and keep the options of that fetch.
+        /// TanStack Query's <c>refetchQueries</c>.
+        /// </summary>
+        /// <param name="filters">The entries to fetch; null selects every entry.</param>
+        /// <param name="options">Whether the requests cancel those in flight, and whether the task faults with a
+        /// failure.</param>
+        /// <returns>A task that completes once the requests have settled.</returns>
+        public VelvetTask RefetchQueries(QueryFilters? filters = null, RefetchOptions? options = null)
+        {
+            options ??= new RefetchOptions();
+            var tasks = new List<VelvetTask>();
+            foreach (var entry in SelectEntries(filters))
+            {
+                tasks.Add(entry.Refetch(options.CancelRefetch));
+            }
+            return Settle(tasks, options.ThrowOnError);
+        }
+
+        /// <summary>
+        /// Cancels the requests of the entries <paramref name="filters"/> selects, TanStack Query's
+        /// <c>cancelQueries</c>. The token a cancelled query function received is cancelled, and a task a
+        /// caller awaits for the request, such as <see cref="FetchQuery{T}"/>'s, is cancelled with it.
+        /// </summary>
+        /// <param name="filters">The entries to cancel; null selects every entry.</param>
+        /// <param name="revert">True, the default, puts each entry back as it stood before the request; false
+        /// leaves it in <see cref="QueryStatus.Error"/> with the cancellation as its error, keeping its data.</param>
+        /// <returns>A completed task, so that an <c>OnMutate</c> can await it as v5's is awaited.</returns>
+        public VelvetTask CancelQueries(QueryFilters? filters = null, bool revert = true)
+        {
+            foreach (var entry in SelectEntries(filters))
+            {
+                entry.CancelRequest(revert);
+            }
+            return VelvetTask.CompletedTask;
+        }
+
+        /// <summary>
+        /// Removes the entries <paramref name="filters"/> selects and cancels their requests, TanStack Query's
+        /// <c>removeQueries</c>. A mounted query reading a removed entry re-renders without data and fetches
+        /// into a new one, as after <see cref="Clear"/>.
+        /// </summary>
+        /// <param name="filters">The entries to remove; null selects every entry.</param>
+        public void RemoveQueries(QueryFilters? filters = null)
+        {
+            foreach (var entry in SelectEntries(filters))
+            {
+                _entries.Remove(entry.Key);
+                _inactive.Remove(entry);
+                entry.Remove();
+            }
+        }
+
+        /// <summary>
+        /// Puts the entries <paramref name="filters"/> selects back to the state of one never fetched, with no
+        /// data and no error, cancelling their requests, and then fetches those an enabled query reads —
+        /// TanStack Query's <c>resetQueries</c>. A <see cref="QueryFilters.Type"/> of null refetches the active
+        /// entries; one that is set also selects what is refetched.
+        /// </summary>
+        /// <param name="filters">The entries to reset; null selects every entry.</param>
+        /// <param name="options">As <see cref="RefetchQueries"/>.</param>
+        /// <returns>A task that completes once the fetches have settled.</returns>
+        public VelvetTask ResetQueries(QueryFilters? filters = null, RefetchOptions? options = null)
+        {
+            foreach (var entry in SelectEntries(filters))
+            {
+                entry.ResetState();
+            }
+            var refetch = (filters ?? new QueryFilters()) with { Type = filters?.Type ?? QueryTypeFilter.Active };
+            return RefetchQueries(refetch, options);
+        }
+
+        /// <summary>
+        /// The data <paramref name="options"/>' entry holds when it is fresh for the query's stale time, and
+        /// otherwise the data a request for it returns, TanStack Query's <c>fetchQuery</c>. A request in flight
+        /// is joined. The entry is created when there is none and, with nothing reading it, collected after the
+        /// query's garbage-collection time.
+        /// </summary>
+        /// <param name="options">The key, the query function and the options of
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> that shape a request: its stale time, garbage-collection
+        /// time, retries, retry delay and structural sharing. Unlike a mounted query, a request retries nothing
+        /// unless <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> says so, as v5's <c>fetchQuery</c> sets
+        /// <c>retry: false</c>.</param>
+        /// <returns>A task of the entry's data; it faults with the request's failure, and is cancelled when
+        /// something cancels the request.</returns>
+        /// <exception cref="InvalidOperationException">The entry holds data of another type.</exception>
+        public VelvetTask<T> FetchQuery<T>(QueryOptions<T, T> options)
+        {
+            var entry = EntryFor(options, out var fetchOptions, out var staleTime);
+            if (!entry.IsStaleFor(staleTime)) return VelvetTask.FromResult(entry.Data);
+            return entry.FetchAndWait(fetchOptions, cancelRefetch: false);
+        }
+
+        /// <summary>
+        /// <see cref="FetchQuery{T}"/> without the data: fills the cache ahead of the component that reads it.
+        /// TanStack Query's <c>prefetchQuery</c>.
+        /// </summary>
+        /// <returns>A task that completes once the request has settled, whatever it did.</returns>
+        public VelvetTask PrefetchQuery<T>(QueryOptions<T, T> options)
+        {
+            var request = FetchQuery(options);
+            return Settle(new List<VelvetTask> { request }, throwOnError: false);
+        }
+
+        /// <summary>
+        /// The data the entry <paramref name="options"/> names holds, and otherwise the data a request for it
+        /// returns, TanStack Query's <c>ensureQueryData</c>.
+        /// </summary>
+        /// <param name="options">As <see cref="FetchQuery{T}"/>.</param>
+        /// <param name="revalidateIfStale">True also fetches an entry whose data is stale for the query's stale
+        /// time, without waiting for it.</param>
+        public VelvetTask<T> EnsureQueryData<T>(QueryOptions<T, T> options, bool revalidateIfStale = false)
+        {
+            var entry = EntryFor(options, out _, out var staleTime);
+            if (!entry.HasData) return FetchQuery(options);
+            if (revalidateIfStale && entry.IsStaleFor(staleTime)) PrefetchQuery(options).Forget();
+            return VelvetTask.FromResult(entry.Data);
+        }
+
+        /// <summary>
+        /// The state of the entry <paramref name="queryKey"/> names, TanStack Query's <c>getQueryState</c>: null
+        /// when there is no such entry or it has gone unread past its garbage-collection time.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The entry holds data of another type.</exception>
+        public QueryState<T>? GetQueryState<T>(QueryKey queryKey)
+        {
+            if (queryKey == null) throw new ArgumentNullException(nameof(queryKey));
+            if (!_entries.TryGetValue(queryKey, out var found) || IsExpired(found, Now)) return null;
+            var entry = Typed<T>(found);
+            return new QueryState<T>
+            {
+                Status = entry.Status,
+                HasData = entry.HasData,
+                Data = entry.HasData ? entry.Data : default,
+                Error = entry.Error,
+                IsInvalidated = entry.IsInvalidated,
+                IsFetching = entry.IsFetching,
+                DataUpdatedAt = entry.HasData ? entry.DataUpdatedAt : TimeSpan.Zero,
+                FailureCount = entry.FailureCount,
+                FailureReason = entry.FailureReason,
+            };
+        }
+
+        /// <summary>
+        /// The key and data of each entry <paramref name="filters"/> selects that holds data of type
+        /// <typeparamref name="T"/>, TanStack Query's <c>getQueriesData</c>. An entry holding another type is
+        /// left out rather than throwing, since a filter selects across keys.
+        /// </summary>
+        public IReadOnlyList<KeyValuePair<QueryKey, T?>> GetQueriesData<T>(QueryFilters? filters = null)
+        {
+            var found = new List<KeyValuePair<QueryKey, T?>>();
+            foreach (var entry in SelectEntries(filters))
+            {
+                if (entry is QueryEntry<T> typed) found.Add(new KeyValuePair<QueryKey, T?>(typed.Key, typed.HasData ? typed.Data : default));
+            }
+            return found;
+        }
+
+        /// <summary>
+        /// <see cref="SetQueryData{T}(QueryKey, Func{T, T})"/> over each entry <paramref name="filters"/> selects
+        /// that holds data of type <typeparamref name="T"/>, TanStack Query's <c>setQueriesData</c>. An updater
+        /// returning null leaves its entry as it was.
+        /// </summary>
+        /// <returns>The key and the data written to each entry.</returns>
+        public IReadOnlyList<KeyValuePair<QueryKey, T?>> SetQueriesData<T>(
+            QueryFilters? filters, Func<T?, T> updater)
+        {
+            if (updater == null) throw new ArgumentNullException(nameof(updater));
+            var written = new List<KeyValuePair<QueryKey, T?>>();
+            foreach (var entry in SelectEntries(filters))
+            {
+                if (entry is not QueryEntry<T> typed) continue;
+                var next = updater(typed.HasData ? typed.Data : default);
+                if (next is null) continue;
+                written.Add(new KeyValuePair<QueryKey, T?>(typed.Key, typed.SetData(next)));
+            }
+            return written;
         }
 
         /// <summary>
@@ -257,6 +449,74 @@ namespace Velvet
         }
 
         internal TimeSpan Now => _clock();
+
+        // The entries a filter selects, among those that have not expired. A snapshot, since what runs on them
+        // can remove entries.
+        private QueryEntry[] SelectEntries(QueryFilters? filters)
+        {
+            CollectGarbage();
+            var selected = new List<QueryEntry>();
+            foreach (var entry in SnapshotEntries())
+            {
+                if (Matches(entry, filters)) selected.Add(entry);
+            }
+            return selected.ToArray();
+        }
+
+        // TanStack's matchQuery.
+        private static bool Matches(QueryEntry entry, QueryFilters? filters)
+        {
+            if (filters == null) return true;
+            if (filters.QueryKey != null
+                && !(filters.Exact ? entry.Key.Equals(filters.QueryKey) : entry.Key.Matches(filters.QueryKey)))
+            {
+                return false;
+            }
+            if (filters.Type == QueryTypeFilter.Active && !entry.IsActive) return false;
+            if (filters.Type == QueryTypeFilter.Inactive && entry.IsActive) return false;
+            if (filters.Stale.HasValue && entry.IsStaleForFilter != filters.Stale.Value) return false;
+            if (filters.FetchStatus.HasValue && (filters.FetchStatus.Value == QueryFetchStatus.Fetching) != entry.IsFetching)
+            {
+                return false;
+            }
+            return filters.Predicate == null || filters.Predicate(entry.Describe());
+        }
+
+        // Waits for every task, whatever it did; with throwOnError the first failure is thrown after the rest
+        // have settled.
+        private static VelvetTask Settle(List<VelvetTask> tasks, bool throwOnError)
+            => tasks.Count == 0 ? VelvetTask.CompletedTask : SettleAsync(tasks, throwOnError);
+
+        private static async VelvetTask SettleAsync(List<VelvetTask> tasks, bool throwOnError)
+        {
+            Exception? failure = null;
+            foreach (var task in tasks)
+            {
+                try
+                {
+                    await task;
+                }
+                catch (Exception taskFailure)
+                {
+                    failure ??= taskFailure;
+                }
+            }
+            if (throwOnError && failure != null) throw failure;
+        }
+
+        // The entry a fetchQuery-style call works on, with the options its request runs with and the stale time
+        // its data is judged by.
+        private QueryEntry<T> EntryFor<T>(QueryOptions<T, T> options, out QueryFetchOptions<T> fetchOptions, out TimeSpan staleTime)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.QueryKey == null) throw new ArgumentException("The options have no QueryKey.", nameof(options));
+            if (options.QueryFn == null) throw new ArgumentException("The options have no QueryFn.", nameof(options));
+            staleTime = RequireNonNegative(options.StaleTime ?? DefaultStaleTime, nameof(QueryOptions<T, T>.StaleTime));
+            var gcTime = RequireNonNegative(options.GcTime ?? DefaultGcTime, nameof(QueryOptions<T, T>.GcTime));
+            fetchOptions = new QueryFetchOptions<T>().Assign(options, this);
+            fetchOptions.SetRetries(options.Retry ?? 0);
+            return Ensure<T>(options.QueryKey, gcTime);
+        }
 
         // The client watches the application's visibility and connection while a query observes it, which is
         // when v5's onFocus and onOnline can find an observer to refetch for.
@@ -499,7 +759,12 @@ namespace Velvet
             if (gcTime > GcTime) GcTime = gcTime;
         }
 
-        internal abstract void Invalidate();
+        internal abstract bool IsActive { get; }
+        internal abstract bool IsStaleForFilter { get; }
+        internal abstract VelvetTask Invalidate(bool cancelRefetch);
+        internal abstract VelvetTask Refetch(bool cancelRefetch);
+        internal abstract void CancelRequest(bool revert);
+        internal abstract void ResetState();
         internal abstract void Remove();
         internal abstract void OnSignal(bool reconnect);
         internal abstract QueryInfo Describe();
@@ -521,6 +786,8 @@ namespace Velvet
         // Whether the request in flight runs a query function that takes the token, which v5 tells by the function
         // reading its signal.
         private bool _requestTakesToken;
+        // The callers waiting on the request in flight, each settled when the request lands, fails or is cancelled.
+        private List<VelvetTaskCompletionSource<T>>? _waiters;
 
         private readonly struct EntryState
         {
@@ -601,6 +868,49 @@ namespace Velvet
                 _retriesStopped = true;
             }
             Client.MarkInactive(this);
+        }
+
+        // Fetch, handing back a task of the request now in flight: the one this started, or the one it joined.
+        internal VelvetTask<T> FetchAndWait(QueryFetchOptions<T> options, bool cancelRefetch)
+        {
+            Fetch(options, cancelRefetch);
+            if (_inFlight == null) return VelvetTask.FromException<T>(new OperationCanceledException());
+            var waiter = new VelvetTaskCompletionSource<T>();
+            (_waiters ??= new List<VelvetTaskCompletionSource<T>>()).Add(waiter);
+            return waiter.Task;
+        }
+
+        private void ResolveWaiters(T data)
+        {
+            var waiters = _waiters;
+            if (waiters == null) return;
+            _waiters = null;
+            foreach (var waiter in waiters)
+            {
+                waiter.TrySetResult(data);
+            }
+        }
+
+        private void RejectWaiters(Exception error)
+        {
+            var waiters = _waiters;
+            if (waiters == null) return;
+            _waiters = null;
+            foreach (var waiter in waiters)
+            {
+                waiter.TrySetException(error);
+            }
+        }
+
+        private void CancelWaiters()
+        {
+            var waiters = _waiters;
+            if (waiters == null) return;
+            _waiters = null;
+            foreach (var waiter in waiters)
+            {
+                waiter.TrySetCanceled();
+            }
         }
 
         // cancelRefetch is TanStack's fetch option of the same name: an explicit refetch over an entry that
@@ -742,7 +1052,7 @@ namespace Velvet
             while (!request.IsCancellationRequested && !_retriesStopped && Client.Now - start < delay);
         }
 
-        private void Succeed(CancellationTokenSource request, T data, Func<T?, T, T>? sharing, int failures)
+        private void Succeed(CancellationTokenSource request, T data, Func<object?, object, object>? sharing, int failures)
         {
             // A request stops being the one in flight when something cancels it or removes the entry, and a
             // completion already posted to the main thread by then still arrives here.
@@ -750,8 +1060,7 @@ namespace Velvet
             T shared;
             try
             {
-                var held = HasData ? Data : default;
-                shared = sharing != null ? sharing(held, data) : QueryStructuralSharing.Replace(held, data);
+                shared = Share(sharing, data);
             }
             catch (Exception ex)
             {
@@ -768,17 +1077,22 @@ namespace Velvet
             FailureCount = 0;
             FailureReason = null;
             _dataUpdatedAt = Client.Now;
-            Notify();
+            try
+            {
+                Notify();
+            }
+            finally
+            {
+                ResolveWaiters(shared);
+            }
         }
 
         // TanStack's setData with manual set, as setQueryData calls it: the data lands as a request's would, but a
         // request in flight keeps running and its failure count stays.
         internal T SetData(T data)
         {
-            var held = HasData ? Data : default;
             // v5's setData shares with the query's own options, those the entry was last handed.
-            var sharing = _options?.StructuralSharing;
-            var shared = sharing != null ? sharing(held, data) : QueryStructuralSharing.Replace(held, data);
+            var shared = Share(_options?.StructuralSharing, data);
             Data = shared;
             HasData = true;
             Error = null;
@@ -787,6 +1101,12 @@ namespace Velvet
             _dataUpdatedAt = Client.Now;
             Notify();
             return shared;
+        }
+
+        private T Share(Func<object?, object, object>? sharing, T data)
+        {
+            if (sharing == null) return QueryStructuralSharing.Replace(HasData ? Data : default, data);
+            return (T)sharing(HasData ? (object?)Data : null, data!);
         }
 
         private void Fail(CancellationTokenSource request, Exception error, int failures)
@@ -800,7 +1120,14 @@ namespace Velvet
             IsInvalidated = true;
             FailureCount = failures + 1;
             FailureReason = error;
-            Notify();
+            try
+            {
+                Notify();
+            }
+            finally
+            {
+                RejectWaiters(error);
+            }
         }
 
         private void RecordFailure(CancellationTokenSource request, int failureCount, Exception error)
@@ -820,16 +1147,87 @@ namespace Velvet
         }
 
         // Only an entry an enabled query reads is fetched, as v5 refetches the active queries.
-        internal override void Invalidate()
+        internal override VelvetTask Invalidate(bool cancelRefetch)
         {
             IsInvalidated = true;
             foreach (var observer in _observers)
             {
                 if (!observer.Enabled) continue;
                 // An observer hands the entry its options when it subscribes, so an entry with one holds some.
-                Fetch(_options!, cancelRefetch: true);
-                return;
+                return FetchAndWait(_options!, cancelRefetch);
             }
+            return VelvetTask.CompletedTask;
+        }
+
+        internal override bool IsActive
+        {
+            get
+            {
+                foreach (var observer in _observers)
+                {
+                    if (observer.Enabled) return true;
+                }
+                return false;
+            }
+        }
+
+        // TanStack's query.isStale(): a mounted query's own reading of it, else whether the entry lacks data or
+        // was invalidated.
+        internal override bool IsStaleForFilter
+        {
+            get
+            {
+                if (_observers.Count == 0) return !HasData || IsInvalidated;
+                foreach (var observer in _observers)
+                {
+                    if (observer.Enabled && IsStaleFor(observer.StaleTime)) return true;
+                }
+                return false;
+            }
+        }
+
+        // TanStack's isDisabled: with readers, whether none of them is enabled; without, whether the entry was
+        // never fetched. An entry written by hand holds no options to fetch with and is left alone too.
+        internal override VelvetTask Refetch(bool cancelRefetch)
+        {
+            var fetchable = _observers.Count > 0 ? IsActive : _options != null && (HasData || Error != null);
+            return fetchable ? FetchAndWait(_options!, cancelRefetch) : VelvetTask.CompletedTask;
+        }
+
+        // TanStack's query.cancel({ revert }): the request stops and its token is cancelled. Reverting puts the
+        // entry back as the request found it; otherwise the cancellation is the entry's error.
+        internal override void CancelRequest(bool revert)
+        {
+            if (_inFlight == null) return;
+            CancelInFlight();
+            if (revert)
+            {
+                Revert();
+            }
+            else
+            {
+                var error = new OperationCanceledException();
+                Error = error;
+                Status = QueryStatus.Error;
+                IsInvalidated = true;
+                FailureCount++;
+                FailureReason = error;
+            }
+            RescheduleCollection(Client.Now);
+            Notify();
+        }
+
+        // TanStack's query.reset(): the state of an entry never fetched, its request cancelled without a word.
+        internal override void ResetState()
+        {
+            CancelInFlight();
+            Status = QueryStatus.Pending;
+            HasData = false;
+            Error = null;
+            FailureCount = 0;
+            FailureReason = null;
+            IsInvalidated = false;
+            Notify();
         }
 
         // TanStack's query.onFocus and onOnline: the first observer that asks for it refetches, joining a request
@@ -888,6 +1286,7 @@ namespace Velvet
             }
             // MUTANT_SURVIVES(equivalent, line removed): the source is cancelled already, and RunAsync's catch reads only IsCancellationRequested, which disposal leaves alone.
             cts.Dispose();
+            CancelWaiters();
         }
 
         private void Notify()

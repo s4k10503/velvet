@@ -587,21 +587,23 @@ namespace Velvet.Tests
         }
 #endif
 
-        private static Action<T1, T2> ForThisCase<T1, T2>(Action<T1, T2> callback)
+        private static Func<T1, T2, VelvetTask> ForThisCase<T1, T2>(Action<T1, T2> callback)
         {
             var owner = s_case;
             return (first, second) =>
             {
                 if (owner == s_case) callback(first, second);
+                return VelvetTask.CompletedTask;
             };
         }
 
-        private static Action<T1, T2, T3, T4> ForThisCase<T1, T2, T3, T4>(Action<T1, T2, T3, T4> callback)
+        private static Func<T1, T2, T3, T4, VelvetTask> ForThisCase<T1, T2, T3, T4>(Action<T1, T2, T3, T4> callback)
         {
             var owner = s_case;
             return (first, second, third, fourth) =>
             {
                 if (owner == s_case) callback(first, second, third, fourth);
+                return VelvetTask.CompletedTask;
             };
         }
 
@@ -643,7 +645,7 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, int>(
                 MutationFn: s_mutationFn,
-                OnMutate: _ => ++s_onMutateCount,
+                OnMutate: _ => VelvetTask.FromResult(++s_onMutateCount),
                 OnSettled: ForThisCase<int, Exception?, int, int>((_, _, _, _) => s_onSettledCount++)) { Retry = s_retry });
             return V.Label(text: "ok");
         }

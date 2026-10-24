@@ -12,17 +12,18 @@ namespace Velvet.Tests
     /// Specifies the structural sharing of a query's data, TanStack Query's <c>replaceEqualDeep</c>.
     /// <list type="bullet">
     /// <item>New data that is deeply equal to the data held is replaced by it, for an array, a list and a
-    /// dictionary compared element by element and entry by entry, a string compared by <c>Equals</c>; any
-    /// other class, a record included, is kept only as the very instance held.</item>
-    /// <item>Where the new data differs, the parts that are equal keep their held instances, at any depth, and
-    /// a dictionary keeps its comparer. A length that differs, a previous value of none and a type that
-    /// differs each take the new data.</item>
+    /// dictionary compared element by element and entry by entry, a string compared by <c>Equals</c>, and a
+    /// class or record the application declares compared field by field; a class the framework or the engine
+    /// declares is kept only as the very instance held.</item>
+    /// <item>Where the new data differs, the parts that are equal keep their held instances, at any depth,
+    /// the fields of a changed class or record included, and a dictionary keeps its comparer. A length that
+    /// differs, a previous value of none and a type that differs each take the new data.</item>
     /// <item>A query's data keeps the instance it held when an equal result lands, a function in the options
     /// chooses the data instead and is handed none the first time, and a function that throws makes the
     /// request fail.</item>
-    /// <item>A component reading <c>Data</c> re-renders when a class equal by its own <c>Equals</c> lands as a
-    /// new instance, since a result property changes when its instance does, and does not when equal text
-    /// lands as a new string. Descent stops at depth 500, and collections of unmanaged elements compare
+    /// <item>A component reading <c>Data</c> re-renders when a class with a differing field lands, since a
+    /// result property changes when its instance does, and does not when an equal class or equal text lands as
+    /// a new instance. Descent stops at depth 500, and collections of unmanaged elements compare
     /// without sharing parts.</item>
     /// </list>
     /// </summary>
@@ -41,6 +42,8 @@ namespace Velvet.Tests
             }
 
             public int Id { get; }
+
+            public string Note { get; init; } = "";
 
             public override bool Equals(object? obj) => obj is Entity other && other.Id == Id;
 
@@ -95,7 +98,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheNewListIsTaken()
+        public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheHeldListAndRecordAreKept()
         {
             // Arrange
             var held = new List<Todo> { new(1, "a") };
@@ -105,8 +108,8 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result, arrived), ReferenceEquals(result[0], arrived[0])), Is.EqualTo((true, true)),
-                "A record is a class instance, which replaceEqualDeep keeps only as the very instance held");
+            Assert.That((ReferenceEquals(result, held), ReferenceEquals(result[0], held[0])), Is.EqualTo((true, true)),
+                "A record whose fields are all equal is the instance already held");
         }
 
         [Test]
@@ -126,7 +129,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_EveryRecordIsTheNewInstance()
+        public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_TheEqualRecordKeepsItsInstance()
         {
             // Arrange
             var held = new[] { new Todo(1, "a"), new Todo(2, "b") };
@@ -136,8 +139,8 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], arrived[0]), ReferenceEquals(result[1], arrived[1])), Is.EqualTo((true, true)),
-                "A record is a class instance, which replaceEqualDeep keeps only as the very instance held");
+            Assert.That((ReferenceEquals(result[0], held[0]), ReferenceEquals(result[1], arrived[1])), Is.EqualTo((true, true)),
+                "The record with every field equal is the held one and the changed one is the new instance");
         }
 
         [Test]
@@ -255,7 +258,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AClassEqualByItsOwnEquals_When_ReplacedByAnotherInstance_Then_TheNewInstanceIsTaken()
+        public void Given_AClassWithEqualFields_When_ReplacedByAnotherInstance_Then_TheHeldInstanceIsKept()
         {
             // Arrange
             var held = new Entity(1);
@@ -265,12 +268,27 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That(ReferenceEquals(result, arrived), Is.True,
-                "A class other than a record is kept only as the very instance held, since its Equals may mean less than all of it");
+            Assert.That(ReferenceEquals(result, held), Is.True, "A class is shared through its fields, not through its Equals");
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the arrived instance of a class, which is not the held one either.
+        [Test]
+        public void Given_AClassEqualByItsOwnEqualsButWithADifferingField_When_Replaced_Then_ItIsNotTheHeldInstance()
+        {
+            // Arrange
+            var held = new Entity(1) { Note = "a" };
+            var arrived = new Entity(1) { Note = "b" };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That((ReferenceEquals(result, held), result.Note), Is.EqualTo((false, "b")),
+                "An Equals that means less than every field does not stand in for them");
         }
 
         [Test]
-        public void Given_ARecordHoldingAList_When_ReplacedByAnEqualRecordHoldingAnotherList_Then_TheNewRecordIsTaken()
+        public void Given_ARecordHoldingAList_When_ReplacedByAnEqualRecordHoldingAnotherList_Then_TheHeldRecordIsKept()
         {
             // Arrange
             var held = new Holder(new List<int> { 1 });
@@ -280,7 +298,7 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That(ReferenceEquals(result, arrived), Is.True, "A record compares a collection it holds by reference");
+            Assert.That(ReferenceEquals(result, held), Is.True, "The list the record holds is compared by content");
         }
 
         [Test]
@@ -474,8 +492,29 @@ namespace Velvet.Tests
                 "A function that fails is a failed request, as v5 reports a structural sharing that throws");
         }
 
+        // GREEN_ON_BASE(characterization): the base re-renders for any new class instance, a differing field included.
         [Test]
-        public void Given_AComponentReadingData_When_AClassEqualByItsOwnEqualsLandsAsANewInstance_Then_ItRerenders()
+        public void Given_AComponentReadingData_When_AClassWithADifferingFieldLands_Then_ItRerenders()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DataReader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            Land(0, new Entity(1) { Note = "a" });
+            mounted.FlushStateForTest();
+            var rendersBefore = s_renderCount;
+            s_renders[s_renders.Count - 1].Refetch();
+
+            // Act
+            Land(1, new Entity(1) { Note = "b" });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renderCount > rendersBefore, Is.True,
+                "Data is a different instance, which is a change to a property the component read");
+        }
+
+        [Test]
+        public void Given_AComponentReadingData_When_AClassWithEqualFieldsLandsAsANewInstance_Then_ItDoesNotRerender()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(DataReader, key: "reader"));
@@ -490,8 +529,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(s_renderCount > rendersBefore, Is.True,
-                "Data is a different instance, which is a change to a property the component read");
+            Assert.That(s_renderCount, Is.EqualTo(rendersBefore),
+                "The held instance is kept, so the property the component read has not changed");
         }
 
         // Lists nested to the given depth around a string held by a new instance on every call.

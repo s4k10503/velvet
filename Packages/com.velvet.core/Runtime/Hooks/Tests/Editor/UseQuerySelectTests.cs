@@ -57,6 +57,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<int> s_setPage;
         private static int s_watchRenders;
+        private static readonly List<string> s_sharingArrived = new();
 
         [SetUp]
         public void SetUp()
@@ -71,6 +72,7 @@ namespace Velvet.Tests
             s_setTick = default;
             s_setPage = default;
             s_watchRenders = 0;
+            s_sharingArrived.Clear();
         }
 
         [Test]
@@ -160,6 +162,33 @@ namespace Velvet.Tests
             // Assert
             Assert.That((s_selects, ReferenceEquals(Last().Data, selected)), Is.EqualTo((2, true)),
                 "What the select returns is shared structurally with the result's data, as v5's replaceData does");
+        }
+
+        [Test]
+        public void Given_AStructuralSharingFunctionAndASelectChangingTheType_When_TheRequestLands_Then_ItIsHandedTheSelectedData()
+        {
+            // Arrange
+            using var mounted = Mount(CountingWithSharing);
+
+            // Act
+            Land(mounted, 1, 2, 3);
+
+            // Assert
+            Assert.That(string.Join(",", s_sharingArrived), Is.EqualTo("Int32[],Int32"),
+                "The function chooses the entry's data and then the result's, which a select turned into another type");
+        }
+
+        [Test]
+        public void Given_AStructuralSharingFunctionAndASelectChangingTheType_When_TheRequestLands_Then_TheResultHoldsWhatItReturnedForTheSelection()
+        {
+            // Arrange
+            using var mounted = Mount(CountingWithSharing);
+
+            // Act
+            Land(mounted, 1, 2, 3);
+
+            // Assert
+            Assert.That(s_counts[s_counts.Count - 1].Data, Is.EqualTo(103), "The selected data goes through the function as v5's replaceData does");
         }
 
         [Test]
@@ -392,6 +421,24 @@ namespace Velvet.Tests
         {
             s_counts.Add(Hooks.UseQuery(
                 new QueryOptions<int[], int>(Todos, Fetch) { Select = data => data.Length, Retry = 0 },
+                s_client));
+            return V.Label(text: "counting");
+        }
+
+        [Component]
+        private static VNode CountingWithSharing()
+        {
+            s_counts.Add(Hooks.UseQuery(
+                new QueryOptions<int[], int>(Todos, Fetch)
+                {
+                    Select = data => data.Length,
+                    Retry = 0,
+                    StructuralSharing = (_, arrived) =>
+                    {
+                        s_sharingArrived.Add(arrived.GetType().Name);
+                        return arrived is int count ? count + 100 : arrived;
+                    },
+                },
                 s_client));
             return V.Label(text: "counting");
         }

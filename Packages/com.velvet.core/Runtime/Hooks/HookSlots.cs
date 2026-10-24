@@ -422,12 +422,12 @@ namespace Velvet
 
         public abstract RetryPolicy? Retry { get; }
         public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
-        public abstract TContext InvokeOnMutate(TVariables variables);
+        public abstract VelvetTask<TContext> InvokeOnMutate(TVariables variables);
         // What a per-call callback receives as the context, which the context-free slot declines to box.
         public virtual object? BoxContext(TContext context) => context;
-        public abstract void InvokeOnSuccess(TData data, TVariables variables, TContext context);
-        public abstract void InvokeOnError(Exception error, TVariables variables, TContext context);
-        public abstract void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
+        public abstract VelvetTask InvokeOnSuccess(TData data, TVariables variables, TContext context);
+        public abstract VelvetTask InvokeOnError(Exception error, TVariables variables, TContext context);
+        public abstract VelvetTask InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
     }
 
     internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot<TVariables, TData, Unit>
@@ -439,18 +439,18 @@ namespace Velvet
         public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
             Options.MutationFn(variables, token);
 
-        public override Unit InvokeOnMutate(TVariables variables) => Unit.Default;
+        public override VelvetTask<Unit> InvokeOnMutate(TVariables variables) => VelvetTask.FromResult(Unit.Default);
 
         public override object? BoxContext(Unit context) => null;
 
-        public override void InvokeOnSuccess(TData data, TVariables variables, Unit context) =>
-            Options.OnSuccess?.Invoke(data, variables);
+        public override VelvetTask InvokeOnSuccess(TData data, TVariables variables, Unit context) =>
+            Options.OnSuccess is { } onSuccess ? onSuccess(data, variables) : VelvetTask.CompletedTask;
 
-        public override void InvokeOnError(Exception error, TVariables variables, Unit context) =>
-            Options.OnError?.Invoke(error, variables);
+        public override VelvetTask InvokeOnError(Exception error, TVariables variables, Unit context) =>
+            Options.OnError is { } onError ? onError(error, variables) : VelvetTask.CompletedTask;
 
-        public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, Unit context) =>
-            Options.OnSettled?.Invoke(data, error, variables);
+        public override VelvetTask InvokeOnSettled(TData data, Exception? error, TVariables variables, Unit context) =>
+            Options.OnSettled is { } onSettled ? onSettled(data, error, variables) : VelvetTask.CompletedTask;
     }
 
     internal sealed class HookContextMutationSlot<TVariables, TData, TContext>
@@ -463,17 +463,17 @@ namespace Velvet
         public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
             Options.MutationFn(variables, token);
 
-        public override TContext InvokeOnMutate(TVariables variables) =>
-            Options.OnMutate is { } onMutate ? onMutate(variables) : default!;
+        public override VelvetTask<TContext> InvokeOnMutate(TVariables variables) =>
+            Options.OnMutate is { } onMutate ? onMutate(variables) : VelvetTask.FromResult(default(TContext)!);
 
-        public override void InvokeOnSuccess(TData data, TVariables variables, TContext context) =>
-            Options.OnSuccess?.Invoke(data, variables, context);
+        public override VelvetTask InvokeOnSuccess(TData data, TVariables variables, TContext context) =>
+            Options.OnSuccess is { } onSuccess ? onSuccess(data, variables, context) : VelvetTask.CompletedTask;
 
-        public override void InvokeOnError(Exception error, TVariables variables, TContext context) =>
-            Options.OnError?.Invoke(error, variables, context);
+        public override VelvetTask InvokeOnError(Exception error, TVariables variables, TContext context) =>
+            Options.OnError is { } onError ? onError(error, variables, context) : VelvetTask.CompletedTask;
 
-        public override void InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context) =>
-            Options.OnSettled?.Invoke(data, error, variables, context);
+        public override VelvetTask InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context) =>
+            Options.OnSettled is { } onSettled ? onSettled(data, error, variables, context) : VelvetTask.CompletedTask;
     }
 
     internal sealed class HookRefSlot

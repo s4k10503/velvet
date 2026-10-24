@@ -119,6 +119,17 @@ records carry `OnSettled` too, as an init-only property set in an object initial
 context are only on `MutationOptions<TVariables, TData, TContext>`, which has no void form: a void
 mutation takes `Unit` as `TData` there and returns `Unit.Default`.
 
+**Awaited callbacks.** Every option callback returns a `VelvetTask` (`OnMutate` a `VelvetTask<TContext>`),
+and the call waits for it before the next stage, as v5 awaits the promise its callbacks return.
+`OnMutate` finishes before `MutationFn` starts, and the value its task produces is the context; a task
+that faults fails the call before `MutationFn` is reached. `OnSuccess`, `OnError` and `OnSettled` each
+finish before the next one runs, and the outcome is committed to the handle after the last, so the handle
+stays `Pending` while a callback is still waiting. A callback with nothing to wait for returns
+`VelvetTask.CompletedTask` (or `VelvetTask.FromResult(context)` from `OnMutate`), or is written `async`.
+Returning `client.InvalidateQueries(...)` from `OnSuccess` makes the mutation wait for the refetch, as
+returning `queryClient.invalidateQueries(...)` does in v5. The per-call callbacks `Mutate` and `MutateAsync`
+take are not awaited, as v5 does not await `mutate(variables, { onSuccess })` either.
+
 ```csharp
 // Loadout is a class, so a context OnMutate never returned arrives as null.
 var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
@@ -127,8 +138,9 @@ var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
         await inventoryApi.EquipAsync(item, ct);    // a VelvetTask
         return Unit.Default;
     },
-    OnMutate: item =>
+    OnMutate: async item =>
     {
+        await client.CancelQueries(new QueryFilters { QueryKey = new QueryKey("loadout") });
         var previous = inventory.Current.Loadout;   // snapshot
         inventory.Equip(item);                      // optimistic write through a Store action
         return previous;
@@ -136,10 +148,11 @@ var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
     OnError: (error, _, previous) =>
     {
         // The caller cancelled the request: the server may have applied it, so reload rather than guess.
-        if (error is OperationCanceledException) { inventory.Reload(); return; }
-        if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
+        if (error is OperationCanceledException) inventory.Reload();
+        else if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
+        return VelvetTask.CompletedTask;
     },
-    OnSettled: (_, _, _, _) => setBusy.Invoke(false)));
+    OnSettled: (_, _, _, _) => client.InvalidateQueries(new QueryKey("loadout"))));
 ```
 
 **Per-call callbacks.** `Mutate` and `MutateAsync` take a `MutateOptions<TVariables, TData>` whose
@@ -160,9 +173,6 @@ v5: they are dropped once the component has unmounted.
 
 A write that reached the server is therefore never reported as failed because its screen went away, so an
 optimistic rollback in `OnError` only sees failures the function itself raised.
-
-`OnMutate` returns the context itself where v5 awaits a returned promise, as every callback here is
-synchronous.
 
 **Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
 delivers its own callbacks with its own context, and `Status` / `Data` / `Error` / `Variables` are one
@@ -240,7 +250,8 @@ v5's zero-delay timer does, unaffected by `Time.timeScale`; supply `Wait` to wai
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
 - A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is handed to `.Forget()` as a fault, which logs it with `Debug.LogException`, an `OperationCanceledException` included. `MutateAsync` still rethrows the **mutation** exception, not the handler's, and `onSettled` still runs.
-- A throwing **`onMutate`** fails the call with its exception before `MutationFn` runs; `onError` and `onSettled` receive it with a default context.
+- A throwing **`onMutate`**, or one whose task faults, fails the call with its exception before `MutationFn` runs; `onError` and `onSettled` receive it with a default context.
+- A callback whose task faults is a throw from it: the rules in this list apply to a fault the same way.
 - A throwing **`onSettled`** follows the path it ran on. On success it fails the call as a throwing `onSuccess` does, so `onError` runs with its exception and `onSettled` runs a second time, with it — v5's order, since both handlers sit in the block its failure path catches. On failure it is logged as a throwing `onError` is, and the outcome stays the mutation's own.
 
 ### 1-2b. Cached queries — `Hooks.UseQuery`
@@ -259,7 +270,7 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
 | `enabled` | `new QueryOptions<T>(...) { Enabled = ... }` |
 | `select: (data) => ...` | `new QueryOptions<TQueryFnData, TData>(...) { Select = data => ... }` |
-| `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousKey) => ...` |
+| `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousQuery) => ...`, `previousQuery` a nullable `QueryInfo` |
 | `refetchInterval` / `refetchIntervalInBackground` as a number and a boolean | `new QueryOptions<T>(...) { RefetchInterval = ..., RefetchIntervalInBackground = ... }` |
 | `refetchInterval: (query) => ...` | `RefetchIntervalFn = info => ...`, handed a `QueryInfo` |
 | `refetchOnWindowFocus` / `refetchOnReconnect` as `false` / `true` / `'always'` | `RefetchOnWindowFocus` / `RefetchOnReconnect` = `QueryRefetchMode.Never` / `IfStale` / `Always`, on one query or on `QueryClientOptions` |
@@ -267,12 +278,19 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `queryFn: ({ signal }) => ...` | `new QueryOptions<T>(key, token => ...)`; a function taking no token is the one that never reads the signal |
 | `focusManager` / `onlineManager` | `NetworkSignals.IsVisible` / `IsOnline` |
 | `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
-| `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }` |
+| `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }`, over `object` values as v5's is over `unknown` |
 | `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
 | `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` |
 | `refetch()` | `result.Refetch()` |
 | `queryClient.getQueryData(queryKey)` / `setQueryData(queryKey, updater)` | `client.GetQueryData<T>(key)` / `client.SetQueryData(key, data)` or `SetQueryData<T>(key, held => ...)` |
-| `queryClient.invalidateQueries({ queryKey })` | `client.InvalidateQueries(new QueryKey(...))` |
+| `queryClient.invalidateQueries({ queryKey })` / `invalidateQueries(filters, options)` | `client.InvalidateQueries(new QueryKey(...))` / `client.InvalidateQueries(filters, new RefetchOptions { ... })`; both return a task that completes once the refetches settle |
+| `queryClient.refetchQueries(filters, { cancelRefetch, throwOnError })` | `client.RefetchQueries(filters, new RefetchOptions { CancelRefetch = ..., ThrowOnError = ... })` |
+| `queryClient.cancelQueries(filters, { revert })` | `client.CancelQueries(filters, revert: ...)` |
+| `queryClient.removeQueries(filters)` / `resetQueries(filters)` | `client.RemoveQueries(filters)` / `client.ResetQueries(filters)` |
+| `queryClient.fetchQuery(options)` / `prefetchQuery(options)` / `ensureQueryData(options)` | `client.FetchQuery(options)` / `client.PrefetchQuery(options)` / `client.EnsureQueryData(options, revalidateIfStale)` |
+| `queryClient.getQueryState(queryKey)` | `client.GetQueryState<T>(key)`, a `QueryState<T>` snapshot or null |
+| `queryClient.getQueriesData(filters)` / `setQueriesData(filters, updater)` | `client.GetQueriesData<T>(filters)` / `client.SetQueriesData<T>(filters, held => ...)` |
+| `{ queryKey, exact, type, stale, fetchStatus, predicate }` filters | `new QueryFilters { QueryKey = ..., Exact = ..., Type = QueryTypeFilter.Active, Stale = ..., FetchStatus = QueryFetchStatus.Fetching, Predicate = info => ... }` |
 | `queryClient.clear()` | `client.Clear()` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
@@ -325,10 +343,15 @@ component reading it, whatever it has read.
 if the new result is deeply equal to it, and keeps the equal parts of it if it is not, which is
 `replaceEqualDeep`, v5's default `structuralSharing`. An array, a `List<T>` and a `Dictionary<TKey, TValue>`
 are compared element by element and entry by entry, and a dictionary keeps its comparer; a string, a
-number and a struct are equal when `Equals` says so; any other class, a record included, is kept only as
-the very instance held, as v5 keeps anything but a plain array or object, so a refetch landing an equal
-record as a new instance makes that instance the data. `StructuralSharing` replaces all
-of that with a function of the data held, default when there is none, and the data that arrived; one that
+number and a struct are equal when `Equals` says so. A class or record the application declares is
+compared field by field, base-class fields included, as v5 compares the properties of a plain object:
+an instance whose fields are all equal is the one held, and a changed one is a copy of the arrived
+instance, copied field by field, carrying the held instance of each field that is equal. The
+constructor and any property setter logic are not run, and the arrived instance is not written. An
+instance reached again from itself is not entered a second time. A class the framework or the engine
+declares (a namespace that is, or lies below, `System`, `Microsoft`, `Unity`, `UnityEngine` or
+`UnityEditor`), a delegate and a `UnityEngine.Object` are kept only as the very instance held. `StructuralSharing` replaces all
+of that with a function of the data held, null when there is none, and the data that arrived; one that
 throws fails the request.
 
 **Changing the key** moves the component to that key's entry: it renders that entry's data, or none,
@@ -347,14 +370,15 @@ keeps what the query function returned, and `GetQueryData` reads that. Over the 
 runs again only when that data's instance or the select's own instance changes, as v5 compares both with
 `===`: a delegate held in a field runs once for each new instance of the data, and one built afresh each
 render runs every render. What it returns is shared structurally with the result's previous data, so an
-equal selection keeps its instance. A select that throws makes the result `Error` with its exception,
+equal selection keeps its instance; a `StructuralSharing` function is handed the selection too, as v5's
+`replaceData` is. A select that throws makes the result `Error` with its exception,
 until the data it ran on is gone: a key change to an entry with no data shows that entry's state.
 
 **Placeholder data.** While the entry is pending with no data, `PlaceholderData` stands in: the result is
 `Success` with `IsPlaceholderData` true and `IsFetching` true, and the entry stays without data, so
 `GetQueryData` reads none. A failure with no data shows the error, not the placeholder. The function is
-handed the data and key of the last entry this component read that had data and still has it — default
-and null when there is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
+handed the data and the `QueryInfo` of the last entry this component read that had data and still has it —
+default and null when there is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
 `QueryPlaceholder.KeepPreviousData` returns the previous data, so paging keeps the old page on screen until
 the new one lands. While the result before showed the placeholder, the function is asked again only when
 its instance changes. A `Select` applies to the placeholder too, and one that throws there makes an error
@@ -440,7 +464,10 @@ over when the entry holds data, so a result fetched before the write does not la
 no enabled query reads is only marked stale, and is fetched by the next component that mounts over it.
 The refetch runs with the options the entry was last handed — by the last query to commit over it or to
 start a request for it — as v5 refetches a query with its own options: where its readers' query functions
-differ, that one's runs, a disabled reader's included.
+differ, that one's runs, a disabled reader's included. `InvalidateQueries` returns a task that completes once
+the requests it started have settled, whatever they did, so a callback that returns it holds the mutation
+until the fresh data is in, as v5's does; `RefetchOptions.ThrowOnError` makes it fault with the first failure
+instead.
 
 ```csharp
 var client = Hooks.UseContext(QueryClientContext.Ref)!;
@@ -449,27 +476,49 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
     OnSuccess: (_, _) => client.InvalidateQueries(new QueryKey("todos"))));
 ```
 
+**Filters.** `QueryFilters` selects entries for `InvalidateQueries`, `RefetchQueries`, `CancelQueries`,
+`RemoveQueries`, `ResetQueries`, `GetQueriesData` and `SetQueriesData`, and every property that is set has
+to match. `QueryKey` leads the entry's key, or equals it under `Exact`. `Type` is `Active` for an entry an
+enabled query reads and `Inactive` for the rest. `Stale` is the staleness of the query reading the entry (any
+one reading it stale), and for an entry nothing reads, whether it has no data or was invalidated.
+`FetchStatus` is `Fetching` while a request is in flight; v5's `paused` has no counterpart, since a query
+does not pause. `Predicate` is handed the entry's `QueryInfo`.
+
+**Commands on the cache.** `RefetchQueries` fetches the entries a filter selects that a query reads and
+is enabled for, and those nothing reads that were fetched before, with the options of that fetch; an entry
+written by hand holds no query function and is left alone. A request in flight over data is cancelled and
+started over unless `RefetchOptions.CancelRefetch` is false. `CancelQueries` cancels the token of each
+request in flight and, by default, puts the entry back as the request found it; `revert: false` leaves the
+cancellation as the entry's `Error` with its data kept. `RemoveQueries` drops the entries and cancels their
+requests, and a query reading one moves to a new entry as after `Clear`. `ResetQueries` returns each entry
+to the state of one never fetched, cancelling its request, and then fetches the active ones. `FetchQuery`
+returns the entry's data when it is fresh for the options' stale time and otherwise fetches it,
+joining a request in flight; it retries nothing unless the options' `Retry` says so, where a mounted query
+takes the client's default, and it faults with the request's failure and is cancelled if the request is.
+`PrefetchQuery` is `FetchQuery` that completes whatever happens, and `EnsureQueryData` fetches only an entry
+with no data (`revalidateIfStale` also fetches a stale one without waiting for it). An entry any of these
+creates expires after its `GcTime` unless a query reads it. `GetQueryState<T>` snapshots an entry as a
+`QueryState<T>`, null when there is none. `GetQueriesData<T>` and `SetQueriesData<T>` skip entries holding
+another type, since a filter selects across keys.
+
 **Deviations from v5:**
 
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
   share one request; v5's result arrives a microtask later.
-- Structural sharing does not enter the members of a class instance, a record included, where v5 shares
-  the equal properties of a changed plain object: such an instance is kept or replaced whole, because
-  Velvet does not rebuild one.
+- Sharing into a class instance works on fields where v5 works on enumerable properties, so a private field,
+  and one a base class declares, is shared too.
 - A query function counts as having read v5's `signal` when it takes the `CancellationToken`, whether or not
   it uses it; v5 tells by the function reading `signal`. A token-taking function that ignores the token is
   cancelled with its last reader here, where v5 lets it run on.
 - `UseQuery` never suspends: with no data yet it returns `Pending`. There is no `useSuspenseQuery`.
 - A key holds one data type. A query reading it as another throws `InvalidOperationException`.
-- A `StructuralSharing` function is typed for the query function's data, so with a `Select` that changes
-  the type the selected data is not passed through it; the default sharing still applies when none is set.
-- The placeholder function is handed the previous entry's key rather than v5's query object.
 - A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
   previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
   is not seen.
-- The functions v5 hands its `Query` are handed a `QueryInfo` instead, a read-only view of the entry's
-  key, status, data, error and fetch state; the rest of the query object is not available.
+- The functions v5 hands its `Query`, the placeholder function's `previousQuery` among them, are handed a
+  `QueryInfo` instead, a read-only view of the entry's key, status, data, error and fetch state; the rest
+  of the query object is not available.
 - Not yet available: `retry` as a function or `true`, retries that pause while the application is
   unfocused or offline (`networkMode`).
 

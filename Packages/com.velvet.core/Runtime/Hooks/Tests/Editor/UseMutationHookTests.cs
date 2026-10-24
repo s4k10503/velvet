@@ -785,7 +785,11 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnSuccess: (data, _) => s_delivered.Add(data)));
+                OnSuccess: (data, _) =>
+                {
+                    s_delivered.Add(data);
+                    return VelvetTask.CompletedTask;
+                }));
             return V.Label(text: "ok");
         }
 
@@ -794,7 +798,11 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnError: (_, _) => s_onErrorCount++));
+                OnError: (_, _) =>
+                {
+                    s_onErrorCount++;
+                    return VelvetTask.CompletedTask;
+                }));
             return V.Label(text: "ok");
         }
 
@@ -804,7 +812,11 @@ namespace Velvet.Tests
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
                 OnSuccess: (_, _) => throw s_onSuccessThrowException!,
-                OnError: (_, _) => s_onErrorCount++));
+                OnError: (_, _) =>
+                {
+                    s_onErrorCount++;
+                    return VelvetTask.CompletedTask;
+                }));
             return V.Label(text: "ok");
         }
 
@@ -826,7 +838,11 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnSuccess: (_, _) => s_onSuccessObserved = (s_captured!.Status, s_captured.Data)));
+                OnSuccess: (_, _) =>
+                {
+                    s_onSuccessObserved = (s_captured!.Status, s_captured.Data);
+                    return VelvetTask.CompletedTask;
+                }));
             return V.Label(text: "ok");
         }
 
@@ -835,7 +851,11 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnError: (_, _) => s_onErrorObserved = (s_captured!.Status, s_captured.Error)));
+                OnError: (_, _) =>
+                {
+                    s_onErrorObserved = (s_captured!.Status, s_captured.Error);
+                    return VelvetTask.CompletedTask;
+                }));
             return V.Label(text: "ok");
         }
 
