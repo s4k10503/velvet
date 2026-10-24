@@ -84,8 +84,9 @@ class SectionTests(unittest.TestCase):
         found = report.sections(text)[0]
 
         # Assert
-        self.assertEqual((found[0]["before"], found[0]["after"], found[0]["operator"]),
-                         ("x > 1 &&", "", "clause removed"))
+        self.assertEqual(found, [{"path": "Runtime/A.cs", "line": 3, "before": "x > 1 &&", "after": "",
+                                  "operator": "clause removed",
+                                  "reason": "nothing above this line answers for it"}])
 
     def test_Given_AStaleDeclaration_When_Read_Then_ItsLineAndTheLineItWasForAreFound(self):
         # Act
@@ -100,19 +101,19 @@ class SectionTests(unittest.TestCase):
                              "Runtime/B.cs:9 == -> != (equality)  not measured (timed out)\n")
 
         # Act
-        unanswered, stale, unmeasured, _ = report.sections(text)
+        found = report.sections(text)
 
         # Assert
-        self.assertEqual((unanswered, stale, unmeasured), ([], [], [
+        self.assertEqual(found, ([], [], [
             "mutants nothing was asked of the suite about",
-            "Runtime/B.cs:9 == -> != (equality)  not measured (timed out)"]))
+            "Runtime/B.cs:9 == -> != (equality)  not measured (timed out)"], []))
 
     def test_Given_AnUnansweredLineThatDoesNotParse_When_Read_Then_ItIsKeptAsUnread(self):
         # Act
-        unanswered, _, _, unread = report.sections("UNANSWERED  something odd\n            why\n")
+        found = report.sections("UNANSWERED  something odd\n            why\n")
 
         # Assert
-        self.assertEqual((unanswered, unread), ([], ["UNANSWERED something odd — why"]))
+        self.assertEqual(found, ([], [], [], ["UNANSWERED something odd — why"]))
 
 
 class SarifShapeTests(unittest.TestCase):
@@ -322,30 +323,38 @@ class MainTests(unittest.TestCase):
         if verdict_text is not None:
             (directory / "verdict.txt").write_text(verdict_text)
             arguments += ["--verdict", str(directory / "verdict.txt")]
+        status = None
         with unittest.mock.patch("builtins.print"):
-            status = report.main(arguments, {"RESULTS": "mutation-plan=success"})
+            try:
+                status = report.main(arguments, {"RESULTS": "mutation-plan=success"})
+            except (SystemExit, Exception):
+                pass  # A tree without `--sarif` ends the run here; the cases then fail on what was written.
         return status, sarif
+
+    @staticmethod
+    def written(sarif):
+        return json.loads(sarif.read_text())["runs"][0]["results"] if sarif.exists() else None
 
     def test_Given_NoVerdictFile_When_Run_Then_NoSarifIsWritten(self):
         # Act
-        _, sarif = self.run_main(None)
+        status, sarif = self.run_main(None)
 
         # Assert
-        self.assertFalse(sarif.exists())
+        self.assertEqual((status, sarif.exists()), (0, False))
 
     def test_Given_AVerdictWithNothingToAnswer_When_Run_Then_AnEmptyResultsListIsWritten(self):
         # Act
         _, sarif = self.run_main("killed: 1\n")
 
         # Assert
-        self.assertEqual(json.loads(sarif.read_text())["runs"][0]["results"], [])
+        self.assertEqual(self.written(sarif), [])
 
     def test_Given_AVerdictWithASurvivor_When_Run_Then_TheSurvivorIsWrittenAndTheRunStillExitsZero(self):
         # Act
         status, sarif = self.run_main(verdict([BOUNDARY]))
 
         # Assert
-        self.assertEqual((status, len(json.loads(sarif.read_text())["runs"][0]["results"])), (0, 1))
+        self.assertEqual((status, len(self.written(sarif) or [])), (0, 1))
 
 
 class WorkflowTests(unittest.TestCase):
@@ -357,7 +366,7 @@ class WorkflowTests(unittest.TestCase):
         granted = [m.start() for m in re.finditer(r"security-events: write", self.TEXT)]
 
         # Assert
-        self.assertEqual(granted, [self.TEXT.index("security-events: write", self.TEXT.index("\n  report:\n"))])
+        self.assertEqual(granted, [self.TEXT.find("security-events: write", self.TEXT.find("\n  report:\n"))])
 
     def test_Given_TheWorkflow_When_Read_Then_NoJobCanWriteIssuesAnyMore(self):
         # Act
