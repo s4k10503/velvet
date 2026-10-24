@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0f54b05f659b362d9ea29e0a21d7a221f0fc4e72566bdc76fa6c7ebee672e08a",
+ "killers": [],
+ "measured_by": "39988504763",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 41,
+  "line": 954,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "verdict": "survived"
+}

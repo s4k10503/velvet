@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AMountedVisualEffect_When_TheTickRendersIt_Then_EveryRendererUnderTheCloneIsForcedOffAfter",
+ "file": "4850fc16910b2a61246b9304d98424ea04005e99d4e8458a958df58068df1db8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesTests.Given_AMountedVisualEffect_When_TheTickRendersIt_Then_EveryRendererUnderTheCloneIsForcedOffAfter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesTests.cs": "b067021d1466039956fade9e92b424c997c06cdecc986ca4a7a374db9f45d6bc",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "39988504763",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 32,
+  "line": 179,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesEffectView.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "verdict": "killed"
+}

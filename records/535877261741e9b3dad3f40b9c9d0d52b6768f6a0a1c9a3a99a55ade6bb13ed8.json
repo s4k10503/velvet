@@ -1,0 +1,50 @@
+{
+ "detail": "EditMode: 2 failed among the 50 case(s) that ran the site: Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheFeedCoversTheContentBox, Given_APaddingShiftThatKeepsTheContentSize_When_TheTickFires_Then_TheFeedFollowsTheContentBox",
+ "file": "148e30d301dfdfba706b670829448ebaff39f69e86b1817279f44671268c7fde",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SceneViewTests.Given_ABorderedPaddedSceneView_When_LayoutResolves_Then_TheFeedCoversTheContentBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SceneViewTests.cs": "72a4116036e530880d4717eb4b1fbfc86ccd93bb0f5ba305f46ac2c9b284ca22",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SceneViewTests.Given_APaddingShiftThatKeepsTheContentSize_When_TheTickFires_Then_TheFeedFollowsTheContentBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SceneViewTests.cs": "72a4116036e530880d4717eb4b1fbfc86ccd93bb0f5ba305f46ac2c9b284ca22",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "39988504763",
+ "mutant": {
+  "after": ";",
+  "before": "feed.style.left = s.paddingLeft;",
+  "column": 12,
+  "line": 249,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/SceneViewDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "verdict": "killed"
+}

@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 691s; raise it, or read the log for a mutation that does not terminate",
+ "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 424s; raise it, or read the log for a mutation that does not terminate; 1 other editor(s) were up",
  "file": "47ca8ee9d8f1ed80ddc1016b215807f93a5a4e2a6f99540e0ba85ae5f78a2a04",
  "killers": [],
- "measured_by": "39913002090",
+ "measured_by": "39988504763",
  "mutant": {
   "after": ";",
   "before": "current = current.IsBeingDeleted ? current.NearestAncestorOutsideTheDeletion : next;",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
  "verdict": "not measured (timed out)"
 }

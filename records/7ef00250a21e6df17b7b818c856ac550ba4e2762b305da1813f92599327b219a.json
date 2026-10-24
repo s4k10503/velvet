@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AComponentInAPresenceChildMountedUnderInitialFalse_When_ItReRendersAloneAndMountsAMotion_Then_ThatMotionDoesNotEnter",
+ "file": "223837e7d04953f7e4728e28350d695c8fd3487b430a3b36f2c9082a77c8a140",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionVariantChildEnterTests.Given_AComponentInAPresenceChildMountedUnderInitialFalse_When_ItReRendersAloneAndMountsAMotion_Then_ThatMotionDoesNotEnter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionVariantChildEnterTests.cs": "5c62c202d610f02b4d89c187af7138f3af83e070d056040e0db1b65c79ef0914",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "39988504763",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 15,
+  "line": 246,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "verdict": "killed"
+}
