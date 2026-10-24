@@ -586,14 +586,14 @@ namespace Velvet
         // so the render that reaches it is owed whichever path ran this one.
         internal TState Process(ComponentFiber fiber, FiberUpdatePriority renderLane)
         {
-            _beforeValue = Value;
-            _beforeBaseState = _baseState;
-            _beforeBaseQueue = _baseQueue;
             if (_pending != null)
             {
                 (_baseQueue ??= new List<HookUpdate<TState, TAction>>()).AddRange(_pending);
                 _pending.Clear();
             }
+            _beforeValue = Value;
+            _beforeBaseState = _baseState;
+            _beforeBaseQueue = _baseQueue;
             if (_baseQueue == null || _baseQueue.Count == 0) return Value;
 
             var state = _baseState;
