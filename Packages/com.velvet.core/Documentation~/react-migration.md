@@ -915,6 +915,13 @@ it. A resource that faults below an error boundary inside a Suspense has the Sus
 boundary catches the error inside that render and the Suspense reveals the error boundary's fallback, as React's
 retry does.
 
+A `Hooks.UseTransition` update whose render suspends a `V.Suspense` that shows its children does not swap them for
+the fallback. The Suspense gives that render up, so the children stay as they were and `isPending` stays true; the
+update renders again when the resource settles, and an error the resource faults with reaches the error boundary
+above. The warning above is not logged for this case. A boundary that shows no children yet, and an update that is
+not a transition's, show the fallback. This holds when the Suspense is rendered by the component the transition
+updates or by one it renders; an update made by a component below the Suspense still shows the fallback.
+
 > **Note — Error Boundary mapping**  
 > Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper wraps children inline; for a boundary whose fallback reads its own state, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
 > Velvet's `UseFallback` is equivalent to React's `getDerivedStateFromError` (a pure function that simply returns a fallback VNode). Handle side effects separately inside a `UseEffect`.

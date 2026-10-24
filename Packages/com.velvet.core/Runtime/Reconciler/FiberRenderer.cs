@@ -837,7 +837,13 @@ namespace Velvet
 
         private static void SuspendWithoutBoundary(ComponentFiber fiber)
         {
-            fiber.SuspendedOn = fiber.Reconciler!.Context.SuspendingReader;
+            var context = fiber.Reconciler!.Context;
+            fiber.SuspendedOn = context.SuspendingReader;
+            if (context.SuspendDeclinedByRevealedBoundary)
+            {
+                context.SuspendDeclinedByRevealedBoundary = false;
+                return;
+            }
             FiberLogger.LogWarning("Suspense",
                 $"FiberRenderer: {Hooks.ComponentName(fiber)} suspended with no Suspense boundary above it;" +
                 " it renders again when the resource resolves. Wrap with V.Suspense().");

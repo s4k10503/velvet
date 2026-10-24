@@ -1460,7 +1460,10 @@ namespace Velvet
                 var primaryWasHidden = _ctx.IsSuspensePrimaryHidden(boundaryFiber, walk.Parent, portalScope, suspenseAt);
                 // A primary the boundary has committed is kept, hidden; one it has not committed is discarded.
                 var revealed = _ctx.TakeSuspensePrimaryReproduced(boundaryFiber, walk.Parent, portalScope, suspenseAt);
-                var retains = commit != null && (revealed || primaryWasHidden);
+                // A transition render that suspends where the boundary shows its primary gives the pass up whole
+                // rather than hide that primary, so it declines to keep the primary and never reaches the fallback.
+                var declines = commit != null && revealed && !primaryWasHidden && FiberWorkLoop.IsRenderingTransitionLane;
+                var retains = !declines && commit != null && (revealed || primaryWasHidden);
                 var preCount = commit != null ? commit.NewElements.Count : result!.Count;
                 bool suspended;
                 bool hides;
@@ -1473,6 +1476,7 @@ namespace Velvet
                 try
                 {
                     suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition, out renders);
+                    if (suspended && declines) DeclineRevealedSuspense(commit!, preCount, fibersBefore, newFibers, reportsBefore, renders);
                     var primaryEnd = commit != null ? commit.NewElements.Count : result!.Count;
                     if (!suspended)
                     {
@@ -1525,6 +1529,19 @@ namespace Velvet
             {
                 _ctx.MarkSuspensePrimaryReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
             }
+        }
+
+        // Unwinds the primary this walk expanded as a discarded one is, then raises the suspend to the pass that owns
+        // the walk instead of expanding the fallback.
+        private void DeclineRevealedSuspense(
+            GeneralCommitState commit, int preCount, HashSet<ComponentFiber> fibersBefore, HashSet<ComponentFiber> newFibers,
+            int reportsBefore, List<SuspenseRender>? renders)
+        {
+            _ctx.ResolveSuspenseRenders(renders, discard: true);
+            ForgetCatchesOfTheDiscardedPrimary(reportsBefore, fibersBefore, newFibers, NoElements);
+            RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
+            _ctx.SuspendDeclinedByRevealedBoundary = true;
+            throw FiberSuspendSignal.Instance;
         }
 
         private void ExpandSuspenseFallback(
