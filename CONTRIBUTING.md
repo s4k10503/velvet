@@ -556,7 +556,7 @@ python3 scripts/test_quality/mutation_check.py --files <the same paths> --list
 The plan refuses a list over the campaign's own ceiling, `SHARD_CEILING` mutants a shard in at most
 `MAX_SHARDS` shards, because the sizing is the campaign's: each shard job measures one tree, as a
 `mutation-shard` job measures its step, and `ShardCeilingTests` charges both alike. The measuring step
-passes `--timeout` at three times the longest baseline measured, which `HANG_MARGIN` makes the least at which
+passes `--timeout` at twice the longest baseline measured, which `HANG_MARGIN` makes the least at which
 a hang reads as one.
 
 Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an

@@ -6854,7 +6854,7 @@ class DeadShardReportingTests(unittest.TestCase):
                          ["mutant-001.json", "mutant-003.json", "mutant-005.json", "mutant-007.json",
                           "mutant-009.json", "mutant-011.json"])
 
-    def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItRefuses(self):
+    def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItPlansTheCeilingsWorth(self):
         # Arrange -- the shard's six survivors against a PlayMode ceiling of five.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
@@ -6866,8 +6866,57 @@ class DeadShardReportingTests(unittest.TestCase):
                                           str(campaign.project / "edit0"), str(campaign.project / "edit1"),
                                           "--survivors-shard", "0/2", "--plan")
 
+        # Assert -- a job that fails here stops the run's chain, so the rest are left to the decision.
+        self.assertEqual((code, re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants=5"]))
+
+
+class EditorRewrittenFilesTests(unittest.TestCase):
+    """What the unmutated baseline's launch leaves other than it found the tree, which a session's stage
+    is not blamed for leaving."""
+
+    def launch_over(self, *rewrites):
+        """A repository holding `Settings.asset`, with the baseline launch over it writing each of
+        `rewrites` (path, text); returns the state after that launch."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        project = Path(directory.name)
+        (project / ".gitignore").write_text("/out/\n")
+        (project / "Settings.asset").write_text("committed")
+        subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(project), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "-m", "x"], check=True)
+        state = mutation_check.tree_before_baseline(project, project / "out", project / mutation_check.SENTINEL)
+        for path, text in rewrites:
+            (project / path).write_text(text)
+        state.settled([])
+        return state
+
+    def test_Given_ATrackedFileTheBaselineLaunchRewrote_When_ItSettles_Then_ItIsNamed(self):
+        # Arrange / Act
+        state = self.launch_over(("Settings.asset", "rewritten by the editor"))
+
         # Assert
-        self.assertEqual((code, "mutants=" in campaign.printed), (mutation_check.CEILING_REFUSAL, False))
+        self.assertEqual(state.first_left, ["Settings.asset"])
+
+    def test_Given_ABaselineLaunchThatLeftTheTreeAsItFoundIt_When_ItSettles_Then_NothingIsNamed(self):
+        # Arrange / Act
+        state = self.launch_over()
+
+        # Assert
+        self.assertEqual(state.first_left, [])
+
+    def test_Given_AFileOnlyALaterLaunchRewrote_When_ItSettles_Then_ItIsNotNamed(self):
+        # Arrange
+        state = self.launch_over()
+
+        # Act
+        (state.project / "Settings.asset").write_text("a later launch")
+        state.settled([])
+
+        # Assert
+        self.assertEqual(state.first_left, [])
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
@@ -11687,7 +11736,7 @@ class KillSetShardTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(steps), spare is not None and spare >= 15), (1, True))
 
-    def test_Given_TheMeasuringStep_When_ItsTimeoutFlagIsRead_Then_ItIsThreeTimesTheBaselineAtLeast(self):
+    def test_Given_TheMeasuringStep_When_ItsTimeoutFlagIsRead_Then_ItIsHangMarginTimesTheBaselineAtLeast(self):
         # Arrange — a hang reads as one only where the baseline times mutation_check.HANG_MARGIN fits the flag.
         flag = self.timeout_flag()
 
