@@ -250,8 +250,6 @@ namespace Velvet.Tests
                 "A private field of a base class is shared too");
         }
 
-        // GREEN_ON_BASE(characterization): the base never enters a class's members, so it compares nothing inside one; leaving out
-        // the check for an instance already being compared is what makes this walk compare the probe once per level.
         [Test]
         public void Given_AClassThatReachesItself_When_Replaced_Then_ItsMembersAreComparedOnce()
         {
