@@ -821,11 +821,11 @@ namespace Velvet
         // parent: a boundary this fiber renders has already caught whatever suspended inside it.
         // A transition's pass under a boundary that shows its primary is given up as one with no boundary is, since
         // the boundary rendering again would hide that primary.
-        internal static void SuspendPassOwner(ComponentFiber fiber)
+        internal static void SuspendPassOwner(ComponentFiber fiber, bool transitionPass)
         {
             var context = fiber.Reconciler!.Context;
             var boundary = ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
-            if (boundary != null && FiberWorkLoop.IsRenderingTransitionLane && !fiber.IsOffscreen
+            if (boundary != null && transitionPass && !fiber.IsOffscreen
                 && !context.IsBoundaryShowingFallback(boundary))
             {
                 context.SuspendDeclinedByRevealedBoundary = true;

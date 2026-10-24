@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -30,7 +29,13 @@ namespace Velvet.Tests
             s_hostFiber = null;
         }
 
-        private string Texts() => string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
+        private string Texts() => _root.DisplayedLabelTexts("|");
+
+        private static void FlushTwice(MountedTree mounted)
+        {
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+        }
 
         [Test]
         public void Given_ARevealedPrimary_When_ATransitionSuspendsIt_Then_ThePrimaryStaysShown()
@@ -40,7 +45,7 @@ namespace Velvet.Tests
             s_start.Invoke(() => s_setKey.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("value:0"));
@@ -54,7 +59,7 @@ namespace Velvet.Tests
             s_start.Invoke(() => s_setKey.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert
             Assert.That(s_hostFiber.IsTransitionPending, Is.True);
@@ -66,12 +71,12 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             s_start.Invoke(() => s_setKey.Invoke(1));
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
             var whileSuspended = Texts();
 
             // Act
             s_sources[0].TrySetResult(7);
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert — the reading while suspended is folded in, since the content after the resolve reads the same either way
             Assert.That((whileSuspended, Texts()), Is.EqualTo(("value:0", "value:7")));
@@ -83,13 +88,13 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
             s_start.Invoke(() => s_setKey.Invoke(1));
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
             s_start.Invoke(() => s_setKey.Invoke(2));
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Act
             s_sources[0].TrySetResult(7);
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("value:0"));
@@ -103,12 +108,12 @@ namespace Velvet.Tests
                 _root, V.Component(ErrorBoundaryRender, key: "errors"),
                 new MountOptions { OnCaughtError = (_, _) => { } });
             s_start.Invoke(() => s_setKey.Invoke(1));
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
             var whileSuspended = Texts();
 
             // Act
             s_sources[0].TrySetException(new InvalidOperationException("boom"));
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert — the reading while suspended is folded in, since the fallback after the fault reads the same either way
             Assert.That((whileSuspended, Texts()), Is.EqualTo(("value:0", "errors-fallback")));
@@ -121,13 +126,13 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(TickHostRender, key: "host"));
             s_start.Invoke(() => s_setKey.Invoke(1));
             s_setTick.Invoke(1);
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
             var whileSuspended = Texts();
 
             // Act
             s_sources[0].TrySetResult(7);
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert — the reading while suspended is folded in, since the content after the resolve reads the same either way
             Assert.That((whileSuspended, Texts()), Is.EqualTo(("tick:1|value:0", "tick:1|value:7")));
@@ -141,7 +146,7 @@ namespace Velvet.Tests
             s_start.Invoke(() => s_setKey.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
@@ -156,7 +161,7 @@ namespace Velvet.Tests
             s_start.Invoke(() => s_setKey.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
@@ -173,7 +178,7 @@ namespace Velvet.Tests
             s_setKey.Invoke(1);
 
             // Act
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("loading"));
@@ -189,7 +194,7 @@ namespace Velvet.Tests
             s_start.Invoke(() => s_setShown.Invoke(1));
 
             // Act
-            mounted.FlushStateForTest();
+            FlushTwice(mounted);
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("host|loading"));
