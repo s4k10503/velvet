@@ -26,6 +26,7 @@ namespace Velvet.Tests
         private readonly List<Vector2> _wheels = new();
         private readonly List<NavigationMoveEvent.Direction> _moves = new();
         private readonly List<(EventType Type, Vector2 At)> _pointerMoves = new();
+        private readonly List<Vector2> _movesAnywhere = new();
         private readonly List<KeyCode> _keysDown = new();
         private readonly List<KeyCode> _keysUp = new();
         private int _submits;
@@ -41,6 +42,7 @@ namespace Velvet.Tests
             _wheels.Clear();
             _moves.Clear();
             _pointerMoves.Clear();
+            _movesAnywhere.Clear();
             _keysDown.Clear();
             _keysUp.Clear();
             _submits = 0;
@@ -225,7 +227,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                _pointerMoves.ConvertAll(move => move.At.x < -1e5f && move.At.y < -1e5f),
+                _movesAnywhere.ConvertAll(at => at.x < -1e5f && at.y < -1e5f),
                 Is.EqualTo(new[] { true }));
         }
 
@@ -354,6 +356,9 @@ namespace Velvet.Tests
             root.RegisterCallback<NavigationCancelEvent>(_ => _cancels++);
             root.RegisterCallback<KeyDownEvent>(evt => _keysDown.Add(evt.keyCode));
             root.RegisterCallback<KeyUpEvent>(evt => _keysUp.Add(evt.keyCode));
+            // A position off the panel picks nothing, so that move is targeted at the panel itself, above the root.
+            root.panel.visualTree.RegisterCallback<PointerMoveEvent>(
+                evt => _movesAnywhere.Add(evt.imguiEvent.mousePosition), TrickleDown.TrickleDown);
             root.RegisterCallback<PointerMoveEvent>(
                 evt => _pointerMoves.Add((evt.imguiEvent.type, evt.imguiEvent.mousePosition)));
         }
