@@ -1115,6 +1115,39 @@ namespace Velvet.Tests
             Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)), capability);
         }
 
+        // GREEN_ON_BASE(characterization): the base already empties the clone's simulation when the element stops it.
+        // This reads the simulation's particle count rather than pixels, so a device that cannot draw a graph still
+        // answers.
+        [UnityTest]
+        public IEnumerator Given_AManualVisualEffectGraphPlaying_When_TheElementStopsIt_Then_NoParticleStaysAlive()
+        {
+            // Arrange
+            var effect = CreateLoopEffect();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root,
+                V.Particles(effect, className: "w-[300px] h-[300px]", playOn: PlayTrigger.Manual));
+            var element = _host.Root.Q<ParticlesElement>();
+            var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
+            element.Play();
+            var start = Time.realtimeSinceStartup;
+            while (clone.aliveParticleCount == 0 && Time.realtimeSinceStartup < start + 10f)
+            {
+                yield return null;
+            }
+            var whilePlaying = clone.aliveParticleCount;
+
+            // Act
+            element.Stop();
+            start = Time.realtimeSinceStartup;
+            while (clone.aliveParticleCount != 0 && Time.realtimeSinceStartup < start + 10f)
+            {
+                yield return null;
+            }
+
+            // Assert — the count while playing is carried so a graph that never simulated cannot pass for a stop.
+            Assert.That((whilePlaying > 0, clone.aliveParticleCount), Is.EqualTo((true, 0)));
+        }
+
         [UnityTest]
         public IEnumerator Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt()
         {
