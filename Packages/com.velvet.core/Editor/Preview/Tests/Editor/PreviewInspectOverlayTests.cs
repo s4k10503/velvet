@@ -207,6 +207,148 @@ namespace Velvet.Tests
             Assert.That(overlay.Q<Label>().text, Is.EqualTo("34×21   p 6 2 3 4   m 5 6 7 10"));
         }
 
+        // The label's top edge is the margin box's top edge less the label's font size and a 6px gap.
+        private const float LabelClearance = 16f;
+
+        private (PreviewInspectOverlay Overlay, PreviewPanelBridge Bridge) MountMeasured(VisualElement measured)
+        {
+            _panel = new VelvetPreviewPanel(null, CanvasWidth, CanvasHeight);
+            var bridge = new PreviewPanelBridge(_canvas, () => _panel);
+            var overlay = new PreviewInspectOverlay(_canvas, bridge) { MeasureEnabled = true };
+            _window.rootVisualElement.Add(overlay);
+            _window.rootVisualElement.Add(measured);
+            SetMeasured(overlay, measured);
+            return (overlay, bridge);
+        }
+
+        private static VisualElement BoxAt(float top, float height, float marginTop = 0f, float marginBottom = 0f) => new()
+        {
+            style =
+            {
+                position = Position.Absolute,
+                left = 20,
+                top = top,
+                width = 40,
+                height = height,
+                marginTop = marginTop,
+                marginBottom = marginBottom,
+            },
+        };
+
+        private void LayOutAndRefresh(PreviewInspectOverlay overlay)
+        {
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            overlay.Refresh();
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+        }
+
+        // A panel-space y in the overlay's local space, as the label's own position is mapped.
+        private float LocalY(float panelY, PreviewPanelBridge bridge, PreviewInspectOverlay overlay) =>
+            panelY / bridge.ToPanel(Vector2.one).y + _canvas.worldBound.yMin - overlay.worldBound.yMin;
+
+        // GREEN_ON_BASE(characterization): the base already shows the label once a refresh has measured an element.
+        [Test]
+        public void Given_AMeasuredElement_When_TheOverlayRefreshes_Then_TheLabelIsDisplayed()
+        {
+            // Arrange
+            var (overlay, _) = MountMeasured(BoxAt(top: 20, height: 10));
+
+            // Act
+            LayOutAndRefresh(overlay);
+
+            // Assert
+            Assert.That(overlay.Q<Label>().style.display.value, Is.EqualTo(DisplayStyle.Flex));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already puts the label above the margin box when there is room.
+        [Test]
+        public void Given_AMeasuredElementWithRoomAbove_When_TheOverlayRefreshes_Then_TheLabelSitsAboveTheMarginBox()
+        {
+            // Arrange
+            var measured = BoxAt(top: 40, height: 10, marginTop: 4);
+            var (overlay, bridge) = MountMeasured(measured);
+
+            // Act
+            LayOutAndRefresh(overlay);
+
+            // Assert
+            Assert.That(overlay.Q<Label>().style.top.value.value,
+                Is.EqualTo(LocalY(measured.worldBound.yMin - 4f, bridge, overlay) - LabelClearance).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already puts the label just below the margin box when above it
+        // would clip.
+        [Test]
+        public void Given_AMeasuredElementTooNearTheTop_When_TheOverlayRefreshes_Then_TheLabelSitsBelowTheMarginBox()
+        {
+            // Arrange — placed so the margin box starts half LabelClearance below the overlay's top, whatever offset
+            // the window root has.
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var measured = BoxAt(top: LabelClearance / 2f - _window.rootVisualElement.worldBound.yMin, height: 10,
+                marginBottom: 3);
+            var (overlay, bridge) = MountMeasured(measured);
+
+            // Act
+            LayOutAndRefresh(overlay);
+
+            // Assert
+            Assert.That(overlay.Q<Label>().style.top.value.value,
+                Is.EqualTo(LocalY(measured.worldBound.yMax + 3f, bridge, overlay) + 2f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already keeps the label above the margin box when it ends
+        // exactly on the top edge.
+        [Test]
+        public void Given_AMeasuredElementWhoseLabelEndsExactlyAtTheTopEdge_When_TheOverlayRefreshes_Then_TheLabelStaysAbove()
+        {
+            // Arrange — placed so the margin box starts LabelClearance below the overlay's top, whatever offset the
+            // window root has.
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var measured = BoxAt(top: LabelClearance - _window.rootVisualElement.worldBound.yMin, height: 10);
+            var (overlay, _) = MountMeasured(measured);
+
+            // Act
+            LayOutAndRefresh(overlay);
+
+            // Assert
+            Assert.That(overlay.Q<Label>().style.top.value.value, Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already hides the label when a refresh finds nothing measured.
+        [Test]
+        public void Given_ALabelShownForAMeasuredElement_When_TheMeasuredElementIsGoneAndTheOverlayRefreshes_Then_TheLabelIsHidden()
+        {
+            // Arrange
+            var (overlay, _) = MountMeasured(BoxAt(top: 20, height: 10));
+            LayOutAndRefresh(overlay);
+            SetMeasured(overlay, null);
+
+            // Act
+            overlay.Refresh();
+
+            // Assert
+            Assert.That(overlay.Q<Label>().style.display.value, Is.EqualTo(DisplayStyle.None));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already writes no label while the bridge has no panel root.
+        [Test]
+        public void Given_AMeasuredElementAndABridgeWithoutARoot_When_TheOverlayRefreshes_Then_TheLabelTextIsLeftEmpty()
+        {
+            // Arrange
+            var overlay = new PreviewInspectOverlay(_canvas, new PreviewPanelBridge(_canvas, () => null))
+            {
+                MeasureEnabled = true,
+            };
+            _window.rootVisualElement.Add(overlay);
+            SetMeasured(overlay, new VisualElement());
+
+            // Act
+            overlay.Refresh();
+
+            // Assert
+            Assert.That(overlay.Q<Label>().text, Is.Empty);
+        }
+
         // The overlay sits in the panel it measures, over a canvas the size of the panel, and the texture is read
         // where only the right margin band reaches.
         [UnityTest]
