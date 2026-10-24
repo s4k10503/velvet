@@ -521,6 +521,7 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedAway_Then_TheFloorStays()
         {
@@ -598,6 +599,7 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_AFlooredLabel_When_AnOverflowHiddenPayloadIsAppliedOutsideAnyPatch_Then_ItsFloorIsReleased()
         {
@@ -654,6 +656,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, WidestWordMinimum(label, LongWord))));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedToAPixelBracket_Then_NoFloorIsWritten()
         {

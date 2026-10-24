@@ -65,6 +65,7 @@ namespace Velvet.Tests
             return caster;
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewBesideAStylesheetRotate_When_ItIsDrawn_Then_TheMatrixIsTheRotateComposedWithTheSkew()
         {
@@ -80,6 +81,7 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(20f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewBesideAStylesheetScale_When_ItIsDrawn_Then_TheMatrixIsTheScaleComposedWithTheSkew()
         {
@@ -95,6 +97,7 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(0f, 1.2f, 1.2f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewedElementWithNoRotateRule_When_AStylesheetGivingItOneIsAttached_Then_TheMatrixIsTheRotateComposedWithTheSkew()
         {
@@ -111,6 +114,7 @@ namespace Velvet.Tests
             Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(25f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewedElementWithAStylesheetRotate_When_TheStylesheetIsDetached_Then_OnlyTheSkewIsDrawn()
         {
@@ -128,6 +132,7 @@ namespace Velvet.Tests
             Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewBesideAStylesheetRotateAndAnInlineRotate_When_ItIsDrawn_Then_TheInlineRotateIsComposed()
         {
