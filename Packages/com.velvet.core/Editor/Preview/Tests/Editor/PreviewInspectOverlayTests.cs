@@ -281,8 +281,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_AMeasuredElementTooNearTheTop_When_TheOverlayRefreshes_Then_TheLabelSitsBelowTheMarginBox()
         {
-            // Arrange
-            var measured = BoxAt(top: 5, height: 10, marginBottom: 3);
+            // Arrange — placed so the margin box starts half LabelClearance below the overlay's top, whatever offset
+            // the window root has.
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var measured = BoxAt(top: LabelClearance / 2f - _window.rootVisualElement.worldBound.yMin, height: 10,
+                marginBottom: 3);
             var (overlay, bridge) = MountMeasured(measured);
 
             // Act
