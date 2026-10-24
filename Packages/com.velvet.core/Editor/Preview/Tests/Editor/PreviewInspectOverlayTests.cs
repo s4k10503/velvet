@@ -93,8 +93,8 @@ namespace Velvet.Tests
             SetMeasured(overlay, measured);
 
             // Act
-            // A second pass: the first one lays the elements out and resolves their styles, and the repaint it
-            // takes up may read them before they are.
+            // The label is written by Refresh from the laid-out elements, so the layout pass comes first; the second
+            // pass runs the repaint Refresh asks for, which draws the measure without changing the label.
             ForcePanelUpdate(_window.rootVisualElement.panel);
             overlay.Refresh();
             ForcePanelUpdate(_window.rootVisualElement.panel);
@@ -202,7 +202,7 @@ namespace Velvet.Tests
             SetMeasured(overlay, measured);
 
             // Act
-            // A second pass: see the left-margin case above for why one is not enough.
+            // Laid out first, then refreshed, as in the left-margin case above.
             ForcePanelUpdate(_window.rootVisualElement.panel);
             overlay.Refresh();
             ForcePanelUpdate(_window.rootVisualElement.panel);

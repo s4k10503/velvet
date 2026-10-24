@@ -108,7 +108,11 @@ namespace Velvet.Editor.Preview
 
         /// <summary>Re-draws the overlay; call after a (re)mount or a stage/canvas geometry change so the
         /// outline tracks the new subtree and the new layout.</summary>
-        public void Refresh() => MarkDirtyRepaint();
+        public void Refresh()
+        {
+            UpdateLabel();
+            MarkDirtyRepaint();
+        }
 
         private void OnPointerMove(PointerMoveEvent evt)
         {
@@ -122,7 +126,7 @@ namespace Velvet.Editor.Preview
             // otherwise repaint the whole overlay every frame for no visual change.
             if (ReferenceEquals(next, _measured)) return;
             _measured = next;
-            MarkDirtyRepaint();
+            Refresh();
         }
 
         private void ClearMeasured()
@@ -163,8 +167,20 @@ namespace Velvet.Editor.Preview
         }
 
         // Draws the hovered element's box model: margin band (outermost), then the bordered box, then the
-        // content rect inset by padding. Labels the content size and reports padding/margin in the panel's units.
+        // content rect inset by padding. The label is not touched here: a panel does not take a change that dirties
+        // an element while it generates visual content, so UpdateLabel writes it.
         private void DrawMeasure(MeshGenerationContext ctx, VisualElement element)
+        {
+            var (_, border, marginRect, contentRect) = Boxes(element);
+
+            FillBand(ctx, marginRect, border, MarginColor);     // margin ring
+            FillRect(ctx, border, PaddingColor);                 // padding box (under content)
+            FillRect(ctx, contentRect, ContentColor);            // content rect
+            StrokeRect(ctx, border, OutlineColor);
+        }
+
+        // The content rect in the panel's coordinates, and the border, margin and content rects in this overlay's.
+        private (Rect PanelContent, Rect Border, Rect Margin, Rect Content) Boxes(VisualElement element)
         {
             var rs = element.resolvedStyle;
             var panelBorder = element.worldBound; // worldBound is the border box
@@ -177,12 +193,21 @@ namespace Velvet.Editor.Preview
                 panelBorder.xMin - rs.marginLeft, panelBorder.yMin - rs.marginTop,
                 panelBorder.xMax + rs.marginRight, panelBorder.yMax + rs.marginBottom));
             var contentRect = ToLocalRect(panelContent);
+            return (panelContent, border, marginRect, contentRect);
+        }
 
-            FillBand(ctx, marginRect, border, MarginColor);     // margin ring
-            FillRect(ctx, border, PaddingColor);                 // padding box (under content)
-            FillRect(ctx, contentRect, ContentColor);            // content rect
-            StrokeRect(ctx, border, OutlineColor);
+        // Labels the measured element's content size and reports its padding and margin in the panel's units, above
+        // its margin box or just below it if that would clip off the top.
+        private void UpdateLabel()
+        {
+            if (!_measure || _measured == null || _bridge.Root == null)
+            {
+                _label.style.display = DisplayStyle.None;
+                return;
+            }
 
+            var rs = _measured.resolvedStyle;
+            var (panelContent, _, marginRect, _) = Boxes(_measured);
             var w = Mathf.RoundToInt(panelContent.width);
             var h = Mathf.RoundToInt(panelContent.height);
             var pad = $"p {Px(rs.paddingTop)} {Px(rs.paddingRight)} {Px(rs.paddingBottom)} {Px(rs.paddingLeft)}";
@@ -190,7 +215,6 @@ namespace Velvet.Editor.Preview
             _label.text = $"{w}×{h}   {pad}   {mar}";
             _label.style.display = DisplayStyle.Flex;
             _label.style.left = marginRect.xMin;
-            // Place the label just above the margin box, or just below if it would clip off the top.
             var top = marginRect.yMin - LabelFontSize - 6f;
             _label.style.top = top < 0f ? marginRect.yMax + 2f : top;
         }
