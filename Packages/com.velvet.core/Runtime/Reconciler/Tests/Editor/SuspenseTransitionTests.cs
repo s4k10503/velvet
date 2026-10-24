@@ -24,6 +24,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_sources = new List<VelvetTaskCompletionSource<int>>();
             s_setKey = default;
+            s_setTick = default;
             s_setShown = default;
             s_start = default;
             s_hostFiber = null;
@@ -113,6 +114,55 @@ namespace Velvet.Tests
             Assert.That((whileSuspended, Texts()), Is.EqualTo(("value:0", "errors-fallback")));
         }
 
+        [Test]
+        public void Given_APendingTransitionSuspendingARevealedPrimary_When_AnUrgentUpdateRendersAndTheResourceResolves_Then_TheUrgentUpdateAndTheTransitionBothShow()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TickHostRender, key: "host"));
+            s_start.Invoke(() => s_setKey.Invoke(1));
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var whileSuspended = Texts();
+
+            // Act
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert — the reading while suspended is folded in, since the content after the resolve reads the same either way
+            Assert.That((whileSuspended, Texts()), Is.EqualTo(("tick:1|value:0", "tick:1|value:7")));
+        }
+
+        [Test]
+        public void Given_AHostUnderAnOuterBoundary_When_ATransitionSuspendsItsRevealedPrimary_Then_NeitherFallbackIsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(OuterBoundaryRender, key: "outer"));
+            s_start.Invoke(() => s_setKey.Invoke(1));
+
+            // Act
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("value:0"));
+        }
+
+        [Test]
+        public void Given_AComponentBelowABoundary_When_ItsOwnTransitionSuspendsIt_Then_TheBoundaryKeepsItsPrimary()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(BoundaryAboveOwnTransitionRender, key: "host"));
+            s_start.Invoke(() => s_setKey.Invoke(1));
+
+            // Act
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("value:0"));
+        }
+
         // GREEN_ON_BASE(characterization): the merge base shows the fallback for every suspend, so a render that is
         // not a transition's agrees with it; what this pins is that only a transition's render declines.
         [Test]
@@ -146,6 +196,7 @@ namespace Velvet.Tests
         }
 
         private static List<VelvetTaskCompletionSource<int>> s_sources;
+        private static StateUpdater<int> s_setTick;
         private static StateUpdater<int> s_setKey;
         private static StateUpdater<int> s_setShown;
         private static TransitionStarter s_start;
@@ -165,6 +216,46 @@ namespace Velvet.Tests
                     fallback: V.Label(text: "loading"),
                     children: new VNode[] { V.Component(ReaderRender, key, key: "reader") }),
             });
+        }
+
+        [Component]
+        private static VNode TickHostRender()
+        {
+            var (key, setKey) = Hooks.UseState(0);
+            var (tick, setTick) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_setKey = setKey;
+            s_setTick = setTick;
+            s_start = start;
+            return V.Div(children: new VNode[]
+            {
+                V.Label(text: "tick:" + tick),
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(ReaderRender, key, key: "reader") }),
+            });
+        }
+
+        [Component]
+        private static VNode OuterBoundaryRender()
+            => V.Suspense(
+                fallback: V.Label(text: "outer-loading"),
+                children: new VNode[] { V.Component(HostRender, key: "host") });
+
+        [Component]
+        private static VNode BoundaryAboveOwnTransitionRender()
+            => V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { V.Component(OwnTransitionReaderRender, key: "own") });
+
+        [Component]
+        private static VNode OwnTransitionReaderRender()
+        {
+            var (key, setKey) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_setKey = setKey;
+            s_start = start;
+            return V.Component(ReaderRender, key, key: "reader");
         }
 
         [Component]

@@ -1344,10 +1344,8 @@ namespace Velvet.Tests
 
         #region A suspend in a resumed slice
 
-        // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and
-        // finds the tier empty on the base, where the transition lane stays queued for the flush that parks.
         [Test]
-        public void Given_AParkedPassUnderABoundary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsAskedToRenderAndTheTransitionStaysPending()
+        public void Given_AParkedPassUnderABoundaryShowingItsPrimary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsNotAskedToRenderAndTheTransitionStaysPending()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(SlicedBoundaryHost, key: "sliced-boundary"));
@@ -1362,8 +1360,8 @@ namespace Velvet.Tests
             // Assert — the park is folded in, since a pass that finished in one slice suspended in its flush
             Assert.That(
                 (parked, s_slicedBoundaryFiber.IsDirty, s_slicedSuspendFiber.IsTransitionPending),
-                Is.EqualTo((true, true, true)),
-                "A suspend in a resumed slice goes to the boundary above, and the transition it belonged to has not committed");
+                Is.EqualTo((true, false, true)),
+                "A suspend in a resumed slice of a transition leaves the boundary showing its primary alone, and the transition it belonged to has not committed");
         }
 
         // GREEN_ON_BASE(refactor): the immediate drain after the call renders the pending state on the head and

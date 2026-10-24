@@ -918,7 +918,7 @@ retry does.
 A `Hooks.UseTransition` update whose render suspends a `V.Suspense` that shows its children does not swap them for
 the fallback. The Suspense gives that render up, so the children stay as they were and `isPending` stays true; the
 update renders again when the resource settles, and an error the resource faults with reaches the error boundary
-above. The warning above is not logged for this case. A boundary that shows no children yet, and an update that is
+above. The warning above is not logged for this case, and a boundary above the updated component that shows its children is not asked to render either. A boundary that shows no children yet, and an update that is
 not a transition's, show the fallback. This holds when the Suspense is rendered by the component the transition
 updates or by one it renders; an update made by a component below the Suspense still shows the fallback.
 

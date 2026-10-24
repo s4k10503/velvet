@@ -1460,10 +1460,7 @@ namespace Velvet
                 var primaryWasHidden = _ctx.IsSuspensePrimaryHidden(boundaryFiber, walk.Parent, portalScope, suspenseAt);
                 // A primary the boundary has committed is kept, hidden; one it has not committed is discarded.
                 var revealed = _ctx.TakeSuspensePrimaryReproduced(boundaryFiber, walk.Parent, portalScope, suspenseAt);
-                // A transition render that suspends where the boundary shows its primary gives the pass up whole
-                // rather than hide that primary, so it declines to keep the primary and never reaches the fallback.
-                var declines = commit != null && revealed && !primaryWasHidden && FiberWorkLoop.IsRenderingTransitionLane;
-                var retains = !declines && commit != null && (revealed || primaryWasHidden);
+                var retains = RetainsPrimary(commit, revealed, primaryWasHidden, out var declines);
                 var preCount = commit != null ? commit.NewElements.Count : result!.Count;
                 bool suspended;
                 bool hides;
@@ -1529,6 +1526,14 @@ namespace Velvet
             {
                 _ctx.MarkSuspensePrimaryReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
             }
+        }
+
+        // A transition render that suspends where the boundary shows its primary gives the pass up whole rather than
+        // hide that primary, so it declines to keep the primary and never reaches the fallback.
+        private static bool RetainsPrimary(GeneralCommitState? commit, bool revealed, bool primaryWasHidden, out bool declines)
+        {
+            declines = commit != null && revealed && !primaryWasHidden && FiberWorkLoop.IsRenderingTransitionLane;
+            return !declines && commit != null && (revealed || primaryWasHidden);
         }
 
         // Unwinds the primary this walk expanded as a discarded one is, then raises the suspend to the pass that owns

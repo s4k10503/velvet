@@ -545,6 +545,7 @@ namespace Velvet
             TransitionDrainFiber = drainsTransitionWork ? fiber : null;
             RenderLane = renderLane;
             var suspended = false;
+            FiberRenderer.BeginPass(fiber);
             try
             {
                 FiberRenderer.RenderAndReconcile(fiber, flushBudget);
@@ -677,6 +678,7 @@ namespace Velvet
                 var resumeContext = fiber.Reconciler.Context;
                 var enclosingFiberTree = resumeContext.CurrentFiberTree;
                 resumeContext.CurrentFiberTree = fiber.PreviousTree;
+                resumeContext.SuspendDeclinedByRevealedBoundary = false;
                 try
                 {
                     if (fiber.IsInlineMounted)

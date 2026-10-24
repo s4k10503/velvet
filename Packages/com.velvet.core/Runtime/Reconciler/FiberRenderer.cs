@@ -819,10 +819,18 @@ namespace Velvet
         // this fiber's update again where that expansion catches the suspend: a memoized fiber left clean
         // would bail there on equal props, and the update it holds would never render. Searched from the
         // parent: a boundary this fiber renders has already caught whatever suspended inside it.
+        // A transition's pass under a boundary that shows its primary is given up as one with no boundary is, since
+        // the boundary rendering again would hide that primary.
         internal static void SuspendPassOwner(ComponentFiber fiber)
         {
+            var context = fiber.Reconciler!.Context;
             var boundary = ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
-            if (boundary == null)
+            if (boundary != null && FiberWorkLoop.IsRenderingTransitionLane && !fiber.IsOffscreen
+                && !context.IsBoundaryShowingFallback(boundary))
+            {
+                context.SuspendDeclinedByRevealedBoundary = true;
+            }
+            if (boundary == null || context.SuspendDeclinedByRevealedBoundary)
             {
                 SuspendWithoutBoundary(fiber);
                 return;
@@ -833,6 +841,12 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(fiber);
             boundary.InvalidateMemoCache();
             FiberWorkLoop.RequestRenderFromHook(boundary);
+        }
+
+        internal static void BeginPass(ComponentFiber fiber)
+        {
+            var context = fiber.Reconciler?.Context;
+            if (context != null) context.SuspendDeclinedByRevealedBoundary = false;
         }
 
         private static void SuspendWithoutBoundary(ComponentFiber fiber)
