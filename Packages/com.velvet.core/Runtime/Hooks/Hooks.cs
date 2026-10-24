@@ -31,7 +31,7 @@ namespace Velvet
         }
 
         // For a member that reads the fiber without being a hook, so it does not move HookCallCount.
-        private static ComponentFiber ResolveUncounted(string memberName)
+        internal static ComponentFiber ResolveUncounted(string memberName)
         {
             var fiber = FiberAmbientStack.Current;
             HookGuard.ThrowIfNotRendering(fiber, memberName);
@@ -2988,39 +2988,8 @@ namespace Velvet
         public static bool TryGetMemoizedVNode(RuntimeMethodHandle component, object?[]? deps, out int slotIndex, out VNode? cached)
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
-            var fiber = FiberAmbientStack.Current;
-            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || !fiber.RendersComponent(component))
-            {
-                slotIndex = -1;
-                cached = null;
-                return false;
-            }
-            slotIndex = fiber.Indices.MemoHookIndex++;
-            fiber.MemoSlots ??= new List<HookMemoSlot>();
-            if (fiber.MemoSlots.Count <= slotIndex)
-            {
-                fiber.MemoSlots.Add(new HookMemoSlot());
-            }
-            var slot = fiber.MemoSlots[slotIndex];
-            slot.HookCallCountAtGate = fiber.HookCallCount;
-            // Structural value equality would call a fresh-but-content-equal record class prop or context
-            // value unchanged and hand back the cached VNode, so the render the reconciler had already
-            // decided to make would produce the committed tree instead of the new one.
-            // MUTANT_SURVIVES(equivalent, clause removed): AreEqualDeps reads a null committed list as unequal to the non-null deps checked above.
-            if (!slot.RunsHooksPastGate && slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
-            {
-                // Hit against the committed deps: reuse the committed VNode and stage the committed values so the
-                // render-phase settle keeps them. (On a miss, StoreMemoizedVNode stages the rebuilt result; without
-                // this hit-side staging a discarded attempt's miss would otherwise be the last thing staged.)
-                slot.NextDeps = slot.LastDeps;
-                slot.NextCachedResult = slot.CachedResult;
-                // A hit drops what the body built ahead of its gate, which the cached tree's retirement never reaches.
-                VNodePool.DisownJournaledRentals();
-                cached = slot.CachedResult;
-                return true;
-            }
-            cached = null!;
-            return false;
+            slotIndex = MemoScopeCache.Reserve(component, 1);
+            return MemoScopeCache.TryGet(slotIndex, 0, deps, out cached);
         }
 
         /// <summary>
@@ -3034,37 +3003,49 @@ namespace Velvet
         /// <param name="result">VNode to cache for subsequent hits.</param>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static void StoreMemoizedVNode(int slotIndex, object?[]? deps, VNode result)
-        {
-            if (slotIndex < 0) return;
-            if (deps == null) throw new ArgumentNullException(nameof(deps));
-            var fiber = ResolveUncounted("StoreMemoizedVNode");
-#if UNITY_EDITOR
-            // The StrictMode diagnostic render is isolated from the commit: staging its throwaway
-            // output here would first spare that tree from the diagnostic's own retirement sweep
-            // (the mark reads NextCachedResult) and then strand it when the next real render
-            // restages the slot — one leaked subtree per double render. Mirrors the other
-            // externally-visible hook writes the diagnostic pass no-ops.
-            if (fiber.IsStrictDiagnosticPass) return;
-#endif
-            if (fiber.MemoSlots == null || slotIndex >= fiber.MemoSlots.Count)
-            {
-                throw new InvalidOperationException(
-                    $"{ComponentName(fiber)}: StoreMemoizedVNode slotIndex ({slotIndex}) is invalid."
-                    + " Did you obtain slotIndex from TryGetMemoizedVNode immediately beforehand?");
-            }
-            var slot = fiber.MemoSlots[slotIndex];
-            // A hook the build-time scan could not see — reached through an interface or virtual call, say — ran
-            // between the gate and here. A hit skips that stretch, so it would skip the hook too; this body is
-            // rebuilt on every render from now on, as an unwoven one is.
-            if (fiber.HookCallCount != slot.HookCallCountAtGate)
-            {
-                slot.RunsHooksPastGate = true;
-            }
-            // Stage the freshly computed memo. The committed LastDeps / CachedResult are promoted when the
-            // render-phase loop settles, so a discarded intermediate attempt cannot poison the committed baseline.
-            slot.NextDeps = deps;
-            slot.NextCachedResult = result;
-        }
+            => MemoScopeCache.Store(slotIndex, 0, deps, result, nameof(StoreMemoizedVNode));
+
+        /// <summary>
+        /// Scope cache reservation woven in at the top of a <c>[Component]</c> method whose body the build-time
+        /// compiler transform cut into several memoization scopes. Grants the rendering fiber
+        /// <paramref name="scopeCount"/> consecutive slots in Fiber.MemoSlots, one per scope, to the first call its
+        /// own <c>[Component]</c> method makes during a render. Any other call is granted none and gets <c>-1</c>,
+        /// so every scope of the body making it runs uncached. Do not call by hand.
+        /// </summary>
+        /// <param name="component">Handle of the method making the call.</param>
+        /// <param name="scopeCount">Number of scopes the body declares; at least one.</param>
+        /// <returns>The index of the first granted slot, to pass to <see cref="TryGetScope"/> and <see cref="StoreScope"/>, or <c>-1</c>.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static int ReserveScopes(RuntimeMethodHandle component, int scopeCount)
+            => MemoScopeCache.Reserve(component, scopeCount);
+
+        /// <summary>
+        /// Gate of one memoization scope, woven in ahead of the code that builds the scope's VNode. Returns the
+        /// cached VNode when the scope's previous deps are equal. A call made with a <paramref name="firstSlot"/>
+        /// of <c>-1</c> reports a miss and stages nothing. Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values of this scope. Must not be null.</param>
+        /// <param name="cached">Outputs the cached VNode on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous deps are equal and the cached VNode was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetScope(int firstSlot, int scope, object?[]? deps, out VNode? cached)
+            => MemoScopeCache.TryGet(firstSlot, scope, deps, out cached);
+
+        /// <summary>
+        /// Slot writer API woven in after the code that builds a scope's VNode on the miss path of
+        /// <see cref="TryGetScope"/>. A call made with a <paramref name="firstSlot"/> of <c>-1</c> stages nothing.
+        /// Do not call by hand.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values to record for this scope. Must not be null.</param>
+        /// <param name="result">VNode to cache for subsequent hits.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreScope(int firstSlot, int scope, object?[]? deps, VNode result)
+            => MemoScopeCache.Store(firstSlot, scope, deps, result, nameof(StoreScope));
 
         #endregion
 

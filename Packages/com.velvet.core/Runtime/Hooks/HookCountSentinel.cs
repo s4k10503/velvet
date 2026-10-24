@@ -8,8 +8,8 @@ namespace Velvet
     // finishRenderingHooks does. A mount (no committed render yet) is not compared.
     internal static class HookCountSentinel
     {
-        // MemoHookIndex is left out: it counts the woven auto-memo gate, which TryGetMemoizedVNode grants
-        // at most once per render, not a hook the component's author calls.
+        // MemoHookIndex is left out: it counts the slots the woven auto-memo gates were granted, which
+        // MemoScopeCache.Reserve grants at most once per render, not a hook the component's author calls.
         private static readonly string[] s_kindNames =
         {
             "UseCallback", "UseBlocker", "UseLayoutEffect", "UseInsertionEffect", "UseEffect",

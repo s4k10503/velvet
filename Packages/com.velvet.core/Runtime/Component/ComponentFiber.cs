@@ -941,7 +941,9 @@ namespace Velvet
         /// <summary>
         /// Marks all memoization slots as stale so the next render takes the cache-miss path and rebuilds
         /// its VNode subtree. The slot list (and per-slot index) is preserved so SG / ILPP emitted code
-        /// still maps slot index → slot correctly across the invalidation.
+        /// still maps slot index → slot correctly across the invalidation. The staged values go too: a scope
+        /// the next render does not reach stages nothing, and the settle would otherwise promote the stale
+        /// pair back over the invalidation.
         /// </summary>
         /// <remarks>
         /// Use when a commit path needs the component's VNode subtree re-walked even though the component's
@@ -955,6 +957,8 @@ namespace Velvet
                 if (slot == null) continue;
                 slot.LastDeps = null;
                 slot.CachedResult = null;
+                slot.NextDeps = null;
+                slot.NextCachedResult = null;
             }
         }
 
