@@ -521,6 +521,8 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
+        // GREEN_ON_BASE(characterization): without the bracket the label carries no min-w-* class, which the base
+        // already floors; what reddens it is the manipulator holding on to the stood-down state after the patch.
         [Test]
         public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedAway_Then_TheFloorStays()
         {
@@ -594,6 +596,8 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base already ends without the floor here; what reddens it is the
+        // variant rescan writing a floor the overflow class should release.
         [Test]
         public void Given_ALabelWithAMdOverflowHidden_When_ThePanelWidensPastMd_Then_ItsFloorIsReleased()
         {
