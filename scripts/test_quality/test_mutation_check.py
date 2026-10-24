@@ -6867,8 +6867,8 @@ class DeadShardReportingTests(unittest.TestCase):
                                           "--survivors-shard", "0/2", "--plan")
 
         # Assert -- a job that fails here stops the run's chain, so the rest are left to the decision.
-        self.assertEqual((code, re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE)),
-                         (0, ["mutants=5"]))
+        self.assertEqual(re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE) if code == 0 else code,
+                         ["mutants=5"])
 
 
 class EditorRewrittenFilesTests(unittest.TestCase):
