@@ -538,9 +538,10 @@ and `PropertyOverrides` gives the channels it names a timing of their own, each 
 (its curve where it names no easing, and the play's where it names no duration), which that channel plays once
 whatever the play repeats. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
-with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, since a CSS timing
-function is a function of time and so must be monotone; a value outside that range is invalid and
-falls back to the default curve with a one-shot console warning instead of being silently clamped.
+with the `ease-in-out` keyword. `BezierX1` / `BezierX2` accept any finite value, as Motion's `cubicBezier` does; when either lies outside
+`[0,1]` the curve parameter for a given progress is found by bisection over `[0,1]`. A non-finite coordinate falls
+back to the default curve with a one-shot console warning. The CSS `cubic-bezier()` token of an `animate-` class
+still requires `x1` and `x2` in `[0,1]`, as CSS does.
 `BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
 target mid-tween.
 

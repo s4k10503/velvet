@@ -12,11 +12,10 @@ namespace Velvet
     /// </summary>
     /// <remarks>
     /// The endpoints are fixed at (0,0) and (1,1); the two control points (x1,y1) and (x2,y2) shape the curve.
-    /// A CSS timing function is a function of TIME, so x must stay monotone: an x1/x2 outside [0,1] makes the
-    /// whole curve invalid per the <c>cubic-bezier()</c> spec, exactly like a browser rejecting the declaration —
-    /// <see cref="Evaluate"/> warns once and falls back to the default curve instead of clamping the offending
-    /// coordinate into range. y is left UNCLAMPED so an overshoot/anticipate curve (a control point with y
-    /// outside [0,1]) genuinely passes its target mid-tween instead of being flattened.
+    /// x1 and x2 may lie outside [0,1], as Motion's <c>cubicBezier</c> accepts them: the parameter is then found by
+    /// bisection over [0,1] rather than Newton's method. y is left UNCLAMPED so an overshoot/anticipate curve (a
+    /// control point with y outside [0,1]) genuinely passes its target mid-tween instead of being flattened. A
+    /// non-finite coordinate makes <see cref="Evaluate"/> warn once and fall back to the default curve.
     /// </remarks>
     internal static class CubicBezierEvaluator
     {
@@ -67,15 +66,9 @@ namespace Velvet
                 return 1f;
             }
 
-            // A CSS timing function must be monotone in time, so an x1/x2 outside [0,1] makes the WHOLE curve
-            // invalid — not just the offending coordinate — the same way a browser rejects the entire
-            // cubic-bezier() declaration rather than clamping one axis into range. Finiteness is tested on ALL
-            // four control coordinates, not just the x's: every comparison against NaN is false, so a range check
-            // alone would wave a non-finite point straight through — and a NaN in y1/y2 clears the x-only range
-            // test yet still poisons SampleCurve(y1,y2,s) into a NaN output. Guarding every coordinate keeps
-            // Evaluate self-safe regardless of what a caller passes.
-            if (!float.IsFinite(x1) || !float.IsFinite(y1) || !float.IsFinite(x2) || !float.IsFinite(y2)
-                || x1 < 0f || x1 > 1f || x2 < 0f || x2 > 1f)
+            // Every comparison against NaN is false, so a range test would wave a non-finite point through and
+            // SampleCurve would poison the output; each of the four coordinates is tested.
+            if (!float.IsFinite(x1) || !float.IsFinite(y1) || !float.IsFinite(x2) || !float.IsFinite(y2))
             {
                 WarnInvalidControlPoints(x1, y1, x2, y2);
                 x1 = DefaultX1;
@@ -91,7 +84,8 @@ namespace Velvet
                 return t;
             }
 
-            var s = SolveForParam(x1, x2, t);
+            var monotone = x1 >= 0f && x1 <= 1f && x2 >= 0f && x2 <= 1f;
+            var s = monotone ? SolveForParam(x1, x2, t) : BisectForParam(x1, x2, t);
             return SampleCurve(y1, y2, s);
         }
 
@@ -103,9 +97,8 @@ namespace Velvet
             }
             s_warnedInvalidControlPoints = true;
             FiberLogger.LogWarning("Bezier",
-                $"cubic-bezier control points (x1={x1}, y1={y1}, x2={x2}, y2={y2}) are invalid — a timing " +
-                "function's x must stay within [0,1] to be monotone in time, and every coordinate must be finite. " +
-                "Falling back to the default curve, cubic-bezier(0.4, 0, 0.2, 1).");
+                $"cubic-bezier control points (x1={x1}, y1={y1}, x2={x2}, y2={y2}) are invalid — every " +
+                "coordinate must be finite. Falling back to the default curve, cubic-bezier(0.4, 0, 0.2, 1).");
         }
 
         // Bézier with endpoints fixed at 0 and 1 collapses to the cubic polynomial (a*s + b)*s*s + c*s, whose
@@ -124,6 +117,34 @@ namespace Velvet
             var b = 3f * (c2 - c1) - c;
             var a = 1f - c - b;
             return (3f * a * s + 2f * b) * s + c;
+        }
+
+        // Plain bisection over [0,1] for a curve whose x control points leave [0,1], where x(s) need not be
+        // monotone and Newton's step can leave the interval; where several parameters share an x, the one the
+        // halving reaches first is taken.
+        private static float BisectForParam(float x1, float x2, float targetX)
+        {
+            var low = 0f;
+            var high = 1f;
+            var s = 0.5f;
+            for (var i = 0; i < BisectionIterations; i++)
+            {
+                s = (high - low) * 0.5f + low;
+                var delta = SampleCurve(x1, x2, s) - targetX;
+                if (Mathf.Abs(delta) < ConvergenceEpsilon)
+                {
+                    break;
+                }
+                if (delta > 0f)
+                {
+                    high = s;
+                }
+                else
+                {
+                    low = s;
+                }
+            }
+            return s;
         }
 
         // Inverts x(s)=targetX for the curve parameter s. Newton-Raphson seeded at s=targetX (a good guess since
