@@ -64,7 +64,7 @@ namespace Velvet.Tests
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup",
             "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
-            "UnityUIEFilter", "FocusIn", "PointerDown", "Wheel",
+            "UnityUIEFilter", "FocusIn", "PointerDown", "Leave", "Wheel",
             "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS012",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "ForTest",
