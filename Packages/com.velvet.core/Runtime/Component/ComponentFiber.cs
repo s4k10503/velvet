@@ -256,18 +256,11 @@ namespace Velvet
         {
             var inTransition = FiberWorkLoop.IsRenderingTransitionLane;
             FiberAsyncResource<T>? restored = null;
-            if (_stashedAsync != null && _stashedAsync.TryGetValue(index, out var stashed))
+            var stashed = TakeStashedAsync(index);
+            if (stashed != null)
             {
-                if (stashed is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, key))
-                {
-                    restored = typed;
-                    _stashedAsync.Remove(index);
-                }
-                else if (inTransition)
-                {
-                    stashed.Dispose();
-                    _stashedAsync.Remove(index);
-                }
+                restored = WhenKeyed<T>(stashed, key);
+                if (restored == null) RetainOrDisposeStashed(index, stashed, inTransition);
             }
             if (existing == null) return restored;
             if (inTransition || !existing.StartedByTransition || existing.Status != FiberAsyncResourceStatus.Pending)
@@ -276,9 +269,30 @@ namespace Velvet
                 return restored;
             }
             _stashedAsync ??= new Dictionary<int, IFiberAsyncResource>();
-            if (_stashedAsync.TryGetValue(index, out var replaced)) replaced.Dispose();
+            TakeStashedAsync(index)?.Dispose();
             _stashedAsync[index] = existing;
             return restored;
+        }
+
+        private IFiberAsyncResource? TakeStashedAsync(int index)
+        {
+            if (_stashedAsync == null) return null;
+            if (!_stashedAsync.TryGetValue(index, out var stashed)) return null;
+            _stashedAsync.Remove(index);
+            return stashed;
+        }
+
+        private void RetainOrDisposeStashed(int index, IFiberAsyncResource stashed, bool inTransition)
+        {
+            if (inTransition) stashed.Dispose();
+            else _stashedAsync![index] = stashed;
+        }
+
+        private static FiberAsyncResource<T>? WhenKeyed<T>(IFiberAsyncResource resource, object key)
+        {
+            var typed = resource as FiberAsyncResource<T>;
+            if (typed == null) return null;
+            return ObjectIs.AreEqualObjects(typed.ResourceKey, key) ? typed : null;
         }
 
         internal void DisposeAsyncSlots()
