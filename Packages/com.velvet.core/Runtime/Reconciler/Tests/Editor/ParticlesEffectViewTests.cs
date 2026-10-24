@@ -201,7 +201,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AVisualEffectWithAnInactiveChildRenderer_When_Attached_Then_ThatRendererIsAmongTheHeldOnes()
         {
-            // Arrange — the source has its active quad and this inactive one; the held set also carries a renderer the engine adds, so the case looks for the inactive quad's rather than counting.
+            // Arrange — the source has its active quad and this inactive one; the case looks for the inactive quad's renderer among the held ones rather than counting them.
             var effect = CreateVisualEffectSource("fx-vfx-inactive-child");
             var inactive = GameObject.CreatePrimitive(PrimitiveType.Quad);
             inactive.transform.SetParent(effect.transform, false);
