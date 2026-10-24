@@ -698,8 +698,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base reports no change for a module it wove nothing in, as this does;
-        // the body has no return, which it refuses there as well. What it pins is the plan being honoured: `true`
-        // in place of `false` for the refused plan in `TryWeaveMethod` reports a change.
+        // the body has no return, which it refuses there as well. What it pins is a refused plan reporting no
+        // change: `return true` in place of the `Publish` call for the refused plan in `TryWeaveMethod` reports one.
         [Test]
         public void Given_AModuleWhereNoBodyIsWoven_When_CompilerWeaverRuns_Then_ItReportsNoChange()
         {

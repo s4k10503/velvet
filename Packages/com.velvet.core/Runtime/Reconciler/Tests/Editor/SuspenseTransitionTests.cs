@@ -184,8 +184,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("value:0"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base shows the fallback for every suspend, so a render that is
-        // not a transition's agrees with it; what this pins is that only a transition's render declines.
+        // GREEN_ON_BASE(characterization): the merge base already shows the fallback when an urgent update
+        // suspends a revealed primary; what this pins is that only a transition's render declines.
         [Test]
         public void Given_ARevealedPrimary_When_AnUrgentUpdateSuspendsIt_Then_TheFallbackIsShown()
         {
@@ -200,8 +200,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("loading"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base shows the fallback for every suspend, so a boundary the
-        // transition mounts agrees with it; what this pins is that only a revealed primary is kept.
+        // GREEN_ON_BASE(characterization): the merge base already shows the fallback for a boundary a transition
+        // mounts that suspends; what this pins is that only a revealed primary is kept.
         [Test]
         public void Given_ANoBoundaryYet_When_ATransitionMountsOneThatSuspends_Then_TheFallbackIsShown()
         {
