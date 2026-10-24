@@ -616,7 +616,7 @@ namespace Velvet
             binding.Host = null;
             binding.SourceId = EntityId.None;
             binding.Systems = null;
-            // MUTANT_SURVIVES(equivalent): Batches is read only behind a non-null Host, and CreateHost assigns it before it assigns the Host, so the stale array is never read.
+            // MUTANT_SURVIVES(equivalent): Batches is read only behind a non-null Host, and CreateHost assigns it before it assigns the Host, so the stale array is never read; it differs only in keeping that array reachable until then.
             binding.Batches = null;
             binding.Order.Clear();
             binding.Runs.Clear();
@@ -694,7 +694,7 @@ namespace Velvet
                     {
                         continue;
                     }
-                    // MUTANT_SURVIVES(equivalent): the view's position is one value for every batch, so its sign shifts every depth by the same amount, and Precedes only compares depths.
+                    // MUTANT_SURVIVES(equivalent): the view's position is one value for every batch, so its sign shifts every depth by the same amount, and Precedes only compares depths; the two programs can part only where two depths sit within a float rounding step of each other at a magnitude near the camera distance.
                     var depth = Vector3.Dot(hosted.System.transform.position - view.position, view.forward) + hosted.SortingFudge;
                     var placed = new OrderedBatch(batch, depth);
                     // Insertion keeps batches that tie in hierarchy order.
@@ -792,10 +792,10 @@ namespace Velvet
                 {
                     var material = ParticleBlendMaterials.For(blend);
                     layers[i].style.unityMaterial = material != null ? new StyleMaterialDefinition(material) : StyleKeyword.Null;
-                    // MUTANT_SURVIVES(equivalent): the cache only skips assigning the material the layer already holds, so without it every Arrange assigns the same material again.
+                    // MUTANT_SURVIVES(equivalent): the cache only skips assigning the material the layer already holds, so without it every Arrange assigns the same material again, which costs a style write per tick on a layer the tick already marks for repaint and changes nothing drawn.
                     binding.LayerBlends[i] = blend;
                 }
-                // MUTANT_SURVIVES(equivalent, equality): flipping the parent clause re-inserts a layer at the index it already holds, and a layer that is not a child of the element still fails the index clause.
+                // MUTANT_SURVIVES(equivalent, equality): flipping the parent clause re-inserts a layer at the index it already holds, and a layer that is not a child of the element still fails the index clause; the layer registers no callback but its paint, so the re-insert costs a hierarchy change and nothing a caller can see.
                 if (layers[i].parent != element || element.IndexOf(layers[i]) != i)
                 {
                     element.Insert(i, layers[i]);

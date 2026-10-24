@@ -17,6 +17,7 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
         private readonly List<Object> _spawned = new();
+        private long _fakeMs;
 
         private static UnityEngine.VFX.VisualEffect s_visualEffect;
         private static StateUpdater<bool> s_setFlag;
@@ -326,6 +327,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(binding.EffectRenderers, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the camera takes the element's laid-out aspect, not its texture's, as before.
+        [Test]
+        public void Given_AVisualEffectOnAFractionalBox_When_TheTickRendersIt_Then_TheCameraAspectIsTheLayoutAspect()
+        {
+            // Arrange — the texture is whole device pixels, so on a fractional box its ratio parts from the layout's.
+            TestGraphics.IgnoreIfHeadless("a camera render");
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var effect = CreateVisualEffectSource("fx-vfx-aspect");
+            var binding = MountVisualEffect(effect, "px-vfx-aspect");
+            var element = _host.Root.Q<VisualElement>("px-vfx-aspect");
+            element.style.width = 100.5f;
+            element.style.height = 64f;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Act
+            _fakeMs += 20;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(binding.EffectCamera.aspect, Is.EqualTo(element.layout.width / element.layout.height).Within(1e-4f));
         }
     }
 }
