@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
@@ -24,7 +25,11 @@ namespace Velvet.Tests
 
         private readonly List<Vector2> _wheels = new();
         private readonly List<NavigationMoveEvent.Direction> _moves = new();
+        private readonly List<(EventType Type, Vector2 At)> _pointerMoves = new();
+        private readonly List<KeyCode> _keysDown = new();
+        private readonly List<KeyCode> _keysUp = new();
         private int _submits;
+        private int _cancels;
         private int _movesReachingTheWindow;
 
         private VelvetPreviewPanel _panel;
@@ -36,7 +41,11 @@ namespace Velvet.Tests
             base.SetUp();
             _wheels.Clear();
             _moves.Clear();
+            _pointerMoves.Clear();
+            _keysDown.Clear();
+            _keysUp.Clear();
             _submits = 0;
+            _cancels = 0;
             _movesReachingTheWindow = 0;
             _canvas = new VisualElement
             {
@@ -148,6 +157,173 @@ namespace Velvet.Tests
             Assert.That((heldBefore, _canvas.HasPointerCapture(PointerId.mousePointerId)), Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already hands a navigation cancel on the canvas to the panel it
+        // shows.
+        [UnityTest]
+        public IEnumerator Given_ANavigationCancelOnTheCanvas_When_ItIsSent_Then_ThePanelReceivesIt()
+        {
+            // Arrange
+            yield return Listen();
+
+            // Act
+            SendToCanvas(NavigationCancelEvent.GetPooled());
+
+            // Assert
+            Assert.That(_cancels, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already hands a key press on the canvas to the panel it shows.
+        [UnityTest]
+        public IEnumerator Given_AKeyPressOnTheCanvas_When_ItIsSent_Then_ThePanelReceivesTheKey()
+        {
+            // Arrange
+            yield return Listen();
+
+            // Act
+            SendToCanvas(KeyDownEvent.GetPooled('a', KeyCode.A, EventModifiers.None));
+
+            // Assert
+            Assert.That(_keysDown, Is.EqualTo(new[] { KeyCode.A }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already hands a key release on the canvas to the panel it shows.
+        [UnityTest]
+        public IEnumerator Given_AKeyReleaseOnTheCanvas_When_ItIsSent_Then_ThePanelReceivesTheKey()
+        {
+            // Arrange
+            yield return Listen();
+
+            // Act
+            SendToCanvas(KeyUpEvent.GetPooled('a', KeyCode.A, EventModifiers.None));
+
+            // Assert
+            Assert.That(_keysUp, Is.EqualTo(new[] { KeyCode.A }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already hands a pointer move with no button down on to the panel
+        // as a mouse move rather than a drag.
+        [UnityTest]
+        public IEnumerator Given_APointerMoveOnTheCanvasWithNoButtonDown_When_ItIsSent_Then_ThePanelReceivesAMouseMove()
+        {
+            // Arrange
+            yield return Listen();
+
+            // Act
+            SendToCanvas(PointerMoveEvent.GetPooled(new Event
+            {
+                type = EventType.MouseMove,
+                mousePosition = new Vector2(10f, 10f),
+                button = 0,
+            }));
+
+            // Assert
+            Assert.That(_pointerMoves.ConvertAll(move => move.Type), Is.EqualTo(new[] { EventType.MouseMove }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already moves the story's pointer off its panel when the canvas's
+        // pointer leaves and the canvas holds no capture.
+        [UnityTest]
+        public IEnumerator Given_ThePointerLeavingTheCanvas_When_ItIsSent_Then_ThePanelsPointerIsMovedOffIt()
+        {
+            // Arrange
+            yield return Listen();
+
+            // Act
+            SendToCanvas(PointerLeaveEvent.GetPooled(new Event
+            {
+                type = EventType.MouseMove,
+                mousePosition = new Vector2(10f, 10f),
+                button = 0,
+            }));
+
+            // Assert
+            Assert.That(
+                _pointerMoves.ConvertAll(move => move.At.x < -1e5f && move.At.y < -1e5f),
+                Is.EqualTo(new[] { true }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already makes the canvas focusable, which a key to the story
+        // needs.
+        [Test]
+        public void Given_ABridge_When_ItIsBuilt_Then_TheCanvasCanTakeFocus()
+        {
+            // Arrange / Act: SetUp built the bridge.
+
+            // Assert
+            Assert.That(_canvas.focusable, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes focus on a pointer down over the canvas. The handler
+        // is invoked directly so only the bridge's own focus is read.
+        [Test]
+        public void Given_APointerDownOnTheCanvas_When_TheBridgeHandlesIt_Then_TheCanvasHoldsFocus()
+        {
+            // Arrange
+            using var down = PointerDownEvent.GetPooled(new Event
+            {
+                type = EventType.MouseDown,
+                mousePosition = new Vector2(10f, 10f),
+                button = 0,
+            });
+
+            // Act
+            typeof(PreviewPanelBridge).GetMethod("OnPointerDown", Private)?.Invoke(_bridge, new object[] { down });
+
+            // Assert
+            Assert.That(_canvas.focusController.focusedElement, Is.SameAs(_canvas));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already captures the pointer on a pointer down over the canvas.
+        // The handler is invoked directly for the reason given above.
+        [Test]
+        public void Given_APointerDownOnTheCanvas_When_TheBridgeHandlesIt_Then_TheCanvasHoldsThePointer()
+        {
+            // Arrange
+            using var down = PointerDownEvent.GetPooled(new Event
+            {
+                type = EventType.MouseDown,
+                mousePosition = new Vector2(10f, 10f),
+                button = 0,
+            });
+
+            // Act
+            typeof(PreviewPanelBridge).GetMethod("OnPointerDown", Private)?.Invoke(_bridge, new object[] { down });
+
+            // Assert
+            Assert.That(_canvas.HasPointerCapture(PointerId.mousePointerId), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already maps at a ratio of one while the canvas has no size,
+        // whatever size the panel has. The panel's size is part of the assertion, since a panel that has none maps at
+        // one for that reason instead.
+        [UnityTest]
+        public IEnumerator Given_ACollapsedCanvas_When_APositionIsMapped_Then_ItIsUnchanged()
+        {
+            // Arrange
+            var collapsed = new VisualElement
+            {
+                style = { position = Position.Absolute, left = 0, top = 0, width = 0, height = 0 },
+            };
+            _window.rootVisualElement.Add(collapsed);
+            var bridge = new PreviewPanelBridge(collapsed, () => _panel);
+            for (var frame = 0; frame < FramesBeforePanel * 2; frame++)
+            {
+                EditorApplication.QueuePlayerLoopUpdate();
+                yield return null;
+            }
+
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act
+            var mapped = bridge.ToPanel(new Vector2(10f, 20f));
+
+            // Assert
+            var panelSize = _panel.Root.panel.visualTree.layout.size;
+            Assert.That(
+                (panelSize.x > 0f && panelSize.y > 0f, collapsed.layout.size, mapped),
+                Is.EqualTo((true, Vector2.zero, new Vector2(10f, 20f))));
+        }
+
         // GREEN_ON_BASE(characterization): the base already maps at a ratio of one while there is no panel, whose
         // size is then zero. The canvas is laid out first so its own size is known.
         [Test]
@@ -174,6 +350,11 @@ namespace Velvet.Tests
             tree.RegisterCallback<WheelEvent>(evt => _wheels.Add(evt.delta), TrickleDown.TrickleDown);
             tree.RegisterCallback<NavigationMoveEvent>(evt => _moves.Add(evt.direction), TrickleDown.TrickleDown);
             tree.RegisterCallback<NavigationSubmitEvent>(_ => _submits++, TrickleDown.TrickleDown);
+            tree.RegisterCallback<NavigationCancelEvent>(_ => _cancels++, TrickleDown.TrickleDown);
+            tree.RegisterCallback<KeyDownEvent>(evt => _keysDown.Add(evt.keyCode), TrickleDown.TrickleDown);
+            tree.RegisterCallback<KeyUpEvent>(evt => _keysUp.Add(evt.keyCode), TrickleDown.TrickleDown);
+            tree.RegisterCallback<PointerMoveEvent>(
+                evt => _pointerMoves.Add((evt.imguiEvent.type, evt.imguiEvent.mousePosition)), TrickleDown.TrickleDown);
         }
 
         private void SendToCanvas(EventBase evt)

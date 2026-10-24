@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.LowLevel;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.Editor.Preview;
@@ -36,6 +38,7 @@ namespace Velvet.Tests
         private const string MeasureTarget = "measure-target";
 
         private static int s_clicks;
+        private static int s_loopUpdates;
 
         private VelvetPreviewWindow _window;
 
@@ -272,6 +275,144 @@ namespace Velvet.Tests
             Assert.That(
                 (settings.scaleMode, copy.scaleMode),
                 Is.EqualTo((PanelScaleMode.ScaleWithScreenSize, PanelScaleMode.ScaleWithScreenSize)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already disposes the panel when the window closes.
+        [Test]
+        public void Given_AShownPanel_When_TheWindowCloses_Then_ThePanelIsDisposed()
+        {
+            // Arrange
+            var panel = Field<VelvetPreviewPanel>("_panel");
+
+            // Act
+            CloseWindow();
+
+            // Assert
+            Assert.That(typeof(VelvetPreviewPanel).GetProperty("IsAlive", Private | BindingFlags.Public)?.GetValue(panel), Is.EqualTo(false));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets go of the panel when the window closes.
+        [Test]
+        public void Given_AShownPanel_When_TheWindowCloses_Then_TheWindowHoldsNoPanel()
+        {
+            // Arrange
+            var window = _window;
+
+            // Act
+            CloseWindow();
+
+            // Assert
+            Assert.That(typeof(VelvetPreviewWindow).GetField("_panel", Private)?.GetValue(window), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets go of the panel's host when the window closes.
+        [Test]
+        public void Given_AShownPanel_When_TheWindowCloses_Then_TheWindowHoldsNoHost()
+        {
+            // Arrange
+            var window = _window;
+
+            // Act
+            CloseWindow();
+
+            // Assert
+            Assert.That(typeof(VelvetPreviewWindow).GetField("_host", Private)?.GetValue(window), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already disposes the panel a new choice of settings replaces.
+        [Test]
+        public void Given_AShownPanel_When_PanelSettingsAreChosen_Then_TheReplacedPanelIsDisposed()
+        {
+            // Arrange
+            var replaced = Field<VelvetPreviewPanel>("_panel");
+
+            // Act
+            _window.SetPanelSettings(AssetDatabase.LoadAssetAtPath<PanelSettings>(StarterPanelSettings));
+
+            // Assert
+            Assert.That(typeof(VelvetPreviewPanel).GetProperty("IsAlive", Private | BindingFlags.Public)?.GetValue(replaced), Is.EqualTo(false));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already shows a panel's texture on the canvas as it builds the
+        // panel. The canvas loses the texture first, and the panel is rebuilt the way a new choice of settings does,
+        // without the sizing that follows it there.
+        [Test]
+        public void Given_ACanvasWithoutTheTexture_When_APanelIsBuilt_Then_TheCanvasShowsItsTexture()
+        {
+            // Arrange
+            SetCustomViewport(100, 60);
+            HoldPanelClock();
+            SettleLayout();
+            ClearCanvasBackground();
+            typeof(VelvetPreviewWindow).GetMethod("DisposePanel", Private)?.Invoke(_window, null);
+
+            // Act
+            typeof(VelvetPreviewWindow).GetMethod("CreatePanel", Private)?.Invoke(_window, null);
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(
+                Field<VisualElement>("_canvas").resolvedStyle.backgroundImage.renderTexture,
+                Is.SameAs(Field<VelvetPreviewPanel>("_panel").Texture));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already refreshes the overlay on the tick when only Measure is on.
+        [Test]
+        public void Given_OnlyMeasureOn_When_TheTickRuns_Then_TheOverlayRepaints()
+        {
+            // Arrange
+            typeof(VelvetPreviewWindow).GetField("_outline", Private)?.SetValue(_window, false);
+            typeof(VelvetPreviewWindow).GetField("_measure", Private)?.SetValue(_window, true);
+            var overlay = Field<PreviewInspectOverlay>("_overlay");
+            var repaints = 0;
+            overlay.generateVisualContent += _ => repaints++;
+            HoldPanelClock();
+            SettleLayout();
+            repaints = 0;
+
+            // Act
+            typeof(VelvetPreviewWindow).GetMethod("TickPanel", Private)?.Invoke(_window, null);
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(repaints, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already queues a player loop update on the tick outside Play Mode,
+        // which a probe system added to the loop counts.
+        [UnityTest]
+        public IEnumerator Given_EditMode_When_TheTickRuns_Then_APlayerLoopUpdateFollows()
+        {
+            // Arrange
+            var original = PlayerLoop.GetCurrentPlayerLoop();
+            var probed = original;
+            probed.subSystemList = original.subSystemList
+                .Append(new PlayerLoopSystem { type = typeof(VelvetPreviewWindowRuntimePanelTests), updateDelegate = () => s_loopUpdates++ })
+                .ToArray();
+            PlayerLoop.SetPlayerLoop(probed);
+            try
+            {
+                HoldPanelClock();
+                for (var frame = 0; frame < 3; frame++) yield return null;
+                s_loopUpdates = 0;
+
+                // Act
+                typeof(VelvetPreviewWindow).GetMethod("TickPanel", Private)?.Invoke(_window, null);
+                for (var frame = 0; frame < 3; frame++) yield return null;
+
+                // Assert
+                Assert.That(s_loopUpdates, Is.GreaterThan(0));
+            }
+            finally
+            {
+                PlayerLoop.SetPlayerLoop(original);
+            }
+        }
+
+        private void CloseWindow()
+        {
+            _window.Close();
+            _window = null;
         }
 
         // Fires the tick the window schedules on its panel once, by putting the panel's clock past the time it is due.
