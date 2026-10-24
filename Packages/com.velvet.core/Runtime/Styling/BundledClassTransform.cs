@@ -103,18 +103,8 @@ namespace Velvet
             return declared;
         }
 
-        // What the bundled single-class utilities on the element's class list give it, whether or not the bundled
-        // sheet is attached: the rotate in degrees (zero where none) and the uniform scale. For an element whose
-        // transform the reconciler composes itself (AuthoredTransform), where the cascade's own answer is hidden
-        // behind the inline slot it writes.
-        internal static (float RotateDegrees, Vector3 Scale) OfClasses(VisualElement element)
-        {
-            var unread = 0;
-            var declared = ReadClasses(element, ref unread);
-            return (declared.Rotate, declared.Scale);
-        }
-
-        // As OfClasses, with the rotate and scale a rule of the application's own gives the element in place of the
+        // The rotate in degrees and the uniform scale the bundled single-class utilities on the element's class list
+        // give it, with the rotate and scale a rule of the application's own gives the element in place of the
         // classes' where such a rule could: what its last style pass matched, which holds the bundled classes' too.
         // Where the bundled sheet is not attached that pass knows none of them, so a rule that gives nothing leaves
         // the classes'. A rotate about an axis other than z is declined and the classes' rotate kept, since only its
