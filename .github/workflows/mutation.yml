@@ -452,9 +452,9 @@ jobs:
         run: gh workflow run mutation.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" ${BASE_INPUT:+-f base="$BASE_INPUT"}
 
   # ---------------------------------------------------------------------------
-  # What a run left to answer, as a comment on the tracking issue (scripts/ci/mutation_report.py).
-  # always(), so a run whose plan or shards failed still says so. Nothing decides on the issue: the
-  # release gate reads the record.
+  # What a run left to answer, uploaded to code scanning as SARIF (scripts/ci/mutation_report.py).
+  # always(), so a run whose plan or shards failed still says so. Nothing decides on the alerts: the
+  # release gate reads the record. The one job holding the code-scanning write permission.
   # ---------------------------------------------------------------------------
   report:
     name: Mutation campaign (report)
@@ -464,7 +464,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      issues: write
+      security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -476,7 +476,6 @@ jobs:
           path: Logs/mutation-verdict
 
       - env:
-          GH_TOKEN: ${{ github.token }}
           PENDING: ${{ needs.mutation-plan.outputs.pending }}
           RESULTS: >-
             license-check=${{ needs.license-check.result }} mutation-plan=${{ needs.mutation-plan.result }}
@@ -484,5 +483,12 @@ jobs:
             mutation-verdict=${{ needs.mutation-verdict.result }} record=${{ needs.record.result }}
         run: |
           set -o pipefail
-          python3 scripts/ci/mutation_report.py --verdict Logs/mutation-verdict/verdict.txt | tee report.txt
-          { echo '### Mutation campaign report'; echo '```'; cat report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/mutation_report.py --verdict Logs/mutation-verdict/verdict.txt --sarif mutation.sarif | tee report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
+
+      # Not written where the verdict is absent: an upload with no results closes every alert.
+      - if: ${{ hashFiles('mutation.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: mutation.sarif
+          category: mutation-campaign

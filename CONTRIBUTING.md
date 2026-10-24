@@ -376,12 +376,16 @@ is the branch's own copy of the workflow and of `mutation_check.py`: a dispatch 
 checks against the commit of the ref it names, so a campaign dispatched from the default branch would
 be recorded against that branch's tip rather than the head it measured.
 
-**A record run reports what it left to answer on one issue.** `Mutation campaign ▸ report` runs after
-every record run where a licence is configured, whatever the jobs before it concluded, and comments on
-the issue labelled `mutation-nightly` — opening it the first time and reopening it where it was closed —
-with each unanswered survivor and stale declaration the verdict printed, each mutant nothing measured,
-and each job that did not pass (`scripts/ci/mutation_report.py`). Mutants past the cap owe no comment:
-a later run measures them. The issue is for people; nothing decides on it. A survivor is answered by a
+**A record run reports what it left to answer in code scanning.** `Mutation campaign ▸ report` runs after
+every record run where a licence is configured, whatever the jobs before it concluded, and uploads a SARIF
+file under the category `mutation-campaign` (`scripts/ci/mutation_report.py`). Each unanswered survivor
+and each stale declaration the verdict printed is one alert at its file and line, under a rule named for
+its operator, in **Security ▸ Code scanning**. An alert is keyed on the file and the mutation's own text
+rather than its line, so a line shift keeps it, and an upload that no longer carries one closes it: a run
+with nothing to answer uploads an empty list. A run with no verdict uploads nothing, since an empty list
+would close every alert. Each mutant nothing measured, each mutant past the cap and each job that did not
+pass goes to the run's job summary instead, and a mutant past the cap owes nothing: a later run measures
+it. Nothing decides on the alerts. A survivor is answered by a
 pull request that writes the test or the declaration. A declaration a change writes brings the lines it
 answers for into that change's mutants, so the next record run measures them: it answers the survivor,
 or is stale where the mutant now dies. A test that
