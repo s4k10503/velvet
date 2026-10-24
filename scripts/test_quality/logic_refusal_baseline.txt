@@ -1,4 +1,4 @@
-Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs	1
+Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs	4
 Packages/com.velvet.core/CodeGen/CompilerWeaver.cs	13
 Packages/com.velvet.core/CodeGen/MetadataRegistrationWeaver.cs	3
 Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs	5

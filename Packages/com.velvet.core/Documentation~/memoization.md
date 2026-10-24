@@ -85,11 +85,12 @@ A scope is built on every render when it:
 - takes the result of a hook outside the weaver's allow-lists (`Hooks.Use`, `Hooks.UseMutation`, `Hooks.UseBlocker`, `Hooks.UseFallback`), or of a custom hook that reaches one;
 - calls something that reads state it was not handed: a static member with nothing to read from (`DateTime.Now`, `Time.time`), a framework method outside a short list of pure ones (`List<T>.Add`), or a static field that is not `readonly`;
 - reads a stable object that a call may have changed — the result of `Hooks.UseRef`, `Hooks.UseMutableRef` or `Hooks.UseService` handed as an argument to anything but a `V.*` factory, a property getter or a pure framework member — so it is rebuilt after the call rather than served from before it;
+- calls `V.Portal` or `V.WorldSpace`, or builds a child of one, directly or through a local;
 - sits in a loop, calls a hook, writes a variable or object it did not create, or is entered by a branch from outside it.
 
-Only the scope that does one of these is affected: its siblings, and the scopes around it that do not read what it reads, stay cached. A body-level gate is not placed when a call the build cannot see runs ahead of the last hook, when a hook result is discarded or used in a shape the weaver cannot key on, when the body reaches a hook outside the allow-lists, or when a return or the last hook sits inside a `try`; the scopes that read none of those are still cached.
+Only the scope that does one of these is affected: its siblings, and the scopes around it that do not read what it reads, stay cached. A body-level gate is not placed when a call the build cannot see runs ahead of the last hook, when a hook result is used in a shape the weaver cannot key on, when the body reaches a hook outside the allow-lists, or when a return or the last hook sits inside a `try`; the scopes that read none of those are still cached.
 
-A body that breaks the Rules of Hooks — a return before a hook call, a hook that a branch can skip or repeat, or a hook inside a `try`, `catch` or `finally` — is left exactly as written.
+A body that breaks the Rules of Hooks — a return before a hook call, a hook that a branch can skip or repeat, or a hook inside a `try`, `catch` or `finally` — is left exactly as written. So is a body with a hook whose value it never reads, such as `var (_, setTick) = Hooks.UseState(0)` kept to force a render: the render stands for something the body reads some other way, and nothing in it says what.
 
 A computation that does not end in a `VNode` — a LINQ query, a string — is not a scope of its own: it runs whenever the scope reading it does, or on a miss of the body as a whole. To keep other work cached across a change, split it out by hand with `Hooks.UseMemo`, `V.Memoized(factory, deps)` or a `[MemoizeMethod]`.
 

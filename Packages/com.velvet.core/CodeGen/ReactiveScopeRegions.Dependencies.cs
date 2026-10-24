@@ -132,7 +132,7 @@ namespace Velvet.CodeGen
 
         private string? ReadEveryClosureField(List<ScopeDependency> uses, VariableDefinition holder)
         {
-            var definition = holder.VariableType.Resolve();
+            var definition = ScopeResolution.Type(holder.VariableType)!;
             foreach (var field in definition.Fields)
             {
                 if (field.IsStatic) continue;
@@ -167,7 +167,7 @@ namespace Velvet.CodeGen
         {
             if (!getter.HasThis || getter.Parameters.Count != 0 || getter.HasGenericParameters) return false;
             if (!getter.Name.StartsWith("get_", System.StringComparison.Ordinal) || !IsStorable(getter.ReturnType)) return false;
-            var definition = getter.Resolve();
+            var definition = ScopeResolution.Method(getter);
             if (definition == null || definition.IsVirtual) return false;
             foreach (var attribute in definition.CustomAttributes)
             {
@@ -243,8 +243,9 @@ namespace Velvet.CodeGen
         private static bool IsByRefLike(TypeReference type)
         {
             var element = type is GenericInstanceType generic ? generic.ElementType : type;
-            var definition = element.Resolve();
-            if (definition == null || !definition.IsValueType) return false;
+            if (!element.IsValueType) return false;
+            var definition = ScopeResolution.Type(element);
+            if (definition == null) return true;
             foreach (var attribute in definition.CustomAttributes)
             {
                 if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.IsByRefLikeAttribute") return true;
@@ -273,7 +274,7 @@ namespace Velvet.CodeGen
         private string? ComputeClosureProblem(VariableDefinition holder, int end)
         {
             if (holder.VariableType is GenericInstanceType) return "it captures a closure of a generic method";
-            TypeDefinition? definition = holder.VariableType.Resolve();
+            TypeDefinition? definition = ScopeResolution.Type(holder.VariableType);
             if (definition == null) return "it captures a closure the build cannot read";
             if (definition.Fields.Count == 0) return null;
             if (HasClosureField(definition)) return "it captures a closure that holds another closure";
@@ -306,7 +307,7 @@ namespace Velvet.CodeGen
             {
                 var code = instruction.OpCode.Code;
                 if (code != Code.Stfld && code != Code.Ldflda) continue;
-                if (instruction.Operand is not FieldReference field || field.DeclaringType.Resolve() != closure) continue;
+                if (instruction.Operand is not FieldReference field || ScopeResolution.Type(field.DeclaringType) != closure) continue;
                 if (code == Code.Stfld || !ReadsThroughAddress(instruction.Next)) return true;
             }
             return false;

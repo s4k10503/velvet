@@ -6,7 +6,8 @@
   and hands the reconciler the rest by instance. A props record read through its fields or automatic properties
   is keyed member by member. A part that takes the result of a call the build cannot see, of a hook outside the
   weaver's allow-lists, or of a stable object a call may have changed is built on every render and its siblings
-  are not. The memoization guide states what keeps a part from being cached.
+  are not, and neither is a child of `V.Portal` or `V.WorldSpace`. A body with a hook whose value it never reads is
+  left as written. The memoization guide states what keeps a part from being cached.
 - A call the build cannot see (an interface or virtual call, or one into an assembly it cannot load) ahead of the
   last hook, a hook outside the allow-lists, and a hook result used in a shape the weaver cannot key on no longer
   leave the whole component without memoization: the body as a whole is not keyed, and the parts that read none

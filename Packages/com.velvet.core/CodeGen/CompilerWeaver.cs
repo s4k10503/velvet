@@ -961,10 +961,9 @@ namespace Velvet.CodeGen
 
         // Whether a method reaches a non-SAFE hook, directly or transitively across plain method calls. A hook is
         // non-SAFE when it is a positional hook absent from both allow-lists (known memo-unsafe or unknown /
-        // future), or when hook safety cannot be confirmed because Resolve() fails for a callee whose body the
-        // weaver must inspect. Treating an unverifiable callee as non-SAFE keeps the allow-list a closed safety
-        // contract: the weaver only weaves a body whose every hook the walk can see is proven SAFE. A custom hook
-        // that composes UseMutation / Use is caught here.
+        // future). A callee Resolve() fails for counts as reaching none: HookReachFold reads it as opaque, which
+        // is what keeps a dispatch of it ahead of the gate from being cached. A custom hook that composes
+        // UseMutation / Use is caught here.
         internal sealed class NonSafeHookFold : CallGraphFold
         {
             protected override bool TryLeaf(MethodReference method, out int value, out MethodDefinition? definition)

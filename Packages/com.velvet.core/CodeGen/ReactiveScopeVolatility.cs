@@ -136,7 +136,7 @@ namespace Velvet.CodeGen
 
         private static bool IsConstantStatic(FieldReference field)
         {
-            var definition = field.Resolve();
+            var definition = ScopeResolution.Field(field);
             if (definition == null) return false;
             var holder = definition.DeclaringType.Name;
             return definition.IsInitOnly || holder == "<>c" || definition.Name.StartsWith("<>9__", System.StringComparison.Ordinal);
@@ -236,7 +236,7 @@ namespace Velvet.CodeGen
         // A member of a readonly struct leaves the struct it is called on as it found it.
         private static bool OfReadOnlyStruct(MethodReference callee)
         {
-            var type = callee.DeclaringType.Resolve();
+            var type = ScopeResolution.Type(callee.DeclaringType);
             if (type == null || !type.IsValueType) return false;
             foreach (var attribute in type.CustomAttributes)
             {

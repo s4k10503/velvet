@@ -97,6 +97,7 @@ namespace Velvet.CodeGen
             _tailStart = tailStart;
             _vnodeFullName = vnodeFullName;
             IndexAccesses();
+            IndexHostCalls();
         }
 
         // Why each candidate that was not cached was left alone.
@@ -160,19 +161,11 @@ namespace Velvet.CodeGen
 
         private bool ResolvesToVNode(TypeReference type)
         {
-            TypeDefinition? definition;
-            try
-            {
-                definition = type.Resolve();
-            }
-            catch (System.Exception)
-            {
-                return false;
-            }
+            var definition = ScopeResolution.Type(type);
             for (var depth = 0; definition != null && depth < 32; depth++)
             {
                 if (definition.FullName == _vnodeFullName) return true;
-                definition = definition.BaseType?.Resolve();
+                definition = definition.BaseType == null ? null : ScopeResolution.Type(definition.BaseType);
             }
             return false;
         }
@@ -280,6 +273,7 @@ namespace Velvet.CodeGen
                 ?? CheckHandlers(start, end)
                 ?? CheckEffects(start, end)
                 ?? CheckLocals(start, end)
+                ?? CheckHost(start, end)
                 ?? _volatility.RangeReason(start, end);
 
         private string? CheckShape(int start, int end)
@@ -491,7 +485,7 @@ namespace Velvet.CodeGen
 
         private static bool IsLambdaCache(FieldReference field)
         {
-            var definition = field.Resolve();
+            var definition = ScopeResolution.Field(field);
             return definition != null
                 && (definition.DeclaringType.Name == "<>c" || definition.Name.StartsWith("<>9__", System.StringComparison.Ordinal));
         }

@@ -27,6 +27,12 @@ namespace Velvet.CodeGen
             Ambient,
         }
 
+        // Portal and WorldSpace mount their children into a host of their own. No scope is cut around such a node or
+        // inside it.
+        internal static bool MountsIntoHost(MethodReference callee)
+            => callee.DeclaringType.FullName == typeof(Velvet.V).FullName
+                && (callee.Name == nameof(Velvet.V.Portal) || callee.Name == nameof(Velvet.V.WorldSpace));
+
         internal static bool IsHookKind(CallKind kind)
             => kind == CallKind.ReactiveHook || kind == CallKind.ContainerHook
                 || kind == CallKind.VolatileHook || kind == CallKind.EffectHook;
@@ -48,6 +54,8 @@ namespace Velvet.CodeGen
             "UnityEngine.Mathf", "UnityEngine.Color", "UnityEngine.Color32", "UnityEngine.Vector2",
             "UnityEngine.Vector3", "UnityEngine.Vector4", "UnityEngine.Rect",
         };
+
+        private const string VNodePoolFullName = "Velvet.VNodePool";
 
         private const string CompilerServicesNamespace = "System.Runtime.CompilerServices.";
         private const string ValueTuplePrefix = "System.ValueTuple";
@@ -108,12 +116,17 @@ namespace Velvet.CodeGen
             private static CallKind OfPlainCall(MethodReference callee)
             {
                 var declaring = callee.DeclaringType.FullName;
-                if (declaring == typeof(Velvet.V).FullName) return CallKind.Pure;
+                if (declaring == typeof(Velvet.V).FullName) return MountsIntoHost(callee) ? CallKind.Ambient : CallKind.Pure;
+                if (declaring == VNodePoolFullName) return CallKind.Ambient;
                 if (callee.HasThis && callee.Name.StartsWith("get_", System.StringComparison.Ordinal)) return CallKind.Pure;
                 if (callee.Name == "Invoke" && IsDelegateType(callee.DeclaringType)) return CallKind.Plain;
-                if (IsFrameworkType(declaring)) return IsPureFramework(declaring) ? CallKind.Pure : CallKind.Ambient;
+                if (IsFrameworkType(declaring) && IsPureFramework(declaring)) return IsVoidMutator(callee) ? CallKind.Plain : CallKind.Pure;
+                if (IsFrameworkType(declaring)) return CallKind.Ambient;
                 return !callee.HasThis && callee.Parameters.Count == 0 ? CallKind.Ambient : CallKind.Plain;
             }
+
+            // A void member of an otherwise pure type has no effect but the one on what it was handed.
+            private static bool IsVoidMutator(MethodReference callee) => callee.ReturnType.FullName == "System.Void";
 
             private static bool IsFrameworkType(string fullName)
                 => fullName.StartsWith("System.", System.StringComparison.Ordinal)

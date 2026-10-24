@@ -53,6 +53,9 @@ namespace Velvet.CodeGen
 
             public bool AnyValueHook { get; set; }
 
+            // Set where a hook's value is never read, so the render it causes has nothing to be keyed on.
+            public string? UnreadValue { get; set; }
+
             // The instruction after which every hook has run and its value is held.
             public Instruction? End
             {
@@ -106,7 +109,7 @@ namespace Velvet.CodeGen
             var findings = new HookFindings();
             ScanHooks(body, reach, findings.Scan);
             var returns = CollectReturns(body.Instructions);
-            var refusal = Refusal(method, findings.Scan, returns);
+            var refusal = Refusal(method, findings.Scan, returns) ?? findings.Scan.UnreadValue;
             if (refusal != null)
             {
                 report.Add($"The component is not cached: {refusal}.");
@@ -233,12 +236,17 @@ namespace Velvet.CodeGen
         {
             const string Unsupported = "a hook result is consumed by a shape the cache cannot key on";
             var next = instr.Next;
-            if (next == null || TryMatchDiscardedHookResult(next)) return "a hook result is discarded";
+            if (next == null || TryMatchDiscardedHookResult(next))
+            {
+                if (!HoldsStableObject(instr, isDirect)) scan.UnreadValue ??= UnreadMessage;
+                return "a hook result is discarded";
+            }
 
-            var tuple = TryCaptureTupleTemp(body, scan, next);
+            var tuple = TryCaptureTupleTemp(body, scan, instr, next, isDirect);
             if (tuple == HookCaptureMatch.Bail) return "a hook result is a tuple the body hands on whole";
             if (tuple == HookCaptureMatch.Matched) return null;
 
+            if (ReadsLaterElementOnly(next) && !HoldsStableObject(instr, isDirect)) scan.UnreadValue ??= UnreadMessage;
             var capture = TryCaptureHookResult(next, body, isDirect, out var local, out var boundary);
             if (capture == HookCaptureMatch.Bail) return Unsupported;
             if (capture == HookCaptureMatch.Matched)
@@ -253,10 +261,26 @@ namespace Velvet.CodeGen
             return null;
         }
 
+        private const string FirstTupleItem = "Item1";
+
+        // A hook whose value the body never reads leaves the render it causes with nothing to key on, so no part of
+        // the body is cached.
+        private const string UnreadMessage =
+            "a hook's value is never read, so a render it causes has nothing to be keyed on";
+
+        // `Hooks.UseState(0).Item2`: an element other than the first read straight off the returned tuple.
+        private static bool ReadsLaterElementOnly(Instruction next)
+            => next.OpCode.Code == Code.Ldfld && next.Operand is FieldReference field
+                && IsValueTupleType(field.DeclaringType) && field.Name != FirstTupleItem;
+
+        private static bool HoldsStableObject(Instruction call, bool isDirect)
+            => isDirect && call.Operand is MethodReference hook && ContainerHookNames.Contains(hook.Name);
+
         // A tuple a hook returned is stored whole and read one element at a time, as a lambda capturing the
         // deconstructed names makes the compiler write it. Each element read is a dep of its own, so the tuple
         // is never compared as a tuple; a tuple read in any other way is not captured.
-        private static HookCaptureMatch TryCaptureTupleTemp(MethodBody body, HookScan scan, Instruction stored)
+        private static HookCaptureMatch TryCaptureTupleTemp(MethodBody body, HookScan scan, Instruction call,
+            Instruction stored, bool isDirect)
         {
             if (!TryGetStlocVariable(stored, body, out var tuple) || !IsValueTupleType(tuple.VariableType))
             {
@@ -264,6 +288,10 @@ namespace Velvet.CodeGen
             }
             var fields = TupleElementsRead(body, stored, tuple);
             if (fields == null) return HookCaptureMatch.Bail;
+            if (!fields.Exists(field => field.Name == FirstTupleItem) && !HoldsStableObject(call, isDirect))
+            {
+                scan.UnreadValue ??= UnreadMessage;
+            }
             var captures = new List<HookCapture>();
             foreach (var field in fields)
             {
