@@ -593,7 +593,9 @@ namespace Velvet
                 return Math.Max(springHold, transition.DelaySec + (float)MotionPlaySpan.OverridesEndSec(transition));
             }
 
-            var hold = transition.DurationSec + transition.DelaySec;
+            var hold = transition.DelaySec + (StyleAnimationScheduler.TweensOnSwap(transition)
+                ? (float)repeat.TotalSec(transition.DurationSec)
+                : transition.DurationSec);
 
             if (transition.Type == TransitionType.Bezier)
             {

@@ -3,8 +3,8 @@ using System;
 namespace Velvet
 {
     /// <summary>
-    /// The repeat timing of a play whose single pass runs a generator — a bezier curve, or a spring — from its
-    /// from-values to its to-values: Framer Motion's <c>repeat</c> / <c>repeatType</c> / <c>repeatDelay</c>,
+    /// The repeat timing of a play whose single pass runs a generator — a bezier curve, a tween's easing or a
+    /// spring — from its from-values to its to-values: Framer Motion's <c>repeat</c> / <c>repeatType</c> / <c>repeatDelay</c>,
     /// ported from the tick of its main-thread animation and from its <c>getFinalKeyframe</c>. See
     /// <see cref="StyleTransitionConfig.Repeat"/> for the public contract.
     /// </summary>
