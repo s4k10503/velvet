@@ -281,7 +281,7 @@ namespace Velvet.Tests
             });
         }
 
-        [Component]
+        [Component(IsErrorBoundary = true)]
         private static VNode ErrorBoundaryRender()
         {
             Hooks.UseFallback(_ => V.Label(text: "errors-fallback"));
