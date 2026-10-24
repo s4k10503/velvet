@@ -295,17 +295,18 @@ namespace Velvet.CodeGen
             {
                 if (value.Start < start) return "it takes a value built outside itself off the stack";
             }
-            return ForbiddenOpcode(_flow.Instructions[index].OpCode.Code) ? "it contains an instruction that cannot be skipped" : null;
+            return ForbiddenOpcode(_flow.Instructions[index].OpCode) ? "it contains an instruction that cannot be skipped" : null;
         }
 
-        private static bool ForbiddenOpcode(Code code)
+        private static bool ForbiddenOpcode(OpCode opCode)
         {
-            switch (code)
+            // Both the long and the short form leave a protected region.
+            if (opCode.FlowControl == FlowControl.Branch && opCode.Name.StartsWith("leave", System.StringComparison.Ordinal)) return true;
+            switch (opCode.Code)
             {
                 case Code.Ret:
                 case Code.Throw:
                 case Code.Rethrow:
-                case Code.Leave:
                 case Code.Endfinally:
                 case Code.Endfilter:
                 case Code.Jmp:
