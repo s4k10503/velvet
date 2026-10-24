@@ -313,6 +313,19 @@ namespace Velvet.Tests
             return (VisualElement)field.GetValue(_window);
         }
 
+        private void SetCustomViewport(int width, int height)
+        {
+            var widthField = (IntegerField)PrivateField("_viewportWidthField");
+            var heightField = (IntegerField)PrivateField("_viewportHeightField");
+            widthField.SetValueWithoutNotify(width);
+            heightField.SetValueWithoutNotify(height);
+            InvokePrivate("OnViewportFieldChanged");
+        }
+
+        private object PrivateField(string fieldName) =>
+            typeof(VelvetPreviewWindow).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(_window);
+
         // Forces the window's panel through a layout pass so resolvedStyle is populated; the EditMode batch
         // player loop does not tick layout on its own.
         private void ForceLayout()
@@ -359,6 +372,39 @@ namespace Velvet.Tests
             // Assert
             var canvas = PrivateElement("_canvas");
             Assert.That((canvas.style.width.value.value, canvas.style.height.value.value), Is.EqualTo((620f, 410f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes the axis a story does not author from the
+        // viewport. A story whose size does not resolve writes none, which leaves the canvas at the viewport's, so
+        // each story here authors the axis that would then still differ from it.
+        [Test]
+        public void Given_AStoryWithOnlyAHeight_When_Selected_Then_TheCanvasTakesTheViewportWidth()
+        {
+            // Arrange
+            SetCustomViewport(620, 410);
+
+            // Act
+            SelectStory(BuildStory(0, 300));
+
+            // Assert
+            var canvas = PrivateElement("_canvas");
+            Assert.That((canvas.style.width.value.value, canvas.style.height.value.value), Is.EqualTo((620f, 300f)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes the height of a story that authors only a width
+        // from the viewport.
+        [Test]
+        public void Given_AStoryWithOnlyAWidth_When_Selected_Then_TheCanvasTakesTheViewportHeight()
+        {
+            // Arrange
+            SetCustomViewport(620, 410);
+
+            // Act
+            SelectStory(BuildStory(400, 0));
+
+            // Assert
+            var canvas = PrivateElement("_canvas");
+            Assert.That((canvas.style.width.value.value, canvas.style.height.value.value), Is.EqualTo((400f, 410f)));
         }
 
         [Test]
