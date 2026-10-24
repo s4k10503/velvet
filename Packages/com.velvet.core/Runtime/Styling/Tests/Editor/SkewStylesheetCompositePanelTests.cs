@@ -1,4 +1,5 @@
 #nullable enable
+using System.IO;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -12,11 +13,34 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class SkewStylesheetCompositePanelTests : PanelTestBase
     {
-        private const string RulesPath = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewStylesheetRules.uss";
+        // Written from this file rather than shipped as a stylesheet beside it: base_red_check.py carries the
+        // branch's .cs test files and TestUtilities onto the merge base, so a sheet beside them is absent there and
+        // every reading is NaN.
+        private const string RulesPath = "Assets/VelvetSkewStylesheetRules.uss";
+
+        private const string RulesText =
+            ".sheet-rotated { rotate: 20deg; }\n.sheet-scaled { scale: 1.2 1.2; }\n.sheet-late { rotate: 25deg; }\n";
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
-        private static StyleSheet? Rules() => AssetDatabase.LoadAssetAtPath<StyleSheet>(RulesPath);
+        public override void TearDown()
+        {
+            try
+            {
+                base.TearDown();
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(RulesPath);
+            }
+        }
+
+        private static StyleSheet? Rules()
+        {
+            File.WriteAllText(RulesPath, RulesText);
+            AssetDatabase.ImportAsset(RulesPath, ImportAssetOptions.ForceSynchronousImport);
+            return AssetDatabase.LoadAssetAtPath<StyleSheet>(RulesPath);
+        }
 
         // The slots' matrix, or NaN throughout where the rules did not load, so a missing sheet fails the comparison
         // rather than skipping it.
@@ -41,6 +65,7 @@ namespace Velvet.Tests
             return caster;
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewBesideAStylesheetRotate_When_ItIsDrawn_Then_TheMatrixIsTheRotateComposedWithTheSkew()
         {
@@ -56,6 +81,7 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(20f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewBesideAStylesheetScale_When_ItIsDrawn_Then_TheMatrixIsTheScaleComposedWithTheSkew()
         {
@@ -71,6 +97,7 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.EqualTo(SkewCompositeMath.Composite(0f, 1.2f, 1.2f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewedElementWithNoRotateRule_When_AStylesheetGivingItOneIsAttached_Then_TheMatrixIsTheRotateComposedWithTheSkew()
         {
@@ -87,6 +114,7 @@ namespace Velvet.Tests
             Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(25f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewedElementWithAStylesheetRotate_When_TheStylesheetIsDetached_Then_OnlyTheSkewIsDrawn()
         {
@@ -104,6 +132,7 @@ namespace Velvet.Tests
             Assert.That(Measured(rules, caster), Is.EqualTo(SkewCompositeMath.Composite(0f, 1f, 1f, 12f, 0f)).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ASkewBesideAStylesheetRotateAndAnInlineRotate_When_ItIsDrawn_Then_TheInlineRotateIsComposed()
         {

@@ -521,8 +521,7 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
-        // GREEN_ON_BASE(characterization): without the bracket the label carries no min-w-* class, which the base
-        // already floors; what reddens it is the manipulator holding on to the stood-down state after the patch.
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedAway_Then_TheFloorStays()
         {
@@ -537,12 +536,15 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
             var label = scope.Root.Q<Label>();
             Settle(label);
+            var flooredBefore = label.style.minWidth.value.value == WidestWordMinimum(label, LongWord);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, Tree(""));
 
             // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
+            Assert.That(
+                (flooredBefore, label.style.minWidth.value.value == WidestWordMinimum(label, LongWord)),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -581,8 +583,9 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.value.value, Is.EqualTo(WidestWordMinimum(label, LongWord)));
         }
 
-        // GREEN_ON_BASE(characterization): the base stands down for any min-w-* class; what reddens it is the
-        // manipulator keeping a floor under an auto minimum that sorts before the class that declares one.
+        // GREEN_ON_BASE(characterization): the base's scan stands down for a class with the min-w- prefix and for a
+        // min-w-[…] layer alike, so it writes no minimum here and the end state is its own. A manipulator that
+        // let the earlier auto class retire min-w-full would write a floor.
         [TestCase("min-w-[auto] min-w-full")]
         [TestCase("min-w-full min-w-[auto]")]
         [TestCase("min-w-auto min-w-full")]
@@ -596,22 +599,18 @@ namespace Velvet.Tests
             Assert.That(label.style.minWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
-        // GREEN_ON_BASE(characterization): the base already ends without the floor here; what reddens it is the
-        // variant rescan writing a floor the overflow class should release.
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
-        public void Given_ALabelWithAMdOverflowHidden_When_ThePanelWidensPastMd_Then_ItsFloorIsReleased()
+        public void Given_AFlooredLabel_When_AnOverflowHiddenPayloadIsAppliedOutsideAnyPatch_Then_ItsFloorIsReleased()
         {
             // Arrange
-            _window.position = new Rect(0, 0, 500, 600);
-            var label = MountLabel("flex flex-row w-[20px]", "md:overflow-hidden", Sentence);
+            var label = MountLabel("flex flex-row w-[20px]", "", Sentence);
             var floored = label.style.minWidth.value.value == WidestWordMinimum(label, LongWord);
 
-            // Act
-            _window.position = new Rect(0, 0, 1000, 600);
-            ForcePanelUpdate(label.panel);
-            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
-            label.panel.visualTree.SimulateEvent(evt);
-            Settle(label);
+            // Act — no geometry event is synthesized after the payload.
+            StyleVariantPayload.Apply(
+                label, new[] { "overflow-hidden" }, true, StyleLayerPriority.Hover,
+                _mounted.Root.Reconciler.Context);
 
             // Assert
             Assert.That((floored, label.style.minWidth.keyword), Is.EqualTo((true, StyleKeyword.Null)));
@@ -657,8 +656,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, WidestWordMinimum(label, LongWord))));
         }
 
-        // GREEN_ON_BASE(characterization): the base stands down for any min-w-* class; what reddens it is the
-        // manipulator keeping a floor over a declared pixel minimum once the auto bracket leaves.
+        // GREEN_ON_BASE(characterization): main already carries the behaviour this case pins.
         [Test]
         public void Given_ALabelWithAnAutoBracketMinWidth_When_ItIsPatchedToAPixelBracket_Then_NoFloorIsWritten()
         {
@@ -673,12 +671,13 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), before);
             var label = scope.Root.Q<Label>();
             Settle(label);
+            var flooredBefore = label.style.minWidth.value.value == WidestWordMinimum(label, LongWord);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, Tree("min-w-[5px]"));
 
             // Assert
-            Assert.That(label.style.minWidth.value.value, Is.EqualTo(5f));
+            Assert.That((flooredBefore, label.style.minWidth.value.value), Is.EqualTo((true, 5f)));
         }
 
         // GREEN_ON_BASE(characterization): the base writes no minimum at all; what reddens it is the manipulator
