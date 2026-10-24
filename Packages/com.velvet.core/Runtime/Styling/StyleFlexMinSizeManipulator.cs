@@ -19,7 +19,7 @@ namespace Velvet
     // w-max or w-auto is a content keyword, not a definite size, and caps nothing.
     //
     // Declarations are read from what Velvet owns: the live class list (scanned when the reconciled classes
-    // change or a variant moves a minimum size onto or off it), the arbitrary-value layers, and the inline
+    // change or a variant moves a size or overflow class onto or off it), the arbitrary-value layers, and the inline
     // style; the resolved style is not consulted.
     // TextItemBaselinePanelTests pins that a declaring class patched away is read at once.
     //

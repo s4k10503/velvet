@@ -595,6 +595,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALabelWithAMdOverflowHidden_When_ThePanelWidensPastMd_Then_ItsFloorIsReleased()
+        {
+            // Arrange
+            _window.position = new Rect(0, 0, 500, 600);
+            var label = MountLabel("flex flex-row w-[20px]", "md:overflow-hidden", Sentence);
+            var floored = label.style.minWidth.value.value == WidestWordMinimum(label, LongWord);
+
+            // Act
+            _window.position = new Rect(0, 0, 1000, 600);
+            ForcePanelUpdate(label.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            label.panel.visualTree.SimulateEvent(evt);
+            Settle(label);
+
+            // Assert
+            Assert.That((floored, label.style.minWidth.keyword), Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_ALabelWithAMdMinWidthZero_When_ThePanelWidensPastMd_Then_ItsFloorIsReleased()
         {
             // Arrange

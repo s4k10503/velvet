@@ -435,6 +435,4 @@ absolutely positioned or hidden. A clipped item and a grid item have an automati
 
 Not covered: a minimum the theme or a stylesheet of your own declares on a label is not seen, and the
 automatic minimum is the inline value, so an element carrying a `transition-all` animates it. The widest
-run is searched among the 64 longest distinct runs of a text. A variant that lights `min-w-*` or `min-h-*`
-(`md:min-w-0`, `hover:min-w-[auto]`) re-derives the item at once; one that lights `h-*` or `overflow-hidden`
-outside a patch is read at the label's next patch.
+run is searched among the 64 longest distinct runs of a text.

@@ -21,13 +21,22 @@ namespace Velvet
 
         private static bool IsContainerUtility(string core) => core == "flex" || core == "grid";
 
+        // The families StyleFlexMinSizeManipulator reads off the live class list.
+        private static readonly string[] s_flexMinSizePrefixes =
+        {
+            "min-w-", "min-h-", "max-w-", "max-h-", "w-", "h-", "size-", "overflow-", "truncate",
+        };
+
         private static bool IsMinimumSizeUtility(string core)
         {
-            if (core.StartsWith("min-w-", System.StringComparison.Ordinal))
+            foreach (var prefix in s_flexMinSizePrefixes)
             {
-                return true;
+                if (core.StartsWith(prefix, System.StringComparison.Ordinal))
+                {
+                    return true;
+                }
             }
-            return core.StartsWith("min-h-", System.StringComparison.Ordinal);
+            return false;
         }
 
         // A gate class just appeared on (or left) the live class list without passing through the reconciler, so
@@ -95,7 +104,7 @@ namespace Velvet
             var positionChanged = false;
             // Set when this call toggled flex or grid, which decides whether the element's children take a flex order.
             var containerChanged = false;
-            // Set when this call toggled a minimum size, which a text item's automatic minimum reads.
+            // Set when this call toggled a class a text item's automatic minimum reads.
             var minimumChanged = false;
 
             for (var index = 0; index < payloads.Length; index++)
