@@ -143,8 +143,7 @@ namespace Velvet
         // The latest end among the transition's entries other than the top-level one, driven by a channel or not.
         public float SlowestTimingEndSec;
 
-        // The elapsed time the play completes at, once every pass has run and its slowest channel has landed. A
-        // driven Tween never repeats, so its Repeat is one pass.
+        // The elapsed time the play completes at, once every pass has run and its slowest channel has landed.
         public double EndSec => System.Math.Max(DelaySec + Repeat.TotalSec(DurationSec), SlowestTimingEndSec);
 
         // The recurring tick, scheduled on the panel root. Paused (and nulled) once the tween completes, or on cancel.
@@ -196,9 +195,11 @@ namespace Velvet
         /// plan still builds one: it moves nothing and completes once <paramref name="timing"/> has run out, as the
         /// transition's own completion waits for its timing.
         /// </summary>
-        public static BezierTweenState CreateTween(MotionSpringClassParser.SpringPlan plan, DrivenTweenTiming timing)
+        public static BezierTweenState CreateTween(MotionSpringClassParser.SpringPlan plan, DrivenTweenTiming timing,
+            MotionRepeat repeat = default)
         {
             var state = Build(plan);
+            state.Repeat = repeat;
             state.Easing = timing.Easing;
             state.DurationSec = timing.DurationSec;
             state.DelaySec = timing.DelaySec;
@@ -381,7 +382,10 @@ namespace Velvet
         {
             if (dtSec > 0f)
             {
-                state.ElapsedSec = state.Repeat.Fold(state.ElapsedSec + dtSec, state.DurationSec);
+                var nextSec = state.ElapsedSec + dtSec;
+                state.ElapsedSec = nextSec > state.DelaySec
+                    ? state.DelaySec + state.Repeat.Fold(nextSec - state.DelaySec, state.DurationSec)
+                    : nextSec;
                 state.SeekedToStart = false;
             }
             ApplyEased(element, state);
@@ -810,9 +814,30 @@ namespace Velvet
         // but a direct driver caller might.
         private static float SharedEased(BezierTweenState state)
         {
-            return state.Easing is { } mode
-                ? UssEasing.Evaluate(mode, Progress(state, state.ElapsedSec - state.DelaySec, state.DurationSec))
-                : RepeatedBezierFraction(state);
+            return state.Easing is { } mode ? TweenFraction(state, mode) : RepeatedBezierFraction(state);
+        }
+
+        // A driven Tween's curve over every pass Repeat adds, after the delay it waits once. A channel with a timing
+        // of its own plays that once (Eased), whatever the play repeats.
+        private static float TweenFraction(BezierTweenState state, EasingMode mode)
+        {
+            var activeSec = state.ElapsedSec - state.DelaySec;
+            if (state.Repeat.Count == 0f)
+            {
+                return UssEasing.Evaluate(mode, Progress(state, activeSec, state.DurationSec));
+            }
+            if (activeSec <= 0f)
+            {
+                return 0f;
+            }
+            if (activeSec >= state.Repeat.TotalSec(state.DurationSec))
+            {
+                return state.Repeat.EndsAtFrom ? 0f : 1f;
+            }
+            var progress = (float)(state.Repeat.PassTime(activeSec, state.DurationSec, out var mirrored)
+                / state.DurationSec);
+            var eased = UssEasing.Evaluate(mode, progress);
+            return mirrored ? 1f - eased : eased;
         }
 
         // A bezier play's curve over every pass Repeat adds. It has no delay of its own (DelaySec is a driven Tween's),
