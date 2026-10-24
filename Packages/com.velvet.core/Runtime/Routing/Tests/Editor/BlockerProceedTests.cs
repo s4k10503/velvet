@@ -219,8 +219,9 @@ namespace Velvet.Tests
                 Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/other")));
         }
 
-        // GREEN_ON_BASE(characterization): the base also ends a resumed navigation without a commit, by an
-        // unmatched redirect target where this one reaches the redirect limit; the blocker blocks the next either way.
+        // GREEN_ON_BASE(characterization): the base also ends a resumed navigation without a commit at
+        // the redirect limit, which this arrangement uses in place of an unmatched redirect target, since an
+        // unmatched target now commits.
         [Test]
         public void Given_AResumedNavigationThatCommitsNothing_When_NavigatingAgain_Then_TheBlockerBlocksIt()
         {

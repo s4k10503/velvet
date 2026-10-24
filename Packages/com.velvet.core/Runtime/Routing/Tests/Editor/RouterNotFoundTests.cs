@@ -184,20 +184,20 @@ namespace Velvet.Tests
             Assert.That(calls, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the base never commits the error, so there is none to clear; this
-        // pins that the commit of a matched path replaces the one this change adds.
         [Test]
         public void Given_ACommittedNotFound_When_AMatchedPathIsNavigatedTo_Then_TheErrorIsCleared()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"));
             router.NavigateSync("/nowhere");
+            var whileNotFound = Errors(router);
 
             // Act
             router.NavigateSync("/home");
 
-            // Assert
-            Assert.That(router.CurrentLoaderErrors, Is.Empty);
+            // Assert — the reading while not found is folded in, since an empty error list after the matched path
+            // reads the same whether or not a 404 was ever committed.
+            Assert.That((whileNotFound, Errors(router)), Is.EqualTo(("0=404 Not Found", string.Empty)));
         }
 
         #endregion
