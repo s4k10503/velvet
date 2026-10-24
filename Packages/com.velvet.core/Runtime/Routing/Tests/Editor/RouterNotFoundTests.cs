@@ -184,6 +184,8 @@ namespace Velvet.Tests
             Assert.That(calls, Is.EqualTo(1));
         }
 
+        // GREEN_ON_BASE(characterization): the base already commits the 404 and clears it at the next matched path;
+        // the list read while the 404 stands is what keeps this case from passing on a router that never committed one.
         [Test]
         public void Given_ACommittedNotFound_When_AMatchedPathIsNavigatedTo_Then_TheErrorIsCleared()
         {
