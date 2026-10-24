@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Velvet
 {
@@ -42,8 +43,6 @@ namespace Velvet
         private static readonly Func<Type, Shape> s_classify = Classify;
         private static readonly ConcurrentDictionary<Type, FieldInfo[]> s_fields = new();
         private static readonly Func<Type, FieldInfo[]> s_declaredFields = DeclaredFields;
-        private static readonly MethodInfo s_memberwiseClone
-            = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         // The namespaces whose classes are not the application's: a collection, a task, an engine object. Their
         // fields are the framework's to keep consistent, so they are kept whole or replaced whole.
@@ -118,7 +117,7 @@ namespace Velvet
         }
 
         // The held instance when every field is shared, otherwise a copy of the arrived one with the shared fields
-        // written over it. A class cannot be rebuilt through a constructor, so the copy is a shallow clone. An
+        // written over it. A class cannot be rebuilt through a constructor, so the copy is a field-by-field copy made without running a constructor. An
         // instance already being compared further up the walk is a cycle and is not entered again.
         private static object ReplaceObject(object previous, object next, int depth, List<object>? path)
         {
@@ -155,10 +154,10 @@ namespace Velvet
 
             if (kept == fields.Length) return previous;
             if (replaced == 0) return next;
-            var copy = s_memberwiseClone.Invoke(next, null)!;
+            var copy = RuntimeHelpers.GetUninitializedObject(next.GetType());
             for (var i = 0; i < fields.Length; i++)
             {
-                if (shared[i]) fields[i].SetValue(copy, items[i]);
+                fields[i].SetValue(copy, shared[i] ? items[i] : fields[i].GetValue(next));
             }
             return copy;
         }

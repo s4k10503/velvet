@@ -346,7 +346,7 @@ are compared element by element and entry by entry, and a dictionary keeps its c
 number and a struct are equal when `Equals` says so. A class or record the application declares is
 compared field by field, base-class fields included, as v5 compares the properties of a plain object:
 an instance whose fields are all equal is the one held, and a changed one is a copy of the arrived
-instance, made by `MemberwiseClone`, carrying the held instance of each field that is equal. The
+instance, copied field by field, carrying the held instance of each field that is equal. The
 constructor and any property setter logic are not run, and the arrived instance is not written. An
 instance reached again from itself is not entered a second time. A class the framework or the engine
 declares (a namespace that is, or lies below, `System`, `Microsoft`, `Unity`, `UnityEngine` or
