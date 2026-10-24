@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "4bfc18960a7fea8e3a242b022895b634ae97d7e0032e7705c94f8108ebbdeffa",
+ "killers": [],
+ "measured_by": "40073373733",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 25,
+  "line": 247,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeFlow.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
+ "verdict": "survived"
+}

@@ -1,0 +1,110 @@
+{
+ "detail": "EditMode: 112 failed: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_InitialProps_When_FirstRender_Then_ChildObservesPropValue, Given_InitialProps_When_FirstRender_Then_ChildRendersExactlyOnce",
+ "file": "f7b1c1676a128d46c5a29b47096d66f2a2a423058157e26194de93cdba1256bf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BlockerReactRouterParityTests.Given_ABlockerRegisteredFirst_When_ItsDepsChange_Then_TheOneRegisteredAfterItIsStillTheOneConsulted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/BlockerReactRouterParityTests.cs": "0047e57a263ad0a63a03891cb2460787a5ceef7f579bf6b1417865680b79193a",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BlockerReactRouterParityTests.Given_AComponentHoldingABlocker_When_TheBlockerBlocks_Then_TheComponentRendersTheBlockedState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/BlockerReactRouterParityTests.cs": "0047e57a263ad0a63a03891cb2460787a5ceef7f579bf6b1417865680b79193a",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_InitialProps_When_FirstRender_Then_ChildObservesPropValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_InitialProps_When_FirstRender_Then_ChildRendersExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_StableDependencies_When_PropsRenderRepeats_Then_UseCallbackReturnsSameDelegate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorElementBubblingTests.Given_ABoundaryElementHoldingAnOutlet_When_ItRenders_Then_TheRouteBelowStaysUnrenderedWithoutFailing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/ErrorElementBubblingTests.cs": "3b3771d319fe8d80a603915b690ed085dc065efde17f8a017de79613188b0141",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorElementBubblingTests.Given_AnErroredParentAboveAnUnerroredChildBoundary_When_Rendered_Then_TheParentsBoundaryCatchesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/ErrorElementBubblingTests.cs": "3b3771d319fe8d80a603915b690ed085dc065efde17f8a017de79613188b0141",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorElementBubblingTests.Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_TheDefaultErrorElementReplacesTheParentLayout",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/ErrorElementBubblingTests.cs": "3b3771d319fe8d80a603915b690ed085dc065efde17f8a017de79613188b0141",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ErrorElementBubblingTests.Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_TheDefaultErrorElementShowsTheErrorMessage",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/ErrorElementBubblingTests.cs": "3b3771d319fe8d80a603915b690ed085dc065efde17f8a017de79613188b0141",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40073373733",
+ "mutant": {
+  "after": ";",
+  "before": "load.Add(Instruction.Create(OpCodes.Ldloc, dependency.Holder));",
+  "column": 16,
+  "line": 98,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeInjector.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
+ "verdict": "killed"
+}

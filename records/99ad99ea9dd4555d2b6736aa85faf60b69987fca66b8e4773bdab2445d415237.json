@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1be88a74e08581903e212904270149a89f9daeebdd2321aa2ec1af12a78632a7",
+ "killers": [],
+ "measured_by": "40073373733",
+ "mutant": {
+  "after": "",
+  "before": " || IsFrameworkType(declaring.FullName)",
+  "column": 41,
+  "line": 109,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Calls.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
+ "verdict": "survived"
+}

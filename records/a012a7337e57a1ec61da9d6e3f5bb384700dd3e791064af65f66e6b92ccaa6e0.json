@@ -1,0 +1,103 @@
+{
+ "detail": "EditMode: 405 failed: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_InitialProps_When_FirstRender_Then_ChildObservesPropValue, Given_InitialProps_When_FirstRender_Then_ChildRendersExactlyOnce",
+ "file": "48e24835bf2a01d08982d9acab097c4a2e0ea125ec893f59dd8f5e3c0014b40e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BlockerReactRouterParityTests.Given_ABlockerRegisteredFirst_When_ItsDepsChange_Then_TheOneRegisteredAfterItIsStillTheOneConsulted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/BlockerReactRouterParityTests.cs": "0047e57a263ad0a63a03891cb2460787a5ceef7f579bf6b1417865680b79193a",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BlockerReactRouterParityTests.Given_AComponentHoldingABlocker_When_TheBlockerBlocks_Then_TheComponentRendersTheBlockedState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/BlockerReactRouterParityTests.cs": "0047e57a263ad0a63a03891cb2460787a5ceef7f579bf6b1417865680b79193a",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CommitPhaseStateWriteTests.Given_ARefSetupWritingStateDuringTheCommit_When_TheDrainEnds_Then_TheWriteHasCommitted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitPhaseEdgeCaseTests.cs": "19369ed6dbc9a6f3157b4d7dfeab61e173973798416698073f8429885450439f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_ACustomHookPairDeconstructedWhole_When_TheSecondElementChanges_Then_TheLabelShowsItsNewValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_InitialProps_When_FirstRender_Then_ChildObservesPropValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_InitialProps_When_FirstRender_Then_ChildRendersExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MemoizedChild_When_ParentRerendersWithShallowEqualProps_Then_ChildDoesNotReRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40073373733",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 53,
+  "line": 371,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
+ "verdict": "killed"
+}

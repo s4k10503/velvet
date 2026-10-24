@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 5 failed: Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_EachOpCodeIsAsItWas, Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_EachOperandIsAsItWas, Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_TheBodyIsAsItWas",
+ "file": "48e24835bf2a01d08982d9acab097c4a2e0ea125ec893f59dd8f5e3c0014b40e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_EachOpCodeIsAsItWas",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_EachOperandIsAsItWas",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_TheBodyIsAsItWas",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AWeaveThatFailsAfterItBegan_When_CompilerWeaverRuns_Then_TheLocalsAreAsTheyWere",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_ManyBodiesTheWeaverFailsOn_When_CompilerWeaverRuns_Then_EachFailureIsTheBodysOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40073373733",
+ "mutant": {
+  "after": ";",
+  "before": "body.OptimizeMacros();",
+  "column": 12,
+  "line": 389,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
+ "verdict": "killed"
+}
