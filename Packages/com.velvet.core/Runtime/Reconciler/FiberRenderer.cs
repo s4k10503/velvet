@@ -826,6 +826,7 @@ namespace Velvet
         {
             var context = fiber.Reconciler!.Context;
             var boundary = ComponentBoundarySearch.FindSuspenseBoundaryAbove(fiber);
+            UnityEngine.Debug.Log($"DIAG407 owner: transitionPass={transitionPass} boundary={(boundary != null)} offscreen={fiber.IsOffscreen} declined={context.SuspendDeclinedByRevealedBoundary}");
             if (boundary != null && transitionPass && !fiber.IsOffscreen
                 && !context.IsBoundaryShowingFallback(boundary))
             {

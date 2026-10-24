@@ -1473,6 +1473,7 @@ namespace Velvet
                 try
                 {
                     suspended = ExpandSuspensePrimary(walk, suspense.Children, retains, primaryPosition, out renders);
+                    UnityEngine.Debug.Log($"DIAG407 expand: commit={commit != null} revealed={revealed} hidden={primaryWasHidden} transition={FiberWorkLoop.IsRenderingTransitionLane} declines={declines} retains={retains} suspendedAfterPrimary={suspended}");
                     if (suspended && declines) DeclineRevealedSuspense(commit!, preCount, fibersBefore, newFibers, reportsBefore, renders);
                     var primaryEnd = commit != null ? commit.NewElements.Count : result!.Count;
                     if (!suspended)
@@ -1480,6 +1481,7 @@ namespace Velvet
                         suspended = AnyPrimaryChildStillPending(walk, fibersBefore)
                             || AnyRowStillPending(walk, commit!, preCount, primaryEnd);
                     }
+                    UnityEngine.Debug.Log($"DIAG407 afterPending: suspended={suspended}");
                     hides = suspended && retains;
                     // A primary that suspends shows none of what its fibers rendered in this walk.
                     _ctx.ResolveSuspenseRenders(renders, discard: suspended);
