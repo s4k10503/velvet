@@ -7261,12 +7261,12 @@ class CampaignPlanTests(unittest.TestCase):
         self.assertEqual(planned, "mutants=2\nshards=[0, 1]")
 
     def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
-        # Arrange — thirty mutants make five shards by default, and three where the run said three.
+        # Arrange — twenty-one mutants make four shards by default, and three where the run said three.
         mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
-                   for number in range(1, 31)]
+                   for number in range(1, 22)]
 
         # Act
-        _, count = mutation_check.unreported_shards(list(range(1, 31)), "EditMode", mutants,
+        _, count = mutation_check.unreported_shards(list(range(1, 22)), "EditMode", mutants,
                                                    project=Path("/p"), most=3)
 
         # Assert
@@ -7485,6 +7485,134 @@ class NarrowedBoundTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(campaign.bounds.get("baseline-Reconciler.xml"), 200.0)
+
+
+class BudgetTests(unittest.TestCase):
+    """`--budget` holds a mutant's launches, at their bounds, against the seconds a shard has left: the
+    stubbed editor takes no time, so what a case reads is the bound and never the wall clock."""
+
+    # A baseline of 200 s bounds a mutant's launch at 305 s, and the margin added to that is 60.
+    BASELINE = 200.0
+
+    def plain(self, *arguments):
+        campaign = StubbedCampaign()
+        campaign.baseline_seconds = self.BASELINE
+        return campaign, campaign.run_over_diff(*arguments)
+
+    def test_Given_ABudgetBelowTheBoundOfAMutantsLaunch_When_TheCampaignRuns_Then_OnlyTheBaselineIsLaunched(self):
+        # Arrange / Act — the stub's launch would take no time at all.
+        campaign, _ = self.plain("--budget", "100")
+
+        # Assert
+        self.assertEqual(list(campaign.timeouts), ["baseline.xml"])
+
+    def test_Given_ABudgetHoldingTheBoundButNotTheMargin_When_TheCampaignRuns_Then_TheMutantIsNotLaunched(self):
+        # Arrange / Act — 305 s of bound fit 330 s, 365 s of bound and margin do not.
+        campaign, _ = self.plain("--budget", "330")
+
+        # Assert
+        self.assertEqual(list(campaign.timeouts), ["baseline.xml"])
+
+    def test_Given_ABudgetHoldingTheBoundAndTheMargin_When_TheCampaignRuns_Then_TheMutantIsLaunched(self):
+        # Arrange / Act
+        campaign, _ = self.plain("--budget", "400")
+
+        # Assert
+        self.assertIn("mutant-001.xml", campaign.timeouts)
+
+    def test_Given_NoBudget_When_TheCampaignRuns_Then_TheMutantIsLaunched(self):
+        # Arrange / Act
+        campaign, _ = self.plain()
+
+        # Assert
+        self.assertIn("mutant-001.xml", campaign.timeouts)
+
+    def test_Given_AMutantTheBudgetDoesNotHold_When_TheCampaignRuns_Then_ItIsRecordedAsNotMeasuredForBudget(self):
+        # Arrange / Act
+        campaign, _ = self.plain("--budget", "100")
+
+        # Assert
+        self.assertEqual(json.loads((campaign.project / "out" / "mutant-001.json").read_text())["verdict"],
+                         mutation_check.BUDGET)
+
+    def test_Given_AMutantTheBudgetDoesNotHold_When_AShardRuns_Then_ItExitsZero(self):
+        # Arrange / Act
+        _, code = self.plain("--shard", "0/1", "--budget", "100")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_AMutantTheBudgetDoesNotHold_When_TheCampaignDecides_Then_ItFailsTheRun(self):
+        # Arrange / Act
+        _, code = self.plain("--budget", "100")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_AnAreaWhoseNarrowedLaunchIsBoundedAt120s_When_TheBudgetHoldsOnlyTheWholeSuite_Then_TheMutantIsNotLaunched(self):
+        # Arrange — the area's own launch took 80 s, so its mutant's narrowed launch is bounded at 120 s and
+        # the whole suite after it at 305 s: 485 s with the margin, against a budget of 400 s that holds the
+        # whole suite and the margin alone.
+        campaign = TimedAreaCampaign({"baseline.xml": self.BASELINE, "baseline-Reconciler.xml": 80.0})
+
+        # Act
+        campaign.run_over_diff("--budget", "400")
+
+        # Assert
+        self.assertEqual([name for name in campaign.launches if name.startswith("mutant-")], [])
+
+
+class BudgetWorkflowTests(unittest.TestCase):
+    """What `mutation.yml` hands the campaign as its budget, and what it does with the mutants the budget
+    left."""
+
+    WORKFLOW = REPO_ROOT / ".github/workflows/mutation.yml"
+
+    def job(self, name):
+        return self.WORKFLOW.read_text().partition("\n  {}:".format(name))[2].partition("\n  # ----")[0]
+
+    def step(self, name):
+        found = re.search(r"^      - name: {}\n        timeout-minutes: (\d+)\n(.*?)(?=^      - )".format(name),
+                          self.job("mutation-shard"), re.MULTILINE | re.DOTALL)
+        budget = re.search(r"--budget (\d+)", found.group(2)) if found else None
+        return (int(found.group(1)) * 60, int(budget.group(1))) if found and budget else None
+
+    def test_Given_EachMeasuringStep_When_ItsBudgetIsComparedWithItsTimeout_Then_TheSetupAndTheTeardownFitBetween(self):
+        # Arrange — the budget's clock starts with the campaign, so what a shard spends before it and after
+        # it fits between the budget and the timeout: the longest measured before a baseline and after a
+        # last verdict.
+        outside = 201 + 12
+        steps = [self.step("Measure EditMode"), self.step("Measure PlayMode")]
+
+        # Act
+        fits = [step is not None and step[0] - step[1] >= outside for step in steps]
+
+        # Assert
+        self.assertEqual(fits, [True, True])
+
+    def test_Given_ARunWhoseShardsLeftMutantsForBudget_When_TheRecordJobDecidesToDispatch_Then_ItReadsWhatTheVerdictCounted(self):
+        # Arrange
+        record = self.job("record")
+
+        # Act
+        dispatching = record.partition("gh workflow run")[0].rpartition("- if:")[2]
+
+        # Assert
+        self.assertIn("needs.mutation-verdict.outputs.left", dispatching)
+
+    def test_Given_TheTallyACampaignPrints_When_TheVerdictJobCountsTheBudgetLeftovers_Then_ItReadsTheirNumber(self):
+        # Arrange — the sed expression is the workflow's own, applied to a tally the campaign printed.
+        campaign = StubbedCampaign()
+        campaign.baseline_seconds = 200.0
+        campaign.run_over_diff("--budget", "100")
+        expression = re.search(r"echo \"left=\$\(sed -n '([^']*)'", self.job("mutation-verdict")).group(1)
+
+        # Act
+        counted = subprocess.run(["sed", "-n", expression], input=campaign.printed, capture_output=True,
+                                 text=True).stdout.strip()
+
+        # Assert
+        self.assertEqual(counted, "1")
 
 
 class NarrowedAttemptTests(unittest.TestCase):
@@ -7989,14 +8117,14 @@ class CostDealtShardTests(unittest.TestCase):
         self.assertEqual(max(totals) - min(totals), 0)
 
     def test_Given_TheCheapMutantsFirstInTheList_When_Dealt_Then_TheDearOnesAreStillPlacedFirst(self):
-        # Arrange — placed in list order the spread is 348 s; longest first it is 58 s.
+        # Arrange — placed in list order the spread is 527 s; longest first it is 237 s.
         kinds = "nnnwww"
 
         # Act
         totals = self.totals(kinds, 2)
 
         # Assert
-        self.assertEqual(max(totals) - min(totals), 58)
+        self.assertEqual(max(totals) - min(totals), 237)
 
     def test_Given_ThreeMutantsOfOneCost_When_DealtToTwoShards_Then_TheTieGoesToTheLowerShardAndIndex(self):
         # Arrange
@@ -8059,23 +8187,28 @@ class CostDealtShardTests(unittest.TestCase):
     def test_Given_AManyMutantsPlan_When_Planned_Then_EachShardsCostAndTheSpreadArePrinted(self):
         # Arrange — twelve mutants outside every area, each charged the EditMode whole-suite figure.
         campaign = ManyMutantsCampaign()
+        each = 6 * mutation_check.WHOLE_COST["EditMode"]
 
         # Act
         campaign.run_over_diff("--plan")
 
         # Assert
         self.assertEqual(re.findall(r"^(?:shard \d+:.*|expected cost:.*)$", campaign.printed, re.MULTILINE),
-                         ["shard 0: 6 mutant(s), expected 2958 s", "shard 1: 6 mutant(s), expected 2958 s",
-                          "expected cost: cheapest shard 2958 s, dearest 2958 s, spread 0 s"])
+                         ["shard 0: 6 mutant(s), expected {} s".format(each),
+                          "shard 1: 6 mutant(s), expected {} s".format(each),
+                          "expected cost: cheapest shard {0} s, dearest {0} s, spread 0 s".format(each)])
 
 
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Measured on this week's EditMode shards (runs 38882765210 and 38865742861 among them): a baseline of
-    # 445 to 486 s, a launch of an area's own assemblies of 180 to 231 s, and a mutant at about 561 s from
-    # the end of a shard's baseline to its last verdict. The slowest of each is charged.
-    BASELINE = 486
+    # Measured on the EditMode shards of one campaign run (shards 2, 10, 11, 17, 22 and 24 of the run on
+    # head c25955b2): a baseline of 680 to 696 s, a launch of an area's own assemblies of 170 to 291 s, and
+    # a launch of a mutant's own over the whole suite of 626 to 671 s -- every CodeGen mutant takes one,
+    # the rewriter declining an assembly that runs inside the compiler's post-processor. The slowest of
+    # each is charged, a mutant at 672 s.
+    BASELINE = 696
+    MUTANT = 672
 
     # What a narrowed platform's shard spends before its first mutant when it makes the reach run: the whole
     # suite once under the unmutated program with the switches recording. Charged at twice the baseline --
@@ -8101,10 +8234,10 @@ class ShardCeilingTests(unittest.TestCase):
     # fewer than `REACH_MIN_MUTANTS`, or was assigned one it declined. The same figure stands for the launch
     # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and the cases
     # of the six files that read IL, about 190, which no run has timed.
-    AREA_LAUNCH = 231
+    AREA_LAUNCH = 291
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
-    # baseline, of its baseline and after its last verdict, added together. The 561 s is a shard's measured
+    # baseline, of its baseline and after its last verdict, added together. `MUTANT` is a shard's measured
     # seconds per mutant. Three arms, by `arm`: "reach" is a shard that makes the reach run, for `count`
     # placed mutants, charged for the reach run and a gate for each mutant, and each mutant charged as a
     # survivor under `Runtime/`: the session's whole suite and then the launch of the fixtures reading IL;
@@ -8146,7 +8279,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_AFullShardWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
         # set is then run, and every mutant takes the whole suite at the same measured figure.
-        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
+        mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed",
@@ -8159,7 +8292,7 @@ class ShardCeilingTests(unittest.TestCase):
         # Arrange — n placed mutants, each charged the whole suite after the reach run and its gate:
         # 1599 + 972 + 48.6 n + 717 n, a survivor's charge: the session's whole suite, then the launch of the
         # fixtures reading IL.
-        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
+        mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
         counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
 
         # Act
@@ -8172,7 +8305,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_EveryArmAShardCanTake_When_TheMostMutantsFittingAllOfThemAreCounted_Then_ItIsTheEditModeCeiling(self):
         # Arrange — derived from the job timeout rather than read back from the constant: a shard of this many
         # fits whether it makes the reach run, its reach run never finishes, or it is on main's path.
-        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
+        mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
         largest = max((count for count in range(1, 40)
                        if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
                               for arm in ("reach", "failed", "small"))), default=0)
@@ -8186,7 +8319,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — a shard below the minimum, or assigned a declined mutant: every area's baseline, then every
         # mutant the shard was assigned.
-        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
+        mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
@@ -8197,7 +8330,7 @@ class ShardCeilingTests(unittest.TestCase):
 
     def test_Given_ThePlanWhoseCostDealingWouldPileCheapMutantsOnOneShard_When_TheDearestShardIsCharged_Then_ItFitsTheJobTimeout(self):
         # Arrange — 3 whole-suite and the rest narrowed mutants fill ten shards of the ceiling exactly. Charged at
-        # the 561 s a mutant the ceiling uses, the dearest shard is charged on main's path, the dearer
+        # the 672 s a mutant the ceiling uses, the dearest shard is charged on main's path, the dearer
         # of the two arms.
         runtime = REPO_ROOT / mutation_check.PACKAGE / "Runtime"
         total = mutation_check.MAX_SHARDS * mutation_check.SHARD_CEILING["EditMode"]
@@ -8205,7 +8338,7 @@ class ShardCeilingTests(unittest.TestCase):
                    for number in range(1, total + 1)]
         dealt = mutation_check.deal(list(range(1, total + 1)), mutants, REPO_ROOT, "EditMode",
                                     mutation_check.MAX_SHARDS)
-        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
+        mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small",
@@ -8214,11 +8347,11 @@ class ShardCeilingTests(unittest.TestCase):
         # Assert
         self.assertTrue(fits)
 
-    # GREEN_ON_BASE(characterization): the base's 493 s whole-suite figure is also under the 561 s charged here; raising `WHOLE_COST["EditMode"]` to 600 reddens it.
+    # GREEN_ON_BASE(characterization): the base's 493 s whole-suite figure is also under the 672 s charged here; raising `WHOLE_COST["EditMode"]` to 700 reddens it.
     def test_Given_TheDealsCostFigures_When_ComparedWithWhatTheCeilingCharges_Then_NoMutantIsDealtDearer(self):
-        # Arrange — the ceiling charges 561 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
+        # Arrange — the ceiling charges 672 s an EditMode mutant and 934 + 100 s a PlayMode one, so a mutant the
         # plan deals as narrowed that `narrowable` then declines is still within the charge.
-        edit, play = 561, 934 + 100
+        edit, play = self.MUTANT, 934 + 100
 
         # Act
         within = (max(mutation_check.NARROWED_COST, mutation_check.WHOLE_COST["EditMode"]) <= edit,
@@ -8511,8 +8644,9 @@ class SessionCampaign(StubbedCampaign):
 
 class SessionRoutingBase(unittest.TestCase):
     campaign_class = SessionCampaign
-    # What `REACH_MIN_MUTANTS` is held at: a campaign here places one mutant.
-    reach_from = None
+    # What `REACH_MIN_MUTANTS` is held at: a campaign here places one mutant, and an EditMode session that
+    # makes no reach run is not made at all.
+    reach_from = 1
 
     def setUp(self):
         self.campaign = self.campaign_class()
@@ -8716,6 +8850,17 @@ class ILReadingSurvivorTests(ILReadingBase):
 
         # Assert
         self.assertEqual(self.own(), [ONLY_READERS])
+
+    def test_Given_ABudgetHoldingOneBoundButNotTwo_When_AnILReadingMutantIsMeasured_Then_ItIsNotLaunched(self):
+        # Arrange — the fixtures reading IL are followed by the whole suite where they do not complete, so
+        # the mutant is charged two bounds of 305 s and the margin, against a budget of 400 s.
+        self.campaign.baseline_seconds = 200.0
+
+        # Act
+        self.campaign.run("--max", "1", "--budget", "400")
+
+        # Assert
+        self.assertEqual(self.own(), [])
 
     def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
         # Act
@@ -9375,7 +9520,7 @@ class SessionReachAreaTests(SessionRoutingBase):
         # Assert
         self.assertEqual((self.plan_items(), self.stages()), ([1, -1], ["whole"]))
 
-    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_NoReachRunIsMade(self):
+    def test_Given_FewerMutantsThanTheThreshold_When_TheCampaignRuns_Then_NoSessionIsRun(self):
         # Arrange
         mutation_check.REACH_MIN_MUTANTS = 2
 
@@ -9383,17 +9528,18 @@ class SessionReachAreaTests(SessionRoutingBase):
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+        self.assertEqual(self.campaign.plans, [])
 
-    def test_Given_FewerMutantsThanTheThreshold_When_TheSessionIsPlanned_Then_TheAreaOpensItAndPrecedesTheWholeSuite(self):
-        # Arrange — main's path, kept for the shard too small for a reach run to pay.
+    def test_Given_FewerMutantsThanTheThreshold_When_TheCampaignRuns_Then_ItsOwnLaunchIsPrecededByItsAreasBaseline(self):
+        # Arrange
         mutation_check.REACH_MIN_MUTANTS = 2
 
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual((self.plan_items(), self.stages()), ([0, 1, -1], ["narrowed:Styling", "whole"]))
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")],
+                         ["baseline-Styling.xml"])
 
     def test_Given_AReachRunThatDoesNotStand_When_TheSessionIsPlanned_Then_TheMutantTakesTheWholeSuiteAlone(self):
         # Arrange
@@ -9452,16 +9598,14 @@ class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
 
     campaign_class = SevenMutantCampaign
 
-    # GREEN_ON_BASE(characterization): the base runs no reach run; dropping the `len(placed) == len(pending)`
-    # test from `reaching` in `measure_in_session` reddens it.
-    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoReachRunIsMade(self):
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoSessionIsRun(self):
         # Arrange — six placed meet the threshold, but a seventh needs a launch of its own.
 
         # Act
         self.campaign.run("--max", "7")
 
         # Assert
-        self.assertEqual([plan.get("reach") for plan in self.campaign.plans], [None])
+        self.assertEqual(self.campaign.plans, [])
 
     # GREEN_ON_BASE(characterization): the base takes the area's baseline for a launch of its own; making
     # `measure` skip the areas of its own launches beside a session reddens it.
@@ -10046,6 +10190,7 @@ class SessionLaunchTests(unittest.TestCase):
                                        editor_arg=[])
         self.commands, self.answers, self.busy = [], [], []
         self.environments = []
+        self.timeouts = []
         self.scripts = []
         saved = (mutation_check.launch, mutation_check.unity_busy, mutation_check.wait_for_release,
                  mutation_check.wait_for_quiet)
@@ -10069,6 +10214,7 @@ class SessionLaunchTests(unittest.TestCase):
 
     def launch(self, command, _timeout, _holder, _env, expired):
         self.commands.append(command)
+        self.timeouts.append(_timeout)
         self.environments.append(_env)
         self.log = Path(command[command.index("-logFile") + 1])
         # A script returns (timed out, what the editor printed) where the launch was not a plain one.
@@ -10084,6 +10230,27 @@ class SessionLaunchTests(unittest.TestCase):
 
     def session(self):
         return mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None)
+
+    def test_Given_ABudgetOf500sLeft_When_TheSessionIsLaunched_Then_TheLaunchIsBoundedByWhatIsLeft(self):
+        # Arrange — the plan's stage bounds add up to far more.
+        self.args.deadline = time.time() + 500
+        self.scripts = [self.finishes]
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertLessEqual(self.timeouts[0], 500)
+
+    def test_Given_ASpentBudget_When_TheSessionIsLaunched_Then_NoEditorIsLaunched(self):
+        # Arrange
+        self.args.deadline = time.time() - 1
+
+        # Act
+        self.session()
+
+        # Assert
+        self.assertEqual(self.commands, [])
 
     def test_Given_AReachPlan_When_Launched_Then_TheReachVariableIsSet(self):
         # Arrange
@@ -11731,7 +11898,7 @@ class KillSetShardTests(unittest.TestCase):
 
     def test_Given_TheKillSetStepTimeout_When_TheMostMutantsFittingAreCounted_Then_ItIsTheCampaignsCeiling(self):
         # Arrange — the campaign's own charges, hang allowance included.
-        edit = (561, ShardCeilingTests.EDIT_SETUP + mutation_check.mutant_bound(ShardCeilingTests.BASELINE))
+        edit = (ShardCeilingTests.MUTANT, ShardCeilingTests.EDIT_SETUP + mutation_check.mutant_bound(ShardCeilingTests.BASELINE))
         play = (934 + 100, ShardCeilingTests.PLAY_SETUP
                 + mutation_check.mutant_bound(ShardCeilingTests.PLAY_BASELINE))
         fits = ShardCeilingTests("fits").fits
