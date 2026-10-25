@@ -10887,6 +10887,98 @@ class CrashedMutantTests(unittest.TestCase):
         self.assertFalse(reading[1])
 
 
+class OomKilledLaunchTests(unittest.TestCase):
+    """A launch during which the container's memory limit killed a process is a crash the mutation made,
+    which no line of the editor's own says."""
+
+    OOM_LINE = mutation_check.OOM_KILLED_LINE.format(1)
+
+    def log_of_a_launch(self, counters):
+        """The lines `run_suite` left in the log of an editor that writes one line, `oom_kills` reading
+        each of `counters` in turn."""
+        body = 'open(log, "w").write("editor log\\n")\n'
+        with scripted_editor(body) as (editor, project, root, _holders):
+            with mock.patch.object(mutation_check, "oom_kills", side_effect=counters):
+                run_scripted(editor, project, root)
+            return (root / "run.log").read_text().splitlines()
+
+    def test_Given_ALaunchAfterWhichTheKillCounterAdvanced_When_ItsLogIsRead_Then_ItEndsWithTheOomLine(self):
+        # Arrange
+        counters = [3, 4]
+
+        # Act
+        lines = self.log_of_a_launch(counters)
+
+        # Assert
+        self.assertEqual(lines[-1], self.OOM_LINE)
+
+    # GREEN_ON_BASE(characterization): the base writes no such line to any log. What reddens this on
+    # the branch is writing it for every launch.
+    def test_Given_ALaunchAfterWhichTheKillCounterStayed_When_ItsLogIsRead_Then_NoLineSaysSo(self):
+        # Arrange
+        counters = [3, 3]
+
+        # Act
+        lines = self.log_of_a_launch(counters)
+
+        # Assert
+        self.assertEqual(lines, ["editor log"])
+
+    # GREEN_ON_BASE(characterization): as the case above. What reddens this on the branch is comparing
+    # the two readings without asking whether there are any.
+    def test_Given_ALaunchWithNoKillCounterToRead_When_ItsLogIsRead_Then_NoLineSaysSo(self):
+        # Arrange
+        counters = [None, None]
+
+        # Act
+        lines = self.log_of_a_launch(counters)
+
+        # Assert
+        self.assertEqual(lines, ["editor log"])
+
+    def test_Given_AnOomLineBeforeTheRunnerStarted_When_Recorded_Then_ItIsKilledByTheCrash(self):
+        # Arrange — unlike a fatal signal, a launch the limit killed during its compile has the same
+        # unmutated baseline: that one ran green under the same limit.
+        campaign = CrashingCampaign("editor log\n" + self.OOM_LINE + "\n" + RUNNER_LINE)
+
+        # Act
+        recorded = campaign.recorded()
+
+        # Assert
+        self.assertEqual(recorded, (0, getattr(mutation_check, "CRASHED", None), self.OOM_LINE))
+
+    def test_Given_AnOomLineAfterTheRunnerStarted_When_Recorded_Then_ItIsKilledByTheCrash(self):
+        # Arrange
+        campaign = CrashingCampaign("editor log\n" + RUNNER_LINE + "\n" + self.OOM_LINE + "\n")
+
+        # Act
+        recorded = campaign.recorded()
+
+        # Assert
+        self.assertEqual(recorded, (0, getattr(mutation_check, "CRASHED", None), self.OOM_LINE))
+
+    def test_Given_EachCgroupLayout_When_TheKillCounterIsRead_Then_EachNamesItsCount(self):
+        # Arrange — the unified hierarchy's file also carries `oom` and `oom_group_kill`, and the legacy
+        # one `oom_kill_disable`, none of which is the count.
+        layouts = {
+            "unified": ("memory.events", "low 0\nhigh 0\nmax 12\noom 2\noom_kill 1\noom_group_kill 0\n"),
+            "legacy": ("memory/memory.oom_control", "oom_kill_disable 0\nunder_oom 0\noom_kill 5\n"),
+            "none": ("unrelated", "oom_kill 9\n"),
+        }
+        read = {}
+        with tempfile.TemporaryDirectory() as directory:
+            for name, (relative, text) in layouts.items():
+                root = Path(directory) / name
+                (root / relative).parent.mkdir(parents=True)
+                (root / relative).write_text(text)
+
+                # Act
+                read[name] = mutation_check.oom_kills(root)
+
+        # Assert
+        self.assertEqual(read, {"unified": 1, "legacy": 5, "none": None})
+
+
 class EditorCountTests(unittest.TestCase):
     """The editor the CI image runs is counted as one a macOS install runs is."""
 

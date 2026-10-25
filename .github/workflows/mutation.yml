@@ -33,10 +33,18 @@ permissions:
 
 # PYTHONDONTWRITEBYTECODE for the reason test.yml gives. The cap is how many unanswered mutants one
 # run deals at most, and the shard count what it splits them across; RecordBudgetTests holds the cap
-# inside its shards' ceiling and a run's shard waves inside a day.
+# inside its shards' ceiling and a run's shard waves inside a day. EDITOR_MEMORY is what a shard's editor
+# container may hold, memory and swap alike, and stays under the runner's own: a launch that outgrows
+# it loses a process inside the container, which mutation_check.py records as a crash. RunnerLimitTests
+# holds it under the runner's memory.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
+<<<<<<< HEAD
   RECORD_CAP: "240"
+=======
+  EDITOR_MEMORY: "12g"
+  RECORD_CAP: "280"
+>>>>>>> origin/main
   RECORD_SHARDS: "40"
 
 # Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
@@ -251,6 +259,7 @@ jobs:
         run: |
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
+            --memory "$EDITOR_MEMORY" --memory-swap "$EDITOR_MEMORY" --pids-limit 4096 \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
             --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
@@ -319,6 +328,7 @@ jobs:
         run: |
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
+            --memory "$EDITOR_MEMORY" --memory-swap "$EDITOR_MEMORY" --pids-limit 4096 \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
             --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \

@@ -199,8 +199,20 @@ FATAL = re.compile(r"Caught fatal signal - signo:|Got a SIG[A-Z]+ while executin
 # What reads as a crash once no result was written. The two overflows added here stop no launch, so that
 # a run which goes on past either still writes the result it is read by.
 CRASH = re.compile(FATAL.pattern + r"|Stack overflow in unmanaged: IP:|StackOverflowException:")
-# What the test runner prints as it starts. A crash before it is not laid on the mutant.
+# What the test runner prints as it starts. A crash before it is not laid on the mutant, except the
+# line `OOM_KILLED_LINE` begins, which `editor_crash` reads wherever it stands.
 RUNNER_STARTED = "Running tests for ExecutionSettings with details:"
+
+# Written by `run_suite` to the end of a launch's log where the container's memory limit killed a
+# process during it. A mutation that makes the editor grow without bound is what reaches the limit,
+# and the baseline ran the same suite green under the same one, so it reads as a crash the mutation
+# made, as a stack overflow does.
+OOM_KILLED_PREFIX = "mutation_check: the container's memory limit killed "
+OOM_KILLED_LINE = OOM_KILLED_PREFIX + "{} process(es) during the launch"
+# Where a container's own cgroup counts the processes its limit has killed: the unified hierarchy's
+# file first, then the legacy one.
+OOM_COUNTERS = (("memory.events", "oom_kill"), ("memory/memory.oom_control", "oom_kill"))
+CGROUP_ROOT = "/sys/fs/cgroup"
 
 BUILD_SYSTEM_FAILURE = "Internal build system error."
 BUILD_SYSTEM_ATTEMPTS = 2
@@ -2972,12 +2984,29 @@ def editor_crash(log):
         with open(str(log), "rb") as stream:
             for raw in stream:
                 line = raw.decode("utf-8", "replace")
+                if line.startswith(OOM_KILLED_PREFIX):
+                    return line.strip()
                 if not started:
                     started = RUNNER_STARTED in line
                 elif CRASH.search(line):
                     return line.strip()
     except OSError:
         pass
+    return None
+
+
+def oom_kills(root=CGROUP_ROOT):
+    """How many processes this container's memory limit has killed so far, or None where no cgroup
+    counter is readable, as on a developer machine whose editor runs outside a container."""
+    for name, key in OOM_COUNTERS:
+        try:
+            lines = (Path(root) / name).read_text().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == key and parts[1].isdigit():
+                return int(parts[1])
     return None
 
 
@@ -3017,7 +3046,8 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     waited on. Once `LOCK_ATTEMPTS` were refused, `log` ends with `LOCK_REFUSED_LINE`. A launch whose
     log `build_system_failure` reads is made again too, once `settle` has seen what it left running
     exit or killed it, up to `BUILD_SYSTEM_ATTEMPTS` in all and never after one that outlived its
-    bound; where the last launch ended so, `log` ends with `BUILD_SYSTEM_FAILED_LINE`.
+    bound; where the last launch ended so, `log` ends with `BUILD_SYSTEM_FAILED_LINE`. A launch during
+    which `oom_kills` advanced ends `log` with `OOM_KILLED_LINE`, and is not made again.
 
     `log` holds what the last launch wrote, and the closing line where there is one: what an earlier
     run left there is removed before the first launch, and each earlier launch's is moved to
@@ -3037,7 +3067,9 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
         if launches and log.is_file():
             os.replace(str(log), str(launch_log(log, launches)))
         wait_for_release(project, LOCK_WAIT)
+        killed_before = oom_kills()
         wall, timed_out, peak, printed, group = launch(command, timeout, holder)
+        killed_after = oom_kills()
         launches += 1
         if LOCK_REFUSAL in printed:
             refused += 1
@@ -3053,6 +3085,9 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
                 continue
             closing = BUILD_SYSTEM_FAILED_LINE
         else:
+            if killed_before is not None and killed_after is not None and killed_after > killed_before:
+                with open(str(log), "a") as written:
+                    written.write("\n{}\n".format(OOM_KILLED_LINE.format(killed_after - killed_before)))
             return wall, timed_out, peak
         with open(str(log), "a") as written:
             written.write("\n{}\n".format(closing))

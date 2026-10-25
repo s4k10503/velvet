@@ -194,6 +194,75 @@ class SplitJobTests(unittest.TestCase):
                          ({"1.0.0f1", "3.0.0f1"}, {"2.0.0f1"}))
 
 
+# What a GitHub-hosted ubuntu-latest runner holds, which a limit on the editor's container is meant to
+# stay under: the runner's own agent and the daemon share the rest.
+RUNNER_MEMORY_GIB = 16
+CAMPAIGN_WORKFLOWS = ("mutation.yml", "kill-set.yml")
+
+
+def campaign_launches(name):
+    """The flags ahead of the image's command in each `docker run` of workflow `name` that runs
+    ci_mutation_shard.py, and the workflow's text."""
+    text = (REPO_ROOT / ".github/workflows" / name).read_text()
+    launches = [chunk.partition("ci_mutation_shard.py")[0]
+                for chunk in text.split("docker run ")[1:] if "ci_mutation_shard.py" in chunk]
+    return launches, text
+
+
+def flag_value(launch, flag):
+    """What `flag` is given in `launch`, quotes dropped, or None where it is not."""
+    found = re.search(r"{}[= ]\"?([^\"\s]+)\"?".format(re.escape(flag)), launch)
+    return found.group(1) if found else None
+
+
+class RunnerLimitTests(unittest.TestCase):
+    """What a shard's editor container may take of the runner it shares with the job's own agent."""
+
+    def limits(self, flag):
+        return [flag_value(launch, flag) for name in CAMPAIGN_WORKFLOWS
+                for launch in campaign_launches(name)[0]]
+
+    def test_Given_TheCampaignsLaunches_When_TheirSwapIsRead_Then_EachIsAsLargeAsItsMemory(self):
+        # Arrange — a swap beyond the memory lets the container thrash the runner before it is killed.
+        memory = self.limits("--memory")
+
+        # Act
+        swap = self.limits("--memory-swap")
+        equal = [held is not None and held == allowed for held, allowed in zip(swap, memory)]
+
+        # Assert — the two measuring steps of mutation.yml and the one of kill-set.yml.
+        self.assertEqual(equal, [True] * 3)
+
+    def test_Given_TheCampaignsLaunches_When_TheirProcessLimitIsRead_Then_EachIsBounded(self):
+        # Arrange
+        launches = [launch for name in CAMPAIGN_WORKFLOWS for launch in campaign_launches(name)[0]]
+
+        # Act
+        bounded = [(flag_value(launch, "--pids-limit") or "").isdigit() for launch in launches]
+
+        # Assert
+        self.assertEqual(bounded, [True] * 3)
+
+    def test_Given_TheCampaignsLaunches_When_TheirMemoryIsResolved_Then_EachIsBelowTheRunners(self):
+        # Arrange
+        gibibytes = []
+        for name in CAMPAIGN_WORKFLOWS:
+            launches, text = campaign_launches(name)
+            for launch in launches:
+                value = flag_value(launch, "--memory") or ""
+                if value.startswith("$"):
+                    declared = re.search(r"^  {}: \"(\w+)\"".format(re.escape(value[1:])), text, re.MULTILINE)
+                    value = declared.group(1) if declared else ""
+                found = re.fullmatch(r"([0-9]+)g", value)
+                gibibytes.append(int(found.group(1)) if found else None)
+
+        # Act
+        below = [size is not None and 0 < size < RUNNER_MEMORY_GIB for size in gibibytes]
+
+        # Assert
+        self.assertEqual(below, [True] * 3)
+
+
 class ShardPlatformTests(unittest.TestCase):
     """Which suites the workflow's shards run a campaign against."""
 

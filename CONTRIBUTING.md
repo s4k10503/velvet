@@ -573,6 +573,12 @@ stopped at its own run's baseline times `TIMEOUT_FACTOR` plus `TIMEOUT_CONSTANT`
 `--timeout` bounds the baseline alone. `ShardCeilingTests` charges one hanging mutant at the bound
 of the baseline it charges.
 
+Each workflow launch of the campaign's editor image (`mutation.yml`'s two measuring steps and
+`kill-set.yml`'s) is given a memory limit, with swap at the same figure, and a process limit, so that a
+mutant whose editor outgrows the limit loses a process inside the container. `mutation_check.py` records that
+launch as `killed (the editor crashed)` ([`Generators~/README.md`](Packages/com.velvet.core/Generators~/README.md) owns the reading), and
+`RunnerLimitTests` holds the limits on every such launch and the memory below a hosted runner's.
+
 Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an
 area or to the cases that ran the site first, and on the whole suite wherever that did not kill. The
 diff job, which runs only if every shard passed, runs `scripts/test_quality/kill_set_diff.py` over the two
