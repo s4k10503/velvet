@@ -83,6 +83,9 @@ namespace Velvet.CodeGen
                 var stack = Before[i];
                 if (stack == null)
                 {
+                    // MUTANT_SURVIVES(unreachable, line removed): only an instruction nothing reaches gets here.
+                    // ReactiveScopeSelectionTests.Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd
+                    // pins that the component bodies of Velvet.Tests.Hooks.Editor hold none.
                     Popped[i] = System.Array.Empty<StackValue>();
                     continue;
                 }
@@ -100,6 +103,9 @@ namespace Velvet.CodeGen
             {
                 foreach (var target in TargetsOf(Instructions[i]))
                 {
+                    // MUTANT_SURVIVES(unreachable, boundary): a head added for a branch to itself matters only to an instruction nothing else reaches.
+                    // ReactiveScopeSelectionTests.Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd
+                    // pins that the component bodies of Velvet.Tests.Hooks.Editor hold none.
                     if (target <= i) heads.Add(target);
                 }
             }

@@ -98,6 +98,7 @@ namespace Velvet.CodeGen
 
             private static CallKind DirectHookKind(MethodReference callee)
             {
+                // MUTANT_SURVIVES(equivalent, guard removed): the void hook then reaches ReactiveHook, and no reader of CallKind tells the two apart.
                 if (IsDirectVoidSafeHookCall(callee)) return CallKind.EffectHook;
                 if (ContainerHookNames.Contains(callee.Name)) return CallKind.ContainerHook;
                 return IsDirectNonSafeHookCall(callee) ? CallKind.VolatileHook : CallKind.ReactiveHook;
