@@ -88,6 +88,11 @@ NOT_BUILT = "not rebuilt"
 UNRECORDED = "not measured (no shard recorded it)"
 LOCKED = "not measured (the project lock was held)"
 BUILD_SYSTEM = "not measured (the build system failed)"
+# The mutant's launches did not fit what `--budget` had left, so none was started.
+BUDGET = "not measured (budget)"
+# Added to the bounds of a mutant's launches before they are held against the budget: the clock that
+# reads it also runs the waits, restores and verdict writes between launches.
+BUDGET_MARGIN = 60
 
 # No case of the suite ran the mutated site, so no launch was made for it. It stands where a survivor
 # does -- the other platform's pass measures it, and the run fails until it is answered -- because a site
@@ -115,21 +120,21 @@ MAX_SHARDS = 10
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
 # the reach run, fit that platform's step timeout in mutation.yml's `mutation-shard` job; the PlayMode
 # figure is the most EditMode survivors one shard's job measures after its own EditMode pass.
-# `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still outrun the
-# job, and the mutants it had not reached are then recorded by no shard.
-SHARD_CEILING = {"EditMode": 10, "PlayMode": 7}
+# `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still
+# outrun its step; `--budget` is what stops it there, and the mutants it had not reached read `BUDGET`.
+SHARD_CEILING = {"EditMode": 7, "PlayMode": 7}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
 # ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
 # seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
-# figures are the single slowest shard's seconds a mutant, 493 on EditMode, which the job's timeout cut
-# and which was estimated, and 934 on PlayMode (CONTRIBUTING.md ▸ Checking that the tests can fail
-# defines both). They are different statistics, so the ratio is rough, and 145 is a proxy for a narrowed
+# figures are 672 on EditMode, the slowest measured launch of a mutant's own over the whole suite rounded up,
+# and 934 on PlayMode, the single slowest shard's seconds a mutant (CONTRIBUTING.md ▸ Checking that the
+# tests can fail defines both). They are different statistics, so the ratio is rough, and 145 is a proxy for a narrowed
 # launch rather than a measurement of one. The ceiling charges every mutant the whole-suite figure.
 # The plan has no baseline, so it cannot know which areas `narrowable` will take, and a mutant it deals as
 # narrowed may take the whole suite; neither figure exceeds the ceiling's charge, so the ceiling holds.
 # A previous campaign's timings are not in the record, which keeps verdicts and no seconds.
 NARROWED_COST = 145
-WHOLE_COST = {"EditMode": 493, "PlayMode": 934}
+WHOLE_COST = {"EditMode": 672, "PlayMode": 934}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
 CEILING_REFUSAL = 4
@@ -157,9 +162,8 @@ NARROWED_PLATFORMS = ("EditMode",)
 # the mutant built alone.
 REACH_SHARE = 10
 # The reach run is made only for a session that places at least this many mutants and places every
-# mutant it was assigned. Any other session takes the path it took before the reach run existed: the
-# areas' own baselines in its opening, then each mutant's area, then the whole suite, and a mutant
-# launched on its own keeps its area-first launches. The minimum is a decision, not a measured
+# mutant it was assigned. An EditMode session that does not make it is not run: its mutants take their
+# own launches, each preceded by its area's own launch. The minimum is a decision, not a measured
 # break-even. After a reach run, whether or not it stood, a placed mutant whose reading does not stand
 # launches straight on the whole suite and takes no area stage, and `ShardCeilingTests` charges no area
 # baseline for it. That is a decision taken to fit the job timeout: a mutant that only the area's
@@ -2990,6 +2994,12 @@ def mutant_bound(baseline_wall):
     return math.ceil(baseline_wall * TIMEOUT_FACTOR + TIMEOUT_CONSTANT)
 
 
+def budget_left(args):
+    """Seconds of `--budget` not yet used, or None where the run has none."""
+    deadline = getattr(args, "deadline", None)
+    return None if deadline is None else deadline - time.time()
+
+
 def run_suite(unity, project, platform, scope, results, log, timeout, holder=None):
     """Returns the wall clock, whether the editor had to be killed, and the most other
     editors seen at once.
@@ -3764,6 +3774,13 @@ def run_session(args, project, plan, directory, holder):
                 stage = item["stages"][current["stage"]] if item and current["stage"] < len(item["stages"]) else None
                 return waited > (stage["bound"] if stage else args.timeout) + SESSION_STAGE_SLACK
 
+            allowed = sum(stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
+                          for stage in item["stages"]) + args.timeout
+            left = budget_left(args)
+            if left is not None:
+                if left <= 0:
+                    return runs, lost, "the budget is spent"
+                allowed = min(allowed, left)
             if not wait_for_quiet(args.busy_timeout):
                 return runs, lost, "another Unity test run was still in flight after {}s".format(args.busy_timeout)
             # The lock and the build system are retried as run_suite retries them: a lock refusal up to
@@ -3774,9 +3791,7 @@ def run_session(args, project, plan, directory, holder):
             while True:
                 wait_for_release(project, LOCK_WAIT)
                 launched[0] = time.time()
-                _, timed_out, _, printed, group = launch(command, sum(
-                    stage["bound"] + SESSION_STAGE_SLACK for item in items[position:end]
-                    for stage in item["stages"]) + args.timeout, holder, env, expired)
+                _, timed_out, _, printed, group = launch(command, allowed, holder, env, expired)
                 if LOCK_REFUSAL in printed:
                     refused += 1
                     if refused < LOCK_ATTEMPTS:
@@ -3977,20 +3992,13 @@ def measure_reach(args, project, directory, whole_scope, total, holder, bound):
     return None
 
 
-def area_attempts(baseline_results, mutants, indices, project, text_readers):
-    """Area -> the scope its mutants run against first, for each area `narrowable` takes among those of
-    `indices`."""
-    areas = {area_of(mutants[index - 1].path, project) for index in indices} - {None}
-    return {area: excluding(["-assemblyNames", ";".join(names)], text_readers)
-            for area, names in narrowable(baseline_results, areas).items()}
-
-
 def measure_in_session(args, project, holder, output, mutants, pending, baseline_results, baseline,
                        baseline_wall, text_readers, whole_scope, campaign, scope):
     """Measures in one editor every mutant of `pending` the rewriter can place, and returns index ->
     (verdict, detail) for each whose reading stands, each recorded as `write_verdict` records it, whether
     the session made the reach run, and the mutants whose survival stands for every fixture but those that
-    read IL. Every other mutant is left to its own launches."""
+    read IL. Every other mutant is left to its own launches, as is every mutant of an EditMode session
+    that does not make the reach run."""
     directory = output / "session"
     directory.mkdir(exist_ok=True)
     for stale in list(directory.glob("item-*.json")) + list(directory.glob("mutant-*.xml")):
@@ -4007,6 +4015,16 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
     if not placed:
         return {}, False, set()
+    # Without the reach run each placed mutant runs the stages its own launches run (`session_plan`), and a
+    # kill stands only when its confirmation ran in the item's launch (`confirmed_for`), so none of the
+    # kills in a launch that was killed before the confirmation stands. PlayMode is not narrowed and keeps its session.
+    reaching = (args.platform in NARROWED_PLATFORMS
+                and REACH_MIN_MUTANTS <= len(placed)
+                and len(placed) == len(pending))
+    if args.platform in NARROWED_PLATFORMS and not reaching:
+        print("{} mutant(s) take their own launches: a session that does not make the reach run runs the "
+              "stages those launches run".format(len(placed)))
+        return {}, False, set()
 
     ceiling = min(args.timeout, baseline_wall)
     expected = {"whole": baseline["total"]}
@@ -4017,21 +4035,15 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
     holder.hold_files({path: (path.read_text(), text) for path, text in rewritten.items()},
                       "{} mutant(s) guarded for one session".format(len(placed)))
     started = time.time()
-    selection, uncovered, reaching = {}, [], False
+    selection, uncovered = {}, []
     plan, runs, lost, stopped = {"items": []}, {}, set(), None
     try:
         for path, text in rewritten.items():
             path.write_text(text)
         # The reach run comes first and its plan second: which mutants are measured, and against what, is
         # read off it.
-        reaching = (args.platform in NARROWED_PLATFORMS
-                    and REACH_MIN_MUTANTS <= len(placed)
-                    and len(placed) == len(pending))
         standing = measure_reach(args, project, directory, whole_scope, baseline["total"], holder,
                                  REACH_BOUND * baseline_wall) if reaching else None
-        attempts = {}
-        if not reaching and not scope and args.platform in NARROWED_PLATFORMS:
-            attempts = area_attempts(baseline_results, mutants, placed, project, text_readers)
         if standing is not None:
             reached, setup, seconds, unsure = standing
             selection, uncovered = select_by_reach(placed, reached, setup, seconds,
@@ -4040,7 +4052,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                   "the whole suite".format(len(selection), len(placed), len(uncovered),
                                            len(placed) - len(selection) - len(uncovered)))
         launched = [index for index in placed if index not in uncovered]
-        plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
+        plan, segments = session_plan(project, mutants, launched, {}, whole_scope, args.platform, ceiling,
                                       mutant_bound(baseline_wall), directory, selection)
         plan["segments"] = segments
         plan["watch"] = library_files(project)
@@ -5050,6 +5062,22 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 print("      {} ({}) from a previous run of this campaign".format(
                     mutant.verdict, mutant.detail or "-"))
                 continue
+            il_narrow = first_try and index in il_only
+            attempt, narrowed_to, narrow_bound, area_cases = (None, (), 0, 0) if il_narrow else attempts.get(
+                area_of(mutant.path, project), (None, (), 0, 0))
+            # What its launches can cost at their bounds, not at what a mutant usually takes: a mutant that
+            # hangs takes every bound it is given. The fixtures reading IL are followed by the whole suite
+            # where they do not complete.
+            worst = (limit if il_narrow else narrow_bound) + limit + BUDGET_MARGIN
+            left = budget_left(args)
+            if left is not None and worst > left:
+                owner.verdict = BUDGET
+                owner.detail = ("{:.0f}s of --budget {} were left and its launches are bounded at {}s"
+                                .format(max(left, 0), args.budget, worst))
+                write_verdict(output, index, campaign, owner, project, (), scope)
+                measured += 1
+                print("      {} ({})".format(owner.verdict, owner.detail), flush=True)
+                continue
             results = output / "mutant-{:03d}.xml".format(index)
             log = output / "mutant-{:03d}.log".format(index)
             # The log as well, since a verdict is read off its last line and a launch that stops
@@ -5074,9 +5102,6 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             mutant.path.write_text(mutated)
             written[mutant.path] = mutated
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
-            il_narrow = first_try and index in il_only
-            attempt, narrowed_to, narrow_bound, area_cases = (None, (), 0, 0) if il_narrow else attempts.get(
-                area_of(mutant.path, project), (None, (), 0, 0))
             ran = []
             early, wall, neighbours, late, crashed = [], 0.0, 0, False, None
             if attempt is not None:
@@ -5348,6 +5373,10 @@ def main():
                              "run past its stages' bounds; a mutant's launch is bounded by the "
                              "baseline's time instead, and Generators~/README.md ▸ The Unity "
                              "assemblies says which verdict that is (default: 900)")
+    parser.add_argument("--budget", type=int, default=0, metavar="SECONDS",
+                        help="seconds from the start of the run that its launches may use. A mutant whose "
+                             "launches, at their bounds, do not fit what is left is not started and reads "
+                             "`" + BUDGET + "`, and the shard still exits 0; 0, the default, sets none")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
@@ -5415,6 +5444,7 @@ def main():
                         help="with --collect, write an entry into the record in DIR for every mutant "
                              "the decision measured")
     args = parser.parse_args()
+    args.deadline = time.time() + args.budget if args.budget else None
     if args.reuse_from is not None and not (args.plan or args.gate):
         parser.error("--reuse-from decides what a plan measures or what the gate holds; it goes with "
                      "--plan or --gate")

@@ -36,7 +36,7 @@ permissions:
 # inside its shards' ceiling and a run's shard waves inside a day.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
-  RECORD_CAP: "400"
+  RECORD_CAP: "280"
   RECORD_SHARDS: "40"
 
 # Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
@@ -232,6 +232,10 @@ jobs:
           MUTATION_SCOPE: "1"
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
 
+      # The campaign is given a time budget that ends before this step's timeout. A mutant whose launches,
+      # at their bounds, do not fit what is left is recorded unmeasured and not started, so the step
+      # passes with the mutants it reached and the next run measures the rest. ShardCeilingTests holds the
+      # budget inside the timeout.
       - name: Measure EditMode
         timeout-minutes: 180
         env:
@@ -256,6 +260,7 @@ jobs:
               --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
               --reuse Logs/mutation-list/reuse.json \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
+              --budget 10200 \
               --output Logs/mutation-shard
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -323,6 +328,7 @@ jobs:
               --base "$BASE" --max "$MUTANTS" --mutants Logs/mutation-list/mutants.json \
               --reuse Logs/mutation-list/reuse.json --platform PlayMode --survivors-of Logs/mutation-shard \
               --survivors-shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" --shard 0/1 \
+              --budget 9300 \
               --output Logs/mutation-playmode-shard
 
       # Uploaded whether or not the shard had survivors, so the verdict job's pattern always matches one.
@@ -350,6 +356,9 @@ jobs:
       && (needs.mutation-plan.outputs.shards != '[]' || (needs.mutation-plan.outputs.reusing || '0') != '0')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      # How many mutants the shards left unmeasured for want of time, which the record job reads.
+      left: ${{ steps.decide.outputs.left }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -385,7 +394,8 @@ jobs:
       # mutant the EditMode pass killed keeps that verdict; one it left surviving takes the PlayMode
       # pass's, and a survivor no PlayMode shard recorded is unmeasured. A mutant past the cap is left to
       # a later run and fails nothing here.
-      - env:
+      - id: decide
+        env:
           BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           MAX_SHARDS: ${{ needs.mutation-plan.outputs.max-shards }}
@@ -398,6 +408,7 @@ jobs:
             --emit-record Logs/mutation-record | tee verdict.txt
           status=${PIPESTATUS[0]}
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "left=$(sed -n 's/.*not measured (budget): \([0-9][0-9]*\).*/\1/p' verdict.txt | head -n 1)" >> "$GITHUB_OUTPUT"
           exit "$status"
 
       # Both uploaded whether the decision passed or failed: a run that failed on a survivor still
@@ -419,7 +430,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # What the run measured goes onto the record branch (scripts/ci/mutation_record.py), as a commit this
   # job's token creates through the Git Data API, which is the only kind a reader of the branch trusts.
-  # Where the cap left mutants to a later run, this run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
+  # Where the cap or a shard's time budget left mutants to a later run, this run recorded something, and every shard passed, the run dispatches the next one onto the same ref,
   # which waits in the concurrency group for nothing but this run: the next measures the following
   # mutants in the same order, since the ones this run answered are now in the record. A run that
   # recorded nothing dispatches nothing, so a mutant no run can measure stops the chain rather than
@@ -457,7 +468,7 @@ jobs:
           echo "published=$(sed -n 's/^\([0-9]*\) record entries published$/\1/p' published.txt)" >> "$GITHUB_OUTPUT"
 
       - if: >-
-          (needs.mutation-plan.outputs.pending || '0') != '0'
+          ((needs.mutation-plan.outputs.pending || '0') != '0' || (needs.mutation-verdict.outputs.left || '0') != '0')
           && (steps.publish.outputs.published || '0') != '0'
           && needs.mutation-shard.result == 'success'
         env:
