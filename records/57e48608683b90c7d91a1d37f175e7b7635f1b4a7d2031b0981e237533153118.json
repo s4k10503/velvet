@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "f6817e7ff2a03248e74acbb798bfecbd855ca66d6956cbf36e08b9b82ad1eb9b",
+ "killers": [],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": ";",
+  "before": "_windows = SendForObject(s_application, s_windows);",
+  "column": 16,
+  "line": 358,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Async/ApplicationVisibility.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "survived"
+}

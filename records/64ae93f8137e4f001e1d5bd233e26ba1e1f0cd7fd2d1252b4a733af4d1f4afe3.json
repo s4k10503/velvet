@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "4199d8b99ccf9273809662a6c9be5f65458d9ca991092407aa38010b421ace5b",
+ "killers": [],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": ";",
+  "before": "notes.Add($\"{kept.Count - MaxScopes} further scopes were left uncached to keep the cost of the cache bounded\");",
+  "column": 16,
+  "line": 27,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopePlan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "survived"
+}

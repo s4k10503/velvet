@@ -79,7 +79,7 @@
   {
    "case": "Velvet.Tests.DndParityTests.Given_ADragOverlayAwayFromItsSource_When_TheDropClearsItsChildren_Then_ItKeepsThemForTheDropAnimation",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "1a530756bb1af52c37505e150fae1a97f2190b011e4562255873e906ed527465",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "e01d0b4539e0b880e73066c8c6fd7d456a9b4209101dd789e7302cdba84523de",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -88,7 +88,7 @@
    }
   }
  ],
- "measured_by": "40073373733",
+ "measured_by": "40153400713",
  "mutant": {
   "after": ";",
   "before": "uses.Add(new ScopeDependency(\"L\" + local.Index, local.VariableType) { Local = local, Member = member });",
@@ -102,6 +102,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
  "verdict": "killed"
 }

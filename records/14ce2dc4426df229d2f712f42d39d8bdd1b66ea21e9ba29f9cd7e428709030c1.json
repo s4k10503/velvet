@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Async.Editor: Given_ARunPausedOffline_When_TheCallerCancelsAsTheConnectionReturns_Then_NoAttemptStarts",
+ "file": "444d1915d0c68dff37f2ee6c714065a07d54f8de0d7ef54bb05384928cbcfcb0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_ARunPausedOffline_When_TheCallerCancelsAsTheConnectionReturns_Then_NoAttemptStarts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "fd564c58a6f33df579d866fc32d7a7017f7fd813f2a5d0887d7946185046364e",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 27,
+  "line": 87,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Async/RetryPolicy.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "killed"
+}

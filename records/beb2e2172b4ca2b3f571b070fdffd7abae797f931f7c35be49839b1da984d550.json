@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 3 failed in Velvet.Tests.Async.Editor: MinValue,True), MinValue,False), Given_WindowsNoneOfWhichIsShown_When_HiddenIsDecided_Then_ItIsHidden",
+ "file": "f6817e7ff2a03248e74acbb798bfecbd855ca66d6956cbf36e08b9b82ad1eb9b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ApplicationVisibilityTests.Given_AWindowsVisibleAndMiniaturizedBytes_When_ItIsAskedWhetherShown_Then_ItIsVisibleAndNotMiniaturized(1,byte.MinValue,True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/ApplicationVisibilityTests.cs": "9206bdb722fc19df75f9c841335511d8e7e260f5b36e0f3c841b7701a330a2f6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ApplicationVisibilityTests.Given_AWindowsVisibleAndMiniaturizedBytes_When_ItIsAskedWhetherShown_Then_ItIsVisibleAndNotMiniaturized(byte.MinValue,byte.MinValue,False)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/ApplicationVisibilityTests.cs": "9206bdb722fc19df75f9c841335511d8e7e260f5b36e0f3c841b7701a330a2f6"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ApplicationVisibilityTests.Given_WindowsNoneOfWhichIsShown_When_HiddenIsDecided_Then_ItIsHidden",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/ApplicationVisibilityTests.cs": "9206bdb722fc19df75f9c841335511d8e7e260f5b36e0f3c841b7701a330a2f6"
+   }
+  }
+ ],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 80,
+  "line": 236,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Async/ApplicationVisibility.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "killed"
+}

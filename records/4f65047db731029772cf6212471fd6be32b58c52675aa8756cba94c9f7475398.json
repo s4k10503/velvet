@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnOnErrorTask_When_ItCompletes_Then_OnSettledRunsAfterIt",
+ "file": "444d1915d0c68dff37f2ee6c714065a07d54f8de0d7ef54bb05384928cbcfcb0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseMutationAsyncCallbackTests.Given_AnOnErrorTask_When_ItCompletes_Then_OnSettledRunsAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationAsyncCallbackTests.cs": "ba0b24e45de90ac6376df54bb7664e93c7ab4923a26d719f7449ff2ae7897d31",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 71,
+  "line": 126,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Async/RetryPolicy.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "killed"
+}

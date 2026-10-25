@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "8d6e9f33117db0dbc9b8e4255162254bc99e261bd8baa693a22d01455a42c503",
+ "killers": [],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": ";",
+  "before": "Refresh();",
+  "column": 12,
+  "line": 129,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/Preview/PreviewInspectOverlay.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "survived"
+}

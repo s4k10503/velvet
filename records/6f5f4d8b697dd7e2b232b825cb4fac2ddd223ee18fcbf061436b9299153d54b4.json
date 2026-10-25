@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "eb47ebd0fa0da3d7d71d2d1652b18b8f58be1f575865e8b41c82d0e75f738063",
+ "killers": [],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": ";",
+  "before": "retained.Set(null);",
+  "column": 16,
+  "line": 64,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/DragOverlayHost.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "survived"
+}

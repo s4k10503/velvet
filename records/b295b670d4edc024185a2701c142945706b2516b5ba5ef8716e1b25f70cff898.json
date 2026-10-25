@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_ATrailedParticleRenderingInModeNone_When_ItMoves_Then_ItsTrailRenders",
+ "file": "00a943dc5e6c4f8fd9671f5306545c7167548b21339a21b67332d175a57c3b8d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_ATrailedParticleRenderingInModeNone_When_ItMoves_Then_ItsTrailRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "adb1fa1183edfeac5be94a6075b58576bb96abb01386a6182bcf1ab44361cc34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
+   }
+  }
+ ],
+ "measured_by": "40153400713",
+ "mutant": {
+  "after": "",
+  "before": " || drawsTrails",
+  "column": 38,
+  "line": 450,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesDriver.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
+ "verdict": "killed"
+}

@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 9 failed: Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheStagesSize, Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheStageIsTheScreenTheyScaleFor, Given_AShownButton_When_TheCanvasIsClickedOverIt_Then_ItsHandlerRuns",
+ "detail": "EditMode: 2 failed: Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheCanvasShowsATextureTheStagesSize, Given_TheFullViewport_When_ThePanelSettingsAreChosen_Then_TheStageIsTheScreenTheyScaleFor",
  "file": "aa76b94643e873ba19e93b99b9269c4c3c37168518f18531b411333a250e2841",
  "killers": [
   {
@@ -19,82 +19,9 @@
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
    }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowRuntimePanelTests.Given_AShownButton_When_TheCanvasIsClickedOverIt_Then_ItsHandlerRuns",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowRuntimePanelTests.cs": "e29789441709322d074e04b540c40101872c15634a0810c9f31073e3b16d5a77",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
-   }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowRuntimePanelTests.Given_AStoryWithABackgroundPortal_When_ItIsShown_Then_TheCanvasShowsThePortal",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowRuntimePanelTests.cs": "e29789441709322d074e04b540c40101872c15634a0810c9f31073e3b16d5a77",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
-   }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowRuntimePanelTests.Given_ChosenPanelSettings_When_AStoryIsShown_Then_TheCanvasShowsWhatARuntimePanelOnThemRenders",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowRuntimePanelTests.cs": "e29789441709322d074e04b540c40101872c15634a0810c9f31073e3b16d5a77",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
-   }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowRuntimePanelTests.Given_ChosenPanelSettings_When_AStoryWithAnExplicitSizeIsShown_Then_ItIsAtTheScreensScale",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowRuntimePanelTests.cs": "e29789441709322d074e04b540c40101872c15634a0810c9f31073e3b16d5a77",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
-   }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowRuntimePanelTests.Given_Measure_When_ThePointerMovesOverAStoryElement_Then_ThatElementIsMeasured",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowRuntimePanelTests.cs": "e29789441709322d074e04b540c40101872c15634a0810c9f31073e3b16d5a77",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
-   }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowZoomLayoutTests.Given_AFixedSizeStoryTallerThanTheStage_When_Selected_Then_TheCanvasKeepsItsDeclaredHeight",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowViewportTests.cs": "87f73b66c2712e0bb1d477e2b55c422fc3c5c473f28e67849aae862cfbf7adb8",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
-  },
-  {
-   "case": "Velvet.Tests.VelvetPreviewWindowZoomLayoutTests.Given_AZoomFactorOf200Percent_When_Applied_Then_TheZoomBoxLayoutSizeDoublesTheReferenceSize",
-   "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/VelvetPreviewWindowViewportTests.cs": "87f73b66c2712e0bb1d477e2b55c422fc3c5c473f28e67849aae862cfbf7adb8",
-    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
-    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
-    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
-   }
   }
  ],
- "measured_by": "39820607771",
+ "measured_by": "40153400713",
  "mutant": {
   "after": ";",
   "before": "_bridge = new PreviewPanelBridge(_canvas, () => _panel);",
@@ -108,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "f241ab821a81cc934ab7e2cf1e4eef11284dfc56e6bb7b713a9b742f9ca9b149",
+ "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
  "verdict": "killed"
 }
