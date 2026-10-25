@@ -7266,9 +7266,10 @@ class CampaignPlanTests(unittest.TestCase):
         mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
                    for number in range(1, 22)]
 
-        # Act
-        _, count = mutation_check.unreported_shards(list(range(1, 22)), "EditMode", mutants,
-                                                   project=Path("/p"), most=3)
+        # Act — under a ceiling above the shard size, so that three shards hold twenty-one.
+        with mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 7}):
+            _, count = mutation_check.unreported_shards(list(range(1, 22)), "EditMode", mutants,
+                                                       project=Path("/p"), most=3)
 
         # Assert
         self.assertEqual(count, 3)
@@ -8231,9 +8232,15 @@ class ShardCeilingTests(unittest.TestCase):
     EDIT_SETUP = 201 + BASELINE + 12
     PLAY_SETUP = 202 + PLAY_BASELINE + 11
 
+    # What the confirmation after each mutant of a session adds to the mutant's own stages: a domain reload
+    # and the test framework's preparation of a job, then a run of the one case a kill failed on where there
+    # is a kill. No run has timed it, so it is an allowance, a third of what a reload not finishing is
+    # given up at (`SESSION_RELOAD_BOUND`).
+    CONFIRMATION = 60
+
     # What a launch of its own spends on its area's baseline, charged once for each area the launches
     # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
-    # fewer than `REACH_MIN_MUTANTS`, or was assigned one it declined. The same figure stands for the launch
+    # fewer than `REACH_MIN_MUTANTS`. The same figure stands for the launch
     # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and the cases
     # of the six files that read IL, about 190, which no run has timed.
     AREA_LAUNCH = 291
@@ -8260,6 +8267,8 @@ class ShardCeilingTests(unittest.TestCase):
             mutant = max(mutant, self.BASELINE + self.AREA_LAUNCH)
         if narrowed and arm == "reach" and per is not None:
             opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * count
+        if arm != "small":
+            opening += self.CONFIRMATION * count
         if arm == "small":
             opening = self.areas() * self.AREA_LAUNCH
         return (per is not None and found is not None
@@ -8292,8 +8301,8 @@ class ShardCeilingTests(unittest.TestCase):
 
     def test_Given_EveryCountOfPlacedMutantsTheReachRunIsMadeFor_When_EveryOneTakesTheWholeSuiteAfterwards_Then_EveryOneFits(self):
         # Arrange — n placed mutants, each charged the whole suite after the reach run and its gate:
-        # 1599 + 972 + 48.6 n + 717 n, a survivor's charge: the session's whole suite, then the launch of the
-        # fixtures reading IL.
+        # 1958 + 1392 + (69.6 + 60 + 987) n, a survivor's charge: the session's whole suite, then the launch of
+        # the fixtures reading IL, beside its gate and its confirmation.
         mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
         counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
 
@@ -8319,8 +8328,7 @@ class ShardCeilingTests(unittest.TestCase):
         self.assertEqual(stated, largest)
 
     def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — a shard below the minimum, or assigned a declined mutant: every area's baseline, then every
-        # mutant the shard was assigned.
+        # Arrange — a shard below the minimum: every area's baseline, then every mutant the shard was assigned.
         mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
@@ -8573,7 +8581,7 @@ class SessionCampaign(StubbedCampaign):
         relative = request["files"][0]["path"]
         return {"placed": ids, "declined": {}, "files": {relative: self.REWRITTEN}, "fatal": []}
 
-    def session(self, _args, _project, plan, directory, _holder):
+    def session(self, _args, _project, plan, directory, _holder, after_launch=None):
         self.during = self.source.read_text()
         self.plans.append(plan)
         if plan.get("reach") and self.reach is not None:
@@ -8609,8 +8617,11 @@ class SessionCampaign(StubbedCampaign):
             name.write_text(json.dumps({"id": number, "stages": [stage]}))
         lost = {position for position, item in enumerate(plan["items"])
                 if self.lost and not item.get("confirm")}
-        return {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
-                if position not in lost}, lost, None
+        runs = {position: {"launch": 1, "peak": 0} for position in range(len(plan["items"]))
+                if position not in lost}
+        if after_launch is not None:
+            after_launch(runs)
+        return runs, lost, None
 
     def gate_stages(self, item, directory, assembly):
         """The opening run of each covered set, unmutated, and of each area."""
@@ -9583,6 +9594,9 @@ class SixMutantCampaign(SevenMutantCampaign):
 
 
 class SixOrSevenMutantsBase(SessionRoutingBase):
+    # The campaign's own minimum, which the cases here are written against.
+    reach_from = None
+
     def setUp(self):
         super().setUp()
         tests = self.campaign.source.parent / "Tests" / "Editor"
@@ -9596,30 +9610,119 @@ class SixOrSevenMutantsBase(SessionRoutingBase):
 
 
 class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
-    """A mutant launched on its own keeps main's area-first path, so a session with one runs no reach run."""
+    """A mutant the rewriter declines takes its own launch on the whole suite beside a session that makes the reach run."""
 
     campaign_class = SevenMutantCampaign
 
-    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoSessionIsRun(self):
-        # Arrange — six placed meet the threshold, but a seventh needs a launch of its own.
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange — six placed meet the minimum; the seventh needs a launch of its own.
 
         # Act
         self.campaign.run("--max", "7")
 
         # Assert
-        self.assertEqual(self.campaign.plans, [])
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
 
-    # GREEN_ON_BASE(characterization): the base takes the area's baseline for a launch of its own; making
-    # `measure` skip the areas of its own launches beside a session reddens it.
-    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneIsPrecededByItsAreasBaseline(self):
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneTakesTheWholeSuiteAlone(self):
         # Arrange
 
         # Act
         self.campaign.run("--max", "7")
 
         # Assert
-        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")],
-                         ["baseline-Styling.xml"])
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("mutant-007")],
+                         ["mutant-007.xml"])
+
+    def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_NoAreaBaselinePrecedesTheDeclinedOne(self):
+        # Arrange — a shard that made the reach run takes no area's baseline, and the ceiling charges none.
+
+        # Act
+        self.campaign.run("--max", "7")
+
+        # Assert
+        self.assertEqual([name for name in self.campaign.launched if name.startswith("baseline-")], [])
+
+
+class ThreeMutantCampaign(SixMutantCampaign):
+    """Three mutants, all placed: one fewer than the minimum."""
+
+    BODY = probe_body(3)
+
+
+class FourMutantCampaign(SixMutantCampaign):
+    """Four mutants, all placed: exactly the minimum."""
+
+    BODY = probe_body(4)
+
+
+class ReachMinimumTests(SixOrSevenMutantsBase):
+    campaign_class = FourMutantCampaign
+
+    def test_Given_FourPlacedMutants_When_TheCampaignRuns_Then_TheReachRunIsMade(self):
+        # Arrange — the figure `REACH_MIN_MUTANTS` derives, held at its own value rather than the one these cases lower.
+
+        # Act
+        self.campaign.run("--max", "4")
+
+        # Assert
+        self.assertEqual(self.campaign.plans[0].get("reach"), True)
+
+
+class BelowReachMinimumTests(SixOrSevenMutantsBase):
+    campaign_class = ThreeMutantCampaign
+
+    # GREEN_ON_BASE(characterization): the base's minimum is six, so three placed mutants run no session there either; raising `REACH_MIN_MUTANTS` past three cannot redden it, lowering it to three does.
+    def test_Given_ThreePlacedMutants_When_TheCampaignRuns_Then_NoSessionIsRun(self):
+        # Arrange
+
+        # Act
+        self.campaign.run("--max", "3")
+
+        # Assert
+        self.assertEqual(self.campaign.plans, [])
+
+
+class SessionRecordingTests(SixOrSevenMutantsBase):
+    """What a session has measured is on disk when the campaign stops between its launches."""
+
+    campaign_class = SixMutantCampaign
+
+    def die_after_the_launch(self):
+        inner = self.campaign.session
+
+        def session(args, project, plan, directory, holder, after_launch=None):
+            result = inner(args, project, plan, directory, holder, after_launch)
+            if not plan.get("reach"):
+                raise KeyboardInterrupt
+            return result
+
+        mutation_check.run_session = session
+
+    def run_until_it_dies(self):
+        try:
+            self.campaign.run("--max", "6")
+        except KeyboardInterrupt:
+            pass
+
+    def test_Given_ACampaignStoppedAfterASessionsLaunch_When_ItsKillsAreLooked_Then_TheLaunchsKillIsRecorded(self):
+        # Arrange — the launch carried mutant 1 and its confirmation, and the campaign stopped before the session returned.
+        self.die_after_the_launch()
+
+        # Act
+        self.run_until_it_dies()
+
+        # Assert
+        self.assertTrue((self.campaign.project / "out" / "mutant-001.json").exists())
+
+    def test_Given_ACampaignStoppedAfterASessionsLaunch_When_ASiteNoCaseRanIsLooked_Then_ItsUncoveredVerdictIsRecorded(self):
+        # Arrange — the reach run read cases for mutant 1 alone, so mutant 2 is run by none.
+        self.die_after_the_launch()
+
+        # Act
+        self.run_until_it_dies()
+
+        # Assert
+        self.assertTrue((self.campaign.project / "out" / "mutant-002.json").exists())
 
 
 class FourteenMutantCampaign(SixMutantCampaign):
@@ -10072,18 +10175,28 @@ class SessionPlanTests(unittest.TestCase):
                                                      platform, 100, 900, Path("/out"))
         return plan, segments
 
-    def test_Given_MoreMutantsThanOneSegmentHolds_When_Planned_Then_EachSegmentEndsInAConfirmation(self):
+    def test_Given_MoreMutantsThanOneSegmentHolds_When_Planned_Then_EachMutantIsFollowedByAConfirmation(self):
         # Arrange — one mutant past a full segment, so the second segment is the short tail.
         full = mutation_check.SESSION_MUTANTS
 
         # Act
-        plan, segments = self.plan(full + 1)
+        plan, _ = self.plan(full + 1)
 
-        # Assert — and each launch ends where its confirmation does.
-        self.assertEqual(([position for position, item in enumerate(plan["items"]) if item.get("confirm")],
-                          segments), ([full, full + 2], [full + 1, full + 3]))
+        # Assert
+        self.assertEqual([position for position, item in enumerate(plan["items"]) if item.get("confirm")],
+                         list(range(1, 2 * full + 2, 2)))
 
-    def test_Given_OneSegmentOfMutants_When_Planned_Then_ItHoldsExactlyOneConfirmation(self):
+    def test_Given_MoreMutantsThanOneSegmentHolds_When_Planned_Then_EachLaunchEndsOnAConfirmation(self):
+        # Arrange
+        full = mutation_check.SESSION_MUTANTS
+
+        # Act
+        _, segments = self.plan(full + 1)
+
+        # Assert
+        self.assertEqual(segments, [2 * full, 2 * full + 2])
+
+    def test_Given_OneSegmentOfMutants_When_Planned_Then_ItHoldsAConfirmationForEachOfThem(self):
         # Arrange
         count = mutation_check.SESSION_MUTANTS
 
@@ -10091,7 +10204,7 @@ class SessionPlanTests(unittest.TestCase):
         plan, _ = self.plan(count)
 
         # Assert
-        self.assertEqual(sum(1 for item in plan["items"] if item.get("confirm")), 1)
+        self.assertEqual(sum(1 for item in plan["items"] if item.get("confirm")), count)
 
     def test_Given_PlayMode_When_Planned_Then_NoStageStopsAtItsFirstFailure(self):
         # Arrange — a job cancelled in play mode leaves its scene modified for the next one.
@@ -10184,8 +10297,8 @@ class SessionLaunchTests(unittest.TestCase):
         self.directory = Path(tempfile.mkdtemp(prefix="session-launch-"))
         project = Path("/p")
         mutants = [mutation_check.Mutant(project / "Packages/com.velvet.core/Runtime/Styling/A.cs", 1, 0,
-                                         "<", "<=", "boundary") for _ in range(3)]
-        self.plan, segments = mutation_check.session_plan(project, mutants, [1, 2, 3], {}, [], "EditMode",
+                                         "<", "<=", "boundary") for _ in range(2)]
+        self.plan, segments = mutation_check.session_plan(project, mutants, [1, 2], {}, [], "EditMode",
                                                           100, 900, self.directory)
         self.plan["segments"] = segments
         self.args = argparse.Namespace(unity=mutation_check.DEFAULT_UNITY, timeout=900, busy_timeout=0,
@@ -10279,7 +10392,7 @@ class SessionLaunchTests(unittest.TestCase):
         self.assertNotIn(mutation_check.SESSION_SWITCH + mutation_check.REACH_SUFFIX, self.environments[0])
 
     def test_Given_AnItemWhoseEditorDied_When_TheSessionGoesOn_Then_ItIsLostAndTheRestRunInANewLaunch(self):
-        # Arrange — the first launch dies in the second mutant's item.
+        # Arrange — the first launch dies in the second mutant's item, position 2: each mutant is followed by its confirmation.
         def dies(expired):
             self.progress(2)
         self.scripts = [dies, self.finishes]
@@ -10513,7 +10626,7 @@ class SessionLaunchTests(unittest.TestCase):
 
 
 class SessionConfirmationTests(unittest.TestCase):
-    """Which confirmation a kill stands on: its own segment's, run in its own launch."""
+    """Which confirmation a kill stands on: its own, run in its own launch."""
 
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp(prefix="session-confirm-"))
@@ -10523,7 +10636,7 @@ class SessionConfirmationTests(unittest.TestCase):
                                          "<", "<=", "boundary") for _ in range(count)]
         self.plan, _ = mutation_check.session_plan(project, mutants, list(range(1, count + 1)), {}, [],
                                                    "EditMode", 100, 900, self.directory)
-        # The first segment's confirmation failed the case, the second's passed it.
+        # The first mutant's confirmation failed the case, the second's passed it.
         for number, result in ((-1, "Failed"), (-2, "Passed")):
             xml = self.directory / "confirm{}.xml".format(number)
             xml.write_text('<test-run><test-case fullname="N.C.Kills" result="{}" /></test-run>'.format(result))
@@ -10531,20 +10644,31 @@ class SessionConfirmationTests(unittest.TestCase):
                 {"id": number, "stages": [{"name": "confirm", "finished": True, "xml": str(xml)}]}))
         self.found = mutation_check.confirmations(self.plan, self.directory)
 
-    def test_Given_AKillInTheFirstSegment_When_ItsConfirmationIsRead_Then_ItIsItsOwnSegments(self):
+    def test_Given_AKillOfTheFirstMutant_When_ItsConfirmationIsRead_Then_ItIsItsOwn(self):
         # Arrange — every item carried by the one launch.
         runs = {position: {"launch": 1, "peak": 0} for position in range(len(self.plan["items"]))}
 
         # Act
         confirmed = mutation_check.confirmed_for(self.plan, 0, runs, self.found)
 
-        # Assert — the second segment's pass does not clear the first's failure.
+        # Assert — the second mutant's pass does not clear the first's failure.
         self.assertEqual(confirmed, {"N.C.Kills": False})
 
+    def test_Given_ALaunchThatDiedInALaterMutant_When_AnEarlierKillIsRead_Then_ItsOwnConfirmationStandsForIt(self):
+        # Arrange — the launch carried the first mutant and its confirmation, then died in the second.
+        runs = {0: {"launch": 1, "peak": 0}, 1: {"launch": 1, "peak": 0}}
+        found = {1: {"N.C.Kills": True}}
+
+        # Act
+        confirmed = mutation_check.confirmed_for(self.plan, 0, runs, found)
+
+        # Assert
+        self.assertEqual(confirmed, {"N.C.Kills": True})
+
     def test_Given_AConfirmationFromALaterLaunch_When_ItsKillIsRead_Then_NothingConfirmsIt(self):
-        # Arrange — the item's editor died after it, and its segment's confirmation ran in the next one.
+        # Arrange — the item's editor died after it, and its confirmation ran in the next launch.
         closing = next(position for position, item in enumerate(self.plan["items"]) if item.get("confirm"))
-        runs = {position: {"launch": 1 if position < 3 else 2, "peak": 0} for position in range(closing + 1)}
+        runs = {0: {"launch": 1, "peak": 0}, closing: {"launch": 2, "peak": 0}}
         found = {closing: {"N.C.Kills": True}}
 
         # Act

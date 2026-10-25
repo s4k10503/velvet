@@ -36,7 +36,7 @@ permissions:
 # inside its shards' ceiling and a run's shard waves inside a day.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
-  RECORD_CAP: "280"
+  RECORD_CAP: "240"
   RECORD_SHARDS: "40"
 
 # Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
