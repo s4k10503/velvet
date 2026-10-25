@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "aa76b94643e873ba19e93b99b9269c4c3c37168518f18531b411333a250e2841",
  "killers": [],
- "measured_by": "39988504763",
+ "measured_by": "40109529962",
  "mutant": {
   "after": ";",
   "before": "rootVisualElement.schedule.Execute(TickPanel).Every(PanelTickIntervalMs);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
  "verdict": "survived"
 }

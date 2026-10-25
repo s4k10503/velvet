@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ac97379a24b1bb414029404d590ad0f6d779b0bfacc661acff0aebef618dd7ff",
+ "killers": [],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 30,
+  "line": 32,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Component/DndContextHost.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "survived"
+}

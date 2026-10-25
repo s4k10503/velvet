@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_UseMemoAfterValueHook_When_Woven_Then_GateIsInjectedAfterTheUseMemoCall",
+ "file": "37960f517e4532b7db9680eedc93e4df2ffa6451aca0832ea23b2542d2546ab6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_UseMemoAfterValueHook_When_Woven_Then_GateIsInjectedAfterTheUseMemoCall",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": ";",
+  "before": "next = SkipNops(_flow.IndexOf((Instruction)_flow.Instructions[next].Operand));",
+  "column": 16,
+  "line": 510,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

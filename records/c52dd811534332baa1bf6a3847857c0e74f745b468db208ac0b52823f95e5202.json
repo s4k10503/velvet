@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "2c265ec8a1b13cb3933b46bfa5c499fbe2fa50818907f7f8a5d444b3c7303646",
  "killers": [],
- "measured_by": "39988504763",
+ "measured_by": "40109529962",
  "mutant": {
   "after": ";",
   "before": "_canvas.RegisterCallback<PointerLeaveEvent>(OnPointerLeave);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
  "verdict": "survived"
 }

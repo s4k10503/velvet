@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Component.Editor: Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+ "file": "54915fbd3ec2fdea54d1d9b436aabfe5bb6c01b70f9cfce8a4d60810766f5063",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncalledRuntimeMemberTests.Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/UncalledRuntimeMemberTests.cs": "60bd57285e73ac27e4ef7dc25ca75ad041d9a148e352a1e585eb23e774bb9665"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": ";",
+  "before": "ParticlesEffectView.Create(element, binding, visualEffect);",
+  "column": 20,
+  "line": 377,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

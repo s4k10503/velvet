@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 559s; raise it, or read the log for a mutation that does not terminate",
+ "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 704s; raise it, or read the log for a mutation that does not terminate",
  "file": "de6d54a47cc6c97676dbb70e406601e55dd411c086600f4e753c674e37d7149c",
  "killers": [],
- "measured_by": "39988504763",
+ "measured_by": "40109529962",
  "mutant": {
   "after": ";",
   "before": "fiber = fiber.Parent;",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
  "verdict": "not measured (timed out)"
 }

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b68169e271dee6192d11d9a0328932d279ad3f5a835d00e5939c507284481681",
+ "killers": [],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 57,
+  "line": 14,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Component/MemoizationReportAttribute.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "survived"
+}

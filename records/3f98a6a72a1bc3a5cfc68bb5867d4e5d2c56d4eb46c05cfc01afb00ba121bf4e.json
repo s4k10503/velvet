@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AKeyedChildWithoutAnExitAnimation_When_ItsRemovalDropsItFromThePresenceSet_Then_ItsBagReturnsToThePool",
+ "file": "ae9a1683469ab1bf2c2c6063e3467d4d4d397b447b27771cae1614a46edc3205",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RenderedTreePropsRecycleTests.Given_AKeyedChildWithoutAnExitAnimation_When_ItsRemovalDropsItFromThePresenceSet_Then_ItsBagReturnsToThePool",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RenderedTreePropsRecycleTests.cs": "1a59eb4a020e0daf4634a5fbdf5fb784fca7bc29210ac67538d6643457e0bc77",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": ";",
+  "before": "slot.NextCachedResult = null;",
+  "column": 16,
+  "line": 1019,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

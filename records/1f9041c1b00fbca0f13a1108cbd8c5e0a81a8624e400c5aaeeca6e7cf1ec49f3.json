@@ -1,16 +1,8 @@
 {
- "detail": "EditMode: 1 failed: Given_AFailingMutation_When_OnErrorRuns_Then_TheOutcomeIsNotCommittedYet",
+ "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 725s; raise it, or read the log for a mutation that does not terminate",
  "file": "ce96aab05f54536683f4c377719aa706c43e77a35938953ff9474d1bd110210a",
- "killers": [
-  {
-   "case": "Velvet.Tests.UseMutationHookTests.Given_AFailingMutation_When_OnErrorRuns_Then_TheOutcomeIsNotCommittedYet",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationHookTests.cs": "7485eaf94267ef1571a2004af975006dc607edee466156930b8ee69af271c503",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
-   }
-  }
- ],
- "measured_by": "39767874313",
+ "killers": [],
+ "measured_by": "40109529962",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -24,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "efa402d210213221259a1be39690c3e27e7db8491dfb533924479d5d51f3394e",
- "verdict": "killed"
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "not measured (timed out)"
 }

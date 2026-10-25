@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+ "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 33,
+  "line": 162,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeVolatility.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

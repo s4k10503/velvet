@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "37960f517e4532b7db9680eedc93e4df2ffa6451aca0832ea23b2542d2546ab6",
+ "killers": [],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 380,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "survived"
+}

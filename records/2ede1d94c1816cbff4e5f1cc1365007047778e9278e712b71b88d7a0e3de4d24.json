@@ -1,0 +1,95 @@
+{
+ "detail": "EditMode: 9 failed: Given_ASequencePartWayThroughAChildsBezierFade_When_PausedForFiveFrames_Then_TheChildsOpacityHolds, Given_ADispatchAheadOfTheLastHook_When_AStateChanges_Then_OnlyTheLabelTakingItsResultIsBuiltOnEveryRender, Given_AUseMutationResult_When_AnUnrelatedStateChanges_Then_OnlyTheLabelTakingItsResultIsBuiltOnEveryRender",
+ "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimationSequencePauseReachTests.Given_ASequencePartWayThroughAChildsBezierFade_When_PausedForFiveFrames_Then_TheChildsOpacityHolds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionRuntimeSwapTests.Given_AnOrchestratedChildSwap_When_TheCoordinatorFlips_Then_TheSwapTweensOnTheConfigAndFiresOnItsStaggerSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionRuntimeSwapTests.cs": "4886cdb316884b3cc652a22cf577285ca7f934b07456870d979d9c34e9a53d6f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionVariantTransitionTests.Given_BeforeChildrenOnASpringPoseItsDurationDescribes_When_ItsLabelFlips_Then_ChildrenWaitOutThatDurationOnly(0.3f,\"visible\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionVariantTransitionTests.cs": "6a56ceaefa0143ab504173b394b121689dab47e5bc40c89c4db45e0b67242ce5",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionVariantTransitionTests.Given_StaggerChildrenOnACoordinatorsPose_When_ItsLabelFlips_Then_ItsChildrenTakeSeparateSlots",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionVariantTransitionTests.cs": "6a56ceaefa0143ab504173b394b121689dab47e5bc40c89c4db45e0b67242ce5",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeWovenBehaviorE2ETests.Given_ADispatchAheadOfTheLastHook_When_AStateChanges_Then_OnlyTheLabelTakingItsResultIsBuiltOnEveryRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "c6468d9e91218641dcfd5ada650bdc438f65e95f07f3c4d1c1ec4753712a9708",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeWovenBehaviorE2ETests.Given_AUseMutationResult_When_AnUnrelatedStateChanges_Then_OnlyTheLabelTakingItsResultIsBuiltOnEveryRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "c6468d9e91218641dcfd5ada650bdc438f65e95f07f3c4d1c1ec4753712a9708",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_ALabelMountedByAPortal_When_CompilerWeaverRuns_Then_OnlyTheLabelBesideItIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AnUnresolvableCalleeAheadOfTheLastHook_When_CompilerWeaverRuns_Then_OnlyTheLabelNotReadingItsResultIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AnUnresolvableCalleeAheadOfTheLastHook_When_CompilerWeaverRuns_Then_TheMethodCarriesAReportNamingIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "<",
+  "before": "<=",
+  "column": 33,
+  "line": 67,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeVolatility.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

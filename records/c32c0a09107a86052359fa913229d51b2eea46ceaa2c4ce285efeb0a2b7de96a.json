@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 2 failed: Given_ABodyOpeningWithATryCatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun, Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+ "file": "37960f517e4532b7db9680eedc93e4df2ffa6451aca0832ea23b2542d2546ab6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_ABodyOpeningWithATryCatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 35,
+  "line": 416,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

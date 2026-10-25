@@ -1,0 +1,106 @@
+{
+ "detail": "EditMode: 28 failed: Given_BclVirtualCallAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls, Given_DeconstructionPattern_When_Woven_Then_InjectsBothMemoCalls, Given_DelegateInvokeComponent_When_Woven_Then_InjectsBothMemoCalls; 1 other editor(s) were up",
+ "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_BclVirtualCallAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_DeconstructionPattern_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_DelegateInvokeComponent_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_HelperBuildingADispatchingLambdaAheadOfTheHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_HelperDispatchingAfterTheHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_InterfaceDispatchAfterTheHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_MemoizedPropsComponentWithHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_MultipleReturnsAfterHookSection_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_PlainComponentWithHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_PropsReceivingComponentWithHook_When_Woven_Then_InjectsBothMemoCalls",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 25,
+  "line": 117,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeVolatility.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}

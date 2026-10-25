@@ -1,0 +1,26 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
+ "killers": [],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 20,
+  "line": 240,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeVolatility.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "survived"
+}

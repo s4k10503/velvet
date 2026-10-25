@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c194d9fa2d9cb2f7466a208425a42c9f7c3dbc832827e3f1cf16f9c976cfb48b",
+ "killers": [],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": ";",
+  "before": "SetFactors(material, BlendMode.One, BlendMode.OneMinusSrcAlpha, BlendMode.One, BlendMode.OneMinusSrcAlpha);",
+  "column": 20,
+  "line": 65,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticleBlendMaterials.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "survived"
+}

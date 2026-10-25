@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at --timeout 900s and the baseline took 393s; raise it, or read the log for a mutation that does not terminate",
+ "file": "ae9a1683469ab1bf2c2c6063e3467d4d4d397b447b27771cae1614a46edc3205",
+ "killers": [],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": ";",
+  "before": "ancestor = ancestor.Parent;",
+  "column": 16,
+  "line": 930,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "not measured (timed out)"
+}

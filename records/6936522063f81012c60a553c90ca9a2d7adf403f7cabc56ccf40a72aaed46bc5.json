@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 6 failed: Given_AMutationRenderedPending_When_ItSucceeds_Then_TheComponentRendersTheOutcome, Given_AComponentRenderingIsPaused_When_ARetryPausesAfterTheLastFlush_Then_TheLabelShowsPaused, Given_AComponentRenderingTheFailureCount_When_AnAttemptFailsAfterTheLastFlush_Then_TheLabelShowsIt",
+ "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RelativeLengthPanelTests.Given_AnEmWidth_When_APixelWidthReplacesIt_Then_ThePollItHeldIsReleased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RelativeLengthPanelTests.cs": "8e1a104382cd4b8940080c897c48460cac07864c7316098dbf4aeb7d5f8283cf",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RelativeLengthPanelTests.Given_AnEmWidth_When_TheElementsOwnFontGrows_Then_ItIsRemeasured",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RelativeLengthPanelTests.cs": "8e1a104382cd4b8940080c897c48460cac07864c7316098dbf4aeb7d5f8283cf",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RelativeLengthPanelTests.Given_AnIndefinitePercentageHeight_When_TheElementBecomesAbsolute_Then_ItIsTakenOfTheParent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RelativeLengthPanelTests.cs": "8e1a104382cd4b8940080c897c48460cac07864c7316098dbf4aeb7d5f8283cf",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationHookTests.Given_AMutationRenderedPending_When_ItSucceeds_Then_TheComponentRendersTheOutcome",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationHookTests.cs": "f10c9f16eeb217c2fb62968c81c480261f7d5fb7fd0a6a0fc2c9c8f3415ba26e",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationRetryTests.Given_AComponentRenderingIsPaused_When_ARetryPausesAfterTheLastFlush_Then_TheLabelShowsPaused",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationRetryTests.cs": "84c52a293a1b135da0e522d714ed568f55d97c0b51d32459856db8b5259f4ab7",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationRetryTests.Given_AComponentRenderingTheFailureCount_When_AnAttemptFailsAfterTheLastFlush_Then_TheLabelShowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationRetryTests.cs": "84c52a293a1b135da0e522d714ed568f55d97c0b51d32459856db8b5259f4ab7",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "40109529962",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 50,
+  "line": 142,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeVolatility.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "verdict": "killed"
+}
