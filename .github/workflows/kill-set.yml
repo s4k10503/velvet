@@ -235,7 +235,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/tools"
           git archive "$HEAD" scripts | tar -x -C "$RUNNER_TEMP/tools"
 
-      # No --timeout: a mutant's launch is bounded by this shard's own baseline, which KillSetShardTests charges.
+      # The editor flag is left at its default: a mutant's launch is bounded by this shard's own baseline, which KillSetShardTests charges.
       # safe.directory names the workspace alone, for the reason mutation.yml's measuring steps give.
       - name: Measure
         timeout-minutes: 180

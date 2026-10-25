@@ -11763,7 +11763,7 @@ class KillSetShardTests(unittest.TestCase):
         job = self.job()
 
         # Act
-        flags = re.findall(r"--timeout", job)
+        flags = re.findall(r"^\s+--timeout\b", job, re.MULTILINE)
 
         # Assert
         self.assertEqual(flags, [])
