@@ -103,6 +103,25 @@ def sections(text):
     return unanswered, stale, unmeasured, unread
 
 
+# `mutation_check.TIMED_OUT`'s heading in the verdict. These are kills, so they own no alert; the summary
+# names them so that a kill no case stands behind is not read as one.
+TIMED_OUT_HEADING = "--- mutants killed by timing out the suite ---"
+
+
+def timed_out(text):
+    """The lines the verdict lists under `TIMED_OUT_HEADING`."""
+    found = []
+    listing = False
+    for line in text.splitlines():
+        if line.startswith(TIMED_OUT_HEADING):
+            listing = True
+        elif listing and line.strip():
+            found.append(line.strip())
+        else:
+            listing = False
+    return found
+
+
 def fingerprint(*parts):
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
@@ -193,6 +212,9 @@ def summary(verdict, results, pending, run_url, uploaded):
     for heading, lines in owing:
         if lines:
             body += ["", "### {}".format(heading)] + listed(lines)
+    stopped = timed_out(verdict) if verdict is not None else []
+    if stopped:
+        body += ["", "### Killed by timeout (counted as detected, no case named)"] + listed(stopped)
     body += ["", "Run: {}".format(run_url)]
     return "\n".join(body)
 

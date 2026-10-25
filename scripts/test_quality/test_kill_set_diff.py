@@ -82,10 +82,11 @@ class KillSetDiffTests(unittest.TestCase):
         self.assertEqual((status, len([line for line in lines if line.startswith("extra kill " + SECOND)])),
                          (0, 1))
 
-    def test_Given_AMutantKilledOnTheBaseThatTheHeadOnlyHangsOn_When_Compared_Then_ItIsALostKill(self):
+    # GREEN_ON_BASE(refactor): the base's hung verdict and this timed-out one are the same kill, renamed; the comparison is the base's.
+    def test_Given_AMutantKilledOnTheBaseThatTheHeadOnlyTimesOutOn_When_Compared_Then_ItIsALostKill(self):
         # Arrange — a case killed it there, and no case does here.
         base = [record(FIRST, KILLED)]
-        head = [record(FIRST, mutation_check.HUNG)]
+        head = [record(FIRST, mutation_check.TIMED_OUT)]
 
         # Act
         status, _ = self.compare(base, head)
@@ -94,7 +95,7 @@ class KillSetDiffTests(unittest.TestCase):
         self.assertEqual(status, kill_set_diff.LOST)
 
     def test_Given_AMutantThatOutlivedTheTimeoutOnTheBase_When_TheHeadSurvivesIt_Then_ItIsALostKill(self):
-        # Arrange — on CI a hang reads as a timeout, never as a hang.
+        # Arrange — a timeout is a kill, which the head has to match.
         base = [record(FIRST, mutation_check.TIMED_OUT)]
         head = [record(FIRST, SURVIVED)]
 
@@ -138,9 +139,10 @@ class KillSetDiffTests(unittest.TestCase):
         # Assert
         self.assertEqual(status, 0)
 
-    def test_Given_AMutantTheSuiteHungOnBase_When_TheHeadCrashedOnIt_Then_ItPasses(self):
+    # GREEN_ON_BASE(refactor): the base's hung verdict and this timed-out one are the same kill, renamed; the comparison is the base's.
+    def test_Given_AMutantTheSuiteTimedOutOnBase_When_TheHeadCrashedOnIt_Then_ItPasses(self):
         # Arrange
-        base = [record(FIRST, mutation_check.HUNG)]
+        base = [record(FIRST, mutation_check.TIMED_OUT)]
         head = [record(FIRST, mutation_check.CRASHED)]
 
         # Act

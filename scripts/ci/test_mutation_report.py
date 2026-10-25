@@ -303,6 +303,18 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("### Not measured\n- `mutants nothing was asked of the suite about`\n"
                       "- `Runtime/B.cs:9 == -> != (equality)  not measured (timed out)`", summary)
 
+    def test_Given_AMutantKilledByATimeout_When_Summarised_Then_TheSummaryListsItApartFromWhatIsOwed(self):
+        # Arrange
+        text = verdict(extra="\n--- mutants killed by timing out the suite ---\n"
+                             "Runtime/B.cs:9 == -> != (equality)  the editor was killed at 755s\n")
+
+        # Act
+        summary = report.summary(text, PASSED, 0, "https://run", (0, 0))
+
+        # Assert
+        self.assertIn("### Killed by timeout (counted as detected, no case named)\n"
+                      "- `Runtime/B.cs:9 == -> != (equality)  the editor was killed at 755s`", summary)
+
     def test_Given_Survivors_When_Summarised_Then_TheSummaryCountsWhatWasUploadedUnderTheCategory(self):
         # Act
         text = report.summary(verdict([BOUNDARY]), PASSED, 0, "https://run", (1, 0))

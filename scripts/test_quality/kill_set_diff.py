@@ -33,12 +33,10 @@ LOST = 1
 UNCOMPARABLE = 2
 
 # What each kind of base kill needs of the head: a mutant a case killed has to be killed by a case, and
-# one the suite hung or crashed on, or that outlived --timeout, is held by any stopped reading. A run
-# whose --timeout is under HANG_MARGIN times its baseline reads every hang as TIMED_OUT.
-STOPPED = (mutation_check.KILLED, mutation_check.HUNG, mutation_check.CRASHED, mutation_check.TIMED_OUT)
+# one that timed out or crashed the editor is held by any stopped reading.
+STOPPED = (mutation_check.KILLED, mutation_check.TIMED_OUT, mutation_check.CRASHED)
 ACCEPTED = {
     mutation_check.KILLED: (mutation_check.KILLED,),
-    mutation_check.HUNG: STOPPED,
     mutation_check.CRASHED: STOPPED,
     mutation_check.TIMED_OUT: STOPPED,
 }
