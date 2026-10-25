@@ -7260,7 +7260,7 @@ class CampaignPlanTests(unittest.TestCase):
         # Assert
         self.assertEqual(planned, "mutants=2\nshards=[0, 1]")
 
-    # GREEN_ON_BASE(characterization): the shard count of twenty-one mutants is the same on the base; the change only keeps the arrangement under the ceiling. Replacing the `most` that `unreported_shards` hands `shard_count` with `MAX_SHARDS` reddens it.
+    # GREEN_ON_BASE(construction): this change lowers the EditMode ceiling below what three shards of twenty-one need, so the case now holds the ceiling at seven to keep reading the count the run hands the decision; its assertion is the base's. Replacing the `most` that `unreported_shards` hands `shard_count` with `MAX_SHARDS` reddens it.
     def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
         # Arrange — twenty-one mutants make four shards by default, and three where the run said three.
         mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
