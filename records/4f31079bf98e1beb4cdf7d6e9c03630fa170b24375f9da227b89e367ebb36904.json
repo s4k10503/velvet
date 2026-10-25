@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the runner wrote no result",
+ "detail": "EditMode: mutation_check: the container's memory limit killed 1 process(es) during the launch",
  "file": "f7b1c1676a128d46c5a29b47096d66f2a2a423058157e26194de93cdba1256bf",
  "killers": [],
- "measured_by": "40073373733",
+ "measured_by": "40209173736",
  "mutant": {
   "after": ";",
   "before": "foreach (var instruction in gate) _il.InsertBefore(region.First, instruction);",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "38a0fe3b00b2eca17dac3a9f853e0b23e17a0c99cfd1c9c73b37201d3398252d",
- "verdict": "uncompilable"
+ "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
+ "verdict": "killed (the editor crashed)"
 }

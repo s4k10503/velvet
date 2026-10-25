@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the runner wrote no result",
+ "detail": "EditMode: mutation_check: the container's memory limit killed 1 process(es) during the launch",
  "file": "f7b1c1676a128d46c5a29b47096d66f2a2a423058157e26194de93cdba1256bf",
  "killers": [],
- "measured_by": "40153400713",
+ "measured_by": "40209173736",
  "mutant": {
   "after": ";",
   "before": "load.Add(read);",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "9157d7c95adb9ae8bed912397c4621c71f0cbc3d8d8a3e6cf0d4e08d0878f949",
- "verdict": "uncompilable"
+ "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
+ "verdict": "killed (the editor crashed)"
 }
