@@ -122,7 +122,7 @@ MAX_SHARDS = 10
 # figure is the most EditMode survivors one shard's job measures after its own EditMode pass.
 # `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still
 # outrun its step; `--budget` is what stops it there, and the mutants it had not reached read `BUDGET`.
-SHARD_CEILING = {"EditMode": 7, "PlayMode": 7}
+SHARD_CEILING = {"EditMode": 6, "PlayMode": 7}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
 # ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
 # seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
@@ -155,20 +155,22 @@ NARROWED_PLATFORMS = ("EditMode",)
 # SHARD_CEILING / REACH_SHARE of the baseline's wall clock, which is why the share is small. It bounds
 # seconds, read off the reach run's cases, and not their number. A mutant whose cases would take more
 # than that takes the whole suite, as does every mutant of a session whose reach run does not stand. A
-# session that runs the reach run places every mutant it was assigned, so it takes no area's own baseline
-# in its opening, and a placed mutant whose reading does not stand takes none afterwards either (below).
+# shard that runs the reach run takes no area's own baseline in its opening, and neither a placed mutant
+# whose reading does not stand nor a declined one takes one afterwards (below).
 # A survivor under an assembly some fixture reads the IL of is the exception to "a survivor runs the whole
 # suite again": the session's whole-suite stage stands for every fixture but those, and only those run on
 # the mutant built alone.
 REACH_SHARE = 10
-# The reach run is made only for a session that places at least this many mutants and places every
-# mutant it was assigned. An EditMode session that does not make it is not run: its mutants take their
-# own launches, each preceded by its area's own launch. The minimum is a decision, not a measured
-# break-even. After a reach run, whether or not it stood, a placed mutant whose reading does not stand
-# launches straight on the whole suite and takes no area stage, and `ShardCeilingTests` charges no area
-# baseline for it. That is a decision taken to fit the job timeout: a mutant that only the area's
-# assemblies run alone would expose is not asked about in that order.
-REACH_MIN_MUTANTS = 6
+# The reach run is made for an EditMode session that places at least this many mutants, whatever else its
+# shard holds: a mutant the rewriter declines takes its own launches beside it, on the whole suite and with
+# no area's launch before it, since a shard that made the reach run takes no area's baseline. An EditMode
+# session that places fewer is not run: its mutants take their own launches, each preceded by its area's.
+# The figure is derived and not measured, since no reach run has been timed. It costs about one whole
+# suite, the run itself being one with the switches recording; against it a placed mutant saves its area's
+# launch, 0.25 to 0.46 of the baseline on the two areas measured, or the whole launch where its area is
+# not narrowable, and a mutant no case ran saves all of it. At 0.35 of a baseline a mutant, four mutants
+# pay for the run, and six would be what the run's bound of `REACH_BOUND` baselines asks.
+REACH_MIN_MUTANTS = 4
 # The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
 # so a run that does not finish costs what `ShardCeilingTests` charges it.
 REACH_BOUND = 2
@@ -3704,7 +3706,8 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
                  selection=None):
     """The plan a session runs: the opening item's stages under the unmutated program -- the areas'
     baselines for `attempts`, and the gate of each distinct set in `selection` -- then each placed
-    mutant's stages, with a confirmation after every SESSION_MUTANTS of them.
+    mutant's stages, each followed by the confirmation of its own kill, and a launch ending after every
+    SESSION_MUTANTS of them.
 
     A mutant runs the stages its own launches would: its area's assemblies first where the area is in
     `attempts`, stopping at a kill there, then the whole suite. A mutant in `selection` runs the cases
@@ -3741,23 +3744,29 @@ def session_plan(project, mutants, placed, attempts, whole_scope, platform, ceil
                                         gate="narrowed:" + area.name))
         stages.append(session_stage("whole", whole_scope, stop, timeout))
         items.append({"id": index, "stages": stages})
+        # A negative id matches no guard, so the confirmation runs the unmutated program. One follows each
+        # mutant rather than each segment: a kill stands only where its confirmation ran in its own launch
+        # (`confirmed_for`), so a launch that ends in the middle of a segment loses the kills of the mutants
+        # before that point unless each already has its own.
+        items.append({"id": -(number + 1), "confirm": True,
+                      "stages": [session_stage("confirm", [], False, ceiling)]})
         if number % SESSION_MUTANTS == SESSION_MUTANTS - 1 or number == len(placed) - 1:
-            # A negative id matches no guard, so the confirmation runs the unmutated program.
-            confirmation = -(len(segments) + 1)
-            items.append({"id": confirmation, "confirm": True,
-                          "stages": [session_stage("confirm", [], False, ceiling)]})
             segments.append(len(items))
     return {"output": str(directory), "platform": platform, "env": SESSION_SWITCH, "items": items,
             "start": 0, "end": len(items)}, segments
 
 
-def run_session(args, project, plan, directory, holder):
+def run_session(args, project, plan, directory, holder, after_launch=None):
     """Runs `plan` through as many session launches as it takes: one per segment, and one more past
     any item whose stage outlived its bound or took its editor down.
 
     Returns (position -> {"launch": which launch carried it to its end, "peak": the most other editors
     seen while it was the item in progress}, the positions no launch finished, and the reason the rest of
     the session was abandoned, or None).
+
+    `after_launch`, where given, is handed `runs` as each launch ends, so what the launch measured can be
+    recorded before the next one starts: a campaign stopped between launches has then kept every kill the
+    earlier ones made.
     """
     plan_path = directory / "plan.json"
     state = directory / "runner-state.json"
@@ -3851,6 +3860,8 @@ def run_session(args, project, plan, directory, holder):
             reached = end if done.exists() else where.get("position", position)
             for passed in range(position, min(reached, end)):
                 runs[passed] = {"launch": launches, "peak": peaks.get(passed, 0)}
+            if after_launch is not None:
+                after_launch(runs)
             try:
                 leak = json.loads(leaked.read_text())
             except (OSError, ValueError):
@@ -3900,8 +3911,8 @@ def confirmations(plan, directory):
 
 
 def confirmed_for(plan, position, runs, found):
-    """What the confirmation closing `position`'s segment read, where that confirmation ran in the same
-    launch as the item; otherwise nothing, so no kill of it stands."""
+    """What the confirmation that follows `position` read, where it ran in the same launch as the item;
+    otherwise nothing, so no kill of it stands."""
     closing = next((later for later in range(position + 1, len(plan["items"]))
                     if plan["items"][later].get("confirm")), None)
     if closing is None or closing not in runs or runs[closing]["launch"] != runs.get(position, {}).get("launch"):
@@ -4050,20 +4061,78 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
         print("the rewriter stopped: {}".format("; ".join(answer["fatal"])))
     if not placed:
         return {}, False, set()
-    # Without the reach run each placed mutant runs the stages its own launches run (`session_plan`), and a
-    # kill stands only when its confirmation ran in the item's launch (`confirmed_for`), so none of the
-    # kills in a launch that was killed before the confirmation stands. PlayMode is not narrowed and keeps its session.
-    reaching = (args.platform in NARROWED_PLATFORMS
-                and REACH_MIN_MUTANTS <= len(placed)
-                and len(placed) == len(pending))
+    # Without the reach run a session would run each placed mutant through the stages its own launches run,
+    # and nothing measured shows that faster, so those mutants take the launches. PlayMode is not narrowed
+    # and keeps its session.
+    reaching = args.platform in NARROWED_PLATFORMS and REACH_MIN_MUTANTS <= len(placed)
     if args.platform in NARROWED_PLATFORMS and not reaching:
-        print("{} mutant(s) take their own launches: a session that does not make the reach run runs the "
-              "stages those launches run".format(len(placed)))
+        print("{} mutant(s) take their own launches: fewer than {} are placed, so no reach run is made, and a "
+              "session that does not make it runs the stages those launches run".format(
+                  len(placed), REACH_MIN_MUTANTS))
         return {}, False, set()
 
     ceiling = min(args.timeout, baseline_wall)
     expected = {"whole": baseline["total"]}
     rewritten = {project / relative: text for relative, text in answer["files"].items()}
+    il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
+    measured, il_only, recorded_at = {}, set(), set()
+
+    def record_uncovered(uncovered):
+        for index in uncovered:
+            mutant = mutants[index - 1]
+            if assembly_of(mutant.path) in il_read:
+                # A fixture reading the assembly's IL sees what no case runs, and sees the guards of every
+                # mutant together, so only a launch of its own can say -- of the fixtures that read IL.
+                print("[{}] the reach run read no case running it, but a fixture reads its assembly's IL, so "
+                      "the fixtures reading IL take their own launch".format(index))
+                if mutant.operator not in CALL_REMOVING:
+                    il_only.add(index)
+                continue
+            mutant.verdict = UNCOVERED
+            mutant.detail = "none of the {} cases of the unmutated run ran it".format(baseline["total"])
+            mutant.ran = (("uncovered", 0),)
+            write_verdict(output, index, campaign, mutant, project, (), scope)
+            measured[index] = (mutant.verdict, mutant.detail)
+
+    def record(plan, runs):
+        """Records the verdict of each item of `plan` that a launch carried to its end and that no earlier
+        call recorded, as `write_verdict` records one; one whose reading does not stand is left to its own
+        launches."""
+        opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get(
+            "stages", [])}
+        for name, stage in opening.items():
+            counts = stage_counts(stage)
+            expected[name] = counts["total"] if counts else None
+        found = confirmations(plan, directory)
+        for position, item in enumerate(plan["items"]):
+            index = item["id"]
+            if item.get("confirm") or index == SESSION_OPENING or position not in runs or position in recorded_at:
+                continue
+            recorded_at.add(position)
+            mutant = mutants[index - 1]
+            assembly = assembly_of(mutant.path)
+            reading = session_verdict(read_item(directory, index), item, index, assembly, expected, opening,
+                                      confirmed_for(plan, position, runs, found), text_readers)
+            if reading is not None and reading[0] in SURVIVING and assembly in il_read:
+                # The session compiled every guard into the assembly, so a fixture reading its IL read the
+                # union of the mutants rather than this one. Every other fixture ran the mutant through its
+                # guard, so a plain survivor stands for them, and only the fixtures reading IL are run again.
+                if reading[0] == SURVIVED and mutant.operator not in CALL_REMOVING:
+                    il_only.add(index)
+                reading = None
+            if reading is None:
+                print("[{}] the session's reading {}".format(index, "stands for every fixture but those reading "
+                      "IL, which take their own launch" if index in il_only else
+                      "does not stand, so it takes its own launch"))
+                continue
+            mutant.verdict, mutant.detail, killers = reading
+            mutant.ran = cases_run(read_item(directory, index))
+            if runs[position]["peak"]:
+                mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-",
+                                                                         runs[position]["peak"])
+            write_verdict(output, index, campaign, mutant, project, killers, scope)
+            measured[index] = (mutant.verdict, mutant.detail)
+
     if not wait_for_quiet(args.busy_timeout):
         raise SystemExit("another Unity test run is still in flight after {}s, so this "
                          "session's failures would not all be its mutants'".format(args.busy_timeout))
@@ -4086,13 +4155,17 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
             print("reach: {} of {} mutant(s) take the cases that ran their site, {} are run by none, {} take "
                   "the whole suite".format(len(selection), len(placed), len(uncovered),
                                            len(placed) - len(selection) - len(uncovered)))
+        # What no case ran is known before the session's launches, and recorded before them, so a campaign
+        # that stops during one has kept it.
+        record_uncovered(uncovered)
         launched = [index for index in placed if index not in uncovered]
         plan, segments = session_plan(project, mutants, launched, {}, whole_scope, args.platform, ceiling,
                                       mutant_bound(baseline_wall), directory, selection)
         plan["segments"] = segments
         plan["watch"] = library_files(project)
         plan["tolerate"] = holder.state.first_left if holder.state is not None else []
-        runs, lost, stopped = run_session(args, project, plan, directory, holder) \
+        runs, lost, stopped = run_session(args, project, plan, directory, holder,
+                                          after_launch=lambda carried: record(plan, carried)) \
             if launched else ({}, set(), None)
     finally:
         if holder.release() is None:
@@ -4100,57 +4173,7 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                              "outstanding".format(holder.sentinel))
     print("session: {} mutant(s) in {:.0f}s{}".format(len(placed), time.time() - started,
                                                       "; " + stopped if stopped else ""))
-    if not runs and not uncovered:
-        return {}, reaching, set()
-
-    opening = {stage["name"]: stage for stage in (read_item(directory, SESSION_OPENING) or {}).get("stages", [])}
-    for name, stage in opening.items():
-        counts = stage_counts(stage)
-        expected[name] = counts["total"] if counts else None
-    found = confirmations(plan, directory)
-    il_read = il_reading_assemblies(project, set(assembly_seconds(baseline_results)[1]))
-    measured, il_only = {}, set()
-    for index in uncovered:
-        mutant = mutants[index - 1]
-        if assembly_of(mutant.path) in il_read:
-            # A fixture reading the assembly's IL sees what no case runs, and sees the guards of every
-            # mutant together, so only a launch of its own can say -- of the fixtures that read IL.
-            print("[{}] the reach run read no case running it, but a fixture reads its assembly's IL, so the "
-                  "fixtures reading IL take their own launch".format(index))
-            if mutant.operator not in CALL_REMOVING:
-                il_only.add(index)
-            continue
-        mutant.verdict = UNCOVERED
-        mutant.detail = "none of the {} cases of the unmutated run ran it".format(baseline["total"])
-        mutant.ran = (("uncovered", 0),)
-        write_verdict(output, index, campaign, mutant, project, (), scope)
-        measured[index] = (mutant.verdict, mutant.detail)
-    for position, item in enumerate(plan["items"]):
-        index = item["id"]
-        if item.get("confirm") or index == SESSION_OPENING or position not in runs:
-            continue
-        mutant = mutants[index - 1]
-        assembly = assembly_of(mutant.path)
-        reading = session_verdict(read_item(directory, index), item, index, assembly, expected, opening,
-                                  confirmed_for(plan, position, runs, found), text_readers)
-        if reading is not None and reading[0] in SURVIVING and assembly in il_read:
-            # The session compiled every guard into the assembly, so a fixture reading its IL read the
-            # union of the mutants rather than this one. Every other fixture ran the mutant through its
-            # guard, so a plain survivor stands for them, and only the fixtures reading IL are run again.
-            if reading[0] == SURVIVED and mutant.operator not in CALL_REMOVING:
-                il_only.add(index)
-            reading = None
-        if reading is None:
-            print("[{}] the session's reading {}".format(index, "stands for every fixture but those reading IL, "
-                  "which take their own launch" if index in il_only else
-                  "does not stand, so it takes its own launch"))
-            continue
-        mutant.verdict, mutant.detail, killers = reading
-        mutant.ran = cases_run(read_item(directory, index))
-        if runs[position]["peak"]:
-            mutant.detail = "{}; {} other editor(s) were up".format(mutant.detail or "-", runs[position]["peak"])
-        write_verdict(output, index, campaign, mutant, project, killers, scope)
-        measured[index] = (mutant.verdict, mutant.detail)
+    record(plan, runs)
     return measured, reaching, il_only
 
 

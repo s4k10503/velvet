@@ -40,7 +40,7 @@ permissions:
 env:
   PYTHONDONTWRITEBYTECODE: "1"
   EDITOR_MEMORY: "12g"
-  RECORD_CAP: "280"
+  RECORD_CAP: "240"
   RECORD_SHARDS: "40"
 
 # Timeouts sized as test.yml's are, but for the shard jobs', which ShardCeilingTests holds against the
