@@ -33,6 +33,9 @@ namespace Velvet.CodeGen
                 if (first <= start && end < call) return "it is a child of a portal or world-space node";
             }
             var next = SkipNops(end + 1);
+            // MUTANT_SURVIVES(unreachable, boundary): next reaches the instruction count only where nothing but nops follows the call.
+            // ReactiveScopeSelectionTests.Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd
+            // pins that no component body of Velvet.Tests.Hooks.Editor ends on a non-terminating instruction.
             var stored = next < _flow.Instructions.Length && _flow.Instructions[next].OpCode.Code == Code.Stloc
                 && _hostFed.Contains(((VariableDefinition)_flow.Instructions[next].Operand).Index);
             return stored ? "it is a child of a portal or world-space node" : null;

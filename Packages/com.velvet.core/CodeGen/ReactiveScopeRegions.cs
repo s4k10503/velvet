@@ -365,6 +365,8 @@ namespace Velvet.CodeGen
         // built from an arm, and the test that chose it sits ahead of the arm. The run starts where that test does.
         private int ExtendOverEntries(int start, int end)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): a pass that does not return lowers start or leaves it as it was.
+            // Start is below the instruction count, so some pass within the bound leaves it as it was and every later one does too.
             for (var guard = 0; guard < _flow.Instructions.Length; guard++)
             {
                 var entry = EntryFromBefore(start, end);
