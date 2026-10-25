@@ -3140,6 +3140,7 @@ class StubbedCampaign:
         (self.project / "Library" / "ScriptAssemblies").mkdir(parents=True, exist_ok=True)
         self.seen = []
         self.busy = []
+        self.timeouts = {}
         # A repository with one commit that does not hold the source, so the source is untracked and
         # the diff against HEAD takes it whole -- which is what a run not scoped by --files reads.
         for command in (["init", "-q", "-b", "main"], ["add", ".gitignore"],
@@ -3155,8 +3156,7 @@ class StubbedCampaign:
     # The editor log a mutant's build leaves, where a case needs its exact lines.
     error_log = None
     not_rebuilt = False
-    # What the baseline is reported to have taken. Zero is a baseline with the whole bound to spare,
-    # which is what separates a mutant that hung from a bound the suite was always going to outrun.
+    # What the baseline is reported to have taken, which a mutant's launch is bounded by.
     baseline_seconds = 0.0
     baseline_text = GREEN_RESULTS
     # Where set, the baseline writes this log and no result, as a build that stopped does.
@@ -3165,6 +3165,7 @@ class StubbedCampaign:
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
         mutant = Path(results).name != "baseline.xml"
+        self.timeouts[Path(results).name] = _timeout
         wall = 0.0 if mutant else self.baseline_seconds
         if not mutant and self.baseline_log is not None:
             Path(log).write_text(self.baseline_log)
@@ -4121,7 +4122,7 @@ class ForkedCampaign(StubbedCampaign):
 
     def __init__(self):
         self.root = Path(tempfile.mkdtemp(prefix="mutation-check-fork-"))
-        self.seen, self.busy = [], []
+        self.seen, self.busy, self.timeouts = [], [], {}
         self.primary = self.root / "primary"
         self.git(self.root, "init", "-q", "--bare", "-b", "main", "origin.git")
         self.git(self.root, "init", "-q", "-b", "main", "primary")
@@ -4288,21 +4289,6 @@ class CampaignVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(code, 0)
-
-    # GREEN_ON_BASE(characterization): the base refuses every timeout, so it refuses this one
-    # too. What this pins is that the half still refused stays refused.
-    def test_Given_AMutantTheEditorNeverRan_When_TheBaselineWasAlsoSlow_Then_ItFails(self):
-        # Arrange — a mutant nobody asked about must never be a pass, and a baseline already near the
-        # bound is what makes a mutant reaching it say nothing about the mutation.
-        campaign = StubbedCampaign()
-        campaign.times_out = True
-        campaign.baseline_seconds = 500.0
-
-        # Act
-        code = campaign.run_over_diff("--max", "40")
-
-        # Assert
-        self.assertEqual(code, 1)
 
     # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
     def test_Given_AMutantTheEditorNeverRebuilt_When_ItsLineIsDeclared_Then_NothingSignsItOff(self):
@@ -4621,20 +4607,19 @@ class VerdictNamingTests(unittest.TestCase):
         for field, value in how.items():
             setattr(campaign, field, value)
         code = campaign.run_over_diff("--max", "40")
-        named = [verdict for verdict in (mutation_check.TIMED_OUT, mutation_check.HUNG,
-                                         mutation_check.UNCOMPILABLE,
+        named = [verdict for verdict in (mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE,
                                          mutation_check.NOT_BUILT, mutation_check.SURVIVED,
                                          mutation_check.KILLED)
                  if verdict + ":" in campaign.printed]
         return code, named
 
-    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_ItIsKilledAndTheRunPasses(self):
+    def test_Given_AMutantThatRunsPastItsBound_When_TheRunIsTallied_Then_ItIsKilledAndTheRunPasses(self):
         # Arrange — over the diff with no declaration anywhere, so a pass here is one no
         # MUTANT_SURVIVES line was needed for.
         # Act / Assert
-        self.assertEqual(self.tally_of(times_out=True), (0, [mutation_check.HUNG]))
+        self.assertEqual(self.tally_of(times_out=True), (0, [mutation_check.TIMED_OUT]))
 
-    def test_Given_AMutantThatHungTheSuite_When_TheRunIsDecided_Then_ItIsListedWithWhatItTook(self):
+    def test_Given_AMutantThatTimedOut_When_TheRunIsDecided_Then_ItIsListedWithTheBoundItWasGiven(self):
         # Arrange — the progress line prints the detail as well, so the listing is read under its own
         # heading rather than anywhere in the output.
         campaign = StubbedCampaign()
@@ -4644,26 +4629,56 @@ class VerdictNamingTests(unittest.TestCase):
         campaign.run_over_diff("--max", "40")
 
         # Assert
-        listed = campaign.printed.partition("--- mutants killed by hanging the suite ---\n")[2]
-        self.assertIn("the suite ran past --timeout 900s", listed.splitlines()[0] if listed else "")
+        listed = campaign.printed.partition("--- mutants killed by timing out the suite ---\n")[2]
+        self.assertIn("the editor was killed at 5s, 1.5 times the baseline's 0s plus 5s, with no readable result",
+                      listed.splitlines()[0] if listed else "")
 
-    def test_Given_AResultWrittenBeforeTheTimeout_When_TheBaselineHadRoomToSpare_Then_ItIsNotMeasured(self):
-        # Arrange — the editor wrote a green result and then outran the bound, which a baseline with
-        # the whole bound to spare does not make the mutation's doing.
+    def test_Given_AResultWrittenBeforeTheBound_When_TheEditorOutlivesIt_Then_ItIsKilledByTheTimeout(self):
+        # Arrange — the editor wrote a green result and then outran the bound. The result is short of
+        # the baseline's cases, so it is not the suite's reading.
         campaign = ResultThenTimeoutCampaign()
 
         # Act
         code = campaign.run_over_diff("--max", "40")
 
-        # Assert
-        self.assertEqual((code, mutation_check.TIMED_OUT + ":" in campaign.printed), (1, True))
+        # Assert — exit 0 with no declaration anywhere: a survivor would fail the run.
+        self.assertEqual(code, 0)
 
-    def test_Given_ABaselineAlreadyNearTheBound_When_AMutantReachesIt_Then_ItIsNotMeasured(self):
-        # Arrange — a bound the suite was always going to outrun says nothing about the mutation, and
-        # a mutant nobody asked about must never be a pass.
+    def test_Given_ASlowBaseline_When_AMutantReachesItsBound_Then_ItIsKilledAsOnAFastOne(self):
+        # Arrange — the bound is derived from the baseline, so a slow one moves it rather than making a
+        # timeout ambiguous.
         # Act / Assert
         self.assertEqual(self.tally_of(times_out=True, baseline_seconds=500.0),
-                         (1, [mutation_check.TIMED_OUT]))
+                         (0, [mutation_check.TIMED_OUT]))
+
+    def test_Given_ABaselineOf500s_When_AMutantIsLaunched_Then_ItsLaunchIsBoundedAt755s(self):
+        # Arrange
+        campaign = StubbedCampaign()
+        campaign.baseline_seconds = 500.0
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(campaign.timeouts.get("mutant-001.xml"), 755)
+
+    def test_Given_ATimeoutBelowTheDerivedBound_When_AMutantIsLaunched_Then_TheTimeoutDoesNotCapIt(self):
+        # Arrange — `--timeout` bounds the baseline alone.
+        campaign = StubbedCampaign()
+        campaign.baseline_seconds = 500.0
+
+        # Act
+        campaign.run_over_diff("--max", "40", "--timeout", "600")
+
+        # Assert
+        self.assertEqual(campaign.timeouts.get("mutant-001.xml"), 755)
+
+    def test_Given_ABaselineOf100s_When_ItsMutantBoundIsDerived_Then_ItIsOnePointFiveTimesPlusFive(self):
+        # Act
+        bound = mutation_check.mutant_bound(100.0)
+
+        # Assert
+        self.assertEqual(bound, 155)
 
     def test_Given_ABuildTheAnalyzersStopped_When_TheRunIsTallied_Then_ItNamesTheUncompilable(self):
         # Act / Assert
@@ -4686,7 +4701,7 @@ class VerdictNamingTests(unittest.TestCase):
 
 
 class ResultThenTimeoutCampaign(StubbedCampaign):
-    """A mutant editor that writes a green result and is then killed at `--timeout`."""
+    """A mutant editor that writes a green result and is then killed at its bound."""
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         Path(results).write_text(GREEN_RESULTS)
@@ -4959,10 +4974,11 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertIsNone(
             mutation_check.read_verdict(self.output, 7, "digest-1", sibling, self.project))
 
+    # GREEN_ON_BASE(refactor): the verdicts left are ones the base already measured again; the timeout moved to the case below.
     def test_Given_AVerdictThatMeasuredNothing_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
         # Arrange — each kind the run fails on for want of a reading, keyed so that only the kind can
         # refuse it.
-        unmeasured = [mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE, mutation_check.NOT_BUILT]
+        unmeasured = [mutation_check.UNCOMPILABLE, mutation_check.NOT_BUILT]
 
         # Act
         read = self.read_back(unmeasured)
@@ -4980,9 +4996,10 @@ class KeptVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(read, [None] * len(surviving))
 
-    def test_Given_AVerdictTheSuiteHungOn_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+    # GREEN_ON_BASE(characterization): the base measured a hung mutant again, as it does a timed-out one now; the verdict kind moved with the rename.
+    def test_Given_AVerdictTheSuiteTimedOutOn_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
         # Arrange — keyed so that only the verdict kind can refuse it.
-        hung = [mutation_check.HUNG]
+        hung = [mutation_check.TIMED_OUT]
 
         # Act
         read = self.read_back(hung)
@@ -4999,7 +5016,7 @@ class ResumedCampaignTests(unittest.TestCase):
     every case there; these drive `main` twice.
     """
 
-    NAMED = (mutation_check.TIMED_OUT, mutation_check.HUNG, mutation_check.UNCOMPILABLE,
+    NAMED = (mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE,
              mutation_check.NOT_BUILT, mutation_check.SURVIVED, mutation_check.KILLED)
 
     def second_run(self, first, second, first_flags=(), second_flags=()):
@@ -5019,8 +5036,8 @@ class ResumedCampaignTests(unittest.TestCase):
                 "came from a previous run of this campaign" in campaign.printed)
 
     def test_Given_AMutantTheFirstRunTimedOut_When_TheCampaignRunsAgain_Then_ItIsMeasuredAgain(self):
-        # Arrange — the first baseline sat near the bound, so the mutant reaching it went unmeasured;
-        # this time the editor finishes, whether for a raised --timeout or a quieter machine.
+        # Arrange — the first run's editor outran its bound, which names no case; this time the editor
+        # finishes, as on a quieter machine.
         first = {"times_out": True, "baseline_seconds": 500.0}
         second = {"kills": True}
 
@@ -6854,7 +6871,7 @@ class DeadShardReportingTests(unittest.TestCase):
                          ["mutant-001.json", "mutant-003.json", "mutant-005.json", "mutant-007.json",
                           "mutant-009.json", "mutant-011.json"])
 
-    def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItRefuses(self):
+    def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItPlansTheCeilingsWorth(self):
         # Arrange -- the shard's six survivors against a PlayMode ceiling of five.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
@@ -6866,8 +6883,57 @@ class DeadShardReportingTests(unittest.TestCase):
                                           str(campaign.project / "edit0"), str(campaign.project / "edit1"),
                                           "--survivors-shard", "0/2", "--plan")
 
+        # Assert -- a job that fails here stops the run's chain, so the rest are left to the decision.
+        self.assertEqual(re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE) if code == 0 else code,
+                         ["mutants=5"])
+
+
+class EditorRewrittenFilesTests(unittest.TestCase):
+    """What the unmutated baseline's launch leaves other than it found the tree, which a session's stage
+    is not blamed for leaving."""
+
+    def launch_over(self, *rewrites):
+        """A repository holding `Settings.asset`, with the baseline launch over it writing each of
+        `rewrites` (path, text); returns the state after that launch."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        project = Path(directory.name)
+        (project / ".gitignore").write_text("/out/\n")
+        (project / "Settings.asset").write_text("committed")
+        subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(project), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "-m", "x"], check=True)
+        state = mutation_check.tree_before_baseline(project, project / "out", project / mutation_check.SENTINEL)
+        for path, text in rewrites:
+            (project / path).write_text(text)
+        state.settled([])
+        return state
+
+    def test_Given_ATrackedFileTheBaselineLaunchRewrote_When_ItSettles_Then_ItIsNamed(self):
+        # Arrange / Act
+        state = self.launch_over(("Settings.asset", "rewritten by the editor"))
+
         # Assert
-        self.assertEqual((code, "mutants=" in campaign.printed), (mutation_check.CEILING_REFUSAL, False))
+        self.assertEqual(getattr(state, "first_left", None), ["Settings.asset"])
+
+    def test_Given_ABaselineLaunchThatLeftTheTreeAsItFoundIt_When_ItSettles_Then_NothingIsNamed(self):
+        # Arrange / Act
+        state = self.launch_over()
+
+        # Assert
+        self.assertEqual(getattr(state, "first_left", None), [])
+
+    def test_Given_AFileOnlyALaterLaunchRewrote_When_ItSettles_Then_ItIsNotNamed(self):
+        # Arrange
+        state = self.launch_over()
+
+        # Act
+        (state.project / "Settings.asset").write_text("a later launch")
+        state.settled([])
+
+        # Assert
+        self.assertEqual(getattr(state, "first_left", None), [])
 
 
 class HangingTwoPlatformCampaign(TwoPlatformCampaign):
@@ -6916,7 +6982,7 @@ class TwoPassCampaignTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, re.findall(r"^killed: .*$", campaign.printed, re.MULTILINE)),
-                         (0, ["killed: 2, {}: 2".format(mutation_check.HUNG)]))
+                         (0, ["killed: 2, {}: 2".format(mutation_check.TIMED_OUT)]))
 
     # GREEN_ON_BASE(characterization): the base does not ask the PlayMode suite about a hung mutant
     # either. What this pins is that a hang-kill stands the way an EditMode kill does.
@@ -7437,11 +7503,9 @@ class NarrowedAttemptTests(unittest.TestCase):
         self.assertEqual(campaign.launches, ["baseline.xml", "baseline-Reconciler.xml",
                                              "mutant-001-narrowed.xml"])
 
-    # GREEN_ON_BASE(characterization): the whole-suite launches keep --timeout, as on the base.
-    # What reddens this on the branch is a whole-suite launch handed a narrowed launch's bound.
-    def test_Given_AnAreaAndAMutantItSpares_When_Launched_Then_TheWholeSuiteLaunchesKeepTheTimeout(self):
+    def test_Given_AnAreaAndAMutantItSpares_When_Launched_Then_TheWholeSuiteLaunchIsBoundedByTheBaseline(self):
         # Arrange — a mutant the area spares, so its whole-suite launch is made. `NarrowedBoundTests`
-        # holds the narrowed launches' bounds.
+        # holds the narrowed launches' bounds; the baseline keeps `--timeout`.
         campaign = TimedAreaCampaign({"baseline.xml": 200.0, "baseline-Reconciler.xml": 40.0})
         campaign.narrowed_fails = ()
 
@@ -7450,7 +7514,7 @@ class NarrowedAttemptTests(unittest.TestCase):
 
         # Assert
         self.assertEqual({name: campaign.bounds.get(name) for name in ("baseline.xml", "mutant-001.xml")},
-                         {"baseline.xml": 900, "mutant-001.xml": 900})
+                         {"baseline.xml": 900, "mutant-001.xml": 305})
 
     def test_Given_AMutantItsAreaKills_When_Recorded_Then_ItIsKilledByTheAreasCases(self):
         # Arrange — the whole suite would have let it survive, so the kill can only be the area's.
@@ -7659,43 +7723,45 @@ class CompleteAtItsBoundTests(unittest.TestCase):
         # Assert
         self.assertEqual(record.get("verdict"), mutation_check.SURVIVED)
 
-    # GREEN_ON_BASE(characterization): a whole-suite reading one case short is not measured, as before.
     # What reddens this on the branch is the whole-suite launch's `expected` not being the baseline's.
     def test_Given_AWholeSuiteRunKilledWithFewerCasesThanItsBaseline_When_Read_Then_ItTimedOut(self):
         # Act
         record = self.whole(complete_results(FAILING, cases=1)).verdict()
+        read = record.get("verdict")
 
-        # Assert
-        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
+        # Assert — a verdict outside DECIDED reads as undecided, so it cannot equal the expected one.
+        self.assertEqual(read if read in mutation_check.DECIDED else "undecided: " + str(read),
+                         mutation_check.TIMED_OUT)
 
-    # GREEN_ON_BASE(characterization): a whole-suite reading older than its launch is not measured.
     # What reddens this on the branch is the whole-suite launch's `since` not being its own.
     def test_Given_AWholeSuiteRunKilledOverAnOlderFile_When_Read_Then_ItTimedOut(self):
         # Act
         record = self.whole(complete_results(FAILING), age=3600).verdict()
+        read = record.get("verdict")
 
-        # Assert
-        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
+        # Assert — a verdict outside DECIDED reads as undecided, so it cannot equal the expected one.
+        self.assertEqual(read if read in mutation_check.DECIDED else "undecided: " + str(read),
+                         mutation_check.TIMED_OUT)
 
-    # GREEN_ON_BASE(characterization): a whole-suite launch killed mid-file hung, as before. What
-    # reddens this on the branch is `complete_result` reading a file that does not parse. Asked of
+    # What reddens this on the branch is `complete_result` reading a file that does not parse. Asked of
     # the whole suite, since a narrowed launch's own reading refuses such a file a second time.
-    def test_Given_AWholeSuiteRunKilledMidFile_When_Read_Then_ItHung(self):
+    def test_Given_AWholeSuiteRunKilledMidFile_When_Read_Then_ItTimedOut(self):
         # Act
         record = self.whole(complete_results(FAILING)[:-20]).verdict()
 
         # Assert
-        self.assertEqual(record.get("verdict"), mutation_check.HUNG)
+        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
 
-    # GREEN_ON_BASE(characterization): a whole-suite root without a count is not measured, as before.
     # What reddens this on the branch is `complete_result` defaulting a count it could not read: the
     # failed count of a pass, where a default of zero is the right number and nothing else disagrees.
     def test_Given_AWholeSuiteRunKilledWithoutItsFailedCount_When_Read_Then_ItTimedOut(self):
         # Act
         record = self.whole(complete_results(failed=None)).verdict()
+        read = record.get("verdict")
 
-        # Assert
-        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
+        # Assert — a verdict outside DECIDED reads as undecided, so it cannot equal the expected one.
+        self.assertEqual(read if read in mutation_check.DECIDED else "undecided: " + str(read),
+                         mutation_check.TIMED_OUT)
 
     # GREEN_ON_BASE(characterization): a root without its result falls back, as before. What reddens
     # this on the branch is `complete_result` no longer asking for the result attribute.
@@ -7706,15 +7772,14 @@ class CompleteAtItsBoundTests(unittest.TestCase):
         # Assert
         self.assertEqual(campaign.launches[-2:], FELL_BACK)
 
-    # GREEN_ON_BASE(characterization): a whole-suite root that is not a test run hung, as before. What
-    # reddens this on the branch is `complete_result` no longer asking for a `test-run` root, which
+    # What reddens this on the branch is `complete_result` no longer asking for a `test-run` root, which
     # the narrowed launch's own reading asks a second time.
-    def test_Given_AWholeSuiteRunKilledOverAnotherRoot_When_Read_Then_ItHung(self):
+    def test_Given_AWholeSuiteRunKilledOverAnotherRoot_When_Read_Then_ItTimedOut(self):
         # Act
         record = self.whole(complete_results(FAILING).replace("test-run", "test-suite")).verdict()
 
         # Assert
-        self.assertEqual(record.get("verdict"), mutation_check.HUNG)
+        self.assertEqual(record.get("verdict"), mutation_check.TIMED_OUT)
 
     # GREEN_ON_BASE(characterization): a file older than its launch falls back, as before. What
     # reddens this on the branch is the narrowed launch's `since` not being its own.
@@ -8022,6 +8087,15 @@ class ShardCeilingTests(unittest.TestCase):
     # 1/REACH_SHARE of the baseline in seconds, and none is shared in the worst case.
     GATE_SUITE_SECONDS = BASELINE
 
+    # The PlayMode baseline in seconds that `PLAY_SETUP` and the hang allowance are taken at.
+    PLAY_BASELINE = 625
+
+    # What a shard spends before its first mutant, activation, baseline and the time after the last
+    # verdict added together; a case adds one mutant hanging at the bound `mutant_bound` derives from the
+    # baseline.
+    EDIT_SETUP = 201 + BASELINE + 12
+    PLAY_SETUP = 202 + PLAY_BASELINE + 11
+
     # What a launch of its own spends on its area's baseline, charged once for each area the launches
     # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
     # fewer than `REACH_MIN_MUTANTS`, or was assigned one it declined. The same figure stands for the launch
@@ -8072,7 +8146,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_AFullShardWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
         # set is then run, and every mutant takes the whole suite at the same measured figure.
-        mutant, setup = 561, 201 + 486 + 12 + 900
+        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="failed",
@@ -8085,7 +8159,7 @@ class ShardCeilingTests(unittest.TestCase):
         # Arrange — n placed mutants, each charged the whole suite after the reach run and its gate:
         # 1599 + 972 + 48.6 n + 717 n, a survivor's charge: the session's whole suite, then the launch of the
         # fixtures reading IL.
-        mutant, setup = 561, 201 + 486 + 12 + 900
+        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
         counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
 
         # Act
@@ -8098,7 +8172,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_EveryArmAShardCanTake_When_TheMostMutantsFittingAllOfThemAreCounted_Then_ItIsTheEditModeCeiling(self):
         # Arrange — derived from the job timeout rather than read back from the constant: a shard of this many
         # fits whether it makes the reach run, its reach run never finishes, or it is on main's path.
-        mutant, setup = 561, 201 + 486 + 12 + 900
+        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
         largest = max((count for count in range(1, 40)
                        if all(self.fits("mutation-shard", "EditMode", mutant, setup, arm=arm, count=count)
                               for arm in ("reach", "failed", "small"))), default=0)
@@ -8112,7 +8186,7 @@ class ShardCeilingTests(unittest.TestCase):
     def test_Given_AnEditModeShardOnMainsPath_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — a shard below the minimum, or assigned a declined mutant: every area's baseline, then every
         # mutant the shard was assigned.
-        mutant, setup = 561, 201 + 486 + 12 + 900
+        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small")
@@ -8131,7 +8205,7 @@ class ShardCeilingTests(unittest.TestCase):
                    for number in range(1, total + 1)]
         dealt = mutation_check.deal(list(range(1, total + 1)), mutants, REPO_ROOT, "EditMode",
                                     mutation_check.MAX_SHARDS)
-        mutant, setup = 561, 201 + 486 + 12 + 900
+        mutant, setup = 561, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "EditMode", mutant, setup, arm="small",
@@ -8183,7 +8257,7 @@ class ShardCeilingTests(unittest.TestCase):
 
     def test_Given_ThePlayModeStepTimeout_When_TheMostSurvivorsFittingItAreCounted_Then_ItIsThePlayModeCeiling(self):
         # Arrange — derived from the step timeout rather than read back from the constant.
-        mutant, setup = 934 + 100, 202 + 625 + 11 + 900
+        mutant, setup = 934 + 100, self.PLAY_SETUP + mutation_check.mutant_bound(self.PLAY_BASELINE)
         largest = max((count for count in range(1, 40)
                        if self.fits("mutation-shard", "PlayMode", mutant, setup, count=count)), default=0)
 
@@ -8209,8 +8283,8 @@ class ShardCeilingTests(unittest.TestCase):
 
     def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Arrange — the 100 s are what its five bounded cases spend where a mutant stops the frame
-        # driver, 5 x 20 s measured locally; and one mutant hanging at --timeout's 900 s besides.
-        mutant, setup = 934 + 100, 202 + 625 + 11 + 900
+        # driver, 5 x 20 s measured locally; and one mutant hanging at its derived bound besides.
+        mutant, setup = 934 + 100, self.PLAY_SETUP + mutation_check.mutant_bound(self.PLAY_BASELINE)
 
         # Act
         fits = self.fits("mutation-shard", "PlayMode", mutant, setup)
@@ -11655,14 +11729,11 @@ class KillSetShardTests(unittest.TestCase):
     def job(self):
         return self.text().partition("\n  shard:")[2].partition("\n  diff:")[0]
 
-    def timeout_flag(self):
-        return int(re.search(r"--timeout (\d+)", self.job()).group(1))
-
     def test_Given_TheKillSetStepTimeout_When_TheMostMutantsFittingAreCounted_Then_ItIsTheCampaignsCeiling(self):
-        # Arrange — the campaign's own charges, with the hang allowance (the 900 in its setup) replaced by
-        # the --timeout this workflow passes.
-        edit = (561, 201 + 486 + 12 + self.timeout_flag())
-        play = (934 + 100, 202 + 625 + 11 + self.timeout_flag())
+        # Arrange — the campaign's own charges, hang allowance included.
+        edit = (561, ShardCeilingTests.EDIT_SETUP + mutation_check.mutant_bound(ShardCeilingTests.BASELINE))
+        play = (934 + 100, ShardCeilingTests.PLAY_SETUP
+                + mutation_check.mutant_bound(ShardCeilingTests.PLAY_BASELINE))
         fits = ShardCeilingTests("fits").fits
 
         # Act
@@ -11687,15 +11758,15 @@ class KillSetShardTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(steps), spare is not None and spare >= 15), (1, True))
 
-    def test_Given_TheMeasuringStep_When_ItsTimeoutFlagIsRead_Then_ItIsThreeTimesTheBaselineAtLeast(self):
-        # Arrange — a hang reads as one only where the baseline times mutation_check.HANG_MARGIN fits the flag.
-        flag = self.timeout_flag()
+    def test_Given_TheMeasuringStep_When_ItsFlagsAreRead_Then_ItPassesNoTimeout(self):
+        # Arrange — a mutant's bound derives from the shard's baseline, which `--timeout` does not bound.
+        job = self.job()
 
         # Act
-        floor = mutation_check.HANG_MARGIN * ShardCeilingTests.BASELINE
+        flags = re.findall(r"^\s+--timeout\b", job, re.MULTILINE)
 
         # Assert
-        self.assertGreaterEqual(flag, floor)
+        self.assertEqual(flags, [])
 
     def test_Given_TheWorkflow_When_ItsTriggersAreRead_Then_ItIsDispatchedByHandAndRequiredByNothing(self):
         # Arrange

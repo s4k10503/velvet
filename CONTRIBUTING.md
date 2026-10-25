@@ -293,7 +293,7 @@ then:
   through such sources in turn — is still declared in the tree and no code in the files recorded for it
   has changed. Comments are left out of each hash. What a killing case reads at run time is not
   followed: a fixture that reads every loaded assembly is a test file like any other;
-- any other verdict — a survivor, an uncovered mutant, a hang, a crash, a compile error, a timeout,
+- any other verdict — a survivor, an uncovered mutant, a timed-out launch, a crash, a compile error,
   and a kill traced to no case — stands while no test source changed: the entry carries
   `tests_digest`, a hash over every test source (every file under a `Tests/` directory and under
   `Packages/com.velvet.core/TestUtilities/`, a C# one without its comments), and a change to any of
@@ -301,9 +301,8 @@ then:
 
 Every verdict the record keeps (`RECORDED`) is one this rule accepts over the tree that wrote it, which
 `ReuseDecisionTests` holds verdict by verdict: an entry nothing could accept would leave its mutant
-unresolved for good, holding every release and dealt to every run. A compile error and a timeout are
-final there, as StrykerJS scores the first as no result and the second as detected
-(`RECORDED_FINAL`): the run that measures one names it among the mutants nothing was asked about, and
+unresolved for good, holding every release and dealt to every run. A compile error is
+final there, as StrykerJS scores it as no result (`RECORDED_FINAL`): the run that measures one names it among the mutants nothing was asked about, and
 once it is recorded neither a later run nor the release gate fails on it.
 
 **What the rule does not see**, as StrykerJS says of its own: an edit to a production file other than
@@ -555,16 +554,17 @@ python3 scripts/test_quality/mutation_check.py --files <the same paths> --list
 
 The plan refuses a list over the campaign's own ceiling, `SHARD_CEILING` mutants a shard in at most
 `MAX_SHARDS` shards, because the sizing is the campaign's: each shard job measures one tree, as a
-`mutation-shard` job measures its step, and `ShardCeilingTests` charges both alike. The measuring step
-passes `--timeout` at three times the longest baseline measured, which `HANG_MARGIN` makes the least at which
-a hang reads as one.
+`mutation-shard` job measures its step, and `ShardCeilingTests` charges both alike. A mutant's launch is
+stopped at its own run's baseline times `TIMEOUT_FACTOR` plus `TIMEOUT_CONSTANT` seconds (`mutant_bound`), and a launch that reaches the bound is a kill, `killed (timed out)`;
+`--timeout` bounds the baseline alone. `ShardCeilingTests` charges one hanging mutant at the bound
+of the baseline it charges.
 
 Each shard is measured on the head and on the base, in two jobs, by the default campaign: narrowed to an
 area or to the cases that ran the site first, and on the whole suite wherever that did not kill. The
 diff job, which runs only if every shard passed, runs `scripts/test_quality/kill_set_diff.py` over the two
 sets of records. It matches mutants by file, line, column and rewrite and never by index, and compares
 verdicts only. It fails, and names each one, when a mutant the base killed is not killed on the head — a
-survivor, or a verdict that measured nothing — and a mutant that outlived `--timeout` on the base is a kill
+survivor, or a verdict that measured nothing — and a mutant that timed out on the base is a kill
 the head has to match with a kill or a timeout. It cannot make the comparison, and says so, when a
 mutant has a record on one tree only, when a base verdict is neither a kill nor a survivor nor a
 non-mutant (an uncompilable mutant, for one), and when the base killed none and so proved nothing. A kill

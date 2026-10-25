@@ -235,7 +235,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/tools"
           git archive "$HEAD" scripts | tar -x -C "$RUNNER_TEMP/tools"
 
-      # --timeout is HANG_MARGIN times the longest baseline measured, so that a hang reads as one.
+      # The editor flag is left at its default: a mutant's launch is bounded by this shard's own baseline, which KillSetShardTests charges.
       # safe.directory names the workspace alone, for the reason mutation.yml's measuring steps give.
       - name: Measure
         timeout-minutes: 180
@@ -263,7 +263,7 @@ jobs:
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u /tools/scripts/test_quality/ci_mutation_shard.py -- \
               --base "$BASE" --files $FILES ${LINES:+--lines $LINES} ${ASSEMBLIES:+--assemblies "$ASSEMBLIES"} --platform "$PLATFORM" \
-              --timeout 1470 --max "$MUTANTS" --mutants Logs/kill-set-list/mutants.json \
+              --max "$MUTANTS" --mutants Logs/kill-set-list/mutants.json \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/kill-set-${{ matrix.tree }}
 

@@ -45,6 +45,7 @@ import functools
 import hashlib
 import inspect
 import json
+import math
 import os
 import re
 import signal
@@ -68,11 +69,15 @@ PACKAGE = "Packages/com.velvet.core"
 REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 
 KILLED = "killed"
-TIMED_OUT = "not measured (timed out)"
-HUNG = "killed (the suite hung past --timeout)"
+TIMED_OUT = "killed (timed out)"
 CRASHED = "killed (the editor crashed)"
 
-HANG_MARGIN = 3
+# A mutant's launch is stopped at the baseline's wall clock times TIMEOUT_FACTOR plus TIMEOUT_CONSTANT
+# seconds, so the bound comes from the same run's unmutated launch on the same runner and a launch that
+# reaches it is the mutation's doing. `--timeout` bounds the baseline itself, which has no baseline to
+# derive from, and is the outer cap on a session launch.
+TIMEOUT_FACTOR = 1.5
+TIMEOUT_CONSTANT = 5
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
@@ -93,11 +98,11 @@ UNCOVERED = "uncovered (no case runs the site)"
 SURVIVING = (SURVIVED, INCONCLUSIVE, UNCOVERED)
 # The verdicts a decision can pass, besides a survivor a declaration answers. Every other verdict,
 # however it is spelled, fails the decision as one nothing measured.
-DECIDED = (KILLED, HUNG, CRASHED, INAPPLICABLE)
-# Final in the record, though a run that measures them names them: StrykerJS scores a compile error
-# as no result at all and a timeout as detected. Neither is measured again while it stands, and a
-# reused one fails neither a later run nor the release gate.
-RECORDED_FINAL = (UNCOMPILABLE, TIMED_OUT)
+DECIDED = (KILLED, TIMED_OUT, CRASHED, INAPPLICABLE)
+# Final in the record, though a run that measures one names it: a compile error is no result at all.
+# It is not measured again while it stands, and a reused one fails neither a later run nor the release
+# gate.
+RECORDED_FINAL = (UNCOMPILABLE,)
 RECORDED = DECIDED + SURVIVING + RECORDED_FINAL
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 
@@ -2543,6 +2548,7 @@ class TreeState:
         self.launches = 0
         self.put_back = []
         self.after = None
+        self.first_left = []
 
     @classmethod
     def capture(cls, project, outside, stash):
@@ -2587,7 +2593,23 @@ class TreeState:
         """Records the tree a launch ended on, apart from what the campaign holds, which the next
         `restore` compares against."""
         kept = self.relative_kept(keep)
+        first = self.after is None
         self.after = {relative: content for relative, content in self.reading().items() if relative not in kept}
+        if first:
+            self.first_left = self.left_by_launch()
+
+    def left_by_launch(self):
+        """The files the launch that just ended left other than the tree this state was captured from.
+
+        Read after the first launch, the unmutated baseline: what it rewrites, a mutant cannot be blamed
+        for rewriting, so the session runner does not end its launch over them."""
+        reported = reported_paths(self.project)
+        found = []
+        for relative, content in (self.after or {}).items():
+            was = self.wanted(relative, reported.get(relative, False))
+            if content != (None if was is None else hashlib.sha256(was).hexdigest()):
+                found.append(relative)
+        return sorted(found)
 
     def released(self, paths):
         """Records `paths` as the campaign's release of them left them. A held source git already
@@ -2961,6 +2983,11 @@ def lock_refused(log):
     except OSError:
         return False
     return bool(lines) and lines[-1] == LOCK_REFUSED_LINE
+
+
+def mutant_bound(baseline_wall):
+    """Seconds a mutant's launch is left to run: the baseline's wall clock, scaled and offset."""
+    return math.ceil(baseline_wall * TIMEOUT_FACTOR + TIMEOUT_CONSTANT)
 
 
 def run_suite(unity, project, platform, scope, results, log, timeout, holder=None):
@@ -3928,6 +3955,7 @@ def measure_reach(args, project, directory, whole_scope, total, holder, bound):
             stale.unlink()
     plan = reach_plan(reach, args.platform, whole_scope, min(args.timeout, bound))
     plan["watch"] = library_files(project)
+    plan["tolerate"] = holder.state.first_left if holder.state is not None else []
     runs, lost, stopped = run_session(args, project, plan, reach, holder)
     stage = ((read_item(reach, SESSION_OPENING) or {}).get("stages") or [None])[0]
     counts = stage_counts(stage) if stage else None
@@ -4013,9 +4041,10 @@ def measure_in_session(args, project, holder, output, mutants, pending, baseline
                                            len(placed) - len(selection) - len(uncovered)))
         launched = [index for index in placed if index not in uncovered]
         plan, segments = session_plan(project, mutants, launched, attempts, whole_scope, args.platform, ceiling,
-                                      args.timeout, directory, selection)
+                                      mutant_bound(baseline_wall), directory, selection)
         plan["segments"] = segments
         plan["watch"] = library_files(project)
+        plan["tolerate"] = holder.state.first_left if holder.state is not None else []
         runs, lost, stopped = run_session(args, project, plan, directory, holder) \
             if launched else ({}, set(), None)
     finally:
@@ -4572,8 +4601,8 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     line can describe alike.
 
     A kill that named its failing tests alone: each other verdict turns on something outside that key
-    -- a survivor of either kind on the tests, which the test written for it changes; a timed-out or
-    hung mutant on `--timeout` and the baseline's wall clock, and on anything else that kept the
+    -- a survivor of either kind on the tests, which the test written for it changes; a timed-out
+    mutant on the bound the baseline's wall clock gives, and on anything else that kept the
     editor running; uncompilable, not rebuilt and crashed on the editor as well as on the mutation. A kill
     turns on the tests too, and is kept across a test removed since for the reason `scope_digest`
     gives for its key; one taken while another editor was up is kept as well, and its detail says so.
@@ -4920,6 +4949,8 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
         raise SystemExit("baseline is not green, so a mutant would read as killed by {}".format(
             ", ".join(failing_names(baseline_results)) or "an inconclusive case"))
     print("baseline: {} passed in {:.0f}s".format(baseline["passed"], baseline_wall))
+    limit = mutant_bound(baseline_wall)
+    print("each mutant's launch is given {}s".format(limit))
 
     # A mutant whose assembly comes out byte-identical to this ran the unmutated code, and a run
     # over the pristine binary is green for the same reason a surviving mutant is. Writing the
@@ -5070,7 +5101,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 since = time.time()
                 spent, timed_out, seen = run_suite(args.unity, project, args.platform,
                                                    il_scope if il_narrow else launched,
-                                                   results, log, args.timeout, holder)
+                                                   results, log, limit, holder)
                 wall, neighbours = wall + spent, max(neighbours, seen)
                 if il_narrow:
                     held = read_counts(results)
@@ -5090,7 +5121,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                         il_narrow = False
                         since = time.time()
                         spent, timed_out, seen = run_suite(args.unity, project, args.platform, launched,
-                                                           results, log, args.timeout, holder)
+                                                           results, log, limit, holder)
                         wall, neighbours = wall + spent, max(neighbours, seen)
                 if not il_narrow:
                     ran.append(("whole", (read_counts(results) or {}).get("total")))
@@ -5117,25 +5148,12 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             elif crashed:
                 mutant.verdict = CRASHED
                 mutant.detail = crashed[:160]
-            # Only where no result could be read: a readable one is the suite's own reading, and a
-            # kill taken from the wall clock would override it. One short of complete is left to
-            # TIMED_OUT.
-            elif timed_out and counts is None and baseline_wall * HANG_MARGIN <= args.timeout:
-                mutant.verdict = HUNG
-                mutant.detail = ("the suite ran past --timeout {}s and left no readable result, where "
-                                 "the baseline finished in {:.0f}s".format(args.timeout, baseline_wall))
-            elif timed_out and counts is not None:
-                mutant.verdict = TIMED_OUT
-                mutant.detail = ("the editor was killed at --timeout {}s after writing a result; read "
-                                 "the log for what kept it running".format(args.timeout))
             elif timed_out:
-                # The baseline was already close to the bound, so a mutant reaching it says nothing
-                # about the mutation. One of the two readings is a mutant nobody asked about, so the
-                # run refuses and says which to take.
                 mutant.verdict = TIMED_OUT
-                mutant.detail = ("the editor was killed at --timeout {}s and the baseline took {:.0f}s; "
-                                 "raise it, or read the log for a mutation that does not terminate"
-                                 .format(args.timeout, baseline_wall))
+                mutant.detail = ("the editor was killed at {}s, {} times the baseline's {:.0f}s plus {}s, {}"
+                                 .format(limit, TIMEOUT_FACTOR, baseline_wall, TIMEOUT_CONSTANT,
+                                         "with no readable result" if counts is None
+                                         else "after writing a result short of complete"))
             elif blamed and operator_does_not_apply(log, mutant, project, statement_start(
                     originals[mutant.path], mutant.line)):
                 mutant.verdict = INAPPLICABLE
@@ -5224,11 +5242,6 @@ def plan_survivors(args, coverage, mutants, chosen, first, project):
     per = SHARD_CEILING[args.platform]
     if args.survivors_shard is not None:
         # One job measures them all, after its own first pass.
-        if len(chosen) > per:
-            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
-                  "{} after it.\nWrite the tests they ask for, or split the change."
-                  .format(len(chosen), first, per, args.platform))
-            return CEILING_REFUSAL
         print("{} of {} mutant(s) survived the {} suite in this shard and are measured on {}".format(
             len(chosen), len(mutants), first, args.platform))
         print("mutants={}".format(len(chosen)))
@@ -5331,8 +5344,10 @@ def main():
                         help="print the join refusal's census over the package and exit; redirect it "
                              "over " + REFUSAL_BASELINE + " to record a deliberate change to it")
     parser.add_argument("--timeout", type=int, default=900,
-                        help="seconds before a baseline or mutant editor is killed; Generators~/README.md ▸ "
-                             "The Unity assemblies says which verdict that is (default: 900)")
+                        help="seconds before the baseline editor is killed, and the most a session launch is left to "
+                             "run past its stages' bounds; a mutant's launch is bounded by the "
+                             "baseline's time instead, and Generators~/README.md ▸ The Unity "
+                             "assemblies says which verdict that is (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
@@ -5740,6 +5755,14 @@ def main():
                                                       project, scope)
             mutant.platform = first
         chosen = [index for index in first_chosen if mutants[index - 1].verdict in SURVIVING]
+        if args.survivors_shard is not None and len(chosen) > SHARD_CEILING[args.platform]:
+            # The rest are left unrecorded on this platform, which the decision names, rather than failing
+            # the shard job and with it the run's chain.
+            print("{} mutants of this shard survived the {} suite, more than the {} one job can measure on "
+                  "{} after it; the first {} are measured and the rest are left unmeasured."
+                  .format(len(chosen), first, SHARD_CEILING[args.platform], args.platform,
+                          SHARD_CEILING[args.platform]))
+            chosen = chosen[:SHARD_CEILING[args.platform]]
         if args.plan:
             return plan_survivors(args, coverage, mutants, chosen, first, project)
         firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
@@ -5856,7 +5879,7 @@ def main():
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Named, because no failing case stands behind these kills.
-    for verdict, heading in ((HUNG, "hanging the suite"), (CRASHED, "crashing the editor")):
+    for verdict, heading in ((TIMED_OUT, "timing out the suite"), (CRASHED, "crashing the editor")):
         named = [m for m in mutants if m.verdict == verdict]
         if named:
             print("\n--- mutants killed by {} ---".format(heading))

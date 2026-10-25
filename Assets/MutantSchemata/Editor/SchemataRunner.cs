@@ -54,6 +54,9 @@ namespace Velvet.MutantSchemata.Editor
             // Files the package's sources name directly under Library, where git reports nothing; read with
             // what git does report after every stage.
             public string[] watch = Array.Empty<string>();
+            // Files the unmutated baseline launch itself rewrote. Left out of the reading, since a stage
+            // that leaves them as the baseline did has left the tree no differently.
+            public string[] tolerate = Array.Empty<string>();
             // Reads which guarded sites each case ran, from the tables the switches fill when the harness has
             // turned them on.
             public bool reach;
@@ -580,6 +583,7 @@ namespace Velvet.MutantSchemata.Editor
             using var sha = System.Security.Cryptography.SHA256.Create();
             foreach (var relative in paths)
             {
+                if (plan.tolerate.Contains(relative)) continue;
                 var full = Path.GetFullPath(Path.Combine(root, relative));
                 if (full == output || full.StartsWith(output + Path.DirectorySeparatorChar, StringComparison.Ordinal)) continue;
                 lines.Add(relative + " " + (File.Exists(full)
