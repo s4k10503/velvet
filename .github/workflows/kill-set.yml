@@ -39,9 +39,10 @@ on:
 permissions:
   contents: read
 
-# Same reason test.yml gives.
+# PYTHONDONTWRITEBYTECODE for the reason test.yml gives, EDITOR_MEMORY for the one mutation.yml gives.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
+  EDITOR_MEMORY: "12g"
 
 # The shard job's measuring step is timed by KillSetShardTests against the campaign's SHARD_CEILING.
 jobs:
@@ -255,6 +256,7 @@ jobs:
           version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           # shellcheck disable=SC2086
           docker run --rm --init --workdir /github/workspace \
+            --memory "$EDITOR_MEMORY" --memory-swap "$EDITOR_MEMORY" --pids-limit 4096 \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --volume "$RUNNER_TEMP/tools:/tools:ro" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
