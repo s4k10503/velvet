@@ -7261,6 +7261,7 @@ class CampaignPlanTests(unittest.TestCase):
         self.assertEqual(planned, "mutants=2\nshards=[0, 1]")
 
     # GREEN_ON_BASE(characterization): the shard count of twenty-one mutants is the same on the base; the change only keeps the arrangement under the ceiling. Replacing the `most` that `unreported_shards` hands `shard_count` with `MAX_SHARDS` reddens it.
+    # GREEN_ON_BASE(characterization): the base's ceiling is the 7 patched in here, so three shards hold twenty-one there too; dropping the `most` argument from the `shard_count` call in `unreported_shards` reddens it.
     def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
         # Arrange — twenty-one mutants make four shards by default, and three where the run said three.
         mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
@@ -9621,7 +9622,7 @@ class DeclinedMutantBesideASessionTests(SixOrSevenMutantsBase):
         self.campaign.run("--max", "7")
 
         # Assert
-        self.assertEqual(self.campaign.plans[0].get("reach"), True)
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans[:1]], [True])
 
     def test_Given_SixPlacedMutantsAndADeclinedOne_When_TheCampaignRuns_Then_TheDeclinedOneTakesTheWholeSuiteAlone(self):
         # Arrange
@@ -9665,7 +9666,7 @@ class ReachMinimumTests(SixOrSevenMutantsBase):
         self.campaign.run("--max", "4")
 
         # Assert
-        self.assertEqual(self.campaign.plans[0].get("reach"), True)
+        self.assertEqual([plan.get("reach") for plan in self.campaign.plans[:1]], [True])
 
 
 class BelowReachMinimumTests(SixOrSevenMutantsBase):
@@ -10206,6 +10207,15 @@ class SessionPlanTests(unittest.TestCase):
         # Assert
         self.assertEqual(sum(1 for item in plan["items"] if item.get("confirm")), count)
 
+    def test_Given_PlayMode_When_Planned_Then_EachMutantIsFollowedByAConfirmation(self):
+        # Arrange — the PlayMode session is planned by the same code as the EditMode one, and loses a kill the same way.
+
+        # Act
+        plan, _ = self.plan(3, "PlayMode")
+
+        # Assert
+        self.assertEqual([position for position, item in enumerate(plan["items"]) if item.get("confirm")], [1, 3, 5])
+
     def test_Given_PlayMode_When_Planned_Then_NoStageStopsAtItsFirstFailure(self):
         # Arrange — a job cancelled in play mode leaves its scene modified for the next one.
 
@@ -10437,6 +10447,20 @@ class SessionLaunchTests(unittest.TestCase):
         self.assertEqual((sorted(lost), {position: run["launch"] for position, run in runs.items()}),
                          ([1], {0: 1, 2: 2, 3: 2}))
 
+    def test_Given_ASessionOfTwoLaunches_When_EachEnds_Then_TheCallbackIsHandedWhatTheLaunchesCarriedSoFar(self):
+        # Arrange — the first launch dies in the second mutant's item, position 2, and the second finishes.
+        def dies(expired):
+            self.progress(2)
+        self.scripts = [dies, self.finishes]
+        seen = []
+
+        # Act
+        mutation_check.run_session(self.args, Path("/p"), self.plan, self.directory, None,
+                                   after_launch=lambda runs: seen.append(sorted(runs)))
+
+        # Assert
+        self.assertEqual(seen, [[0, 1], [0, 1, 3]])
+
     def test_Given_AStageOlderThanItsBound_When_Asked_Then_ItHasExpired(self):
         # Arrange — the plan's stage bound plus the slack, and a second past it.
         bound = self.plan["items"][0]["stages"][0]["bound"] + mutation_check.SESSION_STAGE_SLACK
@@ -10644,6 +10668,7 @@ class SessionConfirmationTests(unittest.TestCase):
                 {"id": number, "stages": [{"name": "confirm", "finished": True, "xml": str(xml)}]}))
         self.found = mutation_check.confirmations(self.plan, self.directory)
 
+    # GREEN_ON_BASE(characterization): on the base the first mutant's confirmation is the one closing its segment, which is the same item here; reading the last confirmation of the plan in `confirmed_for` instead of the next one reddens it.
     def test_Given_AKillOfTheFirstMutant_When_ItsConfirmationIsRead_Then_ItIsItsOwn(self):
         # Arrange — every item carried by the one launch.
         runs = {position: {"launch": 1, "peak": 0} for position in range(len(self.plan["items"]))}
@@ -10665,6 +10690,7 @@ class SessionConfirmationTests(unittest.TestCase):
         # Assert
         self.assertEqual(confirmed, {"N.C.Kills": True})
 
+    # GREEN_ON_BASE(characterization): the base also requires the confirmation to have run in the item's launch; deleting the launch comparison in `confirmed_for` reddens it.
     def test_Given_AConfirmationFromALaterLaunch_When_ItsKillIsRead_Then_NothingConfirmsIt(self):
         # Arrange — the item's editor died after it, and its confirmation ran in the next launch.
         closing = next(position for position, item in enumerate(self.plan["items"]) if item.get("confirm"))
