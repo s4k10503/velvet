@@ -7260,6 +7260,7 @@ class CampaignPlanTests(unittest.TestCase):
         # Assert
         self.assertEqual(planned, "mutants=2\nshards=[0, 1]")
 
+    # GREEN_ON_BASE(characterization): the shard count of twenty-one mutants is the same on the base; the change only keeps the arrangement under the ceiling. Replacing the `most` that `unreported_shards` hands `shard_count` with `MAX_SHARDS` reddens it.
     def test_Given_AShardCountGivenToTheDecision_When_ItsDeadShardsAreCounted_Then_ItIsTheOneDealtOver(self):
         # Arrange — twenty-one mutants make four shards by default, and three where the run said three.
         mutants = [survivor(Path("probe.cs"), number, verdict=mutation_check.UNRECORDED)
@@ -7520,6 +7521,7 @@ class BudgetTests(unittest.TestCase):
         # Assert
         self.assertIn("mutant-001.xml", campaign.timeouts)
 
+    # GREEN_ON_BASE(characterization): the control for the cases above, and a run without a budget launches the mutant on the base too; dropping the `left is not None` term from the check in `measure` reddens it.
     def test_Given_NoBudget_When_TheCampaignRuns_Then_TheMutantIsLaunched(self):
         # Arrange / Act
         campaign, _ = self.plain()
@@ -7530,10 +7532,11 @@ class BudgetTests(unittest.TestCase):
     def test_Given_AMutantTheBudgetDoesNotHold_When_TheCampaignRuns_Then_ItIsRecordedAsNotMeasuredForBudget(self):
         # Arrange / Act
         campaign, _ = self.plain("--budget", "100")
+        record = campaign.project / "out" / "mutant-001.json"
 
         # Assert
-        self.assertEqual(json.loads((campaign.project / "out" / "mutant-001.json").read_text())["verdict"],
-                         mutation_check.BUDGET)
+        self.assertEqual(json.loads(record.read_text())["verdict"] if record.exists() else None,
+                         "not measured (budget)")
 
     def test_Given_AMutantTheBudgetDoesNotHold_When_AShardRuns_Then_ItExitsZero(self):
         # Arrange / Act
@@ -7558,8 +7561,8 @@ class BudgetTests(unittest.TestCase):
         # Act
         campaign.run_over_diff("--budget", "400")
 
-        # Assert
-        self.assertEqual([name for name in campaign.launches if name.startswith("mutant-")], [])
+        # Assert — the baselines ran, so a run that stopped before any launch does not pass for this.
+        self.assertEqual(campaign.launches, ["baseline.xml", "baseline-Reconciler.xml"])
 
 
 class BudgetWorkflowTests(unittest.TestCase):
@@ -7605,7 +7608,8 @@ class BudgetWorkflowTests(unittest.TestCase):
         campaign = StubbedCampaign()
         campaign.baseline_seconds = 200.0
         campaign.run_over_diff("--budget", "100")
-        expression = re.search(r"echo \"left=\$\(sed -n '([^']*)'", self.job("mutation-verdict")).group(1)
+        found = re.search(r"echo \"left=\$\(sed -n '([^']*)'", self.job("mutation-verdict"))
+        expression = found.group(1) if found else "d"
 
         # Act
         counted = subprocess.run(["sed", "-n", expression], input=campaign.printed, capture_output=True,
@@ -8187,16 +8191,14 @@ class CostDealtShardTests(unittest.TestCase):
     def test_Given_AManyMutantsPlan_When_Planned_Then_EachShardsCostAndTheSpreadArePrinted(self):
         # Arrange — twelve mutants outside every area, each charged the EditMode whole-suite figure.
         campaign = ManyMutantsCampaign()
-        each = 6 * mutation_check.WHOLE_COST["EditMode"]
 
         # Act
         campaign.run_over_diff("--plan")
 
         # Assert
         self.assertEqual(re.findall(r"^(?:shard \d+:.*|expected cost:.*)$", campaign.printed, re.MULTILINE),
-                         ["shard 0: 6 mutant(s), expected {} s".format(each),
-                          "shard 1: 6 mutant(s), expected {} s".format(each),
-                          "expected cost: cheapest shard {0} s, dearest {0} s, spread 0 s".format(each)])
+                         ["shard 0: 6 mutant(s), expected 4032 s", "shard 1: 6 mutant(s), expected 4032 s",
+                          "expected cost: cheapest shard 4032 s, dearest 4032 s, spread 0 s"])
 
 
 class ShardCeilingTests(unittest.TestCase):
@@ -8859,8 +8861,8 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Act
         self.campaign.run("--max", "1", "--budget", "400")
 
-        # Assert
-        self.assertEqual(self.own(), [])
+        # Assert — the baseline and the fixtures' control ran, so a run that stopped earlier does not pass.
+        self.assertEqual(self.campaign.launched, ["baseline.xml", "baseline-il.xml"])
 
     def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
         # Act
@@ -10245,6 +10247,7 @@ class SessionLaunchTests(unittest.TestCase):
     def test_Given_ASpentBudget_When_TheSessionIsLaunched_Then_NoEditorIsLaunched(self):
         # Arrange
         self.args.deadline = time.time() - 1
+        self.scripts = [self.finishes]
 
         # Act
         self.session()
