@@ -270,12 +270,14 @@ namespace Velvet
         /// </summary>
         internal int ToPhysical(VisualElement container, int logical)
         {
-            if (logical >= 0 && IsCurrentFor(container) && logical < _logical
-                && WalkBack(container, logical, out var physical))
+            if (logical >= 0 && IsCurrentFor(container) && logical < _logical)
             {
-                return physical;
+                if (WalkBack(container, logical, out var walked))
+                {
+                    return walked;
+                }
             }
-            physical = LogicalChildSlots.ToPhysical(container, logical);
+            var physical = LogicalChildSlots.ToPhysical(container, logical);
             if (logical >= 0 && physical < container.childCount && !LogicalChildSlots.IsInvisible(container[physical]))
             {
                 Remember(container, logical, physical);
