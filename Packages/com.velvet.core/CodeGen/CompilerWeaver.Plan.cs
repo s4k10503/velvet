@@ -63,6 +63,7 @@ namespace Velvet.CodeGen
                 {
                     if (Calls.Count == 0) return null;
                     var last = Calls[Calls.Count - 1];
+                    // MUTANT_SURVIVES(equivalent, boundary): offsets are distinct within a body as it is read, so equal offsets name one instruction and both arms of the conditional give it.
                     return Boundary != null && Boundary.Offset > last.Offset ? Boundary : last;
                 }
             }
@@ -145,6 +146,7 @@ namespace Velvet.CodeGen
             var end = scan.End!;
             foreach (var ret in returns)
             {
+                // MUTANT_SURVIVES(equivalent, boundary): `end` is a hook call or the store, load or pop that takes its value, never a return, so no return has the offset of `end`.
                 if (ret.Offset <= end.Offset) return "a return comes before a hook call";
             }
             if (HasConditionallySkippedHook(body, scan.Calls)) return "a hook call is skipped or repeated by a branch";
@@ -183,6 +185,7 @@ namespace Velvet.CodeGen
             }
             if (end != null && method.Body.HasExceptionHandlers && IsInsideAnyHandler(method.Body, end, returns))
             {
+                // MUTANT_SURVIVES(unreachable, line removed): a hook call in a protected region, or the instruction that takes its value, is refused by `HookInsideHandler` before this runs, and a return cannot sit inside one.
                 blockers.Add("a return or the last hook sits inside a protected region");
             }
             if (scan.Captures.Count == 0 && method.Parameters.Count == 0) blockers.Add("no prop or hook value is read");
@@ -246,6 +249,9 @@ namespace Velvet.CodeGen
             if (tuple == HookCaptureMatch.Bail) return "a hook result is a tuple the body hands on whole";
             if (tuple == HookCaptureMatch.Matched) return null;
 
+            // MUTANT_SURVIVES(equivalent, clause removed): `ReadsLaterElementOnly` holds only where the call returns a ValueTuple, which no container hook does, so `HoldsStableObject` is false wherever it is asked.
+            // ReactiveScopeHookScanTests.Given_TheContainerHooksTheWeaverNames_When_TheirReturnTypesAreRead_Then_NoneReturnsAValueTuple
+            // pins that no hook named in `ContainerHookNames` returns a ValueTuple.
             if (ReadsLaterElementOnly(next) && !HoldsStableObject(instr, isDirect)) scan.UnreadValue ??= UnreadMessage;
             var capture = TryCaptureHookResult(next, body, isDirect, out var local, out var boundary);
             if (capture == HookCaptureMatch.Bail) return Unsupported;
