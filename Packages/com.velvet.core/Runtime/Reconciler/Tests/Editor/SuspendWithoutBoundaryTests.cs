@@ -16,6 +16,8 @@ namespace Velvet.Tests
     /// <item>With no boundary above, the flush does not throw. A resource of the component whose read suspended
     /// the pass resolving retries that pass, an ancestor's included, and every pass on the way that suspended
     /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
+    /// The component whose read suspended renders once in that retry, memoized components that bail between it
+    /// and the retried pass included.
     /// The resolve commits nothing ahead of that retry, and a resolve no suspended pass waits on renders
     /// nothing: the pass retried later reads the value without starting the read again. A pass that suspended
     /// commits none of the props it passed, so a later pass renders the component that suspended again, one the
@@ -49,6 +51,7 @@ namespace Velvet.Tests
             s_innerSetOwn = default;
             s_outerSetTick = default;
             s_innerMemoized = false;
+            s_unmemoizedChildRenders = 0;
             s_parentFiber = null;
             s_pageSetId = default;
             s_otherSource = null;
@@ -571,6 +574,47 @@ namespace Velvet.Tests
                 "Every pass that suspended on the resource is retried, a memoized inner one included");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base already renders the reader through the chain; this pins
+        // that it still does with the reader asked for by the retry rather than reached by the patch.
+        [Test]
+        public void Given_AnUpdateThatSuspendedTheReaderBelowTwoMemoizedComponentsWithNoBoundary_When_TheResourceResolves_Then_TheReaderRendersTheValue()
+        {
+            // Arrange — the outer tick reaches the reader through both memoized layers
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterMemoizedChainRender, key: "outer"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child:5|outer:1"),
+                "The retry reaches the reader through memoized components that bail, however many there are");
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base renders the reader once on a retry; the reader's own
+        // request must not add a second render.
+        [Test]
+        public void Given_AReaderBelowTwoMemoizedComponentsWhoseAncestorsPassSuspended_When_TheImmediateTierDrainsTheRetry_Then_TheReaderRendersOnce()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterMemoizedChainRender, key: "outer"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            var rendersBefore = s_unmemoizedChildRenders;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_unmemoizedChildRenders - rendersBefore, Is.EqualTo(1),
+                "The reader renders once per retry commit, as React renders it");
+        }
+
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
         // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
         // the child's label in the tree, hidden.
@@ -757,10 +801,34 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[] { V.Component(UnmemoizedKeyedChildRender, own, key: "child") });
         }
 
+        [Component]
+        private static VNode OuterMemoizedChainRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(MemoizedChainInnerRender, tick, key: "inner"),
+                V.Label(text: "outer:" + tick),
+            });
+        }
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedChainInnerRender(int tick)
+            => V.Div(children: new VNode[] { V.Component(MemoizedChainMidRender, tick, key: "mid") });
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedChainMidRender(int tick)
+            => V.Div(children: new VNode[] { V.Component(UnmemoizedKeyedChildRender, tick, key: "child") });
+
+        private static int s_unmemoizedChildRenders;
+
         // Not memoized, so the outer pass renders it again and suspends on the resource the inner one did.
         [Component]
         private static VNode UnmemoizedKeyedChildRender(int key)
         {
+            s_unmemoizedChildRenders++;
             var value = Hooks.Use<int>(_ => key == 0
                 ? VelvetTask.FromResult(0)
                 : (s_source = new VelvetTaskCompletionSource<int>()).Task, key);
