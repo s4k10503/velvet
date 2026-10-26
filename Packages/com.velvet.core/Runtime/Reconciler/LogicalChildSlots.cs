@@ -31,9 +31,11 @@ namespace Velvet
     /// container with no invisible child still pays it: the walk is proportional to the slot index, not to
     /// the whole list, so a loop calling these once per child is quadratic in the child count. The general
     /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
-    /// it resolved. The flat keyed and indexed paths in <c>ChildReconciler</c> and
-    /// <c>FiberNodePatcher.ApplyStructuralVariants</c> still walk from slot zero per child; the fix for them
-    /// is a cursor too, not a cached count, which every insert and remove would have to invalidate.
+    /// it resolved, and the removal loops, which visit slots from the last downward, hold a
+    /// <see cref="DescendingSlotCursor"/>. The flat keyed and indexed paths' insert loops in
+    /// <c>ChildReconciler</c> and <c>FiberNodePatcher.ApplyStructuralVariants</c> still walk from slot zero per
+    /// child; the fix for them is a cursor too, not a cached count, which every insert and remove would have
+    /// to invalidate.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -241,6 +243,93 @@ namespace Velvet
             _occupant = container[physical];
             _logical = logical;
             _physical = physical;
+        }
+    }
+    /// <summary>
+    /// <see cref="LogicalChildSlots.ToPhysical"/> for one container, resolved from the last slot this cursor
+    /// found occupied rather than from the start of the child list, for a caller that asks for slots in
+    /// descending order — a removal loop, where each removal leaves the slots below it where they were. It
+    /// pays the distance between consecutive slots rather than each slot's index.
+    /// </summary>
+    /// <remarks>
+    /// The remembered slot is trusted only while the child that preceded it still precedes its physical index;
+    /// otherwise the call resolves from the start. A slot at or above the remembered one is resolved from the
+    /// start as well. A removal at or after the remembered index leaves the check satisfied, which is what the
+    /// loops using this rely on; hold a cursor only across a loop in which nothing is inserted or removed
+    /// ahead of the slots still to be asked.
+    /// </remarks>
+    internal struct DescendingSlotCursor
+    {
+        private VisualElement? _container;
+        private VisualElement? _before;
+        private int _logical;
+        private int _physical;
+
+        /// <summary>
+        /// Same answer as <see cref="LogicalChildSlots.ToPhysical"/>.
+        /// </summary>
+        internal int ToPhysical(VisualElement container, int logical)
+        {
+            if (logical >= 0 && IsCurrentFor(container) && logical < _logical)
+            {
+                if (WalkBack(container, logical, out var walked))
+                {
+                    return walked;
+                }
+            }
+            var physical = LogicalChildSlots.ToPhysical(container, logical);
+            if (logical >= 0 && physical < container.childCount && !LogicalChildSlots.IsInvisible(container[physical]))
+            {
+                Remember(container, logical, physical);
+            }
+            else
+            {
+                _container = null;
+            }
+            return physical;
+        }
+
+        /// <summary>
+        /// Same answer as <see cref="LogicalChildSlots.TryGetPhysical"/>, including its append position on the
+        /// false branch.
+        /// </summary>
+        internal bool TryGetPhysical(VisualElement container, int logical, out int physical)
+        {
+            physical = ToPhysical(container, logical);
+            return logical >= 0 && physical < container.childCount
+                && !LogicalChildSlots.IsInvisible(container[physical]);
+        }
+
+        private bool IsCurrentFor(VisualElement container)
+            => ReferenceEquals(_container, container)
+                && _physical > 0
+                && _physical - 1 < container.childCount
+                && ReferenceEquals(container[_physical - 1], _before);
+
+        private bool WalkBack(VisualElement container, int logical, out int physical)
+        {
+            var remaining = _logical - logical;
+            for (physical = _physical - 1; physical >= 0; physical--)
+            {
+                if (LogicalChildSlots.IsInvisible(container[physical]))
+                {
+                    continue;
+                }
+                if (--remaining == 0)
+                {
+                    Remember(container, logical, physical);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void Remember(VisualElement container, int logical, int physical)
+        {
+            _container = container;
+            _logical = logical;
+            _physical = physical;
+            _before = physical > 0 ? container[physical - 1] : null;
         }
     }
 }

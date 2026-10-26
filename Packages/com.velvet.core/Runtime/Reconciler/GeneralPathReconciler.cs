@@ -607,11 +607,12 @@ namespace Velvet
                 if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
             }
             // Removal (reverse so not-yet-visited indices stay valid).
+            var cursor = new DescendingSlotCursor();
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 if (!patched.Contains(i))
                 {
-                    _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
+                    _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
                 }
             }
 
