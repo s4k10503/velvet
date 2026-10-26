@@ -1,0 +1,92 @@
+{
+ "detail": "EditMode: 78 failed: Given_ABodyOpeningWithATryCatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun, Given_TheCoalescingLeftOperand_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun, Given_TheConditionalsFirstArm_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+ "file": "53a46d11bccdceb3b429e2316101270a8e9153e0f8c9f42cce7dd958267eecbd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_ABodyOpeningWithATryCatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_TheCoalescingLeftOperand_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_TheConditionalsFirstArm_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_TheConditionalsSecondArm_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MemoizeWovenBehaviorE2ETests.Given_AHookBodyReturningAConditionalsSecondArm_When_TheParentReRendersWithTheSameInputs_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizeWovenBehaviorE2ETests.cs": "e6a5846a9ca92fec48c87f06b564a6d395566da3560b716178882a3a50fa5a6a",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_ACompilerServicesMemberTakingAParameter_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AFuncInvokedByOneLabel_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AMethodCalledOnAStableObject_When_Compiled_Then_TheLabelReadingItIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AMonoStaticTakingAnArgument_When_ItIsOutsideThePureList_Then_TheReportSaysItReadsStateItWasNotHanded",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AStableArrayHandedToAVoidMemberOfAPureType_When_Compiled_Then_TheLabelReadingItIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": ";",
+  "before": "First = first;",
+  "column": 12,
+  "line": 40,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

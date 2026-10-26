@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ALabelAssignedAfterATryStatement_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+ "file": "53a46d11bccdceb3b429e2316101270a8e9153e0f8c9f42cce7dd958267eecbd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALabelAssignedAfterATryStatement_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": "<",
+  "before": "<=",
+  "column": 33,
+  "line": 252,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

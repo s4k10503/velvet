@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Component.Editor: Given_SuccessfullyMountedComponent_When_NextRenderThrows_Then_TheRootUnmountsTheCommittedDom",
+ "file": "22cc817a62d990949c58952a4e89aaae9704a735ebf71e899cd24c8a81048e61",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_SuccessfullyMountedComponent_When_NextRenderThrows_Then_TheRootUnmountsTheCommittedDom",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": "",
+  "before": " || IsMountRoot",
+  "column": 54,
+  "line": 912,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

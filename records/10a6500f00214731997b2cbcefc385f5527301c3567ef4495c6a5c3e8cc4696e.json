@@ -1,0 +1,60 @@
+{
+ "detail": "EditMode: 5 failed: Given_ACallWhoseFirstOperandReadsAndThenAssignsALocal_When_Compiled_Then_TheReportSaysItWritesAfterReading, Given_ALabelAssignedAfterATryStatement_When_Compiled_Then_OnlyTheTreeAroundItIsCached, Given_ALabelAssignedToALocalAndHandedOnWhole_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+ "file": "53a46d11bccdceb3b429e2316101270a8e9153e0f8c9f42cce7dd958267eecbd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_ACallWhoseFirstOperandReadsAndThenAssignsALocal_When_Compiled_Then_TheReportSaysItWritesAfterReading",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "bc079f0af0416d7d45feb059cfe1da5b0c7d23d51eab4aa0302d812ce1c71f5e",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALabelAssignedAfterATryStatement_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALabelAssignedToALocalAndHandedOnWhole_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_ALocalReadAfterTheScopeThatAssignedIt_When_Compiled_Then_TheReportSaysTheScopeIsNotCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_AStructBuiltInPlaceBesideTwoLabelsOnTheParameterAlone_When_Compiled_Then_OnlyTheLabelReadingTheStructIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 125,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

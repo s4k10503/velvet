@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ALabelStoredInALocalThatBecomesAPortalChild_When_Compiled_Then_TheReportSaysItIsAChildOfAPortal",
+ "file": "70cb243f7d4302326ebdaf9d86b49674543b03d796378b538b43a3731ab631d9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALabelStoredInALocalThatBecomesAPortalChild_When_Compiled_Then_TheReportSaysItIsAChildOfAPortal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 35,
+  "line": 36,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Hosts.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Component.Editor: Given_ChildRemovedFromItsParent_When_ItsPreviousLinkIsRead_Then_ItIsNull",
+ "file": "22cc817a62d990949c58952a4e89aaae9704a735ebf71e899cd24c8a81048e61",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberPreviousLinkTests.Given_ChildRemovedFromItsParent_When_ItsPreviousLinkIsRead_Then_ItIsNull",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberPreviousLinkTests.cs": "f6fb0f15e099d63524e2c8c93771d4c943304a986ddc61d24e620dc0b384a513"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": ";",
+  "before": "child._previousSibling = null;",
+  "column": 12,
+  "line": 1150,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

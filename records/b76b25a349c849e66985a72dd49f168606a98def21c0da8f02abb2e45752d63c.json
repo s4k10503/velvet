@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Component.Editor: Given_ParentWhoseChildrenWereReordered_When_AChildIsAppended_Then_TheChainEndsWithIt",
+ "file": "22cc817a62d990949c58952a4e89aaae9704a735ebf71e899cd24c8a81048e61",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWhoseChildrenWereReordered_When_AChildIsAppended_Then_TheChainEndsWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": ";",
+  "before": "_lastChild = previous;",
+  "column": 12,
+  "line": 1131,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}

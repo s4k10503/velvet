@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_ALabelMountedByAPortal_When_CompilerWeaverRuns_Then_OnlyTheLabelBesideItIsCachedOnItsOwn",
+ "file": "70cb243f7d4302326ebdaf9d86b49674543b03d796378b538b43a3731ab631d9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_ALabelMountedByAPortal_When_CompilerWeaverRuns_Then_OnlyTheLabelBesideItIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40323439006",
+ "mutant": {
+  "after": "<",
+  "before": "<=",
+  "column": 25,
+  "line": 34,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Hosts.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "611c90fba92d1d91ff683584d8a7ea6ddd471acc466096fde21fda2d5bd4ad2a",
+ "verdict": "killed"
+}
