@@ -111,6 +111,7 @@ namespace Velvet.Tests
             s_portalTarget = null;
             s_portalHostSetShown = default;
             s_portalHostEffects = 0;
+            s_portalHostSetTick = default;
             FiberStrictMode.Enabled = false;
         }
 
@@ -953,6 +954,119 @@ namespace Velvet.Tests
                 "A row the mount inserted ahead of the child that suspended is taken back, since the Portal is recorded as holding none");
         }
 
+        [Test]
+        public void Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheSecondResourceResolves_Then_TheTargetHoldsEachRowOnce()
+        {
+            // Arrange — the first row mounts in the retry, and the child behind it reads a second resource
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            using var mounted = V.Mount(_root, V.Component(ChainedPortalHostRender, key: "chained-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceB.TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(NamesOf(s_portalTarget), Is.EqualTo("first-a|second-a"),
+                "A patch that unwound takes back the rows it inserted, so the next one does not create them beside the stale ones");
+        }
+
+        [Test]
+        public void Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheFirstResourceResolves_Then_TheTargetHoldsNoRow()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            using var mounted = V.Mount(_root, V.Component(ChainedPortalHostRender, key: "chained-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_portalTarget.childCount, Is.EqualTo(0),
+                "The retry that suspended on the second resource leaves the Portal holding none of its children, as the mount did");
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears the flag where the retry mounted. Replace
+        // `prevState with { ChildrenPending = false }` in FiberNodePatcher.PatchPortalChildren with `prevState`
+        // and this is what reddens.
+        [Test]
+        public void Given_APortalWhoseHostChildrenMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            using var mounted = V.Mount(_root, V.Component(TickedElementPortalHostRender, key: "ticked-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_portalHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(NamesOf(s_portalTarget), Is.EqualTo("first-a|second-a"),
+                "Once the retry has mounted the children the Portal is patched from them, not from nothing");
+        }
+
+        // GREEN_ON_BASE(characterization): the same cut as the case above, over children that are a component.
+        [Test]
+        public void Given_APortalWhoseComponentChildMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            using var mounted = V.Mount(_root, V.Component(TickedComponentPortalHostRender, key: "ticked-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_portalHostSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(NamesOf(s_portalTarget), Is.EqualTo("first-a|child:5"),
+                "Once the retry has mounted the children the Portal is patched from them, not from nothing");
+        }
+
+        // GREEN_ON_BASE(characterization): a Suspense above the host shows its fallback for the pass the
+        // Portal's child suspended in and the retry mounts the child once; no cut of this change reddens it.
+        [Test]
+        public void Given_APortalWhoseChildSuspendsInAnUpdateUnderABoundary_When_TheResourceResolves_Then_TheTargetHoldsTheChildOnce()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            using var mounted = V.Mount(_root, V.Component(BoundaryPortalHostRender, key: "boundary-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(NamesOf(s_portalTarget), Is.EqualTo("child:5"),
+                "The boundary retries the host, which patches the Portal the suspended pass left holding none of its children");
+        }
+
         private static string NamesOf(VisualElement element)
             => string.Join("|", element.Children().Select(child => child is Label label ? label.text : child.name));
 
@@ -977,6 +1091,81 @@ namespace Velvet.Tests
                     : null,
             });
         }
+
+        private static StateUpdater<int> s_portalHostSetTick;
+
+        // The second row's reader suspends on one resource and then on another, so the retry that resolves the
+        // first inserts the row ahead of it before it suspends again.
+        [Component]
+        private static VNode ChainedPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_portalHostSetShown = setShown;
+            return V.Div(name: "chained-portal-host", children: new VNode[]
+            {
+                shown
+                    ? V.Portal(s_portalTarget, new VNode[]
+                    {
+                        V.Div(name: "first-a"),
+                        V.Div(name: "second-a", children: new VNode[] { V.Component(ChainedReaderRender, key: "reader") }),
+                    })
+                    : null,
+            });
+        }
+
+        [Component]
+        private static VNode ChainedReaderRender()
+        {
+            var a = Hooks.Use<int>(_ => (s_sourceA = new VelvetTaskCompletionSource<int>()).Task, 1);
+            var b = Hooks.Use<int>(_ => (s_sourceB = new VelvetTaskCompletionSource<int>()).Task, 1);
+            return V.Label(text: "chained:" + a + "+" + b);
+        }
+
+        // The tick is in the host's name so the host's output differs between renders and its Portal is patched.
+        [Component]
+        private static VNode TickedElementPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_portalHostSetShown = setShown;
+            s_portalHostSetTick = setTick;
+            return V.Div(name: "ticked-portal-host-" + tick, children: new VNode[]
+            {
+                shown
+                    ? V.Portal(s_portalTarget, new VNode[]
+                    {
+                        V.Div(name: "first-a"),
+                        V.Div(name: "second-a", children: new VNode[] { V.Component(KeyedChildRender, 1, key: "reader") }),
+                    })
+                    : null,
+            });
+        }
+
+        [Component]
+        private static VNode TickedComponentPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_portalHostSetShown = setShown;
+            s_portalHostSetTick = setTick;
+            return V.Div(name: "ticked-portal-host-" + tick, children: new VNode[]
+            {
+                shown ? V.Portal(s_portalTarget, new VNode[] { V.Component(PortalRowsRender, key: "rows") }) : null,
+            });
+        }
+
+        [Component]
+        private static VNode PortalRowsRender()
+            => V.Fragment(V.Div(name: "first-a"), V.Component(KeyedChildRender, 1, key: "reader"));
+
+        [Component]
+        private static VNode BoundaryPortalHostRender()
+            => V.Div(name: "boundary-portal-host", children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(PortalHostRender, key: "portal-host") }),
+            });
 
         // Both Portals share one target, so the second's rows start where the first's range does while the first
         // holds none.

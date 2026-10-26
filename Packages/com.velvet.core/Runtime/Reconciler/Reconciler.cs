@@ -612,6 +612,9 @@ namespace Velvet
         void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
             => _cleaner.ReleasePortalRangeForRetarget(placeholder);
 
+        void IReconcilerHost.RemoveRows(VisualElement target, int slotStart, int count)
+            => _childReconciler.RemoveRows(target, slotStart, count);
+
         void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
             => _childReconciler.Reconcile(
                 parent, FiberKeying.UnwrapLoneFragment(oldChildren), FiberKeying.UnwrapLoneFragment(newChildren),

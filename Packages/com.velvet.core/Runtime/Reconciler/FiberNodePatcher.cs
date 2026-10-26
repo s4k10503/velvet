@@ -1442,7 +1442,27 @@ namespace Velvet
                 // what the Portal's cleanup removes.
                 RecordPatchedPortalRange(placeholder, target, mounted ? prevState with { ChildrenPending = false } : prevState,
                     beforeTailCount, tenancy, shiftedBefore);
+                if (!mounted && prevState.ChildrenPending)
+                {
+                    TakeBackPendingPortalRows(placeholder, target);
+                }
             }
+        }
+
+        // The patch of children nothing had mounted inserted the rows it got to before it unwound, and the
+        // next patch diffs from nothing again, so a row left here would be created twice. The range is taken
+        // back to the empty one the drain recorded (ChildReconciler.DrainPendingPortalMounts), through the
+        // same record as any other change in its length so the ranges behind it move back with it.
+        private void TakeBackPendingPortalRows(VisualElement placeholder, VisualElement target)
+        {
+            var inserted = _ctx.PortalState[placeholder];
+            if (inserted.SlotLength == 0) return;
+            _ctx.PortalState.Unanchor(placeholder);
+            var tenancy = _ctx.ComponentRegistry.TenancyOf(target);
+            var shiftedBefore = tenancy?.ShiftedRows ?? 0;
+            var beforeTailCount = LogicalChildSlots.Count(target);
+            _host.RemoveRows(target, inserted.SlotStart, inserted.SlotLength);
+            RecordPatchedPortalRange(placeholder, target, inserted, beforeTailCount, tenancy, shiftedBefore);
         }
 
         private void RecordPatchedPortalRange(

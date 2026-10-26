@@ -555,8 +555,13 @@ namespace Velvet
         // An unkeyed flat run of host children inserts each row as it creates it, so the ones ahead of the child that
         // suspended are on the target while the Portal is recorded as holding none.
         private void RemoveRowsFrom(VisualElement target, int slotStart)
+            => RemoveRows(target, slotStart, LogicalChildSlots.Count(target) - slotStart);
+
+        // The rows of one range, taken back from the last: the patch of a Portal's pending children reaches the
+        // range's rows and no further, since the ranges of other Portals on the same target can follow it.
+        internal void RemoveRows(VisualElement target, int slotStart, int count)
         {
-            for (var slot = LogicalChildSlots.Count(target) - 1; slot >= slotStart; slot--)
+            for (var slot = slotStart + count - 1; slot >= slotStart; slot--)
             {
                 _cleaner.RemoveElement(target, LogicalChildSlots.ToPhysical(target, slot));
             }

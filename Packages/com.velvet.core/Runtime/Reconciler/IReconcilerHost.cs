@@ -11,6 +11,9 @@ namespace Velvet
         // Used by Patcher only, for a registry Portal whose id now names a different element.
         void ReleasePortalRangeForRetarget(VisualElement placeholder);
 
+        // Used by Patcher only, to take back the rows a Portal's patch inserted before it unwound.
+        void RemoveRows(VisualElement target, int slotStart, int count);
+
         // Operations provided by ChildReconciler (used by Patcher)
         // Refreshes context snapshots and force-renders consumers under FiberStack.Current
         // for the given Provider's ContextProviderNode.ContextKey. Must be invoked while
