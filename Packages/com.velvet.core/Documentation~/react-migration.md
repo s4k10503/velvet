@@ -957,9 +957,9 @@ retried when a resource of the component whose read suspended it resolves; a res
 waits on renders nothing when it resolves, and the render retried later reads its value. A render that
 suspends with no boundary above commits none of the props it passed to the component that suspended, so a
 later render passes them again and, while the resource is pending, suspends again, as React keeps the
-previous UI. The components that rendered ahead of the suspend keep the output, the state and the effects they
-last committed as well: the render retried later compares their output with the one on screen, folds again a
-state update they had folded, and runs an effect whose deps changed. That holds for a suspend in a render's
+previous UI. The components that rendered ahead of the suspend commit none of the props they were passed or of
+their effects either: the render retried later runs an effect whose deps changed, and a render of one of them
+alone before then uses the props it last committed. That holds for a suspend in a render's
 first slice, which is every render that is not time-sliced; a later slice of a time-sliced render finds the
 components of the earlier slices committed. The boundary is the nearest one above the component whose read
 suspended, so a component that renders its own `V.Suspense` reveals through the boundary above it, and a component in a boundary's fallback

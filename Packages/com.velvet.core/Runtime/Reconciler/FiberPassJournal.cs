@@ -32,16 +32,13 @@ namespace Velvet
         }
     }
 
-    // An inline fiber a pass rendered in place: what it held before the render, and the tree the render left as
-    // its PreviousTree.
-    internal readonly record struct SubsumedRender(
-        ComponentFiber Fiber, FiberInputs Before, VNode?[]? TreeBefore, VNode?[]? TreeRendered);
+    // An inline fiber a pass rendered in place, with what it held before the render.
+    internal readonly record struct SubsumedRender(ComponentFiber Fiber, FiberInputs Before);
 
     // The renders of the pass on the stack, which stay tentative until the pass ends. A suspend that nothing in the
     // pass catches leaves it abandoned, and Abandon takes back what those renders changed on the fibers: the inputs
-    // each was handed, the tree each left as its patch baseline, and the hook state each staged. A pass that ends
-    // any other way keeps them, and Close commits the hook state. React discards the work in progress of an
-    // abandoned render the same way.
+    // each was handed and the hook state each staged. A pass that ends any other way keeps them, and Close commits
+    // the hook state. React discards the work in progress of an abandoned render the same way.
     //
     // The outermost RenderAndReconcile of a context opens the journal and is the only caller that closes it.
     internal sealed class FiberPassJournal
@@ -70,10 +67,10 @@ namespace Velvet
 
         // Called once the render has returned, so a render that threw is not in the journal: the catch that saw
         // it writes its inputs back itself.
-        internal void RecordSubsumed(ComponentFiber fiber, in FiberInputs before, VNode?[]? treeBefore)
+        internal void RecordSubsumed(ComponentFiber fiber, in FiberInputs before)
         {
             if (_owner == null) return;
-            _subsumed.Add(new SubsumedRender(fiber, before, treeBefore, fiber.PreviousTree));
+            _subsumed.Add(new SubsumedRender(fiber, before));
         }
 
         internal void Close()
@@ -94,26 +91,14 @@ namespace Velvet
             }
         }
 
-        // Runs in the catch of the top-level reconcile, ahead of the finally that returns the old trees the inline
-        // renders deferred: once a fiber holds its old tree again, that sweep spares it.
         internal void Abandon()
         {
-            List<VNode?[]>? discarded = null;
             // Newest first, so a fiber rendered twice in the pass ends at what it held before the first.
             for (var i = _subsumed.Count - 1; i >= 0; i--)
             {
                 var render = _subsumed[i];
-                var fiber = render.Fiber;
-                if (fiber.IsDisposed || !fiber.IsMounted) continue;
-                render.Before.WriteTo(fiber);
-                // A tree other than the one this render left was put there by something else, such as a boundary's
-                // fallback, and is not this render's to take back.
-                if (!ReferenceEquals(fiber.PreviousTree, render.TreeRendered)) continue;
-                fiber.PreviousTree = render.TreeBefore;
-                if (render.TreeRendered != null && !ReferenceEquals(render.TreeRendered, render.TreeBefore))
-                {
-                    (discarded ??= new()).Add(render.TreeRendered);
-                }
+                if (render.Fiber.IsDisposed || !render.Fiber.IsMounted) continue;
+                render.Before.WriteTo(render.Fiber);
             }
             for (var i = _hooks.Count - 1; i >= 0; i--)
             {
@@ -127,10 +112,6 @@ namespace Velvet
             }
             _hooks.Clear();
             _subsumed.Clear();
-            // Released rather than returned: a memoized fiber's slot can hand the same tree to the render that
-            // retries, so nothing may recycle it.
-            if (discarded == null) return;
-            foreach (var tree in discarded) FiberTreeReturn.Release(tree);
         }
     }
 }

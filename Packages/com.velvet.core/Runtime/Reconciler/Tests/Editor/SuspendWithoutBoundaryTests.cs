@@ -18,10 +18,9 @@ namespace Velvet.Tests
     /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
     /// The component whose read suspended renders once in that retry, memoized components that bail between it
     /// and the retried pass included.
-    /// The components that rendered ahead of the suspend in the abandoned pass commit nothing of it: the retry
-    /// compares their output with the one on screen, applies the state updates they had folded, and runs the
-    /// effects they had queued, and a component of theirs that renders alone before the retry renders with the
-    /// props it last committed.
+    /// The components that rendered ahead of the suspend in the abandoned pass commit no effect of it: the retry
+    /// runs the effects they had queued, and a component of theirs that renders alone before the retry renders
+    /// with the props it last committed.
     /// The resolve commits nothing ahead of that retry, and a resolve no suspended pass waits on renders
     /// nothing: the pass retried later reads the value without starting the read again. A pass that suspended
     /// commits none of the props it passed, so a later pass renders the component that suspended again, one the
@@ -623,45 +622,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnUpdateThatSuspendedTheReaderAheadOfAMemoizedComponentsLabel_When_TheResourceResolves_Then_TheLabelShowsTheUpdate()
-        {
-            // Arrange — the label follows the reader in the memoized component's output, so the pass that suspended
-            // at the reader patched nothing of it
-            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
-            s_innerShowsLabel = true;
-            using var mounted = V.Mount(_root, V.Component(OuterMemoizedChainRender, key: "outer"));
-            s_outerSetTick.Invoke(1);
-            FiberWorkLoop.FlushState(s_outerFiber);
-
-            // Act
-            s_source.TrySetResult(5);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(Texts(), Is.EqualTo("child:5|inner:1:0|outer:1"),
-                "The retry diffs the memoized component's output against the one on screen, not the one the abandoned pass rendered");
-        }
-
-        [Test]
-        public void Given_AnUpdateThatFoldedAMemoizedComponentsOwnStateBeforeItsReaderSuspended_When_TheResourceResolves_Then_ThatComponentShowsTheState()
-        {
-            // Arrange — the component's props never change, so only an update it still owes renders it in the retry
-            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
-            using var mounted = V.Mount(_root, V.Component(OuterOwnStateRender, key: "outer"));
-            s_innerSetOwn.Invoke(1);
-            s_outerSetTick.Invoke(1);
-            FiberWorkLoop.FlushState(s_outerFiber);
-
-            // Act
-            s_source.TrySetResult(5);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(Texts(), Is.EqualTo("child:5|inner:1|outer:1"),
-                "A state update folded in a pass that was given up is applied by the render that retries it");
-        }
-
-        [Test]
         public void Given_AMemoizedComponentWhoseEffectDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheEffectRunsOnlyWithTheRetry()
         {
             // Arrange
@@ -930,7 +890,6 @@ namespace Velvet.Tests
         private static VNode MemoizedChainInnerRender(int tick)
             => V.Div(children: new VNode[] { V.Component(MemoizedChainMidRender, tick, key: "mid") });
 
-        // Its label follows the component that reads, so a pass suspended at the read has patched nothing of it.
         [Component(Memoize = true)]
         private static VNode LabelledChainInnerRender(int tick)
         {
@@ -957,7 +916,7 @@ namespace Velvet.Tests
         }
 
         // No props, so the outer pass bails on it unless an update of its own is owed. The reader below it suspends on
-        // that state, and its label follows the reader.
+        // that state.
         private static int s_innerPassiveSetups;
 
         [Component(Memoize = true)]

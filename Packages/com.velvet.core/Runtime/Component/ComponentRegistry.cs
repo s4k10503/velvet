@@ -161,7 +161,6 @@ namespace Velvet
             // force a re-render below so RunImperativeHandleSlots adopts the new ref.
             var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
             var committed = FiberInputs.Of(existingFiber);
-            var committedTree = existingFiber.PreviousTree;
             existingFiber.ExternalRef = node.ExternalRef;
             // V.Component<TProps> overload allocates a fresh closure each render that captures
             // the latest props; sync Body so the next render sees the current values.
@@ -233,7 +232,7 @@ namespace Velvet
                     }
                     // After the render returned, so one that threw is not in the journal: the catch above puts its
                     // inputs back itself.
-                    _ctx.PassJournal.RecordSubsumed(existingFiber, in committed, committedTree);
+                    _ctx.PassJournal.RecordSubsumed(existingFiber, in committed);
                 }
             }
             else if (propsChanged || refChanged)
