@@ -186,6 +186,9 @@ LOCK_REFUSAL = "another Unity instance is running with this project open"
 # way, so what decides that the lock was held is the editor's refusal and not this reading of it.
 LOCK_ATTEMPTS = 3
 LOCK_WAIT = 60
+# A stage of the campaign that takes at least this long, in seconds, is logged with how long it took, so
+# the job log accounts for the wall clock between two verdicts.
+STAGE_REPORT_SECONDS = 5
 # The last line `run_suite` writes into a log once `LOCK_ATTEMPTS` launches were refused.
 LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the project lock".format(
     LOCK_ATTEMPTS)
@@ -2735,7 +2738,8 @@ def unity_busy():
 def wait_for_quiet(seconds):
     """Waits rather than sharing the machine: every failure in a mutant run has to be attributable
     to the mutation, and a second editor is a second explanation for all of them."""
-    deadline = time.time() + seconds
+    began = time.time()
+    deadline = began + seconds
     announced = False
     while unity_busy():
         if time.time() > deadline:
@@ -2744,6 +2748,8 @@ def wait_for_quiet(seconds):
             print("another Unity test run is in flight; waiting for it", flush=True)
             announced = True
         time.sleep(5)
+    if announced:
+        print("the other Unity test run ended after {:.0f}s".format(time.time() - began), flush=True)
     return True
 
 
@@ -2953,6 +2959,9 @@ def launch(command, timeout, holder, env=None, expired=None):
         if holder is not None:
             holder.child = None
     wall = time.time() - start
+    if wall >= STAGE_REPORT_SECONDS:
+        print("{}: the editor ran {:.0f}s{}".format(log.name if log is not None else "launch", wall,
+                                                    ", until it was killed" if timed_out else ""), flush=True)
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
     if holder is not None and holder.state is not None:
@@ -3566,11 +3575,15 @@ def rewrite_schemata(unity, project, request, scratch):
     """The rewriter's answer, or None where it could not be built or run."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import schemata_tool
+    began = time.time()
     try:
         return schemata_tool.rewrite(unity, project, request, scratch)
     except SystemExit as failure:
         print("the rewriter could not run, so every mutant takes its own launch: {}".format(failure))
         return None
+    finally:
+        if time.time() - began >= STAGE_REPORT_SECONDS:
+            print("the rewriter ran {:.0f}s".format(time.time() - began), flush=True)
 
 
 def session_filter(scope):
@@ -5049,20 +5062,6 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     il_scope, il_cases = il_only_scope(project, baseline_results, text_readers, scope) \
         if il_only else (None, 0)
     il_only = il_only if il_scope is not None else set()
-    if il_only:
-        # As an area's launch is: the fixtures must pass alone on the unmutated tree, or a failure of
-        # theirs on a mutant would not be the mutation's.
-        control = output / "baseline-il.xml"
-        if control.exists():
-            control.unlink()
-        _, control_timed_out, _ = run_suite(args.unity, project, args.platform, il_scope, control,
-                                            output / "baseline-il.log", min(args.timeout, baseline_wall), holder)
-        held = read_counts(control)
-        if control_timed_out or not held or held["failed"] or held["inconclusive"] or held["total"] != il_cases:
-            print("the fixtures reading IL did not pass alone on the unmutated tree, so their survivors "
-                  "run on the whole suite")
-            il_only = set()
-
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
     # built. Not taken under a scope the caller chose, which already asks a question of its own.
@@ -5187,13 +5186,13 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 if il_narrow:
                     held = read_counts(results)
                     ran.append(("fixtures reading IL", held["total"] if held else None))
-                    # Only a launch that completed over the cases the baseline holds for these fixtures
-                    # stands for them -- or one that failed a case, which is a kill whatever it selected.
-                    # A build that stopped, a hang, no result and a different count each leave the whole
-                    # suite to decide.
-                    if timed_out or not held or build_error(log) or not (
-                            held["failed"] or held["total"] == il_cases):
-                        print("      the fixtures reading IL did not complete over their {} cases, so the "
+                    # Only a launch that completed green over the cases the baseline holds for these
+                    # fixtures stands for them. A failed case, a build that stopped, a hang, no result and
+                    # a different count each leave the whole suite to decide: the fixtures were not run
+                    # alone on the unmutated tree first, so a failure of theirs is not yet the mutation's.
+                    if timed_out or not held or build_error(log) or held["failed"] or (
+                            held["total"] != il_cases):
+                        print("      the fixtures reading IL did not pass over their {} cases, so the "
                               "whole suite runs".format(il_cases))
                         for stale in (results, log):
                             if stale.exists():
