@@ -103,14 +103,13 @@ namespace Velvet
         // On the existing-fiber path the fiber is synchronously re-rendered when props changed or it is
         // dirty (setState / context invalidation) so the caller observes the fresh
         // ComponentFiber.PreviousTree; otherwise the previous tree is reused (the bailout path).
-        public ComponentFiber GetOrCreateInline(
+        public (ComponentFiber Fiber, bool ReusedAsIs) GetOrCreateInline(
             ComponentNode node,
             ComponentFiber? parentFiber,
             object positionKey,
             VisualElement? mountPoint,
             int slotStart,
-            VisualElement? portalScope,
-            out bool reusedAsIs)
+            VisualElement? portalScope)
         {
             if (positionKey == null) throw new ArgumentNullException(nameof(positionKey));
             var site = new FiberMountSite
@@ -122,7 +121,8 @@ namespace Velvet
                 IsInline = true,
                 PortalScope = portalScope,
             };
-            return GetOrCreateCore(node, in site, out reusedAsIs);
+            var fiber = GetOrCreateCore(node, in site, out var reusedAsIs);
+            return (fiber, reusedAsIs);
         }
 
         private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site, out bool reusedAsIs)
