@@ -2156,12 +2156,11 @@ namespace Velvet
             var firstRender = !_ctx.PresenceStates.TryGetValue(stateKey, out var state);
             if (firstRender)
             {
-                state = new ReconcilerContext.PresenceBoundaryState();
-                _ctx.PresenceStates[stateKey] = state;
+                state = _ctx.RegisterPresenceState(stateKey);
             }
             if (_ctx.CurrentPortalPlaceholder != null)
             {
-                state!.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
+                _ctx.SetPresenceOwningPortal(state!, _ctx.CurrentPortalPlaceholder);
             }
 
             // Every child counts as removed while the enclosing child is leaving, so each takes the ghost path below.

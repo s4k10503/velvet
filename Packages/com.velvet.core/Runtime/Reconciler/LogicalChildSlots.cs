@@ -46,7 +46,7 @@ namespace Velvet
         /// relocated, whose placeholder holds its slot.
         /// </summary>
         internal static bool IsInvisible(VisualElement child)
-            => SilhouetteBoundsSpacer.IsSpacer(child) || FiberZLayerCoordinator.IsRelocatedReal(child);
+            => SilhouetteBoundsSpacer.HasMarkerClass(child) || FiberZLayerCoordinator.HoldsNoLogicalSlot(child);
 
         /// <summary>
         /// The number of rendered children — the exclusive upper bound of the logical slot range. Counts

@@ -64,6 +64,14 @@ namespace Velvet
             => child != null && s_held.TryGetValue(child, out var held)
                 && held.Role is Role.BackReal or Role.MiddleReal or Role.FrontReal;
 
+        // IsRelocatedReal or IsInternal in one lookup: every role but Slot, whose placeholder holds the slot.
+        internal static bool HoldsNoLogicalSlot(VisualElement child)
+        {
+            if (child == null) return false;
+            if (!s_held.TryGetValue(child, out var held)) return false;
+            return held.Role != Role.Slot;
+        }
+
         // An anchor (the box a relocated element lays out at, when that is not its placeholder's) or a retired
         // placeholder or anchor waiting for removal: internal, and invisible to everything that walks children.
         internal static bool IsInternal(VisualElement child)
