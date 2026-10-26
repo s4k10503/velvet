@@ -961,6 +961,8 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_sourceB = new VelvetTaskCompletionSource<int>();
             using var mounted = V.Mount(_root, V.Component(ChainedPortalHostRender, key: "chained-portal-host"));
             _root.Add(s_portalTarget);
             s_portalHostSetShown.Invoke(true);
@@ -984,6 +986,8 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_sourceB = new VelvetTaskCompletionSource<int>();
             using var mounted = V.Mount(_root, V.Component(ChainedPortalHostRender, key: "chained-portal-host"));
             _root.Add(s_portalTarget);
             s_portalHostSetShown.Invoke(true);
@@ -1007,11 +1011,12 @@ namespace Velvet.Tests
             // Arrange
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
             using var mounted = V.Mount(_root, V.Component(TickedElementPortalHostRender, key: "ticked-portal-host"));
             _root.Add(s_portalTarget);
             s_portalHostSetShown.Invoke(true);
             mounted.FlushStateForTest();
-            s_source.TrySetResult(5);
+            s_sourceA.TrySetResult(5);
             mounted.FlushStateForTest();
 
             // Act
@@ -1116,9 +1121,19 @@ namespace Velvet.Tests
         [Component]
         private static VNode ChainedReaderRender()
         {
-            var a = Hooks.Use<int>(_ => (s_sourceA = new VelvetTaskCompletionSource<int>()).Task, 1);
-            var b = Hooks.Use<int>(_ => (s_sourceB = new VelvetTaskCompletionSource<int>()).Task, 1);
+            var a = Hooks.Use<int>(_ => s_sourceA.Task, 1);
+            var b = Hooks.Use<int>(_ => s_sourceB.Task, 1);
             return V.Label(text: "chained:" + a + "+" + b);
+        }
+
+        // The resource is the test's rather than the fiber's: a reader inside a host element the Portal's children
+        // create is mounted under that element, and the retry creates the element again, so the fiber that read
+        // the resource is not the one that reads it next.
+        [Component]
+        private static VNode StableReaderRender()
+        {
+            var a = Hooks.Use<int>(_ => s_sourceA.Task, 1);
+            return V.Label(text: "stable:" + a);
         }
 
         // The tick is in the host's name so the host's output differs between renders and its Portal is patched.
@@ -1135,7 +1150,7 @@ namespace Velvet.Tests
                     ? V.Portal(s_portalTarget, new VNode[]
                     {
                         V.Div(name: "first-a"),
-                        V.Div(name: "second-a", children: new VNode[] { V.Component(KeyedChildRender, 1, key: "reader") }),
+                        V.Div(name: "second-a", children: new VNode[] { V.Component(StableReaderRender, key: "reader") }),
                     })
                     : null,
             });
