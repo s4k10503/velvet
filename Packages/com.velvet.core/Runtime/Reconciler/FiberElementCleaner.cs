@@ -302,10 +302,11 @@ namespace Velvet
             MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
             _ctx.EventManager.UnbindAll(element);
             // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
-            // not survive into whatever mounts it next.
+            // not survive into whatever mounts it next; its gate callbacks stay registered (Park).
             if (element is Button button)
             {
                 if (_ctx.IsBelowDiscardedRoot(button)) _ctx.EventManager.ForgetDiscarded(button);
+                else if (_ctx.DiscardedSubtreeRoot == null && PoolKindOf(button) == PoolKind.Button) _ctx.EventManager.Park(button);
                 else _ctx.EventManager.Forget(button);
             }
             _ctx.ComponentRegistry.Remove(element);
