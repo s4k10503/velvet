@@ -1320,6 +1320,33 @@ unconditionally after its loops. Each fixture's body was read for such a path wh
 a new benchmark is held to the same reading. A local run that wants real numbers passes the flag
 itself, and the flag is necessary for them rather than sufficient.
 
+`JsFrameworkKeyedBenchmarks` ports the keyed operation set of the
+[js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) suite, whose results for React
+and other frameworks are published at <https://krausest.github.io/js-framework-benchmark/>, so that a Velvet
+number can be read beside the same operation there. `KeyedBenchmarkApp` is the application: a
+`Hooks.UseReducer` over the rows and the selected id, a `V.List` keyed by id, and a `[Component(Memoize = true)]`
+row. The operations, each from the state the suite starts it in:
+
+| Case | Starting state | Operation |
+|---|---|---|
+| `Create_1000Rows` | no rows | build 1,000 rows |
+| `Replace_AllOf1000Rows` | 1,000 rows | build 1,000 new rows |
+| `PartialUpdate_EveryTenthOf1000Rows` | 1,000 rows | append `" !!!"` to every tenth row's label |
+| `Select_OneOf1000Rows` | 1,000 rows, the first selected | select the row at index 500 |
+| `Swap_Rows2And999Of1000` | 1,000 rows | swap indices 1 and 998 |
+| `Remove_OneOf1000Rows` | 1,000 rows | remove the row at index 4 |
+| `Create_10000Rows` | no rows | build 10,000 rows |
+| `Append_1000RowsTo1000` | 1,000 rows | append 1,000 rows |
+| `Clear_1000Rows` | 1,000 rows | remove every row |
+
+Where the port departs from the suite: a case dispatches the reducer action a button's handler would and
+flushes the scheduler synchronously, as the other benchmarks here do, rather than clicking an element; the
+root has no panel, so no layout pass is in the window; the labels come from the suite's word lists through a
+seeded generator; and allocation is GC.Alloc sample blocks, not bytes. A case throws when the mounted buttons
+do not show the state's labels in order, or when the number of rows that rendered differs from what the
+operation should cause (a select renders two, a swap or a remove none), so the numbers are not read off
+operations that missed the memoized path.
+
 `.github/workflows/benchmarks.yml` runs the full counts, as its own workflow and not a required one:
 
 - on every push to `main` that changes the package (documentation and generator sources excluded), and
