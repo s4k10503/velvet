@@ -1002,9 +1002,6 @@ namespace Velvet.Tests
                 "The retry that suspended on the second resource leaves the Portal holding none of its children, as the mount did");
         }
 
-        // GREEN_ON_BASE(characterization): the base clears the flag where the retry mounted. Replace
-        // `prevState with { ChildrenPending = false }` in FiberNodePatcher.PatchPortalChildren with `prevState`
-        // and this is what reddens.
         [Test]
         public void Given_APortalWhoseHostChildrenMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce()
         {
@@ -1028,7 +1025,6 @@ namespace Velvet.Tests
                 "Once the retry has mounted the children the Portal is patched from them, not from nothing");
         }
 
-        // GREEN_ON_BASE(characterization): the same cut as the case above, over children that are a component.
         [Test]
         public void Given_APortalWhoseComponentChildMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce()
         {
@@ -1051,8 +1047,6 @@ namespace Velvet.Tests
                 "Once the retry has mounted the children the Portal is patched from them, not from nothing");
         }
 
-        // GREEN_ON_BASE(characterization): a Suspense above the host shows its fallback for the pass the
-        // Portal's child suspended in and the retry mounts the child once; no cut of this change reddens it.
         [Test]
         public void Given_APortalWhoseChildSuspendsInAnUpdateUnderABoundary_When_TheResourceResolves_Then_TheTargetHoldsTheChildOnce()
         {
