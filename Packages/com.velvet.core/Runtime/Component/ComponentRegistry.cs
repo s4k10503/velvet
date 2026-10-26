@@ -655,19 +655,48 @@ namespace Velvet
             }
         }
 
-        // Single-root convenience over DisposeFibersUnder(HashSet). Element teardown
+        // Single-root form of DisposeFibersUnder(HashSet), selecting through CollectFibersInSubtree. Element teardown
         // (FiberElementCleaner.CleanupElement) calls this when a subtree leaves the DOM: an inline-mounted
         // fiber nested under a host element anchors on its PARENT FIBER (not the host VE), so Remove(VE) —
         // which only knows wrapper-mounted fibers — never reaches it, and the host's owning reconcile emits
         // that host as an opaque leaf, so the orphan sweep does not collect it either. When the host is torn
         // down out-of-band (type-swap, Portal unmount, VirtualList recycle, presence drop) neither path runs,
         // leaving the fiber to be re-paired as a zombie on a same-key re-entry. Disposing by MountPoint
-        // containment here closes that gap. The lazy set alloc is skipped when the registry holds no fibers.
+        // containment here closes that gap. Nothing is walked when the registry holds no fibers.
         internal void DisposeFibersUnder(VisualElement root)
         {
             if (root == null) return;
             if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
-            DisposeFibersUnder(new HashSet<VisualElement> { root });
+            List<ComponentFiber>? snapshot = null;
+            CollectFibersInSubtree(root, ref snapshot);
+            if (snapshot == null) return;
+            DisposeTogether(snapshot);
+        }
+
+        // The selection CollectFibersUnder makes for one root, read off the registry's indexes by container
+        // rather than by testing every registered fiber's MountPoint against the root: a fiber is registered
+        // under the element it mounts on (_tenancies for an inline one, _wrapperIndex for a wrapper-mounted
+        // one), so the walk costs the size of the subtree the caller is tearing down anyway. A teardown of
+        // many sibling subtrees stays linear in their total size instead of paying the whole registry for each.
+        // A fiber whose disposal has cleared its MountPoint sits under no element, so it is not selected.
+        private void CollectFibersInSubtree(VisualElement element, ref List<ComponentFiber>? into)
+        {
+            if (_tenancies.TryGetValue(element, out var tenancy))
+            {
+                foreach (var fiber in tenancy.Fibers)
+                {
+                    if (ReferenceEquals(fiber.MountPoint, element)) (into ??= new List<ComponentFiber>()).Add(fiber);
+                }
+            }
+            if (_wrapperIndex.TryGetValue(element, out var wrapped) && ReferenceEquals(wrapped.MountPoint, element))
+            {
+                (into ??= new List<ComponentFiber>()).Add(wrapped);
+            }
+            var hierarchy = element.hierarchy;
+            for (var i = 0; i < hierarchy.childCount; i++)
+            {
+                CollectFibersInSubtree(hierarchy[i], ref into);
+            }
         }
 
         // The containment form above cannot express this selection: the fiber is a sibling of the elements
