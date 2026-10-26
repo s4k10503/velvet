@@ -114,7 +114,7 @@ OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
 # has the measured cost of each.
-SHARD_SIZE = {"EditMode": 6, "PlayMode": 1}
+SHARD_SIZE = {"EditMode": 5, "PlayMode": 1}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many mutants at the cost `ShardCeilingTests`
 # charges one on its platform, after the longest measured setup and, where the platform is narrowed,
@@ -122,19 +122,19 @@ MAX_SHARDS = 10
 # figure is the most EditMode survivors one shard's job measures after its own EditMode pass.
 # `ShardCeilingTests` holds each pair together. The charge is not a worst case, so a full shard can still
 # outrun its step; `--budget` is what stops it there, and the mutants it had not reached read `BUDGET`.
-SHARD_CEILING = {"EditMode": 6, "PlayMode": 7}
+SHARD_CEILING = {"EditMode": 5, "PlayMode": 7}
 # What `deal` charges a mutant, in seconds, so that every shard is given about the same total. Only the
-# ratio of the figures matters to the deal. The narrowed figure is 145, the median over shards of a shard's
-# seconds a mutant on EditMode, which already includes the mutants that took the whole suite; the whole-suite
-# figures are 672 on EditMode, the slowest measured launch of a mutant's own over the whole suite rounded up,
-# and 934 on PlayMode, the single slowest shard's seconds a mutant (CONTRIBUTING.md ▸ Checking that the
-# tests can fail defines both). They are different statistics, so the ratio is rough, and 145 is a proxy for a narrowed
-# launch rather than a measurement of one. The ceiling charges every mutant the whole-suite figure.
+# ratio of the figures matters to the deal. The narrowed figure is the mean cost of a mutant a reach run
+# placed, 592; the whole-suite figures are the slowest launch of a mutant's own over the whole suite that
+# ended by itself on EditMode, 721, and the single slowest shard's seconds a mutant on PlayMode, 934.
+# CONTRIBUTING.md ▸ Checking that the tests can fail defines each and says what it was measured over. They
+# are different statistics, so the ratio is rough. `ShardCeilingTests` holds the ceiling's charge for a
+# mutant at or above both.
 # The plan has no baseline, so it cannot know which areas `narrowable` will take, and a mutant it deals as
 # narrowed may take the whole suite; neither figure exceeds the ceiling's charge, so the ceiling holds.
 # A previous campaign's timings are not in the record, which keeps verdicts and no seconds.
-NARROWED_COST = 145
-WHOLE_COST = {"EditMode": 672, "PlayMode": 934}
+NARROWED_COST = 592
+WHOLE_COST = {"EditMode": 721, "PlayMode": 934}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
 CEILING_REFUSAL = 4
@@ -165,14 +165,12 @@ REACH_SHARE = 10
 # shard holds: a mutant the rewriter declines takes its own launches beside it, on the whole suite and with
 # no area's launch before it, since a shard that made the reach run takes no area's baseline. An EditMode
 # session that places fewer is not run: its mutants take their own launches, each preceded by its area's.
-# The figure is derived and not measured, since no reach run has been timed. It costs about one whole
-# suite, the run itself being one with the switches recording; against it a placed mutant saves its area's
-# launch, 0.25 to 0.46 of the baseline on the two areas measured, or the whole launch where its area is
-# not narrowable, and a mutant no case ran saves all of it. At 0.35 of a baseline a mutant, four mutants
-# pay for the run, and six would be what the run's bound of `REACH_BOUND` baselines asks.
+# The run costs about one baseline, and CONTRIBUTING.md ▸ Checking that the tests can fail has the
+# measurement and what a placed mutant saves against it, which is where four comes from.
 REACH_MIN_MUTANTS = 4
 # The reach run is stopped at this many times the baseline's wall clock, or --timeout if that is less,
-# so a run that does not finish costs what `ShardCeilingTests` charges it.
+# so a run that does not finish costs what `ShardCeilingTests` charges it. One that finishes costs less;
+# the same section of CONTRIBUTING.md has by how much.
 REACH_BOUND = 2
 # A mutant's narrowed launch is killed, and the whole suite decides instead, once it has taken this
 # many times its area's own launch on the unmutated tree -- which runs on the tree the whole baseline
@@ -188,6 +186,9 @@ LOCK_REFUSAL = "another Unity instance is running with this project open"
 # way, so what decides that the lock was held is the editor's refusal and not this reading of it.
 LOCK_ATTEMPTS = 3
 LOCK_WAIT = 60
+# A stage of the campaign that takes at least this long, in seconds, is logged with how long it took, so
+# the job log accounts for the wall clock between two verdicts.
+STAGE_REPORT_SECONDS = 5
 # The last line `run_suite` writes into a log once `LOCK_ATTEMPTS` launches were refused.
 LOCK_REFUSED_LINE = "mutation_check: the editor refused {} launches for the project lock".format(
     LOCK_ATTEMPTS)
@@ -2737,7 +2738,8 @@ def unity_busy():
 def wait_for_quiet(seconds):
     """Waits rather than sharing the machine: every failure in a mutant run has to be attributable
     to the mutation, and a second editor is a second explanation for all of them."""
-    deadline = time.time() + seconds
+    began = time.time()
+    deadline = began + seconds
     announced = False
     while unity_busy():
         if time.time() > deadline:
@@ -2746,6 +2748,8 @@ def wait_for_quiet(seconds):
             print("another Unity test run is in flight; waiting for it", flush=True)
             announced = True
         time.sleep(5)
+    if announced:
+        print("the other Unity test run ended after {:.0f}s".format(time.time() - began), flush=True)
     return True
 
 
@@ -2955,6 +2959,9 @@ def launch(command, timeout, holder, env=None, expired=None):
         if holder is not None:
             holder.child = None
     wall = time.time() - start
+    if wall >= STAGE_REPORT_SECONDS:
+        print("{}: the editor ran {:.0f}s{}".format(log.name if log is not None else "launch", wall,
+                                                    ", until it was killed" if timed_out else ""), flush=True)
     # Bounded, since a process that left the group can still hold the pipe open.
     reader.join(timeout=5)
     if holder is not None and holder.state is not None:
@@ -3568,11 +3575,15 @@ def rewrite_schemata(unity, project, request, scratch):
     """The rewriter's answer, or None where it could not be built or run."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import schemata_tool
+    began = time.time()
     try:
         return schemata_tool.rewrite(unity, project, request, scratch)
     except SystemExit as failure:
         print("the rewriter could not run, so every mutant takes its own launch: {}".format(failure))
         return None
+    finally:
+        if time.time() - began >= STAGE_REPORT_SECONDS:
+            print("the rewriter ran {:.0f}s".format(time.time() - began), flush=True)
 
 
 def session_filter(scope):
@@ -5051,20 +5062,6 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     il_scope, il_cases = il_only_scope(project, baseline_results, text_readers, scope) \
         if il_only else (None, 0)
     il_only = il_only if il_scope is not None else set()
-    if il_only:
-        # As an area's launch is: the fixtures must pass alone on the unmutated tree, or a failure of
-        # theirs on a mutant would not be the mutation's.
-        control = output / "baseline-il.xml"
-        if control.exists():
-            control.unlink()
-        _, control_timed_out, _ = run_suite(args.unity, project, args.platform, il_scope, control,
-                                            output / "baseline-il.log", min(args.timeout, baseline_wall), holder)
-        held = read_counts(control)
-        if control_timed_out or not held or held["failed"] or held["inconclusive"] or held["total"] != il_cases:
-            print("the fixtures reading IL did not pass alone on the unmutated tree, so their survivors "
-                  "run on the whole suite")
-            il_only = set()
-
     # Each area's own baseline, on the tree the whole one just built. A case that fails whenever its
     # area's assemblies run by themselves would otherwise read as a kill of every mutant there that
     # built. Not taken under a scope the caller chose, which already asks a question of its own.
@@ -5189,13 +5186,13 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 if il_narrow:
                     held = read_counts(results)
                     ran.append(("fixtures reading IL", held["total"] if held else None))
-                    # Only a launch that completed over the cases the baseline holds for these fixtures
-                    # stands for them -- or one that failed a case, which is a kill whatever it selected.
-                    # A build that stopped, a hang, no result and a different count each leave the whole
-                    # suite to decide.
-                    if timed_out or not held or build_error(log) or not (
-                            held["failed"] or held["total"] == il_cases):
-                        print("      the fixtures reading IL did not complete over their {} cases, so the "
+                    # Only a launch that completed green over the cases the baseline holds for these
+                    # fixtures stands for them. A failed case, a build that stopped, a hang, no result and
+                    # a different count each leave the whole suite to decide: the fixtures were not run
+                    # alone on the unmutated tree first, so a failure of theirs is not yet the mutation's.
+                    if timed_out or not held or build_error(log) or held["failed"] or (
+                            held["total"] != il_cases):
+                        print("      the fixtures reading IL did not pass over their {} cases, so the "
                               "whole suite runs".format(il_cases))
                         for stale in (results, log):
                             if stale.exists():

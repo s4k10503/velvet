@@ -23,6 +23,7 @@ import importlib.util
 import inspect
 import io
 import json
+import math
 import os
 import re
 import signal
@@ -5292,6 +5293,41 @@ def run_scripted(editor, project, root, timeout=30):
                                  root / "run.log", timeout)
 
 
+class LaunchReportTests(unittest.TestCase):
+    """A launch that takes long enough to matter is accounted for in the job log."""
+
+    def printed_by(self, threshold):
+        body = "open(log, 'w').write('')\n"
+        with scripted_editor(body) as (editor, project, root, _), mock.patch.object(
+                mutation_check, "STAGE_REPORT_SECONDS", threshold, create=True):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                mutation_check.run_suite(editor, str(project), "EditMode", [], root / "results.xml",
+                                         root / "run.log", 30)
+        return out.getvalue()
+
+    def test_Given_ALaunchThatRanLongerThanTheReportingThreshold_When_ItEnds_Then_ALineNamesItsLogAndSeconds(self):
+        # Arrange
+        threshold = 0
+
+        # Act
+        printed = self.printed_by(threshold)
+
+        # Assert
+        self.assertRegex(printed, r"run\.log: the editor ran \d+s")
+
+    # GREEN_ON_BASE(characterization): the base prints no such line at any length; making `launch` print it unconditionally reddens this.
+    def test_Given_ALaunchThatRanShorterThanTheReportingThreshold_When_ItEnds_Then_NoLineIsPrinted(self):
+        # Arrange
+        threshold = 3600
+
+        # Act
+        printed = self.printed_by(threshold)
+
+        # Assert
+        self.assertNotIn("the editor ran", printed)
+
+
 class LaunchTreeTests(unittest.TestCase):
     """Every launch starts from the tree `measure` read before the baseline, whatever the launch before
     it left there, and nothing the campaign itself holds is put back."""
@@ -6581,12 +6617,12 @@ class MutantListHandOffTests(unittest.TestCase):
 
 
 class ManyMutantsCampaign(StubbedCampaign):
-    """Twelve lines of one boundary mutant each, which the plan deals to two shards, every
+    """Ten lines of one boundary mutant each, which the plan deals to two shards, every
     mutant killed."""
 
     BODY = "namespace Velvet\n{\n    internal static class Probe\n    {\n" + "".join(
         "        internal static bool M{0}(int a, int b) => a <= b;\n".format(number)
-        for number in range(12)) + "    }\n}\n"
+        for number in range(10)) + "    }\n}\n"
     kills = True
 
     def shard(self, spec, directory):
@@ -6599,6 +6635,8 @@ class ManyMutantsCampaign(StubbedCampaign):
 class UnreportedShardTests(unittest.TestCase):
     """A shard that recorded nothing is not measured, which is neither a survivor nor a stale answer."""
 
+    # GREEN_ON_BASE(refactor): the fixture's twelve mutants become ten so two shards fit the ceiling of five;
+    # the verdict it pins is the one the base already gives.
     def test_Given_AShardThatRecordedNothing_When_TheRunIsCollected_Then_ItIsNamedNotMeasured(self):
         # Arrange -- the second shard's job died, so its output never uploaded.
         campaign = ManyMutantsCampaign()
@@ -6609,7 +6647,7 @@ class UnreportedShardTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, "--- not measured: 1 of 2 EditMode shard(s) recorded nothing ---" in campaign.printed,
-                          "shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed),
+                          "shard 1 of 2 was dealt 5 mutant(s)" in campaign.printed),
                          (1, True, True))
 
     # GREEN_ON_BASE(characterization): the base prints no not-measured heading for any run, so a complete one passes there.
@@ -6641,12 +6679,14 @@ class UnreportedShardTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, "not measured" in campaign.printed), (0, False))
 
+    # GREEN_ON_BASE(refactor): the fixture's twelve mutants become ten so two shards fit the ceiling of five;
+    # the verdict it pins is the one the base already gives.
     def test_Given_ADeclarationOverAMutantOfTheDeadShard_When_TheRunIsCollected_Then_ItIsNotStale(self):
         # Arrange -- the declaration's mutant is the last line's, dealt to the shard that never reported.
         body = ManyMutantsCampaign.BODY.replace(
-            "        internal static bool M11",
+            "        internal static bool M9",
             "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
-            "        internal static bool M11")
+            "        internal static bool M9")
         campaign = ManyMutantsCampaign(body)
         campaign.shard("0/2", "out0")
 
@@ -6656,14 +6696,15 @@ class UnreportedShardTests(unittest.TestCase):
         # Assert
         self.assertEqual("STALE" in campaign.printed, False)
 
-    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale.
-    # It is the control for the case that leaves a dead shard's declaration alone.
+    # GREEN_ON_BASE(characterization): the base calls a declaration over a mutant that died stale, and does
+    # so over the last of ten mutants as it did over the last of twelve. It is the control for the case that
+    # leaves a dead shard's declaration alone.
     def test_Given_ADeclarationOverAKilledMutantTheShardRecorded_When_TheRunIsCollected_Then_ItIsStale(self):
         # Arrange -- the control: the same declaration over a mutant that was measured and died.
         body = ManyMutantsCampaign.BODY.replace(
-            "        internal static bool M11",
+            "        internal static bool M9",
             "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
-            "        internal static bool M11")
+            "        internal static bool M9")
         campaign = ManyMutantsCampaign(body)
         campaign.shard("0/2", "out0")
         campaign.shard("1/2", "out1")
@@ -6756,7 +6797,7 @@ class TwoPlatformCampaign(StubbedCampaign):
 
 
 class ShardedTwoPlatformCampaign(ManyMutantsCampaign):
-    """Twelve mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
+    """Ten mutants the EditMode suite never kills and the PlayMode suite always does, dealt to two
     EditMode shards, each followed in its job by a PlayMode pass over its own survivors: the shape the
     workflow's verdict job collects."""
 
@@ -6804,6 +6845,8 @@ class DeadShardReportingTests(unittest.TestCase):
 
     HEADING = "--- not measured: {} of {} {} shard(s) recorded nothing ---"
 
+    # GREEN_ON_BASE(refactor): the fixture's twelve mutants become ten so two shards fit the ceiling of five;
+    # the verdict it pins is the one the base already gives.
     def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_TheEditModeShardIsNamed(self):
         # Arrange -- shard 1 of 2 never reported, so its mutants are in no pass's list.
         campaign = ShardedTwoPlatformCampaign()
@@ -6814,7 +6857,7 @@ class DeadShardReportingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((self.HEADING.format(1, 2, "EditMode") in campaign.printed,
-                          "EditMode shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed),
+                          "EditMode shard 1 of 2 was dealt 5 mutant(s)" in campaign.printed),
                          (True, True))
 
     def test_Given_ADeadEditModeShard_When_BothPassesAreCollected_Then_NoPlayModeShardIsCalledDead(self):
@@ -6843,6 +6886,8 @@ class DeadShardReportingTests(unittest.TestCase):
         self.assertEqual((self.HEADING.format(2, 2, "PlayMode") in campaign.printed,
                           "EditMode shard(s) recorded nothing" in campaign.printed), (True, False))
 
+    # GREEN_ON_BASE(refactor): the fixture's twelve mutants become ten so two shards fit the ceiling of five;
+    # the verdict it pins is the one the base already gives.
     def test_Given_EveryEditModeShardAndOneDeadPlayModeShard_When_BothPassesAreCollected_Then_OnlyThatShardIsNamed(self):
         # Arrange
         campaign = ShardedTwoPlatformCampaign()
@@ -6855,10 +6900,12 @@ class DeadShardReportingTests(unittest.TestCase):
 
         # Assert -- named by the EditMode shard whose job did not reach the PlayMode pass.
         self.assertEqual((self.HEADING.format(1, 2, "PlayMode") in campaign.printed,
-                          "shard 1 of 2 was dealt 6 mutant(s)" in campaign.printed), (True, True))
+                          "shard 1 of 2 was dealt 5 mutant(s)" in campaign.printed), (True, True))
 
+    # GREEN_ON_BASE(refactor): the fixture's twelve mutants become ten so two shards fit the ceiling of five;
+    # the verdict it pins is the one the base already gives.
     def test_Given_AnEditModeShardsSurvivors_When_ItsPlayModePassRuns_Then_OnlyThoseAreMeasured(self):
-        # Arrange -- both EditMode shards recorded, six survivors each.
+        # Arrange -- both EditMode shards recorded, five survivors each.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
@@ -6869,23 +6916,25 @@ class DeadShardReportingTests(unittest.TestCase):
         # Assert
         self.assertEqual(sorted(path.name for path in (campaign.project / "play0").glob("mutant-*.json")),
                          ["mutant-001.json", "mutant-003.json", "mutant-005.json", "mutant-007.json",
-                          "mutant-009.json", "mutant-011.json"])
+                          "mutant-009.json"])
 
+    # GREEN_ON_BASE(refactor): the fixture's twelve mutants become ten so two shards fit the ceiling of five;
+    # the verdict it pins is the one the base already gives.
     def test_Given_MoreSurvivorsInAShardThanOneJobMeasures_When_ItsPlayModePassIsPlanned_Then_ItPlansTheCeilingsWorth(self):
-        # Arrange -- the shard's six survivors against a PlayMode ceiling of five.
+        # Arrange -- the shard's five survivors against a PlayMode ceiling of four.
         campaign = ShardedTwoPlatformCampaign()
         campaign.edit_shard("0/2", "edit0")
         campaign.edit_shard("1/2", "edit1")
 
         # Act
-        with mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 16, "PlayMode": 5}):
+        with mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 16, "PlayMode": 4}):
             code = campaign.run_over_diff("--platform", "PlayMode", "--survivors-of",
                                           str(campaign.project / "edit0"), str(campaign.project / "edit1"),
                                           "--survivors-shard", "0/2", "--plan")
 
         # Assert -- a job that fails here stops the run's chain, so the rest are left to the decision.
         self.assertEqual(re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE) if code == 0 else code,
-                         ["mutants=5"])
+                         ["mutants=4"])
 
 
 class EditorRewrittenFilesTests(unittest.TestCase):
@@ -8122,14 +8171,14 @@ class CostDealtShardTests(unittest.TestCase):
         self.assertEqual(max(totals) - min(totals), 0)
 
     def test_Given_TheCheapMutantsFirstInTheList_When_Dealt_Then_TheDearOnesAreStillPlacedFirst(self):
-        # Arrange — placed in list order the spread is 527 s; longest first it is 237 s.
-        kinds = "nnnwww"
+        # Arrange — placed in list order the spread is 721 s; longest first it is 463 s.
+        kinds = "nnwww"
 
         # Act
         totals = self.totals(kinds, 2)
 
         # Assert
-        self.assertEqual(max(totals) - min(totals), 237)
+        self.assertEqual(max(totals) - min(totals), 463)
 
     def test_Given_ThreeMutantsOfOneCost_When_DealtToTwoShards_Then_TheTieGoesToTheLowerShardAndIndex(self):
         # Arrange
@@ -8190,7 +8239,7 @@ class CostDealtShardTests(unittest.TestCase):
         self.assertEqual(taken, [1, 2])
 
     def test_Given_AManyMutantsPlan_When_Planned_Then_EachShardsCostAndTheSpreadArePrinted(self):
-        # Arrange — twelve mutants outside every area, each charged the EditMode whole-suite figure.
+        # Arrange — ten mutants outside every area, each charged the EditMode whole-suite figure.
         campaign = ManyMutantsCampaign()
 
         # Act
@@ -8198,26 +8247,28 @@ class CostDealtShardTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(re.findall(r"^(?:shard \d+:.*|expected cost:.*)$", campaign.printed, re.MULTILINE),
-                         ["shard 0: 6 mutant(s), expected 4032 s", "shard 1: 6 mutant(s), expected 4032 s",
-                          "expected cost: cheapest shard 4032 s, dearest 4032 s, spread 0 s"])
+                         ["shard 0: 5 mutant(s), expected 3605 s", "shard 1: 5 mutant(s), expected 3605 s",
+                          "expected cost: cheapest shard 3605 s, dearest 3605 s, spread 0 s"])
 
 
 class ShardCeilingTests(unittest.TestCase):
     """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # Measured on the EditMode shards of one campaign run (shards 2, 10, 11, 17, 22 and 24 of the run on
-    # head c25955b2): a baseline of 680 to 696 s, a launch of an area's own assemblies of 170 to 291 s, and
-    # a launch of a mutant's own over the whole suite of 626 to 671 s -- every CodeGen mutant takes one,
-    # the rewriter declining an assembly that runs inside the compiler's post-processor. The slowest of
-    # each is charged, a mutant at 672 s.
-    BASELINE = 696
-    MUTANT = 672
+    # Measured on the 37 EditMode shards of the two campaign runs on head 26bb6f99 that had finished, the
+    # slowest of each charged (CONTRIBUTING.md ▸ Checking that the tests can fail has the runs and the
+    # statistics): a baseline of 362 to 716 s, a launch of a mutant's own over the whole suite of at most
+    # 721 s, and 225 s from the job's start to the campaign's.
+    BASELINE = 716
+    MUTANT = 721
+    BEFORE_CAMPAIGN = 225
 
     # What a narrowed platform's shard spends before its first mutant when it makes the reach run: the whole
-    # suite once under the unmutated program with the switches recording. Charged at twice the baseline --
-    # an allowance, since no recording run has been timed -- in place of each area's own baseline, which a
-    # shard that makes the reach run does not take in its opening.
-    REACH_RUN = 2 * BASELINE
+    # suite once under the unmutated program with the switches recording, in place of each area's own
+    # baseline, which a shard that makes the reach run does not take in its opening. A run that finishes took
+    # 0.95 to 1.04 times its shard's baseline over 22 sessions, and is charged at the top of that range; one
+    # that never finishes is stopped at `REACH_BOUND` times the baseline and charged that.
+    REACH_RUN = math.ceil(1.04 * BASELINE)
+    REACH_RUN_BOUND = mutation_check.REACH_BOUND * BASELINE
 
     # What the opening runs of the covered sets add: each of a shard's mutants gets one, of at most
     # 1/REACH_SHARE of the baseline in seconds, and none is shared in the worst case.
@@ -8229,21 +8280,23 @@ class ShardCeilingTests(unittest.TestCase):
     # What a shard spends before its first mutant, activation, baseline and the time after the last
     # verdict added together; a case adds one mutant hanging at the bound `mutant_bound` derives from the
     # baseline.
-    EDIT_SETUP = 201 + BASELINE + 12
+    EDIT_SETUP = BEFORE_CAMPAIGN + BASELINE + 12
     PLAY_SETUP = 202 + PLAY_BASELINE + 11
 
     # What the confirmation after each mutant of a session adds to the mutant's own stages: a domain reload
     # and the test framework's preparation of a job, then a run of the one case a kill failed on where there
-    # is a kill. No run has timed it, so it is an allowance, a third of what a reload not finishing is
-    # given up at (`SESSION_RELOAD_BOUND`).
+    # is a kill. The job log does not separate it from the stages, so it stays an allowance, a third of what a
+    # reload not finishing is given up at (`SESSION_RELOAD_BOUND`).
     CONFIRMATION = 60
 
     # What a launch of its own spends on its area's baseline, charged once for each area the launches
-    # touch; the slowest measured. A shard takes it in its opening when it takes main's path -- it places
-    # fewer than `REACH_MIN_MUTANTS`. The same figure stands for the launch
-    # of the fixtures reading IL that follows a session survivor under `Runtime/`: a build and the cases
-    # of the six files that read IL, about 190, which no run has timed.
+    # touch; the slowest measured, on the campaign run of head c25955b2 and not measured again. A shard takes
+    # it in its opening when it takes main's path -- it places fewer than `REACH_MIN_MUTANTS`.
     AREA_LAUNCH = 291
+
+    # The launch of the fixtures reading IL that follows a session survivor under `Runtime/`: 199 to 495 s
+    # over the 14 that logged one, charged at the slowest.
+    IL_LAUNCH = 495
 
     # Each case passes what a mutant is charged and a shard's setup -- the longest measured before its
     # baseline, of its baseline and after its last verdict, added together. `MUTANT` is a shard's measured
@@ -8262,9 +8315,9 @@ class ShardCeilingTests(unittest.TestCase):
         per = mutation_check.SHARD_CEILING.get(platform)
         count = per if count is None else count
         narrowed = platform in getattr(mutation_check, "NARROWED_PLATFORMS", ())
-        opening = self.REACH_RUN if narrowed else 0
+        opening = (self.REACH_RUN_BOUND if arm == "failed" else self.REACH_RUN) if narrowed else 0
         if narrowed and arm in ("reach", "failed"):
-            mutant = max(mutant, self.BASELINE + self.AREA_LAUNCH)
+            mutant = max(mutant, self.BASELINE + self.IL_LAUNCH)
         if narrowed and arm == "reach" and per is not None:
             opening += self.GATE_SUITE_SECONDS / mutation_check.REACH_SHARE * count
         if arm != "small":
@@ -8288,7 +8341,7 @@ class ShardCeilingTests(unittest.TestCase):
         return len(mutation_check.narrowable(results, [path for path in runtime.iterdir() if path.is_dir()]))
 
     def test_Given_AFullShardWhoseReachRunNeverFinishes_When_ItsCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN charges; no covered
+        # Arrange — the run is stopped at REACH_BOUND times the baseline, which REACH_RUN_BOUND charges; no covered
         # set is then run, and every mutant takes the whole suite at the same measured figure.
         mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
 
@@ -8301,7 +8354,7 @@ class ShardCeilingTests(unittest.TestCase):
 
     def test_Given_EveryCountOfPlacedMutantsTheReachRunIsMadeFor_When_EveryOneTakesTheWholeSuiteAfterwards_Then_EveryOneFits(self):
         # Arrange — n placed mutants, each charged the whole suite after the reach run and its gate:
-        # 1958 + 1392 + (69.6 + 60 + 987) n, a survivor's charge: the session's whole suite, then the launch of
+        # 2032 + 745 + (71.6 + 60 + 1211) n, a survivor's charge: the session's whole suite, then the launch of
         # the fixtures reading IL, beside its gate and its confirmation.
         mutant, setup = self.MUTANT, self.EDIT_SETUP + mutation_check.mutant_bound(self.BASELINE)
         counts = range(mutation_check.REACH_MIN_MUTANTS, mutation_check.SHARD_CEILING["EditMode"] + 1)
@@ -8498,9 +8551,8 @@ class SessionCampaign(StubbedCampaign):
     # come out green, which is what a stub that knows nothing of it reports.
     reach = None
     # What an own launch whose filter names the IL-reading fixture reports instead of a green run of its one
-    # case (see `il_answer`), and how the unmutated control of that filter comes out: "red" or "short".
+    # case (see `il_answer`).
     il_launch = None
-    il_control = None
     # Whether a mutant whose text joins `a - b` fails to build, as a `+` between strings does.
     rejects_minus = False
     reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D") + tuple("N.C.F{}".format(number) for number in range(36))
@@ -8546,9 +8598,6 @@ class SessionCampaign(StubbedCampaign):
         self.scopes.append(list(_scope))
         answer = super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
         name = Path(results).name
-        if name == "baseline-il.xml" and self.il_control:
-            Path(results).write_text(FAILING_RESULTS if self.il_control == "red" else
-                                     '<test-run total="0" passed="0" failed="0" inconclusive="0" />')
         if self.il_launch and name.startswith("mutant-") and "ReaderTests" in " ".join(_scope):
             return self.il_answer(Path(results), Path(log), answer)
         if self.rejects_minus and name.startswith("mutant-") and "a - b" in self.source.read_text():
@@ -8872,38 +8921,15 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Act
         self.campaign.run("--max", "1", "--budget", "400")
 
-        # Assert — the baseline and the fixtures' control ran, so a run that stopped earlier does not pass.
-        self.assertEqual(self.campaign.launched, ["baseline.xml", "baseline-il.xml"])
+        # Assert — the baseline ran, so a run that stopped before it does not pass.
+        self.assertEqual(self.campaign.launched, ["baseline.xml"])
 
-    def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
+    def test_Given_ASessionSurvivorInAnAssemblyAFixtureReadsTheILOf_When_TheCampaignRuns_Then_NoLaunchRunsTheFixturesBeforeTheMutantDoes(self):
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
-                          if name == "baseline-il.xml"], [ONLY_READERS])
-
-    # GREEN_ON_BASE(characterization): drop the `held["failed"]` term of the control's check in `mutation_check.py` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
-    def test_Given_TheFixturesReadingILRedAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
-        # Arrange — their failure on a mutant would not be the mutation's.
-        self.campaign.il_control = "red"
-
-        # Act
-        self.campaign.run("--max", "1")
-
-        # Assert
-        self.assertEqual(self.own(), [[]])
-
-    # GREEN_ON_BASE(characterization): drop the `held["total"] != il_cases` term of the control's check and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
-    def test_Given_AControlThatRanOtherCasesThanTheBaselineHolds_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
-        # Arrange — a filter that selected nothing proves nothing about these fixtures.
-        self.campaign.il_control = "short"
-
-        # Act
-        self.campaign.run("--max", "1")
-
-        # Assert
-        self.assertEqual(self.own(), [[]])
+        self.assertEqual([name for name in self.campaign.launched if name != "mutant-001.xml"], ["baseline.xml"])
 
     def test_Given_AnILReadingLaunchThatSelectsNoCase_When_ItSurvives_Then_TheWholeSuiteDecides(self):
         # Arrange — a filter that selected nothing would read every mutant as surviving the fixtures it
@@ -8956,15 +8982,16 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Assert
         self.assertEqual(self.own(), [ONLY_READERS, []])
 
-    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_ItIsTheVerdictAndTheWholeSuiteIsNotRun(self):
-        # Arrange — it reports more cases than the baseline holds, which a failure does not make wrong.
+    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange — the fixtures were not run alone on the unmutated tree, so their failure is not yet the
+        # mutation's.
         self.campaign.il_launch = "fail"
 
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual((self.own(), mutation_check.KILLED in self.campaign.printed), ([ONLY_READERS], True))
+        self.assertEqual(self.own(), [ONLY_READERS, []])
 
     def test_Given_AnILReadingLaunchThatFellBackOnTheWholeSuite_When_TheSummaryPrints_Then_ItNamesOnlyTheWholeRun(self):
         # Arrange
@@ -9264,7 +9291,7 @@ class SessionReachTests(SessionRoutingBase):
                          [50])
 
     def test_Given_AReachRunToCharge_When_ItIsPlanned_Then_ItIsStoppedAtTwiceTheBaselinesTime(self):
-        # Arrange — `ShardCeilingTests.REACH_RUN` charges that much for a run that never finishes.
+        # Arrange — `ShardCeilingTests.REACH_RUN_BOUND` charges that much for a run that never finishes.
         self.campaign.baseline_seconds = 100.0
         bound = mutation_check.REACH_BOUND * 100
 
@@ -12237,6 +12264,90 @@ class RecordBudgetTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(minutes is not None and minutes <= 24 * 60, True)
+
+    # GREEN_ON_BASE(construction): the base's forty shards are ten at a time for four waves, so both sides
+    # here are the repository's own content and agree there. Declare `max-parallel: 11` in mutation.yml
+    # and this is what reddens.
+    def test_Given_AParallelismAndAShardJobLimit_When_TheDaysWavesAreCounted_Then_RecordShardsIsTheMostTheyHold(self):
+        # Arrange — the day divided into waves of the shard job's own limit, and as many shards in a wave
+        # as run at once.
+        workflow = (REPO_ROOT / ".github/workflows/mutation.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2].partition("\n  mutation-verdict:")[0]
+        limit = int(re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE).group(1))
+        parallel = int(re.search(r"^      max-parallel: (\d+)$", job, re.MULTILINE).group(1))
+
+        # Act
+        most = parallel * (24 * 60 // limit)
+
+        # Assert
+        self.assertEqual(self.declared("RECORD_SHARDS"), most)
+
+
+class ConcurrentJobBudgetTests(unittest.TestCase):
+    """The shard parallelism of the campaign and of the kill-set against the account's concurrent jobs.
+
+    A pull request starts the jobs of `test.yml` and `generators.yml` together. Those that end within
+    seconds free their slots for the others to queue behind; the rest, with every matrix entry counted,
+    hold theirs for minutes, so beside them the account has room for as many shards as the long jobs leave."""
+
+    ACCOUNT_JOBS = 20
+
+    # Ended in 2, 3, 10, 15 and 17 s on one pull request's runs of 2026-10-25 (head 5c2ddbb5), the next
+    # shortest taking 182 s; a job queued behind these waits for them and not for a shard.
+    SECONDS_LONG = ("license-check", "release-notes", "publication", "base-red-python", "repository-settings")
+
+    @staticmethod
+    def pull_request_jobs_beyond_seconds():
+        """How many jobs of the two workflows a pull request runs hold a slot for minutes. The aggregates
+        wait for every other job, so they start as slots free and never add to the count."""
+        count = 0
+        for name in ("test.yml", "generators.yml"):
+            jobs = yaml.safe_load((REPO_ROOT / ".github/workflows" / name).read_text())["jobs"]
+            for job_name, job in jobs.items():
+                if job_name == "required-checks" or job_name in ConcurrentJobBudgetTests.SECONDS_LONG:
+                    continue
+                matrix = (job.get("strategy") or {}).get("matrix") or {}
+                count += math.prod(len(values) for values in matrix.values() if isinstance(values, list))
+        return count
+
+    @staticmethod
+    def declared_parallelism(workflow, job):
+        text = (REPO_ROOT / ".github/workflows" / workflow).read_text()
+        body = text.partition("\n  {}:".format(job))[2]
+        found = re.search(r"^      max-parallel: (\d+)$", body, re.MULTILINE)
+        return int(found.group(1)) if found else None
+
+    # GREEN_ON_BASE(characterization): the eight long jobs are the base's own count, which its ten shards were
+    # sized without; adding a job to `test.yml` that runs for minutes, as `unity-tests` does, reddens it.
+    def test_Given_ThePullRequestWorkflows_When_TheirMinutesLongJobsAreCounted_Then_TheyAreEight(self):
+        # Arrange — the 8 are the unity-tests pair, the three player compilations, the editor compilation,
+        # the test-quality job and the generator suite.
+
+        # Act
+        count = self.pull_request_jobs_beyond_seconds()
+
+        # Assert
+        self.assertEqual(count, 8)
+
+    def test_Given_TheCampaignsShardJob_When_ItsParallelismIsRead_Then_ItIsWhatThePullRequestsLongJobsLeave(self):
+        # Arrange
+        left = self.ACCOUNT_JOBS - self.pull_request_jobs_beyond_seconds()
+
+        # Act
+        declared = self.declared_parallelism("mutation.yml", "mutation-shard")
+
+        # Assert
+        self.assertEqual(declared, left)
+
+    def test_Given_TheKillSetsShardJob_When_ItsParallelismIsRead_Then_ItIsWhatThePullRequestsLongJobsLeave(self):
+        # Arrange
+        left = self.ACCOUNT_JOBS - self.pull_request_jobs_beyond_seconds()
+
+        # Act
+        declared = self.declared_parallelism("kill-set.yml", "shard")
+
+        # Assert
+        self.assertEqual(declared, left)
 
 
 if __name__ == "__main__":
