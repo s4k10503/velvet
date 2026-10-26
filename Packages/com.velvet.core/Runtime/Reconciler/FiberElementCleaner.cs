@@ -25,15 +25,20 @@ namespace Velvet
             var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
-            RemoveCleaned(parent, element);
+            RemoveCleaned(parent, element, index);
             ReturnOccupantToPool(element, poolable);
         }
 
         // Removes element by reference rather than at the index it was found at: its cleanup can take a child
-        // hosted before it out of the same parent (BackdropFilterLayer.Detach), which moves it down a slot.
-        private static void RemoveCleaned(VisualElement parent, VisualElement element)
+        // hosted before it out of the same parent (BackdropFilterLayer.Detach), which moves it down a slot. The
+        // index it was found at is tried first, then the one below it, so the common removal costs no scan of
+        // the parent's children; only an element that moved further falls back to one.
+        private static void RemoveCleaned(VisualElement parent, VisualElement element, int foundAt)
         {
-            var at = parent.IndexOf(element);
+            var count = parent.childCount;
+            var at = foundAt < count && ReferenceEquals(parent[foundAt], element) ? foundAt
+                : foundAt >= 1 && foundAt - 1 < count && ReferenceEquals(parent[foundAt - 1], element) ? foundAt - 1
+                : parent.IndexOf(element);
             if (at >= 0)
             {
                 parent.RemoveAt(at);
@@ -600,8 +605,10 @@ namespace Velvet
             {
                 range.Add(target.ElementAt(i));
             }
+            var rangeIndex = slotEnd;
             foreach (var child in range)
             {
+                rangeIndex--;
                 // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
                 if (LogicalChildSlots.IsInvisible(child))
                 {
@@ -609,7 +616,7 @@ namespace Velvet
                 }
                 var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
-                RemoveCleaned(target, child);
+                RemoveCleaned(target, child, rangeIndex);
                 ReturnOccupantToPool(child, poolable);
             }
 

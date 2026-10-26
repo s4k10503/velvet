@@ -1079,6 +1079,10 @@ namespace Velvet
 
         public object? Ref { get; set; }
 
+        // The last link of the Child chain, so an append is not a walk of the chain: a parent creating N inline
+        // children would otherwise cost N(N-1)/2 links. Null exactly when Child is.
+        private ComponentFiber? _lastChild;
+
         public void AppendChild(ComponentFiber child)
         {
             if (child.Parent != null && child.Parent != this)
@@ -1086,21 +1090,26 @@ namespace Velvet
                 child.Parent.RemoveChild(child);
             }
 
+            var alreadyChild = ReferenceEquals(child.Parent, this);
             child.Parent = this;
             child.Sibling = null;
 
             if (Child == null)
             {
                 Child = child;
+                _lastChild = child;
                 return;
             }
 
-            var tail = Child;
+            // A child this parent already holds is appended by the walk it always took, which is the only way to
+            // reach a tail that may have moved.
+            var tail = alreadyChild ? Child : _lastChild!;
             while (tail.Sibling != null)
             {
                 tail = tail.Sibling;
             }
             tail.Sibling = child;
+            _lastChild = child;
         }
 
         // The caller supplies the complete existing child set after its placement has committed.
@@ -1120,6 +1129,7 @@ namespace Velvet
                     previous.Sibling = child;
                 previous = child;
             }
+            _lastChild = previous;
         }
 
         public void RemoveChild(ComponentFiber child)
@@ -1132,6 +1142,7 @@ namespace Velvet
             if (Child == child)
             {
                 Child = child.Sibling;
+                if (Child == null) _lastChild = null;
             }
             else
             {
@@ -1143,6 +1154,7 @@ namespace Velvet
                 if (prev.Sibling == child)
                 {
                     prev.Sibling = child.Sibling;
+                    if (ReferenceEquals(_lastChild, child)) _lastChild = prev;
                 }
             }
 

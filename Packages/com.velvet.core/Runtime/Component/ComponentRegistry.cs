@@ -94,7 +94,7 @@ namespace Velvet
                 SlotStart = 0,
                 IsInline = false,
             };
-            return GetOrCreateCore(node, in site);
+            return GetOrCreateCore(node, in site, out _);
         }
 
         // Fiber identity is anchored on parentFiber, mountPoint and tree position (positionKey) — the
@@ -121,11 +121,12 @@ namespace Velvet
                 IsInline = true,
                 PortalScope = portalScope,
             };
-            return GetOrCreateCore(node, in site);
+            return GetOrCreateCore(node, in site, out reusedAsIs);
         }
 
-        private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site)
+        private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site, out bool reusedAsIs)
         {
+            reusedAsIs = false;
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (node.Body == null) throw new ArgumentException("ComponentNode.Body must not be null.", nameof(node));
             var identity = node.ResolvedIdentity;
@@ -136,7 +137,7 @@ namespace Velvet
 
             if (existingFiber != null)
             {
-                return ReconcileExistingFiber(existingFiber, node, in site);
+                return ReconcileExistingFiber(existingFiber, node, in site, out reusedAsIs);
             }
 
             return CreateAndMountFiber(node, identity, in site);
@@ -145,8 +146,10 @@ namespace Velvet
         private ComponentFiber ReconcileExistingFiber(
             ComponentFiber existingFiber,
             ComponentNode node,
-            in FiberMountSite site)
+            in FiberMountSite site,
+            out bool reusedAsIs)
         {
+            reusedAsIs = false;
             // Context is read live from the cursor (ComponentContextStack) during
             // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
             // are already pushed on the live stack by the current expansion walk; an isolated
@@ -206,7 +209,8 @@ namespace Velvet
                 // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork
                 // reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
-                if (propsChanged || existingFiber.IsDirty || refChanged)
+                reusedAsIs = !(propsChanged || existingFiber.IsDirty || refChanged);
+                if (!reusedAsIs)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the
                     // child's latest state, satisfying the lanes pending before it at once (lane
