@@ -1113,8 +1113,8 @@ namespace Velvet
                 var reusedAsIs = false;
                 try
                 {
-                    fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                        component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope, out reusedAsIs);
+                    (fiber, reusedAsIs) = _ctx.ComponentRegistry.GetOrCreateInline(
+                        component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 }
                 catch (BoundaryCaughtSignal)
                 {
