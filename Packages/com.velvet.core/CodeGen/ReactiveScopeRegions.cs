@@ -148,6 +148,7 @@ namespace Velvet.CodeGen
             var instruction = _flow.Instructions[index];
             if (instruction.OpCode.Code != Code.Call && instruction.OpCode.Code != Code.Callvirt) return false;
             var callee = (MethodReference)instruction.Operand;
+            // MUTANT_SURVIVES(equivalent, literal): `Find` starts after the last call `ScanHooks` took for a hook, and classifies a call as a hook by the same test, so no call it asks about is one.
             if (CompilerWeaver.IsHookKind(_volatility.KindAt(index))) return false;
             return DerivesFromVNode(callee.ReturnType);
         }
@@ -212,6 +213,7 @@ namespace Velvet.CodeGen
         // run that touch only the locals the run touches belong to it.
         private int AbsorbSetup(int start, int end)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): each pass either returns or lowers `start` by at least one, and `start` is below the instruction count, so the loop returns on a pass before the bound.
             for (var guard = 0; guard < _flow.Instructions.Length; guard++)
             {
                 var previous = PreviousStatement(start);
@@ -278,8 +280,10 @@ namespace Velvet.CodeGen
 
         private string? CheckShape(int start, int end)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): `Find` builds a run only at a call it has found reached, and `end` is that call.
             if (!_flow.Reached(start) || !_flow.Reached(end)) return "it holds code nothing reaches";
             if (_flow.DepthAfter(end) != _flow.Before[start]!.Length + 1) return "it leaves more than its value on the stack";
+            // MUTANT_SURVIVES(equivalent, boundary): `end` is a reached call whose operands start no earlier than `start`, so `ShapeProblem` finds nothing at it.
             for (var i = start; i <= end; i++)
             {
                 var problem = ShapeProblem(i, start);
@@ -301,6 +305,10 @@ namespace Velvet.CodeGen
         private static bool ForbiddenOpcode(OpCode opCode)
         {
             // Both the long and the short form leave a protected region.
+            // MUTANT_SURVIVES(unreachable, equality): a `leave` empties the stack where it lands, so a run that takes an operand across one fails the walk at a join or a pop.
+            // A statement taken into a run holds one only with a value under it, which
+            // ReactiveScopeRunShapeTests.Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoLeaveHasAValueUnderIt
+            // pins that no component body of Velvet.Tests.Hooks.Editor has.
             if (opCode.FlowControl == FlowControl.Branch && opCode.Name.StartsWith("leave", System.StringComparison.Ordinal)) return true;
             switch (opCode.Code)
             {
@@ -339,9 +347,12 @@ namespace Velvet.CodeGen
 
         private string? BranchProblem(int index, int start, int end)
         {
+            // MUTANT_SURVIVES(unreachable, boundary): the instruction after a branch that begins a run is reached only from a branch ahead of the run, which declines it either way,
+            // from one inside it that goes backward, which `_flow.Loops` reports first, or not at all, which `CheckShape` declines.
             var inside = index >= start && index <= end;
             foreach (var target in TargetsOf(_flow.Instructions[index]))
             {
+                // MUTANT_SURVIVES(equivalent, boundary): a branch inside the run that lands on `start` goes backward, which `_flow.Loops` has already reported, and a branch from outside to `start` is allowed either way.
                 var lands = target >= start && target <= end;
                 if (inside && !lands) return "a branch leaves it";
                 if (!inside && lands && target != start) return "a branch enters it from outside";

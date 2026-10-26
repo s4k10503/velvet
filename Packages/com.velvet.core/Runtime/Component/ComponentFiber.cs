@@ -188,6 +188,14 @@ namespace Velvet
         /// </summary>
         internal ComponentFiber? SuspendedOn { get; set; }
 
+        /// <summary>
+        /// Set where an abandoned pass discarded this fiber's render, until a render of it is kept: the next walk
+        /// that reaches the fiber renders it, as for a dirty one, though no flush does. Left off <c>IsDirty</c>
+        /// because a flush that visits dirty fibers would render a component the pass mounted before the parent
+        /// that places it has.
+        /// </summary>
+        internal bool RenderOwed { get; set; }
+
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition { get; set; }
 
@@ -1079,28 +1087,32 @@ namespace Velvet
 
         public object? Ref { get; set; }
 
+        // The last link of the Child chain, so an append is not a walk of the chain: a parent creating N inline
+        // children would otherwise cost N(N-1)/2 links. Null exactly when Child is.
+        private ComponentFiber? _lastChild;
+
+        // The link before this one in its parent's Child chain, so a removal is not a walk of the chain: a parent
+        // dropping N inline children would otherwise cost N(N-1)/2 links. Null exactly when this is a parent's Child
+        // or has no parent.
+        private ComponentFiber? _previousSibling;
+
         public void AppendChild(ComponentFiber child)
         {
-            if (child.Parent != null && child.Parent != this)
-            {
-                child.Parent.RemoveChild(child);
-            }
+            child.Parent?.RemoveChild(child);
 
             child.Parent = this;
             child.Sibling = null;
+            child._previousSibling = _lastChild;
 
-            if (Child == null)
+            if (_lastChild == null)
             {
                 Child = child;
-                return;
             }
-
-            var tail = Child;
-            while (tail.Sibling != null)
+            else
             {
-                tail = tail.Sibling;
+                _lastChild.Sibling = child;
             }
-            tail.Sibling = child;
+            _lastChild = child;
         }
 
         // The caller supplies the complete existing child set after its placement has committed.
@@ -1110,7 +1122,10 @@ namespace Velvet
             // loops back on itself.
             Child = null;
             foreach (var child in children)
+            {
                 child.Sibling = null;
+                child._previousSibling = null;
+            }
             ComponentFiber? previous = null;
             foreach (var child in children)
             {
@@ -1118,8 +1133,10 @@ namespace Velvet
                     Child = child;
                 else
                     previous.Sibling = child;
+                child._previousSibling = previous;
                 previous = child;
             }
+            _lastChild = previous;
         }
 
         public void RemoveChild(ComponentFiber child)
@@ -1129,25 +1146,16 @@ namespace Velvet
                 return;
             }
 
-            if (Child == child)
-            {
-                Child = child.Sibling;
-            }
-            else
-            {
-                var prev = Child;
-                while (prev.Sibling != null && prev.Sibling != child)
-                {
-                    prev = prev.Sibling;
-                }
-                if (prev.Sibling == child)
-                {
-                    prev.Sibling = child.Sibling;
-                }
-            }
+            var previous = child._previousSibling;
+            var next = child.Sibling;
+            if (previous == null) Child = next;
+            else previous.Sibling = next;
+            if (next == null) _lastChild = previous;
+            else next._previousSibling = previous;
 
             child.Parent = null;
             child.Sibling = null;
+            child._previousSibling = null;
         }
 
         public void Detach()

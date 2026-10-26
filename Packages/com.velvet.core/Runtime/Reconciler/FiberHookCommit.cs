@@ -25,11 +25,17 @@ namespace Velvet
         // queued, so no flush renders it on its own and the walk that reveals the primary does.
         internal static void DiscardSuspenseRender(SuspenseRender render)
         {
+            DiscardRenderedWork(render);
+            render.Fiber.IsDirty = true;
+        }
+
+        // The effects a render queued, cut back to the lengths they had before it.
+        internal static void DiscardRenderedWork(SuspenseRender render)
+        {
             var fiber = render.Fiber;
             fiber.PendingLayoutEffects?.Clear();
             TruncateTo(fiber.PendingInsertionEffects, render.InsertionBefore);
             TruncateTo(fiber.PendingEffects, render.PassiveBefore);
-            fiber.IsDirty = true;
         }
 
         // Rolls a discarded render-phase attempt's effect registrations back to the committed footprint.

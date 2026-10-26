@@ -48,14 +48,14 @@ namespace Velvet
                 // New (mounting) slot: LastDeps stays null until the render settles, so a discarded render-phase
                 // attempt that appended this slot is rolled back by truncating the lists to the committed length,
                 // and the settled attempt re-adds it as a fresh mount.
-                var entry = new HookEffectSlot { EffectFactory = factory, NextDeps = deps };
+                var entry = new HookEffectSlot { EffectFactory = factory, NextFactory = factory, NextDeps = deps };
                 effects.Add(entry);
                 pendingEffects.Add(entry);
                 return;
             }
 
             var existing = effects[index];
-            existing.EffectFactory = factory;
+            existing.NextFactory = factory;
             existing.NextDeps = deps;
 
             if (deps == null || !ObjectIs.AreEqualDeps(existing.LastDeps, deps))

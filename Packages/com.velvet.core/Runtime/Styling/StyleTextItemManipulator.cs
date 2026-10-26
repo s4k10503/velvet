@@ -85,8 +85,15 @@ namespace Velvet
         protected override void UnregisterCallbacksFromTarget()
         {
             Clear();
-            SyncParentSubscription(null);
             _hasSignature = false;
+            // Below a discarded teardown root the target and its parent leave together, and so do the callbacks
+            // registered on either (ReconcilerContext.IsBelowDiscardedRoot).
+            if (_ctx.IsBelowDiscardedRoot(target))
+            {
+                _subscribedParent = null;
+                return;
+            }
+            SyncParentSubscription(null);
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             target.UnregisterCallback<ChangeEvent<string>>(OnTextChanged);

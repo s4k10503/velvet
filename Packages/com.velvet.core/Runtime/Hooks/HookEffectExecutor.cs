@@ -101,6 +101,7 @@ namespace Velvet
             for (var i = 0; i < effects.Count; i++)
             {
                 effects[i].LastDeps = effects[i].NextDeps;
+                if (effects[i].NextFactory != null) effects[i].EffectFactory = effects[i].NextFactory;
             }
         }
 

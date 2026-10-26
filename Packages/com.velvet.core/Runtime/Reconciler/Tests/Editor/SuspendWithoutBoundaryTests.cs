@@ -16,6 +16,11 @@ namespace Velvet.Tests
     /// <item>With no boundary above, the flush does not throw. A resource of the component whose read suspended
     /// the pass resolving retries that pass, an ancestor's included, and every pass on the way that suspended
     /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
+    /// The component whose read suspended renders once in that retry, memoized components that bail between it
+    /// and the retried pass included.
+    /// The components that rendered ahead of the suspend in the abandoned pass, those it mounted among them, run
+    /// no effect and create no handle for that render: the retry does, and a component of theirs that renders
+    /// alone before the retry renders with the props it last committed.
     /// The resolve commits nothing ahead of that retry, and a resolve no suspended pass waits on renders
     /// nothing: the pass retried later reads the value without starting the read again. A pass that suspended
     /// commits none of the props it passed, so a later pass renders the component that suspended again, one the
@@ -49,6 +54,14 @@ namespace Velvet.Tests
             s_innerSetOwn = default;
             s_outerSetTick = default;
             s_innerMemoized = false;
+            s_unmemoizedChildRenders = 0;
+            s_innerShowsLabel = false;
+            s_ownerPassiveSetups = 0;
+            s_innerPassiveSetups = 0;
+            s_innerHandle.Set(null);
+            s_innerHandleCreates = 0;
+            s_ownerEffectSeen.Clear();
+            s_firstMountSetups = 0;
             s_parentFiber = null;
             s_pageSetId = default;
             s_otherSource = null;
@@ -571,6 +584,173 @@ namespace Velvet.Tests
                 "Every pass that suspended on the resource is retried, a memoized inner one included");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base already renders the reader through the chain; this pins
+        // that it still does with the reader asked for by the retry rather than reached by the patch.
+        [Test]
+        public void Given_AnUpdateThatSuspendedTheReaderBelowTwoMemoizedComponentsWithNoBoundary_When_TheResourceResolves_Then_TheReaderRendersTheValue()
+        {
+            // Arrange — the outer tick reaches the reader through both memoized layers
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterMemoizedChainRender, key: "outer"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child:5|outer:1"),
+                "The retry reaches the reader through memoized components that bail, however many there are");
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base renders the reader once on a retry; the reader's own
+        // request must not add a second render.
+        [Test]
+        public void Given_AReaderBelowTwoMemoizedComponentsWhoseAncestorsPassSuspended_When_TheImmediateTierDrainsTheRetry_Then_TheReaderRendersOnce()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterMemoizedChainRender, key: "outer"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            var rendersBefore = s_unmemoizedChildRenders;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That(s_unmemoizedChildRenders - rendersBefore, Is.EqualTo(1),
+                "The reader renders once per retry commit, as React renders it");
+        }
+
+        [Test]
+        public void Given_AMemoizedComponentWhoseEffectDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheEffectRunsOnlyWithTheRetry()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterOwnStateRender, key: "outer"));
+            mounted.FlushEffectsForTest();
+            s_innerSetOwn.Invoke(1);
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            mounted.FlushEffectsForTest();
+            var whileSuspended = s_innerPassiveSetups;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((whileSuspended, s_innerPassiveSetups), Is.EqualTo((1, 2)),
+                "React runs no effect of a render it gave up, and runs the one its deps changed for when the retry commits");
+        }
+
+        [Test]
+        public void Given_AMemoizedComponentWhoseHandleDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheHandleIsCreatedOnlyWithTheRetry()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterOwnStateRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            var whileSuspended = s_innerHandleCreates;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((whileSuspended, s_innerHandleCreates), Is.EqualTo((1, 2)),
+                "React creates the handle of a render it commits, and none for one it gave up");
+        }
+
+        [Test]
+        public void Given_AComponentWhoseFirstRenderSuspendedAndASiblingThatSuspendsInTheRetry_When_TheSecondResourceResolves_Then_ItsEffectRunsOnlyWithTheCommit()
+        {
+            // Arrange — A suspended on its first render, so its render count is still zero when the retry renders it
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(FirstMountParentRender, key: "first-mount"));
+            s_firstMountSetShow.Invoke(true);
+            mounted.FlushStateForTest();
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var whileSuspended = s_firstMountSetups;
+
+            // Act
+            s_otherSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((whileSuspended, s_firstMountSetups, Texts()), Is.EqualTo((0, 1, "a:5|b:7")),
+                "The retry that suspends again commits none of what A rendered, a first render included");
+        }
+
+        [Test]
+        public void Given_AnEffectPendingFromAnEarlierCommit_When_ARenderThatSuspendsRegistersItAgain_Then_TheEarlierClosureRuns()
+        {
+            // Arrange — the mount's passive effect has not run when the update renders
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(EffectOwnerRender, key: "effect-owner"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join("|", s_ownerEffectSeen), Is.EqualTo("0|1"),
+                "The pending effect runs the closure of the render that committed it, and the retry runs its own");
+        }
+
+        [Test]
+        public void Given_AnUpdateThatSuspendedItsOwnReaderWithNoBoundary_When_TheResourceResolves_Then_TheEffectTheUpdateQueuedRuns()
+        {
+            // Arrange — the component renders, and its effect deps change, before the reader below it suspends
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(EffectOwnerRender, key: "effect-owner"));
+            mounted.FlushEffectsForTest();
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the label is read beside the count, since an effect that ran with no commit would count too
+            Assert.That((Texts(), s_ownerPassiveSetups), Is.EqualTo(("child:5|owner:1", 2)),
+                "An effect whose deps changed in a render that was given up runs when the retry commits");
+        }
+
+        [Test]
+        public void Given_AnUpdateThatSuspendedBelowAMemoizedComponent_When_ThatComponentRendersAloneBeforeTheResolve_Then_ItRendersWithThePropsItLastCommitted()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_innerShowsLabel = true;
+            using var mounted = V.Mount(_root, V.Component(OuterMemoizedChainRender, key: "outer"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Act — the component's own update, with the resource still pending
+            s_innerSetOwn.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child:0|inner:0:1|outer:0"),
+                "A render of the component alone uses the props the pass that was given up never committed");
+        }
+
         // GREEN_ON_BASE(characterization): the base removes the children the boundary had shown.
         // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping
         // the child's label in the tree, hidden.
@@ -757,10 +937,148 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[] { V.Component(UnmemoizedKeyedChildRender, own, key: "child") });
         }
 
+        private static bool s_innerShowsLabel;
+
+        [Component]
+        private static VNode OuterMemoizedChainRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                s_innerShowsLabel
+                    ? V.Component(LabelledChainInnerRender, tick, key: "inner")
+                    : V.Component(MemoizedChainInnerRender, tick, key: "inner"),
+                V.Label(text: "outer:" + tick),
+            });
+        }
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedChainInnerRender(int tick)
+            => V.Div(children: new VNode[] { V.Component(MemoizedChainMidRender, tick, key: "mid") });
+
+        [Component(Memoize = true)]
+        private static VNode LabelledChainInnerRender(int tick)
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_innerSetOwn = setOwn;
+            return V.Fragment(new VNode[]
+            {
+                V.Component(MemoizedChainMidRender, tick, key: "mid"),
+                V.Label(text: "inner:" + tick + ":" + own),
+            });
+        }
+
+        [Component]
+        private static VNode OuterOwnStateRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(OwnStateInnerRender, key: "inner"),
+                V.Label(text: "outer:" + tick),
+            });
+        }
+
+        // No props, so the outer pass bails on it unless an update of its own is owed. The reader below it suspends on
+        // that state.
+        private static int s_innerPassiveSetups;
+        private static readonly Ref<string> s_innerHandle = new();
+        private static int s_innerHandleCreates;
+
+        [Component(Memoize = true)]
+        private static VNode OwnStateInnerRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_innerSetOwn = setOwn;
+            Hooks.UseEffect(() =>
+            {
+                s_innerPassiveSetups++;
+                return (Action)null;
+            }, new object[] { own });
+            Hooks.UseImperativeHandle(s_innerHandle, () =>
+            {
+                s_innerHandleCreates++;
+                return "handle:" + own;
+            }, new object[] { own });
+            return V.Fragment(new VNode[]
+            {
+                V.Component(UnmemoizedKeyedChildRender, own, key: "child"),
+                V.Label(text: "inner:" + own),
+            });
+        }
+
+        private static int s_ownerPassiveSetups;
+        private static readonly System.Collections.Generic.List<int> s_ownerEffectSeen = new();
+
+        [Component]
+        private static VNode EffectOwnerRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (own, setOwn) = Hooks.UseState(0);
+            s_outerSetTick = setOwn;
+            var seen = own;
+            Hooks.UseEffect(() =>
+            {
+                s_ownerPassiveSetups++;
+                s_ownerEffectSeen.Add(seen);
+                return (Action)null;
+            }, new object[] { own });
+            return V.Div(children: new VNode[]
+            {
+                V.Component(UnmemoizedKeyedChildRender, own, key: "child"),
+                V.Label(text: "owner:" + own),
+            });
+        }
+
+        private static int s_firstMountSetups;
+        private static StateUpdater<bool> s_firstMountSetShow;
+
+        [Component]
+        private static VNode FirstMountParentRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_firstMountSetShow = setShown;
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Component(FirstMountAReadRender, key: "a") : null,
+                shown ? V.Component(FirstMountBReadRender, key: "b") : null,
+            });
+        }
+
+        [Component]
+        private static VNode FirstMountAReadRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_source = new VelvetTaskCompletionSource<int>()).Task, "a");
+            Hooks.UseEffect(() =>
+            {
+                s_firstMountSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "a:" + value);
+        }
+
+        [Component]
+        private static VNode FirstMountBReadRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_otherSource = new VelvetTaskCompletionSource<int>()).Task, "b");
+            return V.Label(text: "b:" + value);
+        }
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedChainMidRender(int tick)
+            => V.Div(children: new VNode[] { V.Component(UnmemoizedKeyedChildRender, tick, key: "child") });
+
+        private static int s_unmemoizedChildRenders;
+
         // Not memoized, so the outer pass renders it again and suspends on the resource the inner one did.
         [Component]
         private static VNode UnmemoizedKeyedChildRender(int key)
         {
+            s_unmemoizedChildRenders++;
             var value = Hooks.Use<int>(_ => key == 0
                 ? VelvetTask.FromResult(0)
                 : (s_source = new VelvetTaskCompletionSource<int>()).Task, key);

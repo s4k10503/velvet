@@ -99,6 +99,10 @@ namespace Velvet
         // or one of FiberZLayerCoordinator's internal children (an anchor, or a retired placeholder awaiting
         // removal).
         internal static bool IsSpacer(VisualElement child)
+            => HasMarkerClass(child) || FiberZLayerCoordinator.IsInternal(child);
+
+        // IsSpacer without the coordinator's table, for a caller that asks that table about the element itself.
+        internal static bool HasMarkerClass(VisualElement child)
             => child != null
                 && (child.ClassListContains(MarkerClass)
                     || child.ClassListContains(RingOverlay.MarkerClass)
@@ -107,8 +111,7 @@ namespace Velvet
                     || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
                     || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
                     || child.ClassListContains(BackdropFilterLayer.MarkerClass)
-                    || child.ClassListContains(StyleUserClassProperties.MarkerClass)
-                    || FiberZLayerCoordinator.IsInternal(child));
+                    || child.ClassListContains(StyleUserClassProperties.MarkerClass));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement
         // invariant that keeps it outside the child reconciler's [0, renderedChildCount) index range.

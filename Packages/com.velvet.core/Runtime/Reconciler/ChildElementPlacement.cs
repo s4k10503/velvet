@@ -218,6 +218,9 @@ namespace Velvet
             int slotStart)
         {
             if (parent == null || lisIndices == null) return false;
+            // Every element is an anchor only when each was retained and already stands in new order, which is
+            // also what PlacesOutOfCreationOrder answers false for; nothing is moved below either.
+            if (lisIndices.Count == newElements.Count) return false;
             var outOfCreationOrder = PlacesOutOfCreationOrder(parent, newElements);
             // The element that follows this whole range in the LIVE tree — the anchor for the range's right-most
             // element. The range currently occupies a contiguous block of its still-parented elements starting at

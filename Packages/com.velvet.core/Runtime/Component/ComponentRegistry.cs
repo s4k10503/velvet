@@ -94,7 +94,7 @@ namespace Velvet
                 SlotStart = 0,
                 IsInline = false,
             };
-            return GetOrCreateCore(node, in site);
+            return GetOrCreateCore(node, in site, out _);
         }
 
         // Fiber identity is anchored on parentFiber, mountPoint and tree position (positionKey) — the
@@ -103,7 +103,7 @@ namespace Velvet
         // On the existing-fiber path the fiber is synchronously re-rendered when props changed or it is
         // dirty (setState / context invalidation) so the caller observes the fresh
         // ComponentFiber.PreviousTree; otherwise the previous tree is reused (the bailout path).
-        public ComponentFiber GetOrCreateInline(
+        public (ComponentFiber Fiber, bool ReusedAsIs) GetOrCreateInline(
             ComponentNode node,
             ComponentFiber? parentFiber,
             object positionKey,
@@ -121,11 +121,13 @@ namespace Velvet
                 IsInline = true,
                 PortalScope = portalScope,
             };
-            return GetOrCreateCore(node, in site);
+            var fiber = GetOrCreateCore(node, in site, out var reusedAsIs);
+            return (fiber, reusedAsIs);
         }
 
-        private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site)
+        private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site, out bool reusedAsIs)
         {
+            reusedAsIs = false;
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (node.Body == null) throw new ArgumentException("ComponentNode.Body must not be null.", nameof(node));
             var identity = node.ResolvedIdentity;
@@ -136,7 +138,7 @@ namespace Velvet
 
             if (existingFiber != null)
             {
-                return ReconcileExistingFiber(existingFiber, node, in site);
+                return ReconcileExistingFiber(existingFiber, node, in site, out reusedAsIs);
             }
 
             return CreateAndMountFiber(node, identity, in site);
@@ -145,8 +147,10 @@ namespace Velvet
         private ComponentFiber ReconcileExistingFiber(
             ComponentFiber existingFiber,
             ComponentNode node,
-            in FiberMountSite site)
+            in FiberMountSite site,
+            out bool reusedAsIs)
         {
+            reusedAsIs = false;
             // Context is read live from the cursor (ComponentContextStack) during
             // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
             // are already pushed on the live stack by the current expansion walk; an isolated
@@ -156,8 +160,7 @@ namespace Velvet
             // ref never re-runs UseImperativeHandle. Capture the identity change before overwriting and
             // force a re-render below so RunImperativeHandleSlots adopts the new ref.
             var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
-            var committed = (existingFiber.ExternalRef, existingFiber.Body, existingFiber.SourceNode,
-                existingFiber.SourceTree, existingFiber.Props);
+            var committed = FiberInputs.Of(existingFiber);
             existingFiber.ExternalRef = node.ExternalRef;
             // V.Component<TProps> overload allocates a fresh closure each render that captures
             // the latest props; sync Body so the next render sees the current values.
@@ -206,7 +209,8 @@ namespace Velvet
                 // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork
                 // reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
-                if (propsChanged || existingFiber.IsDirty || refChanged)
+                reusedAsIs = !(propsChanged || existingFiber.IsDirty || existingFiber.RenderOwed || refChanged);
+                if (!reusedAsIs)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the
                     // child's latest state, satisfying the lanes pending before it at once (lane
@@ -223,10 +227,12 @@ namespace Velvet
                         // in progress: the fiber keeps what its last committed render was given, and the next pass
                         // reaching it renders it again. A Suspense that catches it commits its fallback with the
                         // pass, whose output gave the fiber these inputs.
-                        (existingFiber.ExternalRef, existingFiber.Body, existingFiber.SourceNode,
-                            existingFiber.SourceTree, existingFiber.Props) = committed;
+                        committed.WriteTo(existingFiber);
                         throw;
                     }
+                    // After the render returned, so one that threw is not in the journal: the catch above puts its
+                    // inputs back itself.
+                    _ctx.PassJournal.RecordSubsumed(existingFiber, in committed);
                 }
             }
             else if (propsChanged || refChanged)
@@ -655,19 +661,48 @@ namespace Velvet
             }
         }
 
-        // Single-root convenience over DisposeFibersUnder(HashSet). Element teardown
+        // Single-root form of DisposeFibersUnder(HashSet), selecting through CollectFibersInSubtree. Element teardown
         // (FiberElementCleaner.CleanupElement) calls this when a subtree leaves the DOM: an inline-mounted
         // fiber nested under a host element anchors on its PARENT FIBER (not the host VE), so Remove(VE) —
         // which only knows wrapper-mounted fibers — never reaches it, and the host's owning reconcile emits
         // that host as an opaque leaf, so the orphan sweep does not collect it either. When the host is torn
         // down out-of-band (type-swap, Portal unmount, VirtualList recycle, presence drop) neither path runs,
         // leaving the fiber to be re-paired as a zombie on a same-key re-entry. Disposing by MountPoint
-        // containment here closes that gap. The lazy set alloc is skipped when the registry holds no fibers.
+        // containment here closes that gap. Nothing is walked when the registry holds no fibers.
         internal void DisposeFibersUnder(VisualElement root)
         {
             if (root == null) return;
             if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
-            DisposeFibersUnder(new HashSet<VisualElement> { root });
+            List<ComponentFiber>? snapshot = null;
+            CollectFibersInSubtree(root, ref snapshot);
+            if (snapshot == null) return;
+            DisposeTogether(snapshot);
+        }
+
+        // The selection CollectFibersUnder makes for one root, read off the registry's indexes by container
+        // rather than by testing every registered fiber's MountPoint against the root: a fiber is registered
+        // under the element it mounts on (_tenancies for an inline one, _wrapperIndex for a wrapper-mounted
+        // one), so the walk costs the size of the subtree the caller is tearing down anyway. A teardown of
+        // many sibling subtrees stays linear in their total size instead of paying the whole registry for each.
+        // A fiber whose disposal has cleared its MountPoint sits under no element, so it is not selected.
+        private void CollectFibersInSubtree(VisualElement element, ref List<ComponentFiber>? into)
+        {
+            if (_tenancies.TryGetValue(element, out var tenancy))
+            {
+                foreach (var fiber in tenancy.Fibers)
+                {
+                    if (ReferenceEquals(fiber.MountPoint, element)) (into ??= new List<ComponentFiber>()).Add(fiber);
+                }
+            }
+            if (_wrapperIndex.TryGetValue(element, out var wrapped) && ReferenceEquals(wrapped.MountPoint, element))
+            {
+                (into ??= new List<ComponentFiber>()).Add(wrapped);
+            }
+            var hierarchy = element.hierarchy;
+            for (var i = 0; i < hierarchy.childCount; i++)
+            {
+                CollectFibersInSubtree(hierarchy[i], ref into);
+            }
         }
 
         // The containment form above cannot express this selection: the fiber is a sibling of the elements

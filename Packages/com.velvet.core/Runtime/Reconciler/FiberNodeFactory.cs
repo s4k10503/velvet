@@ -172,7 +172,7 @@ namespace Velvet
             _patcher.ApplyHasVariantManipulators(element);
             // text-transform / -decoration cascade: after children are placed so it can reach descendant
             // text leaves, and after the element's own text is set so it transforms the final value.
-            _patcher.ApplyTextEffects(element, elementNode.ClassNames);
+            _patcher.ApplyTextEffectsOnCreate(element, elementNode.ClassNames);
 
             // The paint layers read a class source that also carries what the passes above have already
             // written onto the live class list, so a payload ALREADY LIT at this point paints from the
@@ -333,7 +333,7 @@ namespace Velvet
             _patcher.ApplyStructuralVariants(element);
             _patcher.ApplyHasClassVariants(element);
             _patcher.ApplyHasVariantManipulators(element);
-            _patcher.ApplyTextEffects(element, writtenClasses);
+            _patcher.ApplyTextEffectsOnCreate(element, writtenClasses);
             // The element path's sequence, from the same composed source. The shadow and the ring take their
             // patch-time entries rather than ApplyShadowOnCreate / ApplyRingOnCreate.
             _ctx.ExpectPlayGates(element, motionNode);
