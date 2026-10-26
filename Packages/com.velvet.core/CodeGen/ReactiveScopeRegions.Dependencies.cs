@@ -28,6 +28,7 @@ namespace Velvet.CodeGen
             var first = Normalize(inside[0].Index, inside[0].Kind);
             var writes = inside.Exists(a => Normalize(a.Index, a.Kind) == LocalAccess.Write);
             if (first == LocalAccess.Read) return writes ? $"it writes local {local} after reading what it held" : null;
+            // MUTANT_SURVIVES(equivalent, guard removed): the first access here is a write, and that access is one of those `writes` looks through, so `writes` is true.
             if (!writes) return null;
             if (ReadAfter(all, end)) return $"local {local} holds a value the code after it reads";
             _internalLocals.Add(local);
@@ -57,6 +58,7 @@ namespace Velvet.CodeGen
         {
             foreach (var (index, kind) in all)
             {
+                // MUTANT_SURVIVES(equivalent, boundary): the accesses are loads and stores of locals, and `end` is a call, so none sits at `end`.
                 if (index > end) return Normalize(index, kind) != LocalAccess.Write;
             }
             return false;
@@ -67,6 +69,7 @@ namespace Velvet.CodeGen
         private string? CollectDependencies(ScopeRegion region)
         {
             var uses = new List<ScopeDependency>();
+            // MUTANT_SURVIVES(equivalent, boundary): the instruction at `region.End` is a call, which `ReadSource` reads nothing from.
             for (var i = region.Start; i <= region.End; i++)
             {
                 var problem = ReadSource(i, region, uses);
@@ -135,6 +138,9 @@ namespace Velvet.CodeGen
             var definition = ScopeResolution.Type(holder.VariableType)!;
             foreach (var field in definition.Fields)
             {
+                // MUTANT_SURVIVES(unreachable, guard removed): a closure class the compiler writes declares instance fields only.
+                // ReactiveScopeDependencyTests.Given_EveryClosureClassThisAssemblyHolds_When_ItsMembersAreRead_Then_ItDeclaresNoStaticFieldAndNoMethodWithoutABody
+                // pins that no such class in Velvet.Tests.Hooks.Editor declares a static field.
                 if (field.IsStatic) continue;
                 var reference = _body.Method.Module.ImportReference(field);
                 uses.Add(new ScopeDependency("L" + holder.Index + "." + field.Name, reference.FieldType)
@@ -150,6 +156,7 @@ namespace Velvet.CodeGen
         // finds on the stack, when the value is of a class. What the run reads is then that member and not the object.
         private MemberReference? MemberReadAt(int index, TypeReference sourceType)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): every caller passes the index after an instruction, or the one after that, inside a run that ends on a call, so `index` is below the instruction count.
             if (index >= _flow.Instructions.Length || sourceType.IsValueType || sourceType.IsGenericParameter) return null;
             var next = _flow.Instructions[index];
             if (next.OpCode.Code == Code.Ldfld && next.Operand is FieldReference field)
@@ -295,6 +302,9 @@ namespace Velvet.CodeGen
         {
             foreach (var method in closure.Methods)
             {
+                // MUTANT_SURVIVES(unreachable, clause removed): a closure class the compiler writes declares methods with bodies only.
+                // ReactiveScopeDependencyTests.Given_EveryClosureClassThisAssemblyHolds_When_ItsMembersAreRead_Then_ItDeclaresNoStaticFieldAndNoMethodWithoutABody
+                // pins that no such class in Velvet.Tests.Hooks.Editor declares a method without one.
                 if (method.IsConstructor || !method.HasBody) continue;
                 if (WritesOwnField(method, closure)) return true;
             }
