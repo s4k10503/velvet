@@ -396,7 +396,7 @@ rather than its line, so a line shift keeps it, and an upload that no longer car
 with nothing to answer uploads an empty list. A run with no verdict uploads nothing, since an empty list
 would close every alert. Each mutant nothing measured, each mutant past the cap and each job that did not
 pass goes to the run's job summary instead, and a mutant past the cap owes nothing: a later run measures
-it. Every job summary the campaign and the kill-set workflow write is cut to a byte bound by
+it. The job summaries of the mutation and kill-set workflows are cut to a byte bound by
 `scripts/ci/step_summary.py`, since GitHub drops a step's whole summary past 1 MiB; the verdict job's shows
 counts and the unanswered survivors by file, and the full list is in the uploaded verdict. Nothing decides on the alerts. A survivor is answered by a
 pull request that writes the test or the declaration. A declaration a change writes brings the lines it

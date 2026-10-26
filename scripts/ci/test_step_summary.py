@@ -24,8 +24,6 @@ def load_module(path, name):
 
 summary = load_module(HERE / "step_summary.py", "step_summary")
 
-UPLOAD_LIMIT = 1024 * 1000
-
 
 def verdict(files, per_file, tail=""):
     """A verdict job's output with `per_file` unanswered survivors in each of `files` files."""
@@ -55,10 +53,9 @@ class BoundTests(unittest.TestCase):
         written = size(summary.verdict_summary(text))
 
         # Assert
-        self.assertEqual((size(text) > UPLOAD_LIMIT, written <= summary.LIMIT_BYTES),
-                         (True, True))
+        self.assertLessEqual(written, summary.LIMIT_BYTES)
 
-    def test_Given_ManyFilesWithinTheCap_When_Summarised_Then_TheCutKeepsThePointerLast(self):
+    def test_Given_ManyFilesWithinTheCap_When_SummarisedUnderASmallBound_Then_TheBytesStayUnderIt(self):
         # Arrange
         text = verdict(3000, 1)
 
@@ -66,7 +63,17 @@ class BoundTests(unittest.TestCase):
         written = summary.verdict_summary(text, limit=4000)
 
         # Assert
-        self.assertEqual((size(written) <= 4000, "artifact" in written.splitlines()[-1]), (True, True))
+        self.assertLessEqual(size(written), 4000)
+
+    def test_Given_ManyFilesWithinTheCap_When_SummarisedUnderASmallBound_Then_ThePointerIsStillLast(self):
+        # Arrange
+        text = verdict(3000, 1)
+
+        # Act
+        written = summary.verdict_summary(text, limit=4000)
+
+        # Assert
+        self.assertIn("artifact", written.splitlines()[-1])
 
     def test_Given_ABlockOfOneVeryLongLine_When_Written_Then_TheBytesStayUnderTheBound(self):
         # Arrange
@@ -115,7 +122,17 @@ class ContentTests(unittest.TestCase):
         written = summary.verdict_summary(text, per_file=10)
 
         # Assert
-        self.assertEqual((written.count("- line "), "and 15 more in this file" in written), (10, True))
+        self.assertEqual(written.count("- line "), 10)
+
+    def test_Given_ManySurvivorsInOneFile_When_Summarised_Then_TheRestAreCounted(self):
+        # Arrange
+        text = verdict(1, 25)
+
+        # Act
+        written = summary.verdict_summary(text, per_file=10)
+
+        # Assert
+        self.assertIn("and 15 more in this file", written)
 
     def test_Given_Survivors_When_Summarised_Then_TheCountsByVerdictLead(self):
         # Arrange
