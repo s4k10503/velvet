@@ -280,7 +280,7 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert
-            Assert.That((names.Count, tupleReturning), Is.EqualTo((3, new List<string>())));
+            Assert.That($"{names.Count}|{string.Join(", ", tupleReturning)}", Is.EqualTo("3|"));
         }
 
         #endregion

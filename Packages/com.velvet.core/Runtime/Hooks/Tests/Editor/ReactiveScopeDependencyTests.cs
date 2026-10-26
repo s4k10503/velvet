@@ -584,7 +584,7 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert
-            Assert.That((closures.Count > 0, offenders), Is.EqualTo((true, new List<string>())));
+            Assert.That($"{closures.Count > 0}|{string.Join(", ", offenders)}", Is.EqualTo("True|"));
         }
 
         #endregion

@@ -317,8 +317,8 @@ namespace Velvet.Tests
             using var woven = Weave(module, method);
 
             // Assert
-            Assert.That((woven.Scopes, woven.Notes.SingleOrDefault(note => note.Contains("further scopes"))),
-                Is.EqualTo((32, "1 further scopes were left uncached to keep the cost of the cache bounded")));
+            Assert.That($"{woven.Scopes}|{woven.Notes.SingleOrDefault(note => note.Contains("further scopes"))}",
+                Is.EqualTo("32|1 further scopes were left uncached to keep the cost of the cache bounded"));
         }
 
         // GREEN_ON_BASE(characterization): the base cuts exactly 32 scopes without a note about any left out.
@@ -335,7 +335,7 @@ namespace Velvet.Tests
             using var woven = Weave(module, method);
 
             // Assert
-            Assert.That((woven.Scopes, woven.Notes.Count), Is.EqualTo((32, 0)));
+            Assert.That($"{woven.Scopes}|{woven.Notes.Count}", Is.EqualTo("32|0"));
         }
 
         #endregion
@@ -365,7 +365,7 @@ namespace Velvet.Tests
             using var woven = Weave(module, method);
 
             // Assert
-            Assert.That((woven.Notes.Count > 0, woven.Diagnostics), Is.EqualTo((true, new List<string>())));
+            Assert.That($"{woven.Notes.Count > 0}|{string.Join(", ", woven.Diagnostics)}", Is.EqualTo("True|"));
         }
 
         #endregion
@@ -399,7 +399,7 @@ namespace Velvet.Tests
                 .Count(instruction => instruction.Operand is Instruction target && target.OpCode.Code == Code.Ret);
 
             // Assert
-            Assert.That((woven.BodyGate, targetingAReturn), Is.EqualTo((true, 0)));
+            Assert.That($"{woven.BodyGate}|{targetingAReturn}", Is.EqualTo("True|0"));
         }
 
         #endregion

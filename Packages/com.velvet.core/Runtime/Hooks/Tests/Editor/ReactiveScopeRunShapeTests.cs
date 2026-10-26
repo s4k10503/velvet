@@ -397,7 +397,7 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That((followed > 0, offenders), Is.EqualTo((true, new List<string>())));
+            Assert.That($"{followed > 0}|{string.Join(", ", offenders)}", Is.EqualTo("True|"));
         }
 
         #endregion
