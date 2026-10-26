@@ -5292,6 +5292,41 @@ def run_scripted(editor, project, root, timeout=30):
                                  root / "run.log", timeout)
 
 
+class LaunchReportTests(unittest.TestCase):
+    """A launch that takes long enough to matter is accounted for in the job log."""
+
+    def printed_by(self, threshold):
+        body = "open(log, 'w').write('')\n"
+        with scripted_editor(body) as (editor, project, root, _), mock.patch.object(
+                mutation_check, "STAGE_REPORT_SECONDS", threshold, create=True):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                mutation_check.run_suite(editor, str(project), "EditMode", [], root / "results.xml",
+                                         root / "run.log", 30)
+        return out.getvalue()
+
+    def test_Given_ALaunchThatRanLongerThanTheReportingThreshold_When_ItEnds_Then_ALineNamesItsLogAndSeconds(self):
+        # Arrange
+        threshold = 0
+
+        # Act
+        printed = self.printed_by(threshold)
+
+        # Assert
+        self.assertRegex(printed, r"run\.log: the editor ran \d+s")
+
+    # GREEN_ON_BASE(characterization): the base prints no such line at any length; making `launch` print it unconditionally reddens this.
+    def test_Given_ALaunchThatRanShorterThanTheReportingThreshold_When_ItEnds_Then_NoLineIsPrinted(self):
+        # Arrange
+        threshold = 3600
+
+        # Act
+        printed = self.printed_by(threshold)
+
+        # Assert
+        self.assertNotIn("the editor ran", printed)
+
+
 class LaunchTreeTests(unittest.TestCase):
     """Every launch starts from the tree `measure` read before the baseline, whatever the launch before
     it left there, and nothing the campaign itself holds is put back."""
@@ -8498,9 +8533,8 @@ class SessionCampaign(StubbedCampaign):
     # come out green, which is what a stub that knows nothing of it reports.
     reach = None
     # What an own launch whose filter names the IL-reading fixture reports instead of a green run of its one
-    # case (see `il_answer`), and how the unmutated control of that filter comes out: "red" or "short".
+    # case (see `il_answer`).
     il_launch = None
-    il_control = None
     # Whether a mutant whose text joins `a - b` fails to build, as a `+` between strings does.
     rejects_minus = False
     reach_cases = ("N.C.A", "N.C.B", "N.C.C", "N.C.D") + tuple("N.C.F{}".format(number) for number in range(36))
@@ -8546,9 +8580,6 @@ class SessionCampaign(StubbedCampaign):
         self.scopes.append(list(_scope))
         answer = super().run_suite(_unity, _project, _platform, _scope, results, log, _timeout, _holder)
         name = Path(results).name
-        if name == "baseline-il.xml" and self.il_control:
-            Path(results).write_text(FAILING_RESULTS if self.il_control == "red" else
-                                     '<test-run total="0" passed="0" failed="0" inconclusive="0" />')
         if self.il_launch and name.startswith("mutant-") and "ReaderTests" in " ".join(_scope):
             return self.il_answer(Path(results), Path(log), answer)
         if self.rejects_minus and name.startswith("mutant-") and "a - b" in self.source.read_text():
@@ -8872,38 +8903,15 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Act
         self.campaign.run("--max", "1", "--budget", "400")
 
-        # Assert — the baseline and the fixtures' control ran, so a run that stopped earlier does not pass.
-        self.assertEqual(self.campaign.launched, ["baseline.xml", "baseline-il.xml"])
+        # Assert — the baseline ran, so a run that stopped before it does not pass.
+        self.assertEqual(self.campaign.launched, ["baseline.xml"])
 
-    def test_Given_TheFixturesReadingILPassAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheyAreRunOnceBeforeAnyMutant(self):
+    def test_Given_ASessionSurvivorInAnAssemblyAFixtureReadsTheILOf_When_TheCampaignRuns_Then_NoLaunchRunsTheFixturesBeforeTheMutantDoes(self):
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual([scope for name, scope in zip(self.campaign.launched, self.campaign.scopes)
-                          if name == "baseline-il.xml"], [ONLY_READERS])
-
-    # GREEN_ON_BASE(characterization): drop the `held["failed"]` term of the control's check in `mutation_check.py` and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
-    def test_Given_TheFixturesReadingILRedAloneOnTheUnmutatedTree_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
-        # Arrange — their failure on a mutant would not be the mutation's.
-        self.campaign.il_control = "red"
-
-        # Act
-        self.campaign.run("--max", "1")
-
-        # Assert
-        self.assertEqual(self.own(), [[]])
-
-    # GREEN_ON_BASE(characterization): drop the `held["total"] != il_cases` term of the control's check and this reddens; the base has no IL-only launch, so it runs the whole suite here too.
-    def test_Given_AControlThatRanOtherCasesThanTheBaselineHolds_When_TheCampaignRuns_Then_TheWholeSuiteIsTheOwnLaunch(self):
-        # Arrange — a filter that selected nothing proves nothing about these fixtures.
-        self.campaign.il_control = "short"
-
-        # Act
-        self.campaign.run("--max", "1")
-
-        # Assert
-        self.assertEqual(self.own(), [[]])
+        self.assertEqual([name for name in self.campaign.launched if name != "mutant-001.xml"], ["baseline.xml"])
 
     def test_Given_AnILReadingLaunchThatSelectsNoCase_When_ItSurvives_Then_TheWholeSuiteDecides(self):
         # Arrange — a filter that selected nothing would read every mutant as surviving the fixtures it
@@ -8956,15 +8964,16 @@ class ILReadingSurvivorTests(ILReadingBase):
         # Assert
         self.assertEqual(self.own(), [ONLY_READERS, []])
 
-    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_ItIsTheVerdictAndTheWholeSuiteIsNotRun(self):
-        # Arrange — it reports more cases than the baseline holds, which a failure does not make wrong.
+    def test_Given_AnILReadingLaunchThatFailedACase_When_ItEnds_Then_TheWholeSuiteDecides(self):
+        # Arrange — the fixtures were not run alone on the unmutated tree, so their failure is not yet the
+        # mutation's.
         self.campaign.il_launch = "fail"
 
         # Act
         self.campaign.run("--max", "1")
 
         # Assert
-        self.assertEqual((self.own(), mutation_check.KILLED in self.campaign.printed), ([ONLY_READERS], True))
+        self.assertEqual(self.own(), [ONLY_READERS, []])
 
     def test_Given_AnILReadingLaunchThatFellBackOnTheWholeSuite_When_TheSummaryPrints_Then_ItNamesOnlyTheWholeRun(self):
         # Arrange
