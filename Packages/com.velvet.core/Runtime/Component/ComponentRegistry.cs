@@ -109,7 +109,8 @@ namespace Velvet
             object positionKey,
             VisualElement? mountPoint,
             int slotStart,
-            VisualElement? portalScope)
+            VisualElement? portalScope,
+            out bool reusedAsIs)
         {
             if (positionKey == null) throw new ArgumentNullException(nameof(positionKey));
             var site = new FiberMountSite
