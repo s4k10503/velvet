@@ -5,3 +5,4 @@ using System.Diagnostics.CodeAnalysis;
 
 [assembly: SuppressMessage("Velvet.Reconciler", "VEL600", Scope = "member", Target = "~M:Velvet.Tests.UseDeferredValueTests.SlicedParentRender")]
 [assembly: SuppressMessage("Velvet.Reconciler", "VEL600", Scope = "member", Target = "~M:Velvet.Tests.UseOptimisticRevertCommitTests.SlicedRowsRender")]
+[assembly: SuppressMessage("Velvet.Reconciler", "VEL600", Scope = "member", Target = "~M:Velvet.Tests.ReactiveScopeRunShapeTests.BuildsALabelPerIteration(System.Int32)")]
