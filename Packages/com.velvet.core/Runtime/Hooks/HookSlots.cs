@@ -254,6 +254,10 @@ namespace Velvet
     {
         public Func<Action?>? EffectFactory { get; set; }
 
+        // The factory of the render that last registered the effect, which becomes EffectFactory when that render
+        // settles: a slot still pending from an earlier commit runs that commit's closure, not a discarded render's.
+        public Func<Action?>? NextFactory { get; set; }
+
         // null LastDeps => re-run every render (no dependency array was supplied).
         public object?[]? LastDeps { get; set; }
         public object?[]? NextDeps { get; set; }

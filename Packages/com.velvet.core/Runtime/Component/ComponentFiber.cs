@@ -188,6 +188,14 @@ namespace Velvet
         /// </summary>
         internal ComponentFiber? SuspendedOn { get; set; }
 
+        /// <summary>
+        /// Set where an abandoned pass discarded this fiber's render, until a render of it is kept: the next walk
+        /// that reaches the fiber renders it, as for a dirty one, though no flush does. Left off <c>IsDirty</c>
+        /// because a flush that visits dirty fibers would render a component the pass mounted before the parent
+        /// that places it has.
+        /// </summary>
+        internal bool RenderOwed { get; set; }
+
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition { get; set; }
 
