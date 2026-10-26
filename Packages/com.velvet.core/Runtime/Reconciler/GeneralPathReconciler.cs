@@ -342,7 +342,12 @@ namespace Velvet
         // ReconcilerContext.PresenceStates, keyed on the boundary fiber that rendered them: the reused element's
         // children reconcile under the arriving fiber, so that lookup misses and those leaves are absent from
         // the old side the removal pass reads.
-        private void CommitLeaf(VNode? node, GeneralCommitState commit, ChildKey emittedKey)
+        //
+        // reusedByOwner is whether the fiber that emitted the leaf rendered nothing in this pass. An element node
+        // it hands back is then the very instance it committed, which ChildReconciler's indexed and keyed passes
+        // already treat as diff-free: patching it onto its own element would reconcile every descendant against
+        // itself. The element keeps the slot the old leaf held, so the placement after the walk still moves it.
+        private void CommitLeaf(VNode? node, GeneralCommitState commit, ChildKey emittedKey, bool reusedByOwner)
         {
             // A walk a catch on the aborting path stopped commits no further leaf: a leaf matched by slot would
             // patch whatever the fallback's reconcile left at that slot.
@@ -365,7 +370,13 @@ namespace Velvet
             {
                 var oldNode = oldNodes[oldIndex];
                 var existingDom = parent.ElementAt(oldPhysical);
-                if (ReconcileKeying.CanPatch(oldNode, node))
+                if (reusedByOwner && ReferenceEquals(oldNode, node) && node is ElementNode
+                    && !_ctx.ZLayerPlaceholders.ContainsKey(existingDom)
+                    && !_ctx.StackingFacts.ContainsKey(existingDom))
+                {
+                    commit.NewElements.Add((existingDom, true));
+                }
+                else if (ReconcileKeying.CanPatch(oldNode, node))
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
                     _patcher.PatchNode(actual, oldNode, node);
@@ -432,7 +443,11 @@ namespace Velvet
         private void Emit(InlineWalk walk, VNode? node, WalkPosition position, int nodeIndex)
         {
             var key = ReconcileKeying.ScopedKey(node, position.Scope, nodeIndex, position.SlotPath);
-            if (walk.Commit != null) CommitLeaf(node, walk.Commit, key);
+            if (walk.Commit != null)
+            {
+                CommitLeaf(node, walk.Commit, key,
+                    walk.ReusedOwner != null && ReferenceEquals(walk.ReusedOwner, _ctx.FiberStack.Current));
+            }
             else if (node != null)
             {
                 walk.Result!.Add(node);
@@ -682,6 +697,13 @@ namespace Velvet
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
+            // The fiber whose previous tree is being walked because it rendered nothing in this pass: a leaf it
+            // emits is the node it committed, so CommitLeaf does not patch it onto its own element. Null while
+            // the walk is inside a fiber that rendered.
+            public ComponentFiber? ReusedOwner;
+            // Above zero inside a Suspense or an AnimatePresence, which keep a record of their own committed
+            // leaves; a leaf there is patched as it was before ReusedOwner existed.
+            public int ReuseSuspended;
             // Expansion-order position of the next new-side Provider, the fallback pairing for a Provider
             // whose structural position has no counterpart on the old side. Monotonic for the whole walk:
             // nothing rewinds it, including a Suspense rollback that discards a primary subtree it has
@@ -732,6 +754,8 @@ namespace Velvet
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
+                ReusedOwner = null;
+                ReuseSuspended = 0;
                 NewProviderOrdinal = 0;
                 OffscreenPrimaries.Clear();
                 HiddenPrimaryElements.Clear();
@@ -961,14 +985,30 @@ namespace Velvet
                         ExpandMemoInline(walk, memo, position, nodeIndex);
                         break;
                     case SuspenseNode suspense:
-                        ExpandSuspenseInline(walk, suspense, position, nodeIndex);
+                        walk.ReuseSuspended++;
+                        try
+                        {
+                            ExpandSuspenseInline(walk, suspense, position, nodeIndex);
+                        }
+                        finally
+                        {
+                            walk.ReuseSuspended--;
+                        }
                         break;
                     case AnimatePresenceNode presence:
                         // DOM-less: AnimatePresence emits no wrapper. Its keyed children expand directly
                         // into the parent's slot range (so the parent's flex / wrap / gap reach them), with
                         // enter / exit / stagger played on each keyed child's anchor element. Old/new sides
                         // are reproduced from the per-boundary presence state, mirroring ExpandSuspenseInline.
-                        ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
+                        walk.ReuseSuspended++;
+                        try
+                        {
+                            ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
+                        }
+                        finally
+                        {
+                            walk.ReuseSuspended--;
+                        }
                         break;
                     case BaseElementNode:
                         // Regular element: CreateElement / PatchNode reconciles its children via the
@@ -1070,9 +1110,10 @@ namespace Velvet
                         "Both siblings render; give each sibling a unique key.");
                 }
                 ComponentFiber fiber;
+                var reusedAsIs = false;
                 try
                 {
-                    fiber = _ctx.ComponentRegistry.GetOrCreateInline(
+                    (fiber, reusedAsIs) = _ctx.ComponentRegistry.GetOrCreateInline(
                         component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 }
                 catch (BoundaryCaughtSignal)
@@ -1102,7 +1143,21 @@ namespace Velvet
                 fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
                 if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
-                else ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                else
+                {
+                    var enclosingReusedOwner = walk.ReusedOwner;
+                    walk.ReusedOwner = reusedAsIs && walk.ReuseSuspended == 0 && !HoldsDirtyFiberBelow(fiber)
+                        ? fiber
+                        : null;
+                    try
+                    {
+                        ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                    }
+                    finally
+                    {
+                        walk.ReusedOwner = enclosingReusedOwner;
+                    }
+                }
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
@@ -1123,6 +1178,29 @@ namespace Velvet
                     walk.OldFibers.Add(fiber);
                 }
             }
+        }
+
+        // A dirty fiber below root is rendered by the patch of root's output (ComponentRegistry.ReconcileExistingFiber),
+        // so that patch is kept while one exists. Walks the fiber links without a stack.
+        private static bool HoldsDirtyFiberBelow(ComponentFiber root)
+        {
+            var node = root.Child;
+            while (node != null)
+            {
+                if (node.IsDirty) return true;
+                if (node.Child != null)
+                {
+                    node = node.Child;
+                    continue;
+                }
+                while (node.Sibling == null)
+                {
+                    node = node.Parent;
+                    if (node == null || ReferenceEquals(node, root)) return false;
+                }
+                node = node.Sibling;
+            }
+            return false;
         }
 
         // A render error below the boundary is caught here, as ExpandSuspenseInline catches a suspend, so the

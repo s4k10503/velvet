@@ -880,8 +880,13 @@ namespace Velvet
         // Every pass on the walk that suspended on this fiber's read is retried, not only the outermost: an inner
         // one the outer retry would bail on, memoized with equal props, would otherwise never render what it
         // suspended on. The outer retry subsumes the inner ones it reaches, since they are then dirty.
+        // The reading fiber is asked last, when any pass was retried: the abandoned pass never committed it, and
+        // a retry bailing on a memoized ancestor must still find it dirty (GeneralPathReconciler.HoldsDirtyFiberBelow)
+        // to reach it.
         private static void RetrySuspendedPasses(ComponentFiber fiber)
         {
+            var retried = false;
+            var retriedInTransition = false;
             for (var current = fiber; current != null; current = current.Parent)
             {
                 if (!ReferenceEquals(current.SuspendedOn, fiber))
@@ -889,10 +894,15 @@ namespace Velvet
                     continue;
                 }
                 current.SuspendedOn = null;
+                retried = true;
+                retriedInTransition |= current.SuspendedInTransition;
                 if (current.SuspendedInTransition) FiberWorkLoop.RequestTransitionRerender(current);
                 else FiberWorkLoop.RequestRenderFromHook(current);
                 current.SuspendedInTransition = false;
             }
+            if (!retried) return;
+            if (retriedInTransition) FiberWorkLoop.RequestTransitionRerender(fiber);
+            else FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
         private static bool HasErrorBoundaryBetween(ComponentFiber fiber, ComponentFiber boundary)
