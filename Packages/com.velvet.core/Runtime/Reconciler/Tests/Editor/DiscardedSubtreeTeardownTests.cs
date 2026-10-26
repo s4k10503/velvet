@@ -38,13 +38,13 @@ namespace Velvet.Tests
             VNodePoolTestAccess.ClearLabelPoolForTest();
         }
 
-        // Rows of plain containers holding a Label and a Button: nothing pools a row, so what it holds is
-        // discarded with it.
+        // Rows of plain containers holding a Label and a Button with a click handler, which is what gives the Button
+        // a click gate: nothing pools a row, so what it holds is discarded with it.
         private static VNode[] PlainContainerRows() => Enumerable.Range(0, Rows)
-            .Select(i => V.Div("flex flex-row", V.Label(text: "a" + i), V.Button(text: "b" + i)))
+            .Select(i => V.Div("flex flex-row", V.Label(text: "a" + i), V.Button(text: "b" + i, onClick: () => { })))
             .ToArray();
 
-        private static VNode[] ButtonRows() => Enumerable.Range(0, Rows).Select(i => V.Button(text: "b" + i)).ToArray();
+        private static VNode[] ButtonRows() => Enumerable.Range(0, Rows).Select(i => V.Button(text: "b" + i, onClick: () => { })).ToArray();
 
         private static VNode[] LabelRows() => Enumerable.Range(0, Rows).Select(i => V.Label(text: "a" + i)).ToArray();
 
@@ -182,15 +182,28 @@ namespace Velvet.Tests
             var slot = scope.Root.Q<VisualElement>("slot");
             var rowWithPortal = new VNode[]
             {
-                V.Div("flex flex-row", V.Div(name: "slot"), V.Portal(slot, children: new VNode?[] { V.Button(text: "held") })),
+                V.Div("flex flex-row", V.Div(name: "slot"), V.Portal(slot, children: new VNode?[] { V.Button(text: "held", onClick: () => { }) })),
             };
             scope.Reconciler.Reconcile(scope.Root, rowWithSlot, rowWithPortal);
+            var held = slot.Q<Button>();
+            var gatedWhileMounted = TrickleDownCallbacks(held) > 0;
 
             // Act
-            var returned = RecordsReturnedBy(() => Clear(scope, rowWithPortal), s_clickGateEvents);
+            Clear(scope, rowWithPortal);
 
-            // Assert
-            Assert.GreaterOrEqual(returned, 1);
+            // Assert — the count while mounted is read with it, so a Button that never carried a gate does not pass for one unwired.
+            Assert.That((gatedWhileMounted, TrickleDownCallbacks(held)), Is.EqualTo((true, 0)));
+        }
+
+        // The click gate registers its pointer-down, pointer-up and submit callbacks in the trickle-down phase.
+        private static int TrickleDownCallbacks(VisualElement element)
+        {
+            var registry = typeof(CallbackEventHandler)
+                .GetField("m_CallbackRegistry", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(element);
+            if (registry == null) return 0;
+            var list = registry.GetType().GetField("m_TrickleDownCallbacks", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(registry)!;
+            return (int)list.GetType().GetProperty("Count")!.GetValue(list)!;
         }
     }
 

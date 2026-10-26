@@ -303,7 +303,11 @@ namespace Velvet
             _ctx.EventManager.UnbindAll(element);
             // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
             // not survive into whatever mounts it next.
-            if (element is Button button) _ctx.EventManager.Forget(button, unwire: !_ctx.IsBelowDiscardedRoot(button));
+            if (element is Button button)
+            {
+                if (_ctx.IsBelowDiscardedRoot(button)) _ctx.EventManager.ForgetDiscarded(button);
+                else _ctx.EventManager.Forget(button);
+            }
             _ctx.ComponentRegistry.Remove(element);
             RelationalSourceSet.DropDeparted(_ctx, element);
             DetachManipulator(element, _ctx.GestureManipulators);

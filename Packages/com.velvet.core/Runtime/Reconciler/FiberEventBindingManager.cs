@@ -708,13 +708,16 @@ namespace Velvet
                 ? button.panel?.Pick(evt.position) ?? button
                 : evt.target as VisualElement;
 
-        // Called once a Button leaves the tree for good. The gate's own callbacks stay registered where unwire is
-        // false: the Button is then below a discarded teardown root (ReconcilerContext.IsBelowDiscardedRoot).
-        internal void Forget(Button button, bool unwire)
+        // Called once a Button leaves the tree for good.
+        internal void Forget(Button button)
         {
             if (!_clickGates.Remove(button, out var gate)) return;
-            if (unwire) gate.Unwire();
+            gate.Unwire();
         }
+
+        // As Forget, leaving the gate's own callbacks registered: the Button is below a discarded teardown root
+        // (ReconcilerContext.IsBelowDiscardedRoot), so they go with it.
+        internal void ForgetDiscarded(Button button) => _clickGates.Remove(button);
 
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of
         // the button's first ClickedEventBinding opens each click's event before any handler reads it.
