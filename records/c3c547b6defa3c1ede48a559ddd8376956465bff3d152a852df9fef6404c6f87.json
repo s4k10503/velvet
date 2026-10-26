@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AMemberReadOnlyWhenAFlagIsSet_When_TheObjectIsNullAndTheFlagIsNot_Then_TheLabelShowsTheOtherBranch",
  "file": "f7b1c1676a128d46c5a29b47096d66f2a2a423058157e26194de93cdba1256bf",
- "killers": [],
- "measured_by": "40209173736",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AMemberReadOnlyWhenAFlagIsSet_When_TheObjectIsNullAndTheFlagIsNot_Then_TheLabelShowsTheOtherBranch",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "bc079f0af0416d7d45feb059cfe1da5b0c7d23d51eab4aa0302d812ce1c71f5e",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40285259959",
  "mutant": {
   "after": ";",
   "before": "load.Add(Instruction.Create(OpCodes.Br, done));",
@@ -13,9 +22,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
- "verdict": "survived"
+ "tests": "1e55c21ffd2e81d29de921435e0f5f2478deb2ce1591378901da6fbe0629a84f",
+ "verdict": "killed"
 }

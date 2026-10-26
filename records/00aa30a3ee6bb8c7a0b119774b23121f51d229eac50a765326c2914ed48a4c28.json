@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed: Given_ALabelCallingAMethodOnALocalChosenByAConditionalReference_When_Compiled_Then_TheBodyIsWoven, Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+ "file": "41d9be597ebc61c89112511d38ba3f23d4c15a95c77a1218a41896e5216d0ae9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_ALabelCallingAMethodOnALocalChosenByAConditionalReference_When_Compiled_Then_TheBodyIsWoven",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "bc079f0af0416d7d45feb059cfe1da5b0c7d23d51eab4aa0302d812ce1c71f5e",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40285259959",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 37,
+  "line": 43,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1e55c21ffd2e81d29de921435e0f5f2478deb2ce1591378901da6fbe0629a84f",
+ "verdict": "killed"
+}

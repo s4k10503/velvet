@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ABodyWhoseBranchJumpsStraightToTheReturn_When_Woven_Then_NoBranchTargetsTheReturn",
  "file": "1edba7c98995c0aef02ab3ddda4fdae6e75864ed050fb3281955412e6199cb53",
- "killers": [],
- "measured_by": "40209173736",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_ABodyWhoseBranchJumpsStraightToTheReturn_When_Woven_Then_NoBranchTargetsTheReturn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "abb985c141200bea5fbd46d2dc51ff75e8195aca77ab9705a692af3d10527bb6",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "40285259959",
  "mutant": {
   "after": ";",
   "before": "RetargetBranches(body, returnInstr, preReturn[0]);",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
- "verdict": "survived"
+ "tests": "1e55c21ffd2e81d29de921435e0f5f2478deb2ce1591378901da6fbe0629a84f",
+ "verdict": "killed"
 }

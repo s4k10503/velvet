@@ -1,0 +1,55 @@
+{
+ "detail": "EditMode: 5 failed: Given_TheCoalescingLeftOperand_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun, Given_APropertyReadWithANonVirtualCall_When_Woven_Then_TheKeyReadsThePropertyWithAVirtualCall, Given_AStatementAtTheStartOfAHooklessBodyThatOnlyTheFirstRunUses_When_Woven_Then_TheStatementFollowsTheGateOfThatRun",
+ "file": "41d9be597ebc61c89112511d38ba3f23d4c15a95c77a1218a41896e5216d0ae9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_TheCoalescingLeftOperand_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_APropertyReadWithANonVirtualCall_When_Woven_Then_TheKeyReadsThePropertyWithAVirtualCall",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "abb985c141200bea5fbd46d2dc51ff75e8195aca77ab9705a692af3d10527bb6",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_AStatementAtTheStartOfAHooklessBodyThatOnlyTheFirstRunUses_When_Woven_Then_TheStatementFollowsTheGateOfThatRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "abb985c141200bea5fbd46d2dc51ff75e8195aca77ab9705a692af3d10527bb6",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_ALabelMountedByAPortal_When_CompilerWeaverRuns_Then_OnlyTheLabelBesideItIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "40285259959",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 51,
+  "line": 91,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "1e55c21ffd2e81d29de921435e0f5f2478deb2ce1591378901da6fbe0629a84f",
+ "verdict": "killed"
+}
