@@ -18,6 +18,7 @@ namespace Velvet.CodeGen
                 if (!CompilerWeaver.MountsIntoHost((MethodReference)instruction.Operand)) continue;
                 var first = OperandStart(i);
                 _hostCalls.Add((first, i));
+                // MUTANT_SURVIVES(equivalent, boundary): the instruction at `i` is the call, which is not an `ldloc`.
                 for (var read = first; read < i; read++)
                 {
                     if (_flow.Instructions[read].OpCode.Code == Code.Ldloc) _hostFed.Add(((VariableDefinition)_flow.Instructions[read].Operand).Index);
