@@ -15,8 +15,9 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>Below the root of a removal that nothing pools afterwards, the Button click gate and the text-item
     /// manipulators leave their callbacks registered: the elements they sit on go with the subtree.</item>
-    /// <item>A removal that pools its root, or that tears out a Portal range lying inside the subtree, unregisters
-    /// as before, since those elements are rented again.</item>
+    /// <item>A removal that pools its root, or that tears out a Portal range lying inside the subtree, still
+    /// unregisters what the next rent could not use again. A pooled Button's click gate is not one of them: it stays
+    /// registered, scrubbed, for whoever rents the Button next.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -104,9 +105,8 @@ namespace Velvet.Tests
             Assert.AreEqual(0, returned);
         }
 
-        // GREEN_ON_BASE(characterization): the base unregisters every callback, so a pooled Button root returns at least one click-gate record there as well.
         [Test]
-        public void Given_PooledButtonsAsRows_When_TheyAreCleared_Then_EachUnregistersItsClickGate()
+        public void Given_PooledButtonsAsRows_When_TheyAreCleared_Then_NoClickGateCallbackIsUnregistered()
         {
             // Arrange
             var rows = ButtonRows();
@@ -116,7 +116,60 @@ namespace Velvet.Tests
             var returned = RecordsReturnedBy(() => Clear(scope, rows), s_clickGateEvents);
 
             // Assert
-            Assert.GreaterOrEqual(returned, Rows);
+            Assert.AreEqual(0, returned);
+        }
+
+        // GREEN_ON_BASE(characterization): the base unregisters the gate and registers it again on the rent; this holds the adopting side to one set of callbacks per Button.
+        [Test]
+        public void Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks()
+        {
+            // Arrange
+            var rows = ButtonRows();
+            using var scope = Mounted(rows);
+            var first = scope.Root.Query<Button>().ToList();
+            Clear(scope, rows);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), rows);
+
+            // Assert — the same instances come back, so a gate registered afresh would stand beside the one they kept.
+            var second = scope.Root.Query<Button>().ToList();
+            Assert.That(
+                (second.Count(button => first.Contains(button)), second.Sum(TrickleDownCallbacks)),
+                Is.EqualTo((Rows, 3 * Rows)));
+        }
+
+        [Test]
+        public void Given_APooledButtonWithAPressRecorded_When_ItIsCleared_Then_ItsGateStaysRegisteredWithNoPressOrigin()
+        {
+            // Arrange
+            var rows = ButtonRows().Take(1).ToArray();
+            using var scope = Mounted(rows);
+            var button = scope.Root.Q<Button>();
+            var tracked = (IDictionary)typeof(FiberEventBindingManager)
+                .GetField("_clickGates", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(ReconcilerContextProbe.Of(scope).EventManager)!;
+            var gate = tracked[button]!;
+            ((System.Collections.Generic.ISet<int>)gate.GetType().GetField("OffChainDowns")!.GetValue(gate)!).Add(7);
+            gate.GetType().GetField("Suppress")!.SetValue(gate, true);
+
+            // Act
+            Clear(scope, rows);
+
+            // Assert
+            Assert.That(WiredGateState(button, gate), Is.EqualTo("wired,0,False"));
+        }
+
+        // The gate the manager keeps registered on button across a pool return, rendered as its press count and verdict.
+        private static string WiredGateState(Button button, object gate)
+        {
+            var table = typeof(FiberEventBindingManager)
+                .GetField("s_wiredGates", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            var args = new object?[] { button, null };
+            var wired = (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!;
+            if (!wired || !ReferenceEquals(args[1], gate)) return "not wired";
+            var downs = (System.Collections.Generic.ISet<int>)gate.GetType().GetField("OffChainDowns")!.GetValue(gate)!;
+            return $"wired,{downs.Count},{gate.GetType().GetField("Suppress")!.GetValue(gate)}";
         }
 
         // GREEN_ON_BASE(characterization): the base unregisters every callback, so a pooled Label root returns at least one text-item record there as well.
@@ -170,9 +223,8 @@ namespace Velvet.Tests
             Assert.That((trackedWhileMounted, manipulators.Count), Is.EqualTo((true, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): the base unregisters every callback, so the Button a Portal holds is unwired there as well.
         [Test]
-        public void Given_APortalWhoseTargetIsInsideTheRemovedRow_When_TheRowIsCleared_Then_TheButtonItHeldIsUnwired()
+        public void Given_APortalWhoseTargetIsInsideTheRemovedRow_When_TheRowIsCleared_Then_TheButtonItHeldKeepsOnlyItsGate()
         {
             // Arrange — the target is the row's first child and the Portal's placeholder its second, so the
             // target's descendants are visited before the placeholder tears the Button out of it.
@@ -191,8 +243,8 @@ namespace Velvet.Tests
             // Act
             Clear(scope, rowWithPortal);
 
-            // Assert — the count while mounted is read with it, so a Button that never carried a gate does not pass for one unwired.
-            Assert.That((gatedWhileMounted, TrickleDownCallbacks(held)), Is.EqualTo((true, 0)));
+            // Assert — the count while mounted is read with it, so a Button that never carried a gate does not pass for one parked.
+            Assert.That((gatedWhileMounted, TrickleDownCallbacks(held)), Is.EqualTo((true, 3)));
         }
 
         // The click gate registers its pointer-down, pointer-up and submit callbacks in the trickle-down phase.

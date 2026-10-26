@@ -3490,6 +3490,9 @@ namespace Velvet
         internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
             => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames), _ctx.FontScope);
 
+        internal void ApplyTextEffectsOnCreate(VisualElement element, string[] classNames)
+            => StyleTextEffectResolver.ApplyOnCreate(_ctx, element, ResolveGateClasses(element, classNames));
+
         // Same rule as ApplyFontLayer, over the same guard's other half.
         internal void ApplyTextEffects(VisualElement element, string[] classNames)
             => StyleTextEffectResolver.Apply(_ctx, element, ResolveGateClasses(element, classNames));

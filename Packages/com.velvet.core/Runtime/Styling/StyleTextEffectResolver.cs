@@ -116,6 +116,18 @@ namespace Velvet
             ApplyToElement(ctx, element);
         }
 
+        // The create-time entry to Apply. A freshly created element is detached and its side tables are empty, so
+        // with no effect class of its own there is nothing for Apply to resolve, write or remove, and its
+        // descendants are not walked either: an ancestor's effect reaches the element from the ancestor's own pass.
+        public static void ApplyOnCreate(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            if (element.hierarchy.parent == null && StyleTextEffectClass.Parse(classNames).IsEmpty)
+            {
+                return;
+            }
+            Apply(ctx, element, classNames);
+        }
+
         // Syncs an element's OWN effect from its class list and applies the (cascade-resolved) effect to its own
         // text and — when it carries an effect (now OR before this call) — its descendant text. Called from the
         // post-children hook on create and patch, so it runs after the element's text, its classes, and its

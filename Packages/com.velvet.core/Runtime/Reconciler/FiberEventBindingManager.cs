@@ -33,7 +33,19 @@ namespace Velvet
             // Whether the click now being raised is one the React tree would not carry to the Button.
             public bool Suppress;
             public Action Unwire = null!;
+
+            // The state a press left behind, which must not reach the next element the Button is rented as.
+            public void Scrub()
+            {
+                OffChainDowns.Clear();
+                Suppress = false;
+            }
         }
+
+        // The gates whose callbacks are registered, by Button. Kept apart from _clickGates because a pooled Button
+        // leaves the tree with its gate still registered (Park), and whichever manager rents it next adopts that
+        // gate rather than registering six more callbacks: unregistering is what a pooled row's teardown paid for.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, ClickGate> s_wiredGates = new();
 
         // The click every ClickedEventBinding on a button hands its handler, replaced at the start of each
         // click by the callback BindClickedEvent puts ahead of them on Button.clicked.
@@ -502,7 +514,11 @@ namespace Velvet
             _unbindActions.Clear();
             _boundDelegates.Clear();
             _bindingsByElement.Clear();
-            foreach (var gate in _clickGates.Values) gate.Unwire();
+            foreach (var pair in _clickGates)
+            {
+                s_wiredGates.Remove(pair.Key);
+                pair.Value.Unwire();
+            }
             _clickGates.Clear();
         }
 
@@ -664,6 +680,13 @@ namespace Velvet
         {
             if (_clickGates.TryGetValue(button, out var gate)) return gate;
 
+            if (s_wiredGates.TryGetValue(button, out gate))
+            {
+                gate.Scrub();
+                _clickGates[button] = gate;
+                return gate;
+            }
+
             gate = new ClickGate();
             EventCallback<PointerDownEvent> pressed = evt =>
             {
@@ -698,6 +721,7 @@ namespace Velvet
                 button.UnregisterCallback(submitted);
             };
             _clickGates[button] = gate;
+            s_wiredGates.Add(button, gate);
             return gate;
         }
 
@@ -712,12 +736,25 @@ namespace Velvet
         internal void Forget(Button button)
         {
             if (!_clickGates.Remove(button, out var gate)) return;
+            s_wiredGates.Remove(button);
             gate.Unwire();
+        }
+
+        // As Forget, for a Button the pool keeps: the gate stays registered and is scrubbed, so the next rent
+        // adopts it (GateClicks) instead of registering its callbacks again.
+        internal void Park(Button button)
+        {
+            if (!_clickGates.Remove(button, out var gate)) return;
+            gate.Scrub();
         }
 
         // As Forget, leaving the gate's own callbacks registered: the Button is below a discarded teardown root
         // (ReconcilerContext.IsBelowDiscardedRoot), so they go with it.
-        internal void ForgetDiscarded(Button button) => _clickGates.Remove(button);
+        internal void ForgetDiscarded(Button button)
+        {
+            _clickGates.Remove(button);
+            s_wiredGates.Remove(button);
+        }
 
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of
         // the button's first ClickedEventBinding opens each click's event before any handler reads it.
