@@ -10,6 +10,11 @@ namespace Velvet
     {
         public static readonly FiberSuspendSignal Instance = new();
 
+        // The signal the drain of a pass's Portals raises when a child of one suspended. It leaves a pass whose walk
+        // has already committed its rows, where Instance leaves one whose walk is still in flight, and the catch
+        // that abandons the pass reads which of the two it is by identity.
+        public static readonly FiberSuspendSignal AfterTheWalk = new();
+
         private FiberSuspendSignal() { }
     }
 }

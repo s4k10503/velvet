@@ -480,6 +480,8 @@ namespace Velvet
 #endif
             VNode?[]? prevPendingOldTree = null;
             VNode?[]? oldTree = null;
+            VNode?[]? newTree = null;
+            var reconciling = false;
             // Committed baseline of the passive-effect list: entries staged by EARLIER renders and
             // not yet flushed (the flush is deferred to the frame boundary) must survive an
             // exception thrown by THIS render — see the catch block.
@@ -521,7 +523,7 @@ namespace Velvet
                 SettleHooks(fiber, committedPendingInsertionCount, committedPendingEffectCount, deferReconcile,
                     ownedJournal != null);
 
-                var newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
+                newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
                 if (fiber.Reconciler?.HasPendingWork == true)
@@ -544,6 +546,7 @@ namespace Velvet
                     fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
                 }
 
+                reconciling = !deferReconcile;
                 ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
@@ -615,6 +618,7 @@ namespace Velvet
                 {
                     // Whichever part of the pass the signal came out of, the walk, the drain of the Portals it mounted
                     // or the force-drain of parked work, the pass is abandoned.
+                    if (reconciling) RetainWalkedTree(fiber, ex, newTree!, oldTree!);
                     ownedJournal?.Abandon();
                     if (fiber.Parent != null)
                     {
@@ -663,6 +667,25 @@ namespace Velvet
             }
 #endif
             return retainedOutput;
+        }
+
+        // A suspend from the drain of the Portals this render mounted comes after its walk has placed, patched and
+        // removed rows, so the container already holds this render's output. The retry diffs from it, as a pass that
+        // completes would, with the Portal that suspended recorded as holding nothing
+        // (PortalSlotInfo.ChildrenPending). The cached output of this render is dropped: CommitSettledValues has
+        // promoted it, and a retry that took it would diff this tree against itself, which the indexed diff skips.
+        private static void RetainWalkedTree(ComponentFiber fiber, Exception signal, VNode?[] newTree, VNode?[] oldTree)
+        {
+            var reconciler = fiber.Reconciler;
+            if (!ReferenceEquals(signal, FiberSuspendSignal.AfterTheWalk) || reconciler == null
+                || reconciler.HasPendingWork || reconciler.LastTopLevelWasAborted || fiber.FallbackReplacedPreviousTree)
+            {
+                return;
+            }
+            fiber.PreviousTree = newTree;
+            fiber.InvalidateMemoCache();
+            FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, null, deferReconcile: false);
+            fiber.RenderCount++;
         }
 
         // The journal of the pass, when this render is the outermost on its context and so owns it.

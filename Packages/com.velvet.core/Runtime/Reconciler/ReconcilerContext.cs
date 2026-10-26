@@ -26,10 +26,12 @@ namespace Velvet
     // a sibling's render put ahead of the range does not leave SlotStart pointing at somebody else's row.
     // SlotStart and SlotLength remain what a range with no rows to read — an empty one, or one whose rows
     // have left the target — is addressed by, which the shifts in PortalSlotTracker keep.
+    // ChildrenPending is set where the drain of a mount suspended: the Portal's node stands in the tree its
+    // owner committed with children that nothing mounted, so the patch that follows diffs them from nothing.
     internal readonly record struct PortalSlotInfo(
         VisualElement? Target, int SlotStart, int SlotLength,
         string? TargetId = null, ComponentFiber? DeclaringFiber = null,
-        VisualElement? First = null, VisualElement? Last = null);
+        VisualElement? First = null, VisualElement? Last = null, bool ChildrenPending = false);
 
     // ReconcilerContext.PortalState: the ranges as Portals recorded them, read back as their rows place them.
     // Every read answers from the rows, the way a range with no rows to read answers from what was recorded;

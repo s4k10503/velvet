@@ -1402,7 +1402,9 @@ namespace Velvet
             // The rows this patch is about to add, remove and replace are not read as the range until it records
             // them again, since a row put ahead of the first one would otherwise move the start under the patch.
             _ctx.PortalState.Unanchor(placeholder);
-            var oldChildren = oldChildrenRaw ?? Array.Empty<VNode>();
+            // Children the drain of the mount suspended on are in the node the owner committed and nowhere on the
+            // target, so there is nothing to diff them from.
+            var oldChildren = prevState.ChildrenPending ? Array.Empty<VNode>() : oldChildrenRaw ?? Array.Empty<VNode>();
             var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
             // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
             // stored in. Measuring this physically let an invisible child arriving on the target — a portal
@@ -1422,12 +1424,14 @@ namespace Velvet
             // did not register them by. No push here: this runs from the reconcile of the tree the
             // declaring component returned, so its fiber is already current.
             var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
+            var mounted = false;
             try
             {
                 PointerEventsScope.NoteReconciledInto(_ctx, target);
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
                 // The target's other children count as siblings too, other portals' among them.
                 ApplyStructuralVariants(target);
+                mounted = true;
             }
             finally
             {
@@ -1436,7 +1440,8 @@ namespace Velvet
                 // In the finally: a reconcile that unwinds — a boundary above catching a render below, or a
                 // suspend — leaves on the target what it inserted before the throw, and the range recorded is
                 // what the Portal's cleanup removes.
-                RecordPatchedPortalRange(placeholder, target, prevState, beforeTailCount, tenancy, shiftedBefore);
+                RecordPatchedPortalRange(placeholder, target, mounted ? prevState with { ChildrenPending = false } : prevState,
+                    beforeTailCount, tenancy, shiftedBefore);
             }
         }
 
