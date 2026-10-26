@@ -209,7 +209,7 @@ namespace Velvet
                 // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork
                 // reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
-                reusedAsIs = !(propsChanged || existingFiber.IsDirty || refChanged);
+                reusedAsIs = !(propsChanged || existingFiber.IsDirty || existingFiber.RenderOwed || refChanged);
                 if (!reusedAsIs)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the

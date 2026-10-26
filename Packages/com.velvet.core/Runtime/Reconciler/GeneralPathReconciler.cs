@@ -1180,14 +1180,14 @@ namespace Velvet
             }
         }
 
-        // A dirty fiber below root is rendered by the patch of root's output (ComponentRegistry.ReconcileExistingFiber),
+        // A dirty fiber below root, or one owed a render, is rendered by the patch of root's output (ComponentRegistry.ReconcileExistingFiber),
         // so that patch is kept while one exists. Walks the fiber links without a stack.
         private static bool HoldsDirtyFiberBelow(ComponentFiber root)
         {
             var node = root.Child;
             while (node != null)
             {
-                if (node.IsDirty) return true;
+                if (node.IsDirty || node.RenderOwed) return true;
                 if (node.Child != null)
                 {
                     node = node.Child;

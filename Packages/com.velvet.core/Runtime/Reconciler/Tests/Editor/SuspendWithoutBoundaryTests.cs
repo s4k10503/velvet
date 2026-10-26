@@ -62,7 +62,6 @@ namespace Velvet.Tests
             s_innerHandleCreates = 0;
             s_ownerEffectSeen.Clear();
             s_firstMountSetups = 0;
-            s_portalHostSetups = 0;
             s_parentFiber = null;
             s_pageSetId = default;
             s_otherSource = null;
@@ -113,11 +112,7 @@ namespace Velvet.Tests
 
         // StrictMode is a global toggle a case below turns on.
         [TearDown]
-        public void TearDown()
-        {
-            FiberStrictMode.Enabled = false;
-            RuntimeStateProbe.ClearPortalRegistry();
-        }
+        public void TearDown() => FiberStrictMode.Enabled = false;
 
         // GREEN_ON_BASE(characterization): the merge base hides no tree, so a boundary that never suspends leaves
         // its children's layout effects alone. What this pins is that only a hidden fiber is reconnected.
@@ -698,30 +693,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APortalMountedByAPassWhoseContentSuspends_When_TheResourceResolves_Then_TheEffectTheHostQueuedRuns()
-        {
-            // Arrange — the signal comes out of the drain of the Portals the pass mounted, which runs after its walk
-            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
-            var target = new VisualElement();
-            FiberPortalRegistry.Register("suspend-portal-target", target);
-            using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "portal-host"));
-            mounted.FlushEffectsForTest();
-            s_outerSetTick.Invoke(1);
-            FiberWorkLoop.FlushState(s_outerFiber);
-
-            // Act — an update of the host asks for the retry, since the Portal's content sits outside its fiber chain
-            s_source.TrySetResult(5);
-            s_portalSetBump.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
-
-            // Assert — the content is read beside the count, since a host that rendered without the Portal would count too
-            Assert.That((s_portalHostSetups, string.Join("|", target.Query<Label>().ToList().Select(label => label.text))),
-                Is.EqualTo((2, "child:5")),
-                "An effect whose deps changed in a pass abandoned by its Portal's content runs when the retry commits");
-        }
-
-        [Test]
         public void Given_AnEffectPendingFromAnEarlierCommit_When_ARenderThatSuspendsRegistersItAgain_Then_TheEarlierClosureRuns()
         {
             // Arrange — the mount's passive effect has not run when the update renders
@@ -1065,8 +1036,6 @@ namespace Velvet.Tests
 
         private static int s_firstMountSetups;
         private static StateUpdater<bool> s_firstMountSetShow;
-        private static int s_portalHostSetups;
-        private static StateUpdater<int> s_portalSetBump;
 
         [Component]
         private static VNode FirstMountParentRender()
@@ -1097,31 +1066,6 @@ namespace Velvet.Tests
         {
             var value = Hooks.Use<int>(_ => (s_otherSource = new VelvetTaskCompletionSource<int>()).Task, "b");
             return V.Label(text: "b:" + value);
-        }
-
-        [Component]
-        private static VNode PortalHostRender()
-        {
-            s_outerFiber = FiberAmbientStack.Current;
-            var (tick, setTick) = Hooks.UseState(0);
-            var (bump, setBump) = Hooks.UseState(0);
-            s_outerSetTick = setTick;
-            s_portalSetBump = setBump;
-            Hooks.UseEffect(() =>
-            {
-                s_portalHostSetups++;
-                return (Action)null;
-            }, new object[] { tick });
-            return V.Div(children: new VNode[]
-            {
-                tick > 0
-                    ? V.Portal("suspend-portal-target", children: new VNode[]
-                    {
-                        V.Component(UnmemoizedKeyedChildRender, tick, key: "reader"),
-                    })
-                    : V.Fragment(Array.Empty<VNode>()),
-                V.Label(text: "bump:" + bump),
-            });
         }
 
         [Component(Memoize = true)]

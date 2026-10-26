@@ -101,10 +101,10 @@ namespace Velvet
                 var render = _hooks[i];
                 if (render.Fiber.IsDisposed || !render.Fiber.IsMounted) continue;
                 // The fiber the pass started from cut its own effects in the catch of its render, and the retry its
-                // suspend asks for renders it. Marked dirty, the next flush to visit it would render it ahead of that
-                // retry.
+                // suspend asks for renders it, so it is not owed a render here.
                 if (ReferenceEquals(render.Fiber, _owner)) continue;
-                FiberHookCommit.DiscardSuspenseRender(render);
+                FiberHookCommit.DiscardRenderedWork(render);
+                render.Fiber.RenderOwed = true;
                 // The stranded layout commit that follows an abandoned pass runs a handle factory the render staged,
                 // and the render that retries stages its own.
                 DropStagedHandles(render.Fiber);
