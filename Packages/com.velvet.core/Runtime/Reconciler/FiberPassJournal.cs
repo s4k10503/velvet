@@ -49,10 +49,6 @@ namespace Velvet
 
         internal bool IsOpen => _owner != null;
 
-        // Whether reconciler is the one the owner's render runs its own rows through. A pass another fiber starts
-        // while the journal is open is not the owner's to abandon.
-        internal bool IsOwnedBy(Reconciler reconciler) => _owner != null && ReferenceEquals(_owner.Reconciler, reconciler);
-
         // Returns whether this call opened the journal, which makes the caller its owner.
         internal bool TryOpen(ComponentFiber owner)
         {
@@ -109,9 +105,19 @@ namespace Velvet
                 // retry.
                 if (ReferenceEquals(render.Fiber, _owner)) continue;
                 FiberHookCommit.DiscardSuspenseRender(render);
+                // The stranded layout commit that follows an abandoned pass runs a handle factory the render staged,
+                // and the render that retries stages its own.
+                DropStagedHandles(render.Fiber);
             }
             _hooks.Clear();
             _subsumed.Clear();
+        }
+
+        private static void DropStagedHandles(ComponentFiber fiber)
+        {
+            var slots = fiber.ImperativeHandleSlots;
+            if (slots == null) return;
+            for (var i = 0; i < slots.Count; i++) slots[i].NextFactory = null;
         }
     }
 }

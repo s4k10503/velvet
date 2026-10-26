@@ -202,12 +202,6 @@ namespace Velvet
                 // wrapper-less component re-renders into) gets no post-children structural pass of its own.
                 _patcher.ApplyStructuralVariants(parent);
             }
-            // A suspend that reaches the top of the pass was caught by no Suspense on its walk.
-            catch (FiberSuspendSignal) when (isTopLevel && _ctx.PassJournal.IsOwnedBy(this))
-            {
-                _ctx.PassJournal.Abandon();
-                throw;
-            }
             finally
             {
                 _ctx.SharedReconcileDepth--;

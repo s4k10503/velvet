@@ -18,9 +18,9 @@ namespace Velvet.Tests
     /// on that read, a memoized one included; a pass that suspended on another component's read is left alone.
     /// The component whose read suspended renders once in that retry, memoized components that bail between it
     /// and the retried pass included.
-    /// The components that rendered ahead of the suspend in the abandoned pass commit no effect of it: the retry
-    /// runs the effects they had queued, and a component of theirs that renders alone before the retry renders
-    /// with the props it last committed.
+    /// The components that rendered ahead of the suspend in the abandoned pass, those it mounted among them, run
+    /// no effect and create no handle for that render: the retry does, and a component of theirs that renders
+    /// alone before the retry renders with the props it last committed.
     /// The resolve commits nothing ahead of that retry, and a resolve no suspended pass waits on renders
     /// nothing: the pass retried later reads the value without starting the read again. A pass that suspended
     /// commits none of the props it passed, so a later pass renders the component that suspended again, one the
@@ -58,6 +58,11 @@ namespace Velvet.Tests
             s_innerShowsLabel = false;
             s_ownerPassiveSetups = 0;
             s_innerPassiveSetups = 0;
+            s_innerHandle.Set(null);
+            s_innerHandleCreates = 0;
+            s_ownerEffectSeen.Clear();
+            s_firstMountSetups = 0;
+            s_portalHostSetups = 0;
             s_parentFiber = null;
             s_pageSetId = default;
             s_otherSource = null;
@@ -108,7 +113,11 @@ namespace Velvet.Tests
 
         // StrictMode is a global toggle a case below turns on.
         [TearDown]
-        public void TearDown() => FiberStrictMode.Enabled = false;
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
+            RuntimeStateProbe.ClearPortalRegistry();
+        }
 
         // GREEN_ON_BASE(characterization): the merge base hides no tree, so a boundary that never suspends leaves
         // its children's layout effects alone. What this pins is that only a hidden fiber is reconnected.
@@ -645,6 +654,94 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMemoizedComponentWhoseHandleDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheHandleIsCreatedOnlyWithTheRetry()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(OuterOwnStateRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            var whileSuspended = s_innerHandleCreates;
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((whileSuspended, s_innerHandleCreates), Is.EqualTo((1, 2)),
+                "React creates the handle of a render it commits, and none for one it gave up");
+        }
+
+        [Test]
+        public void Given_AComponentWhoseFirstRenderSuspendedAndASiblingThatSuspendsInTheRetry_When_TheSecondResourceResolves_Then_ItsEffectRunsOnlyWithTheCommit()
+        {
+            // Arrange — A suspended on its first render, so its render count is still zero when the retry renders it
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(FirstMountParentRender, key: "first-mount"));
+            s_firstMountSetShow.Invoke(true);
+            mounted.FlushStateForTest();
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            var whileSuspended = s_firstMountSetups;
+
+            // Act
+            s_otherSource.TrySetResult(7);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((whileSuspended, s_firstMountSetups, Texts()), Is.EqualTo((0, 1, "a:5|b:7")),
+                "The retry that suspends again commits none of what A rendered, a first render included");
+        }
+
+        [Test]
+        public void Given_APortalMountedByAPassWhoseContentSuspends_When_TheResourceResolves_Then_TheEffectTheHostQueuedRuns()
+        {
+            // Arrange — the signal comes out of the drain of the Portals the pass mounted, which runs after its walk
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("suspend-portal-target", target);
+            using var mounted = V.Mount(_root, V.Component(PortalHostRender, key: "portal-host"));
+            mounted.FlushEffectsForTest();
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Act — an update of the host asks for the retry, since the Portal's content sits outside its fiber chain
+            s_source.TrySetResult(5);
+            s_portalSetBump.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the content is read beside the count, since a host that rendered without the Portal would count too
+            Assert.That((s_portalHostSetups, string.Join("|", target.Query<Label>().ToList().Select(label => label.text))),
+                Is.EqualTo((2, "child:5")),
+                "An effect whose deps changed in a pass abandoned by its Portal's content runs when the retry commits");
+        }
+
+        [Test]
+        public void Given_AnEffectPendingFromAnEarlierCommit_When_ARenderThatSuspendsRegistersItAgain_Then_TheEarlierClosureRuns()
+        {
+            // Arrange — the mount's passive effect has not run when the update renders
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(EffectOwnerRender, key: "effect-owner"));
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join("|", s_ownerEffectSeen), Is.EqualTo("0|1"),
+                "The pending effect runs the closure of the render that committed it, and the retry runs its own");
+        }
+
+        [Test]
         public void Given_AnUpdateThatSuspendedItsOwnReaderWithNoBoundary_When_TheResourceResolves_Then_TheEffectTheUpdateQueuedRuns()
         {
             // Arrange — the component renders, and its effect deps change, before the reader below it suspends
@@ -918,6 +1015,8 @@ namespace Velvet.Tests
         // No props, so the outer pass bails on it unless an update of its own is owed. The reader below it suspends on
         // that state.
         private static int s_innerPassiveSetups;
+        private static readonly Ref<string> s_innerHandle = new();
+        private static int s_innerHandleCreates;
 
         [Component(Memoize = true)]
         private static VNode OwnStateInnerRender()
@@ -929,6 +1028,11 @@ namespace Velvet.Tests
                 s_innerPassiveSetups++;
                 return (Action)null;
             }, new object[] { own });
+            Hooks.UseImperativeHandle(s_innerHandle, () =>
+            {
+                s_innerHandleCreates++;
+                return "handle:" + own;
+            }, new object[] { own });
             return V.Fragment(new VNode[]
             {
                 V.Component(UnmemoizedKeyedChildRender, own, key: "child"),
@@ -937,6 +1041,7 @@ namespace Velvet.Tests
         }
 
         private static int s_ownerPassiveSetups;
+        private static readonly System.Collections.Generic.List<int> s_ownerEffectSeen = new();
 
         [Component]
         private static VNode EffectOwnerRender()
@@ -944,15 +1049,78 @@ namespace Velvet.Tests
             s_outerFiber = FiberAmbientStack.Current;
             var (own, setOwn) = Hooks.UseState(0);
             s_outerSetTick = setOwn;
+            var seen = own;
             Hooks.UseEffect(() =>
             {
                 s_ownerPassiveSetups++;
+                s_ownerEffectSeen.Add(seen);
                 return (Action)null;
             }, new object[] { own });
             return V.Div(children: new VNode[]
             {
                 V.Component(UnmemoizedKeyedChildRender, own, key: "child"),
                 V.Label(text: "owner:" + own),
+            });
+        }
+
+        private static int s_firstMountSetups;
+        private static StateUpdater<bool> s_firstMountSetShow;
+        private static int s_portalHostSetups;
+        private static StateUpdater<int> s_portalSetBump;
+
+        [Component]
+        private static VNode FirstMountParentRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_firstMountSetShow = setShown;
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Component(FirstMountAReadRender, key: "a") : null,
+                shown ? V.Component(FirstMountBReadRender, key: "b") : null,
+            });
+        }
+
+        [Component]
+        private static VNode FirstMountAReadRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_source = new VelvetTaskCompletionSource<int>()).Task, "a");
+            Hooks.UseEffect(() =>
+            {
+                s_firstMountSetups++;
+                return (Action)null;
+            }, Array.Empty<object>());
+            return V.Label(text: "a:" + value);
+        }
+
+        [Component]
+        private static VNode FirstMountBReadRender()
+        {
+            var value = Hooks.Use<int>(_ => (s_otherSource = new VelvetTaskCompletionSource<int>()).Task, "b");
+            return V.Label(text: "b:" + value);
+        }
+
+        [Component]
+        private static VNode PortalHostRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            var (bump, setBump) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            s_portalSetBump = setBump;
+            Hooks.UseEffect(() =>
+            {
+                s_portalHostSetups++;
+                return (Action)null;
+            }, new object[] { tick });
+            return V.Div(children: new VNode[]
+            {
+                tick > 0
+                    ? V.Portal("suspend-portal-target", children: new VNode[]
+                    {
+                        V.Component(UnmemoizedKeyedChildRender, tick, key: "reader"),
+                    })
+                    : V.Fragment(Array.Empty<VNode>()),
+                V.Label(text: "bump:" + bump),
             });
         }
 

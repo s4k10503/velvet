@@ -612,6 +612,9 @@ namespace Velvet
                 if (ex is BoundaryCaughtSignal) throw;
                 if (ex is FiberSuspendSignal)
                 {
+                    // Whichever part of the pass the signal came out of, the walk, the drain of the Portals it mounted
+                    // or the force-drain of parked work, the pass is abandoned.
+                    ownedJournal?.Abandon();
                     if (fiber.Parent != null)
                     {
                         // Delegate to the parent reconcile's SuspenseNode handling. The finally's PopFiber runs.
@@ -671,23 +674,23 @@ namespace Velvet
         // Commits the hook state a settled render staged, except where the render may be one nothing shows. Under a
         // Suspense primary that retains what it had committed that is a render the Suspense gives up, as React's
         // attempt at a primary that suspends again is; in a pass that a suspend nothing catches can abandon, it is
-        // every inline render and the render of the fiber the pass started from. The commit of their effect deps and
-        // state is held back until the Suspense or the pass decides (ReconcilerContext.ResolveSuspenseRenders,
-        // FiberPassJournal), so a render nothing commits queues no effect, leaves the deps the next render compares
-        // its effects against as they were, and leaves the updates it folded queued for the render that retries.
-        // A first render has no earlier commit to leave them at. A render that is neither inline nor the pass's own
-        // commits as it settles.
+        // every inline render, a first one included, and the render of the fiber the pass started from. The commit
+        // of their effect deps and state is held back until the Suspense or the pass decides
+        // (ReconcilerContext.ResolveSuspenseRenders, FiberPassJournal), so a render nothing commits queues no
+        // effect, leaves the deps the next render compares its effects against as they were, and leaves the updates
+        // it folded queued for the render that retries. A first render under a Suspense primary has no earlier
+        // commit for the Suspense to keep. A render that is neither inline nor the pass's own commits as it settles.
         private static void SettleHooks(
             ComponentFiber fiber, int insertionBefore, int passiveBefore, bool deferReconcile, bool ownsJournal)
         {
             var context = fiber.Reconciler?.Context;
-            if (context == null || fiber.RenderCount == 0)
+            if (context == null)
             {
                 FiberBeginWork.CommitSettledHookDeps(fiber);
                 return;
             }
             var render = new SuspenseRender(fiber, insertionBefore, passiveBefore);
-            if (context.IsInRetainingSuspensePrimary)
+            if (fiber.RenderCount > 0 && context.IsInRetainingSuspensePrimary)
             {
                 FiberBeginWork.CommitSettledValues(fiber);
                 context.RecordSuspenseRender(render);
