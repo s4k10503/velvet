@@ -1595,6 +1595,19 @@ namespace Velvet
         // the reason PendingZLayerRemovals waits.
         internal List<(VisualElement Real, VisualElement Poolable)> PendingZLayerDeadReals { get; } = new();
 
+        // The element FiberElementCleaner.RemoveElement is tearing down while nothing pools it afterwards: it and
+        // everything below it are left to the collector. Null for every other teardown.
+        internal VisualElement? DiscardedSubtreeRoot { get; set; }
+
+        // Whether element is below the root of a discarded teardown, as opposed to being that root: a callback
+        // registered on it, or on a parent inside the subtree, goes with the subtree, where the root's parent
+        // outlives the removal.
+        internal bool IsBelowDiscardedRoot(VisualElement element)
+        {
+            var root = DiscardedSubtreeRoot;
+            return root != null && !ReferenceEquals(element, root) && root.Contains(element);
+        }
+
         // Parents whose children a pass reconciled or whose stacking facts changed; drained by
         // FiberZLayerCoordinator.ResortLayers at the end of each top-level pass.
         public HashSet<VisualElement> PendingZLayerResorts { get; } = new();

@@ -24,9 +24,26 @@ namespace Velvet
 
             var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
-            CleanupElement(element);
+            CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
             RemoveCleaned(parent, element, index);
             ReturnOccupantToPool(element, poolable);
+        }
+
+        // Whether nothing outside the subtree keeps element or anything below it once its removal returns: the
+        // slot's poolable occupant is left to the collector, and no Portal range inside the subtree is torn out
+        // through CleanupPortal, which returns the children it holds to the pools after they were cleaned as
+        // descendants of this subtree.
+        private bool IsDiscardedAfterCleanup(VisualElement element, VisualElement poolable)
+            => PoolKindOf(poolable) == PoolKind.None && !HoldsAPortalTarget(element);
+
+        private bool HoldsAPortalTarget(VisualElement root)
+        {
+            foreach (var range in _ctx.PortalState.Stored.Values)
+            {
+                var target = range.Target;
+                if (target != null && root.Contains(target)) return true;
+            }
+            return false;
         }
 
         // Removes element by reference rather than at the index it was found at: its cleanup can take a child
@@ -122,6 +139,21 @@ namespace Velvet
         private static Type PoolingType(VisualElement element)
             => element is SkewPickButton ? typeof(Button) : element is SkewPickLabel ? typeof(Label) : element.GetType();
 
+        private enum PoolKind { None, TextField, Toggle, Slider, SliderInt, Button, Label }
+
+        // The pool ReturnToPool puts an element in, None for one it leaves to the collector.
+        private static PoolKind PoolKindOf(VisualElement element)
+        {
+            var type = PoolingType(element);
+            if (type == typeof(TextField)) return PoolKind.TextField;
+            if (type == typeof(Toggle)) return PoolKind.Toggle;
+            if (type == typeof(Slider)) return PoolKind.Slider;
+            if (type == typeof(SliderInt)) return PoolKind.SliderInt;
+            if (type == typeof(Button)) return PoolKind.Button;
+            if (type == typeof(Label)) return PoolKind.Label;
+            return PoolKind.None;
+        }
+
         // Returns the element to the VNodePool when the type supports pooling.
         // Called after the element has been detached from the DOM hierarchy and Velvet-managed
         // resources have been released. Dispatches on the EXACT runtime type, mirroring the
@@ -132,46 +164,51 @@ namespace Velvet
         private void ReturnToPool(VisualElement element)
         {
             FiberPropApplier.ForgetRecordedDefaults(element);
-            var type = PoolingType(element);
-            if (type == typeof(TextField))
+            switch (PoolKindOf(element))
             {
-                VNodePool.ReturnTextField((TextField)element);
-            }
-            else if (type == typeof(Toggle))
-            {
-                VNodePool.ReturnToggle((Toggle)element);
-            }
-            else if (type == typeof(Slider))
-            {
-                VNodePool.ReturnSlider((Slider)element);
-            }
-            else if (type == typeof(SliderInt))
-            {
-                VNodePool.ReturnSliderInt((SliderInt)element);
-            }
-            else if (type == typeof(Button))
-            {
-                VNodePool.ReturnButton((Button)element);
-            }
-            else if (type == typeof(Label))
-            {
-                VNodePool.ReturnLabel((Label)element);
-            }
-            else
-            {
-                return;
+                case PoolKind.TextField:
+                    VNodePool.ReturnTextField((TextField)element);
+                    break;
+                case PoolKind.Toggle:
+                    VNodePool.ReturnToggle((Toggle)element);
+                    break;
+                case PoolKind.Slider:
+                    VNodePool.ReturnSlider((Slider)element);
+                    break;
+                case PoolKind.SliderInt:
+                    VNodePool.ReturnSliderInt((SliderInt)element);
+                    break;
+                case PoolKind.Button:
+                    VNodePool.ReturnButton((Button)element);
+                    break;
+                case PoolKind.Label:
+                    VNodePool.ReturnLabel((Label)element);
+                    break;
+                default:
+                    return;
             }
             MotionLayoutIdDriver.ForgetParent(element, _ctx);
         }
 
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.
-        public void CleanupElement(VisualElement element) => CleanupElement(element, element.panel);
+        public void CleanupElement(VisualElement element) => CleanupElement(element, element.panel, discardedRoot: null);
 
         // `panel` is the one `element` is leaving, passed separately for a caller that has already detached it.
-        private void CleanupElement(VisualElement element, IPanel? panel)
+        // `discardedRoot` is ReconcilerContext.DiscardedSubtreeRoot for the span of this teardown; a teardown
+        // nested in it (a portal's children, a relocated element) names its own, so none inherits it.
+        private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot)
         {
-            // Same wrapper → resources → portal → descendants teardown as the recursive descendant pass.
-            CleanupElementCore(element);
+            var enclosingRoot = _ctx.DiscardedSubtreeRoot;
+            _ctx.DiscardedSubtreeRoot = discardedRoot;
+            try
+            {
+                // Same wrapper → resources → portal → descendants teardown as the recursive descendant pass.
+                CleanupElementCore(element);
+            }
+            finally
+            {
+                _ctx.DiscardedSubtreeRoot = enclosingRoot;
+            }
             // After the core, whose restore focus reads the focus this would drop.
             PanelFocusMemory.Forget(panel, element);
 
@@ -266,7 +303,7 @@ namespace Velvet
             _ctx.EventManager.UnbindAll(element);
             // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
             // not survive into whatever mounts it next.
-            if (element is Button button) _ctx.EventManager.Forget(button);
+            if (element is Button button) _ctx.EventManager.Forget(button, unwire: !_ctx.IsBelowDiscardedRoot(button));
             _ctx.ComponentRegistry.Remove(element);
             RelationalSourceSet.DropDeparted(_ctx, element);
             DetachManipulator(element, _ctx.GestureManipulators);
@@ -707,7 +744,7 @@ namespace Velvet
             }
             var poolable = PoolableOccupantOf(real);
             // The real element shares its placeholder's panel.
-            CleanupElement(real, element.panel);
+            CleanupElement(real, element.panel, discardedRoot: null);
             if (stillPlaced)
             {
                 _ctx.PendingZLayerDeadReals.Add((real, poolable));
