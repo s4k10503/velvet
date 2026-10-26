@@ -497,6 +497,7 @@ namespace Velvet
             var reconstructSpine = fiber.Parent != null
                 && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
             var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
+            var ownedJournal = OpenPassJournal(fiber);
             try
             {
                 using var _ = s_renderMarker.Auto();
@@ -517,7 +518,8 @@ namespace Velvet
                 // every slot's committed deps where the last committed render left them.
                 HookCountSentinel.ValidateAndCommit(fiber);
 
-                SettleHooks(fiber, committedPendingInsertionCount, committedPendingEffectCount);
+                SettleHooks(fiber, committedPendingInsertionCount, committedPendingEffectCount, deferReconcile,
+                    ownedJournal != null);
 
                 var newTree = FiberErrorBoundary.OutputOf(fiber, FiberTreeReturn.NormalizeToArray(rendered));
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
@@ -642,6 +644,8 @@ namespace Velvet
                 fiber.HasRenderPhaseUpdate = false;
                 fiber.RenderPhaseSetStateCounter = 0;
                 FiberAmbientStack.Pop();
+                // Last, so a commit that throws leaves the stacks above popped.
+                ownedJournal?.Close();
             }
 
 #if UNITY_EDITOR
@@ -657,22 +661,46 @@ namespace Velvet
             return retainedOutput;
         }
 
-        // Commits the hook state a settled render staged. Under a Suspense primary that retains what it had
-        // committed, the render may be one the Suspense does not show, as React's attempt at a primary that suspends
-        // again is: the commit of its effect deps is held back until the Suspense decides
-        // (ReconcilerContext.ResolveSuspenseRenders), so a render nothing commits queues no effect and leaves the
-        // deps the next render compares its effects against as they were. A first render has no earlier commit to
-        // leave them at.
-        private static void SettleHooks(ComponentFiber fiber, int insertionBefore, int passiveBefore)
+        // The journal of the pass, when this render is the outermost on its context and so owns it.
+        private static FiberPassJournal? OpenPassJournal(ComponentFiber fiber)
+        {
+            var journal = fiber.Reconciler?.Context.PassJournal;
+            return journal != null && journal.TryOpen(fiber) ? journal : null;
+        }
+
+        // Commits the hook state a settled render staged, except where the render may be one nothing shows. Under a
+        // Suspense primary that retains what it had committed that is a render the Suspense gives up, as React's
+        // attempt at a primary that suspends again is; in a pass that a suspend nothing catches can abandon, it is
+        // every inline render and the render of the fiber the pass started from. The commit of their effect deps and
+        // state is held back until the Suspense or the pass decides (ReconcilerContext.ResolveSuspenseRenders,
+        // FiberPassJournal), so a render nothing commits queues no effect, leaves the deps the next render compares
+        // its effects against as they were, and leaves the updates it folded queued for the render that retries.
+        // A first render has no earlier commit to leave them at. A render that is neither inline nor the pass's own
+        // commits as it settles.
+        private static void SettleHooks(
+            ComponentFiber fiber, int insertionBefore, int passiveBefore, bool deferReconcile, bool ownsJournal)
         {
             var context = fiber.Reconciler?.Context;
-            if (context == null || fiber.RenderCount == 0 || !context.IsInRetainingSuspensePrimary)
+            if (context == null || fiber.RenderCount == 0)
             {
                 FiberBeginWork.CommitSettledHookDeps(fiber);
                 return;
             }
-            FiberBeginWork.CommitSettledValues(fiber);
-            context.RecordSuspenseRender(new SuspenseRender(fiber, insertionBefore, passiveBefore));
+            var render = new SuspenseRender(fiber, insertionBefore, passiveBefore);
+            if (context.IsInRetainingSuspensePrimary)
+            {
+                FiberBeginWork.CommitSettledValues(fiber);
+                context.RecordSuspenseRender(render);
+            }
+            else if ((deferReconcile || ownsJournal) && context.PassJournal.IsOpen)
+            {
+                FiberBeginWork.CommitSettledValues(fiber);
+                context.PassJournal.RecordHooks(render);
+            }
+            else
+            {
+                FiberBeginWork.CommitSettledHookDeps(fiber);
+            }
         }
 
         // Sweeps and removes this fiber's own entries from the context's deferred inline-baseline

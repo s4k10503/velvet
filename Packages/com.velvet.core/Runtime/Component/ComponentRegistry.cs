@@ -160,8 +160,8 @@ namespace Velvet
             // ref never re-runs UseImperativeHandle. Capture the identity change before overwriting and
             // force a re-render below so RunImperativeHandleSlots adopts the new ref.
             var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
-            var committed = (existingFiber.ExternalRef, existingFiber.Body, existingFiber.SourceNode,
-                existingFiber.SourceTree, existingFiber.Props);
+            var committed = FiberInputs.Of(existingFiber);
+            var committedTree = existingFiber.PreviousTree;
             existingFiber.ExternalRef = node.ExternalRef;
             // V.Component<TProps> overload allocates a fresh closure each render that captures
             // the latest props; sync Body so the next render sees the current values.
@@ -228,10 +228,12 @@ namespace Velvet
                         // in progress: the fiber keeps what its last committed render was given, and the next pass
                         // reaching it renders it again. A Suspense that catches it commits its fallback with the
                         // pass, whose output gave the fiber these inputs.
-                        (existingFiber.ExternalRef, existingFiber.Body, existingFiber.SourceNode,
-                            existingFiber.SourceTree, existingFiber.Props) = committed;
+                        committed.WriteTo(existingFiber);
                         throw;
                     }
+                    // After the render returned, so one that threw is not in the journal: the catch above puts its
+                    // inputs back itself.
+                    _ctx.PassJournal.RecordSubsumed(existingFiber, in committed, committedTree);
                 }
             }
             else if (propsChanged || refChanged)
