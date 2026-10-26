@@ -333,9 +333,16 @@ namespace Velvet
         // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
         // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
         // finally both reach, so the single-top-level-loop invariant holds across nested PatchPortal recursion.
-        internal void DrainPendingPortalMounts()
+        //
+        // A child of a Portal that suspends does not stop the drain, since the entries behind it are the same pass's
+        // and would be lost to the clear that follows it. The Portal is recorded with its children pending and the
+        // result says one was, for the caller to end the pass with once the rest is done: its walk has committed, so
+        // the render that owns the pass keeps its tree (FiberRenderer.RenderAndReconcile) and the retry mounts what
+        // suspended by patching this Portal.
+        internal bool DrainPendingPortalMounts()
         {
             HashSet<ComponentFiber>? childFibersBefore = null;
+            var suspended = false;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
                 var (placeholder, node, target, contextSnapshot, logicalParent) = _ctx.PendingPortalMounts.Dequeue();
@@ -481,6 +488,7 @@ namespace Velvet
                 // around it, so the child is read off where the placeholder sits.
                 var enclosingPresenceChild = _ctx.EnclosingPresenceChild;
                 _ctx.EnclosingPresenceChild = _ctx.PresenceChildOf(placeholder);
+                var mountSuspended = false;
                 try
                 {
                     PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
@@ -488,6 +496,11 @@ namespace Velvet
                         slotStart: slotStart);
                     // The mount half of FiberNodePatcher.PatchPortalChildren's structural pass.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    mountSuspended = true;
+                    RemoveRowsFrom(resolvedTarget, slotStart);
                 }
                 finally
                 {
@@ -509,26 +522,48 @@ namespace Velvet
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
-                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
+                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent,
+                    ChildrenPending: mountSuspended);
                 _ctx.PortalState.Anchor(placeholder);
-                // A Portal a render created inside children its Suspense hides was hidden with them before this
-                // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
-                // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are
-                // taken back here.
-                if (SuspenseHiddenElements.IsAtOrUnderHidden(placeholder))
+                suspended |= mountSuspended;
+                HideMountUnderHiddenSuspense(placeholder, resolvedTarget, slotStart, slotLength, declaringFiber);
+            }
+            return suspended;
+        }
+
+        // A Portal a render created inside children its Suspense hides was hidden with them before this
+        // drain mounted its own, so they are hidden here; the reveal finds them through PortalState. The
+        // boundary's hide pass has already run, so the ref setups it takes back from ordinary elements are
+        // taken back here.
+        private void HideMountUnderHiddenSuspense(
+            VisualElement placeholder, VisualElement target, int slotStart, int slotLength, ComponentFiber? declaringFiber)
+        {
+            if (!SuspenseHiddenElements.IsAtOrUnderHidden(placeholder)) return;
+            // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
+            // The children it mounted are the last of target's, so TryGetPhysical declines that slot.
+            for (var slot = slotStart; slot < slotStart + slotLength; slot++)
+            {
+                if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
                 {
-                    // MUTANT_SURVIVES(equivalent, boundary): the slot after this Portal's own holds no child.
-                    // The children it mounted are the last of resolvedTarget's, so TryGetPhysical declines that slot.
-                    for (var slot = slotStart; slot < slotStart + slotLength; slot++)
-                    {
-                        if (LogicalChildSlots.TryGetPhysical(resolvedTarget, slot, out var physical))
-                        {
-                            SuspenseHiddenElements.Hide(resolvedTarget[physical]);
-                            _ctx.DetachRefsWhileHidden(resolvedTarget[physical]);
-                        }
-                    }
-                    _general.HideFibersMountedUnder(placeholder, declaringFiber);
+                    SuspenseHiddenElements.Hide(target[physical]);
+                    _ctx.DetachRefsWhileHidden(target[physical]);
                 }
+            }
+            _general.HideFibersMountedUnder(placeholder, declaringFiber);
+        }
+
+        // An unkeyed flat run of host children inserts each row as it creates it, so the ones ahead of the child that
+        // suspended are on the target while the Portal is recorded as holding none.
+        private void RemoveRowsFrom(VisualElement target, int slotStart)
+            => RemoveRows(target, slotStart, LogicalChildSlots.Count(target) - slotStart);
+
+        // The rows of one range, taken back from the last: the patch of a Portal's pending children reaches the
+        // range's rows and no further, since the ranges of other Portals on the same target can follow it.
+        internal void RemoveRows(VisualElement target, int slotStart, int count)
+        {
+            for (var slot = slotStart + count - 1; slot >= slotStart; slot--)
+            {
+                _cleaner.RemoveElement(target, LogicalChildSlots.ToPhysical(target, slot));
             }
         }
 

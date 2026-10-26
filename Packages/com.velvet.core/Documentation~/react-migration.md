@@ -961,7 +961,9 @@ previous UI. The components that rendered ahead of the suspend, those the pass m
 create no imperative handle for that render, and one that already existed keeps the props it last committed: the
 render retried later runs an effect whose deps changed and creates the handle, and a render of one of them
 alone before then uses those props. The elements the walk had patched ahead of the suspend stay patched, and
-a component the pass mounted stays mounted. That holds for a suspend in a render's first slice, which is every
+a component the pass mounted stays mounted. A child of a `V.Portal` the pass mounted suspends after the walk, and
+the render's rows are then in place: the Portal holds none of its children, the Portals mounted behind it in the
+pass mount as they would have, and the retry mounts the children by patching it. That holds for a suspend in a render's first slice, which is every
 render that is not time-sliced; a later slice of a time-sliced render finds the components of the earlier
 slices committed. The boundary is the nearest one above the component whose read
 suspended, so a component that renders its own `V.Suspense` reveals through the boundary above it, and a component in a boundary's fallback

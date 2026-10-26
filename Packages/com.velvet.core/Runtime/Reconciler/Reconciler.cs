@@ -194,6 +194,7 @@ namespace Velvet
             _ctx.CurrentPass = this;
             _ctx.SharedReconcileDepth++;
             BoundaryCaughtSignal? caught;
+            var walked = false;
             try
             {
                 caught = ReconcileChildren(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit,
@@ -201,6 +202,7 @@ namespace Velvet
                 // A parent that no CreateElement or PatchNode is running for (the mount host, or one only a
                 // wrapper-less component re-renders into) gets no post-children structural pass of its own.
                 _patcher.ApplyStructuralVariants(parent);
+                walked = true;
             }
             finally
             {
@@ -211,7 +213,7 @@ namespace Velvet
                     {
                         try
                         {
-                            FinishTopLevelPass(parent ?? _ctx.MainPanelRoot);
+                            FinishTopLevelPass(parent ?? _ctx.MainPanelRoot, walked);
                         }
                         finally
                         {
@@ -272,7 +274,9 @@ namespace Velvet
         // pass's genuine top-level boundary just as much as a fresh Reconcile call. Any new per-pass
         // reset belongs here, or it leaks on the shared context until some unrelated fiber's next
         // top-level Reconcile happens to run.
-        private void FinishTopLevelPass(VisualElement? reconciledInto)
+        // A Portal child that suspended ends the pass with a signal once the rest of this has run, and walked picks
+        // which: the drain follows a walk that returned, or one that threw and is still unwinding.
+        private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
             _ctx.PointerEventsWalkHeld++;
             LastTopLevelWasAborted = _ctx.IsAborted;
@@ -292,12 +296,13 @@ namespace Velvet
             {
                 try
                 {
-                    _childReconciler.DrainPendingPortalMounts();
+                    var suspended = _childReconciler.DrainPendingPortalMounts();
                     // After the drain, whose own reconciles can tear down a Portal too.
                     foreach (var target in _ctx.PortalTargetsToRestyle)
                     {
                         _patcher.ApplyStructuralVariants(target);
                     }
+                    if (suspended) throw walked ? FiberSuspendSignal.AfterTheWalk : FiberSuspendSignal.Instance;
                 }
                 finally
                 {
@@ -427,6 +432,7 @@ namespace Velvet
             // A resume slice rents and returns pooled objects like the original pass, so it gets the
             // same release staging bracket (nested entries are depth-counted inside VNodePool).
             VNodePool.BeginReleaseScope();
+            var resumed = false;
             try
             {
                 // Indexed and Keyed never become pending simultaneously (the other is cleared when a new
@@ -439,6 +445,7 @@ namespace Velvet
                 {
                     _childReconciler.ContinueKeyed(frameBudgetMs);
                 }
+                resumed = true;
             }
             finally
             {
@@ -452,7 +459,7 @@ namespace Velvet
                     {
                         // A resume keeps no record of the element its pass reconciles into; the tree's own
                         // mount target is above every element the resume can insert outside a Portal.
-                        FinishTopLevelPass(_ctx.MainPanelRoot);
+                        FinishTopLevelPass(_ctx.MainPanelRoot, resumed);
                     }
                 }
                 finally
@@ -604,6 +611,9 @@ namespace Velvet
 
         void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
             => _cleaner.ReleasePortalRangeForRetarget(placeholder);
+
+        void IReconcilerHost.RemoveRows(VisualElement target, int slotStart, int count)
+            => _childReconciler.RemoveRows(target, slotStart, count);
 
         void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
             => _childReconciler.Reconcile(
