@@ -187,7 +187,8 @@ jobs:
   # ---------------------------------------------------------------------------
   # One job measures one shard's mutants on one tree, so a shard costs the campaign's own
   # mutation-shard step and the campaign's SHARD_CEILING holds for it. Two trees a shard doubles the jobs;
-  # `max-parallel` keeps them to half the account's twenty concurrent jobs.
+  # `max-parallel` keeps them to the campaign's own twelve, which ConcurrentJobBudgetTests holds against the
+  # jobs a pull request keeps running. Dispatched beside a campaign, the two together exceed that.
   #
   # The tooling is the head's own on both trees, archived out of it beside the project. The project is the
   # tree's, runner included: Assets/MutantSchemata is tracked, which is why the plan refuses a head that
@@ -203,7 +204,7 @@ jobs:
     timeout-minutes: 195
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 12
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.shards) }}
         tree: [head, base]
