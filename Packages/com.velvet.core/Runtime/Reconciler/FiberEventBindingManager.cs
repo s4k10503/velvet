@@ -715,6 +715,10 @@ namespace Velvet
             gate.Unwire();
         }
 
+        // As Forget, leaving the gate's own callbacks registered: the Button is below a discarded teardown root
+        // (ReconcilerContext.IsBelowDiscardedRoot), so they go with it.
+        internal void ForgetDiscarded(Button button) => _clickGates.Remove(button);
+
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of
         // the button's first ClickedEventBinding opens each click's event before any handler reads it.
         private void BindClickedEvent(List<Action> actions, Button button, Action<ClickedEvent>? handler)
