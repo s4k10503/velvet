@@ -160,6 +160,7 @@ namespace Velvet.CodeGen
             var top = stack[stack.Length - 1];
             Popped[index] = System.Array.Empty<StackValue>();
             var copy = new StackValue(index) { Fresh = top.Fresh };
+            // MUTANT_SURVIVES(equivalent, line removed): `Pushed` is read at a call, by `DepthAfter` for the end of a run, and at an `ldloca`, by `Normalize`; a `dup` is neither.
             Pushed[index] = copy;
             return Continue(index, Append(stack, copy));
         }
