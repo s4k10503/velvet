@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ae9a1683469ab1bf2c2c6063e3467d4d4d397b447b27771cae1614a46edc3205",
+ "killers": [],
+ "measured_by": "40242988482",
+ "mutant": {
+  "after": ";",
+  "before": "foreach (var stashed in _stashedAsync.Values) stashed.Dispose();",
+  "column": 16,
+  "line": 302,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
+ "verdict": "survived"
+}

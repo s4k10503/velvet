@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AConditionalExpressionOpeningTheBody_When_Compiled_Then_NoCandidateIsDeclined",
+ "file": "7511430e18d4999c3f488bc3ea5d170a9f7d78a9bcaa0a4d8433ef1f3e9f216f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_AConditionalExpressionOpeningTheBody_When_Compiled_Then_NoCandidateIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40242988482",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 25,
+  "line": 373,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
+ "verdict": "killed"
+}

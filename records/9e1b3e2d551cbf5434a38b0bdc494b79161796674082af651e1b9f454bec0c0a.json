@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 5 failed: Given_AnEmptyPortalWrittenAheadAppearingLater_When_TheOneBehindAndThenItGrow_Then_TheRowsFollowTheWrittenOrder, Given_APassThatMovedAComponentAndCaught_When_TheComponentRerenders_Then_ItRewritesTheRowThatPassGaveIt, Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder",
+ "detail": "EditMode: 2 failed among the 54 case(s) that ran the site: Given_AnEmptyPortalWrittenAheadAppearingLater_When_TheOneBehindAndThenItGrow_Then_TheRowsFollowTheWrittenOrder, Given_APassThatMovedAComponentAndCaught_When_TheComponentRerenders_Then_ItRewritesTheRowThatPassGaveIt",
  "file": "223837e7d04953f7e4728e28350d695c8fd3487b430a3b36f2c9082a77c8a140",
  "killers": [
   {
@@ -17,38 +17,9 @@
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
-  },
-  {
-   "case": "Velvet.Tests.LayoutEffectDrainPhaseTests.Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/EffectOrderTests.cs": "cb55847316c1313e6229722a8eff3c640abfa38f3522631b151b5eac3487262c",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
-   }
-  },
-  {
-   "case": "Velvet.Tests.MemoCacheCollisionTests.Given_TwoContainersHoldingAMemoAtTheirFirstChildAroundABoundary_When_ItCatchesInTheHostsRenderAndTheSecondConsumerThenReRenders_Then_ItReadsItsOwnProvider",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MemoCacheCollisionTests.cs": "d4579ae22ad89c1c98da947c3809aa772e54c0e829aef1f8ccf2a3f9db00fb05",
-    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
-    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
-    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
-   }
-  },
-  {
-   "case": "Velvet.Tests.SuspenseHiddenPrimaryTests.Given_ABoundaryHidingItsPrimary_When_ItsHostSwapsTwoChildren_Then_TheirFibersTakeTheNewOrder",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPrimaryTests.cs": "7cd62f62bd8b1fd815d37659e83232241351aa5a1656f4b93a20438ea5789f8c",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
-   }
   }
  ],
- "measured_by": "40109529962",
+ "measured_by": "40242988482",
  "mutant": {
   "after": ";",
   "before": "siblings.Add(sibling);",
@@ -62,6 +33,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
  "verdict": "killed"
 }
