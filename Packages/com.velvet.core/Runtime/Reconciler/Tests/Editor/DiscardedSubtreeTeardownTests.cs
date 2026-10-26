@@ -164,7 +164,8 @@ namespace Velvet.Tests
         private static string WiredGateState(Button button, object gate)
         {
             var table = typeof(FiberEventBindingManager)
-                .GetField("s_wiredGates", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+                .GetField("s_wiredGates", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
+            if (table == null) return "not wired";
             var args = new object?[] { button, null };
             var wired = (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!;
             if (!wired || !ReferenceEquals(args[1], gate)) return "not wired";
