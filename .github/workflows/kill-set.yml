@@ -123,7 +123,7 @@ jobs:
             --platform "$PLATFORM" --plan --emit-mutants mutants.json > plan.txt 2>&1
           status=$?
           cat plan.txt
-          { echo '### Kill set plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/step_summary.py block 'Kill set plan' plan.txt >> "$GITHUB_STEP_SUMMARY"
           [ "$status" -eq 0 ] || exit "$status"
           if grep -q '^skipping ' plan.txt; then
             echo "::error::a named file is not a mutable package source"
@@ -310,5 +310,5 @@ jobs:
           set +e
           python3 scripts/test_quality/kill_set_diff.py Logs/kill-set-base Logs/kill-set-head | tee diff.txt
           status=${PIPESTATUS[0]}
-          { echo '### Kill set'; echo "base $BASE, head $HEAD"; echo '```'; cat diff.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/step_summary.py block "Kill set (base $BASE, head $HEAD)" diff.txt >> "$GITHUB_STEP_SUMMARY"
           exit "$status"

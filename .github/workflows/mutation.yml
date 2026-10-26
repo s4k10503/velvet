@@ -128,7 +128,7 @@ jobs:
             --reuse-from Logs/mutation-record --emit-reuse reuse.json > plan.txt 2>&1
           status=$?
           cat plan.txt
-          { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/step_summary.py block 'Mutation campaign plan' plan.txt >> "$GITHUB_STEP_SUMMARY"
           echo "max-shards=$MAX_SHARDS" >> "$GITHUB_OUTPUT"
           if [ "$status" -eq 4 ] && [ "$HAS_LICENSE" != true ]; then
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
@@ -413,7 +413,7 @@ jobs:
             --collect Logs/mutation-playmode-shards --output Logs/mutation-verdict \
             --emit-record Logs/mutation-record | tee verdict.txt
           status=${PIPESTATUS[0]}
-          { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/step_summary.py verdict verdict.txt >> "$GITHUB_STEP_SUMMARY"
           echo "left=$(sed -n 's/.*not measured (budget): \([0-9][0-9]*\).*/\1/p' verdict.txt | head -n 1)" >> "$GITHUB_OUTPUT"
           exit "$status"
 
@@ -515,7 +515,7 @@ jobs:
         run: |
           set -o pipefail
           python3 scripts/ci/mutation_report.py --verdict Logs/mutation-verdict/verdict.txt --sarif mutation.sarif | tee report.txt
-          cat report.txt >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/step_summary.py plain report.txt >> "$GITHUB_STEP_SUMMARY"
 
       # Not written where the verdict is absent: an upload with no results closes every alert.
       - if: ${{ hashFiles('mutation.sarif') != '' }}
