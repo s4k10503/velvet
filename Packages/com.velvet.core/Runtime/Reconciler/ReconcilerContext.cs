@@ -2496,6 +2496,17 @@ namespace Velvet
         private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>
             _rootlessSuspenseFallbackKeys = new();
 
+        // Every container and portal scope a key in either table names, and possibly more: a key leaving its table
+        // does not leave here, so a prune that finds its element absent has nothing to scan for and one that finds it
+        // present scans once and drops it.
+        private readonly HashSet<VisualElement> _suspenseContainers = new();
+
+        private void IndexSuspenseContainers((VisualElement? Container, VisualElement? PortalScope, long Position) position)
+        {
+            if (position.Container != null) _suspenseContainers.Add(position.Container);
+            if (position.PortalScope != null) _suspenseContainers.Add(position.PortalScope);
+        }
+
         internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
 
         internal bool IsBoundaryShowingFallback(ComponentFiber boundary)
@@ -2547,7 +2558,11 @@ namespace Velvet
             var position = (container, portalScope, positionKey);
             if (boundary == null)
             {
-                if (record is { } rootless) _rootlessSuspenseFallbackKeys[position] = rootless;
+                if (record is { } rootless)
+                {
+                    _rootlessSuspenseFallbackKeys[position] = rootless;
+                    IndexSuspenseContainers(position);
+                }
                 else _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
@@ -2559,6 +2574,7 @@ namespace Velvet
                     _suspenseFallbackKeys[boundary] = keys;
                 }
                 keys[position] = shown;
+                IndexSuspenseContainers(position);
                 return;
             }
             RemoveSuspenseFallback(boundary, position);
@@ -2584,7 +2600,11 @@ namespace Velvet
         internal void RestoreRecordsOf(ComponentFiber boundary, BoundaryRecords before)
         {
             if (before.Suspense == null) _suspenseFallbackKeys.Remove(boundary);
-            else _suspenseFallbackKeys[boundary] = before.Suspense;
+            else
+            {
+                _suspenseFallbackKeys[boundary] = before.Suspense;
+                foreach (var position in before.Suspense.Keys) IndexSuspenseContainers(position);
+            }
             List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? added = null;
             foreach (var key in PresenceStates.Keys)
             {
@@ -2623,10 +2643,12 @@ namespace Velvet
         {
             _suspenseFallbackKeys.Clear();
             _rootlessSuspenseFallbackKeys.Clear();
+            _suspenseContainers.Clear();
         }
 
         internal void PruneSuspenseContainerState(VisualElement container)
         {
+            if (!_suspenseContainers.Remove(container)) return;
             var emptyBoundaries = BufferPool.RentFiberList();
             try
             {
@@ -3001,7 +3023,7 @@ namespace Velvet
         // the loop. Collected first because Remove mutates the dictionary this walks.
         private void PrunePresenceStates(PresenceStateOwner owner, object subject)
         {
-            if (PresenceStates.Count == 0) return;
+            if (!ForgetPresenceSubject(owner, subject)) return;
             List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? stale = null;
             foreach (var entry in PresenceStates)
             {
@@ -3020,6 +3042,41 @@ namespace Velvet
             {
                 foreach (var key in stale) RetirePresenceState(key);
             }
+        }
+
+        // Whether the subject was named by an entry of PresenceStates registered under its role. The sets hold every
+        // subject an entry names and possibly more, since an entry retired on its own leaves them untouched, so a
+        // subject found absent has no entry to retire and one found present is dropped here, scanned for once.
+        private bool ForgetPresenceSubject(PresenceStateOwner owner, object subject)
+        {
+#pragma warning disable CS8524 // no discard arm, so a fourth owner fails the build rather than falling in here
+            return owner switch
+            {
+                PresenceStateOwner.Boundary => _presenceBoundaries.Remove((ComponentFiber)subject),
+                PresenceStateOwner.ParentElement => _presenceParents.Remove((VisualElement)subject),
+                PresenceStateOwner.PortalPlaceholder => _presencePortalPlaceholders.Remove((VisualElement)subject),
+            };
+#pragma warning restore CS8524
+        }
+
+        private readonly HashSet<ComponentFiber> _presenceBoundaries = new();
+        private readonly HashSet<VisualElement> _presenceParents = new();
+        private readonly HashSet<VisualElement> _presencePortalPlaceholders = new();
+
+        // The one place an entry joins PresenceStates, so the sets above stay a superset of what its keys name.
+        internal PresenceBoundaryState RegisterPresenceState((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
+        {
+            var state = new PresenceBoundaryState();
+            PresenceStates[key] = state;
+            if (key.boundary != null) _presenceBoundaries.Add(key.boundary);
+            if (key.parent != null) _presenceParents.Add(key.parent);
+            return state;
+        }
+
+        internal void SetPresenceOwningPortal(PresenceBoundaryState state, VisualElement placeholder)
+        {
+            state.OwningPortalPlaceholder = placeholder;
+            _presencePortalPlaceholders.Add(placeholder);
         }
 
         // The one place an AnimatePresence entry leaves PresenceStates before the whole table is dropped. An inner
@@ -3278,6 +3335,9 @@ namespace Velvet
         {
             foreach (var state in new List<PresenceBoundaryState>(PresenceStates.Values)) SettleExitsOf(state);
             PresenceStates.Clear();
+            _presenceBoundaries.Clear();
+            _presenceParents.Clear();
+            _presencePortalPlaceholders.Clear();
         }
 
         internal void MarkDisposed()

@@ -1083,32 +1083,27 @@ namespace Velvet
         // children would otherwise cost N(N-1)/2 links. Null exactly when Child is.
         private ComponentFiber? _lastChild;
 
+        // The link before this one in its parent's Child chain, so a removal is not a walk of the chain: a parent
+        // dropping N inline children would otherwise cost N(N-1)/2 links. Null exactly when this is a parent's Child
+        // or has no parent.
+        private ComponentFiber? _previousSibling;
+
         public void AppendChild(ComponentFiber child)
         {
-            if (child.Parent != null && child.Parent != this)
-            {
-                child.Parent.RemoveChild(child);
-            }
+            child.Parent?.RemoveChild(child);
 
-            var alreadyChild = ReferenceEquals(child.Parent, this);
             child.Parent = this;
             child.Sibling = null;
+            child._previousSibling = _lastChild;
 
-            if (Child == null)
+            if (_lastChild == null)
             {
                 Child = child;
-                _lastChild = child;
-                return;
             }
-
-            // A child this parent already holds is appended by the walk it always took, which is the only way to
-            // reach a tail that may have moved.
-            var tail = alreadyChild ? Child : _lastChild!;
-            while (tail.Sibling != null)
+            else
             {
-                tail = tail.Sibling;
+                _lastChild.Sibling = child;
             }
-            tail.Sibling = child;
             _lastChild = child;
         }
 
@@ -1119,7 +1114,10 @@ namespace Velvet
             // loops back on itself.
             Child = null;
             foreach (var child in children)
+            {
                 child.Sibling = null;
+                child._previousSibling = null;
+            }
             ComponentFiber? previous = null;
             foreach (var child in children)
             {
@@ -1127,6 +1125,7 @@ namespace Velvet
                     Child = child;
                 else
                     previous.Sibling = child;
+                child._previousSibling = previous;
                 previous = child;
             }
             _lastChild = previous;
@@ -1139,27 +1138,16 @@ namespace Velvet
                 return;
             }
 
-            if (Child == child)
-            {
-                Child = child.Sibling;
-                if (Child == null) _lastChild = null;
-            }
-            else
-            {
-                var prev = Child;
-                while (prev.Sibling != null && prev.Sibling != child)
-                {
-                    prev = prev.Sibling;
-                }
-                if (prev.Sibling == child)
-                {
-                    prev.Sibling = child.Sibling;
-                    if (ReferenceEquals(_lastChild, child)) _lastChild = prev;
-                }
-            }
+            var previous = child._previousSibling;
+            var next = child.Sibling;
+            if (previous == null) Child = next;
+            else previous.Sibling = next;
+            if (next == null) _lastChild = previous;
+            else next._previousSibling = previous;
 
             child.Parent = null;
             child.Sibling = null;
+            child._previousSibling = null;
         }
 
         public void Detach()
