@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AnAnchoredElementWithNoAbsoluteClass_When_ItCarriesAZClass_Then_ItStillRelocatesIntoTheFrontBand",
+ "file": "f3f230517b6981f150c93c849b16ba9c36fe69c8d5bb039f7965ce8734d2c0a8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ZIndexStackingTests.Given_AnAnchoredElementWithNoAbsoluteClass_When_ItCarriesAZClass_Then_ItStillRelocatesIntoTheFrontBand",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonChildPoolReuseTests.cs": "0531a5fe43bec4ffe1998b02b1fb81e990435f1ea72a803dd14610afcab1aa51",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ZIndexStackingTests.cs": "b20c06ce95d96e386d82f70fde703ce67d7265b94b991650a622645b5b781eac",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": ";",
+  "before": "bucket.Add(cls);",
+  "column": 20,
+  "line": 2221,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

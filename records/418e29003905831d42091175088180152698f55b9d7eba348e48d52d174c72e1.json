@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt",
+ "file": "4850fc16910b2a61246b9304d98424ea04005e99d4e8458a958df58068df1db8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "adb1fa1183edfeac5be94a6075b58576bb96abb01386a6182bcf1ab44361cc34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": ";",
+  "before": "mwd.SetNextVertex(new Vertex { position = new Vector3(quad.xMax, quad.yMin, Vertex.nearZ), tint = white, uv = new Vector2(1f, 1f) });",
+  "column": 12,
+  "line": 205,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesEffectView.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

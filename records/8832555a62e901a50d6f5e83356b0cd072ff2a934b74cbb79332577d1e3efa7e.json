@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 4 case(s) that ran the site: Given_KeepPreviousData_When_NothingWasLoadedBefore_Then_TheQueryIsPending, Given_KeepPreviousData_When_TheKeyChanges_Then_TheOldKeysDataShows, Given_KeepPreviousDataShowingTheOldKey_When_TheFunctionIsReplaced_Then_ItIsHandedTheDataOfTheEntryThatHadSome",
+ "file": "3ad8f4d189d31efa986d1a88948d143a0c1d27f5860dc53979d5cc007aee98aa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_KeepPreviousDataShowingTheOldKey_When_TheFunctionIsReplaced_Then_ItIsHandedTheDataOfTheEntryThatHadSome",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_KeepPreviousData_When_NothingWasLoadedBefore_Then_TheQueryIsPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_KeepPreviousData_When_TheKeyChanges_Then_TheOldKeysDataShows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 147,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

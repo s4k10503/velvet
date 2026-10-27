@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AMountedScope_When_ASelectorNamesElementsByClassAndName_Then_TheyAreTheScopedMatches",
+ "file": "ae923c6ea8f3edfaf24f0f2a876141c8c74ade28df86af2ae2bd1506bb7c56d5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_AMountedScope_When_ASelectorNamesElementsByClassAndName_Then_TheyAreTheScopedMatches",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": ";",
+  "before": "found.Add(element);",
+  "column": 24,
+  "line": 28,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/AnimateSelector.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

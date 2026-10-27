@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c9ebec228ce1d307219002d56598a9c73c18dbd819bd9bb90d5909b7ada66514",
+ "killers": [],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 21,
+  "line": 406,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

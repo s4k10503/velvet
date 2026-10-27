@@ -1,0 +1,132 @@
+{
+ "detail": "EditMode: 12 failed among the 15 case(s) that ran the site: Given_AManualVisualEffect_When_Mounted_Then_TheManualTriggerIsRecordedAsApplied, Given_AManualVisualEffect_When_ThePlayTriggerFlipsToMount_Then_TheCloneNamesTheSourcesInitialEvent, Given_AMountedVisualEffect_When_Attached_Then_ItsCameraIsHidden",
+ "file": "4850fc16910b2a61246b9304d98424ea04005e99d4e8458a958df58068df1db8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AManualVisualEffect_When_Mounted_Then_TheManualTriggerIsRecordedAsApplied",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AManualVisualEffect_When_ThePlayTriggerFlipsToMount_Then_TheCloneNamesTheSourcesInitialEvent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_Attached_Then_ItsCameraIsHidden",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_Attached_Then_ItsLayerDrawsWithThePremultipliedBlendMaterial",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_Attached_Then_TheCloneIsHidden",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_RepatchedToNull_Then_TheBindingHoldsNoCamera",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_RepatchedToNull_Then_TheBindingHoldsNoRenderers",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_StopIsCalledOnTheElement_Then_TheCloneNamesNoInitialEvent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AProjectLeavingOnlyLayerEightUnnamed_When_AVisualEffectMounts_Then_ItsCloneStandsOnLayerEight",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AProjectNamingEveryLayer_When_TwoVisualEffectsMount_Then_TheNoLayerWarningIsLoggedOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": ";",
+  "before": "binding.EffectHost = host;",
+  "column": 12,
+  "line": 40,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ParticlesEffectView.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 12 case(s) that ran the site: Given_EveryElementFactory_When_CalledWithAnEventsArray_Then_TheNodeCarriesItsBindings",
+ "file": "f3f230517b6981f150c93c849b16ba9c36fe69c8d5bb039f7965ce8734d2c0a8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ElementFactoryEventsInventoryTests.Given_EveryElementFactory_When_CalledWithAnEventsArray_Then_TheNodeCarriesItsBindings",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ElementFactoryEventsInventoryTests.cs": "7d64ef3e60509c5fc81af527ce24f889f0c785bbd684d271e7bd5644d59a7ff0"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": ";",
+  "before": "wrapperProps.Anchored = anchored;",
+  "column": 12,
+  "line": 2227,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

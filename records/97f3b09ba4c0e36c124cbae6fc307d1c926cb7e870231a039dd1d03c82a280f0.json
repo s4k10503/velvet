@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "ae923c6ea8f3edfaf24f0f2a876141c8c74ade28df86af2ae2bd1506bb7c56d5",
+ "killers": [],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 53,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/AnimateSelector.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

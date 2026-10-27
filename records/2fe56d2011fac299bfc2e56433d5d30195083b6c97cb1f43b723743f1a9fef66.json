@@ -1,0 +1,54 @@
+{
+ "detail": "EditMode: 5 failed among the 5 case(s) that ran the site: Given_AnAnimationBegun_When_ItIsCancelled_Then_TheValueIsBackAtItsFirstKeyframe, Given_APausedAnimation_When_TimePasses_Then_ItDoesNotMove, Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted",
+ "file": "c9ebec228ce1d307219002d56598a9c73c18dbd819bd9bb90d5909b7ada66514",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_APausedAnimation_When_TimePasses_Then_ItDoesNotMove",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_AnAnimationBegun_When_ItIsCancelled_Then_TheValueIsBackAtItsFirstKeyframe",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_TwoSegmentsPlacedTogether_When_HalfASecondPasses_Then_BothAreHalfwayThroughTheirOwnValues",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 64,
+  "line": 440,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 658 case(s) that ran the site: Given_NoDeps_FuncIDisposableOverload_When_Rerendered_Then_DisposesBeforeReExecution",
+ "file": "42a06cc551dc01bec42784af49e8d7c0b751b164680e20852254b95ba4c5b028",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseEffectTests.Given_NoDeps_FuncIDisposableOverload_When_Rerendered_Then_DisposesBeforeReExecution",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseEffectTests.cs": "db674be4028996a2eb7e20cebc17c2672b6da9c8d0b8e4ac12551dcb63d00a40",
+    "Packages/com.velvet.core/TestUtilities/ActionDisposable.cs": "e95e072a106d4d4a77b0e090c5bdd56a05df277aa99aeb1d28e41c5ce3d3e1ea",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": ";",
+  "before": "existing.NextFactory = factory;",
+  "column": 12,
+  "line": 58,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookSlotRegistrar.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,102 @@
+{
+ "detail": "EditMode: 83 failed: Given_StaggeredChildren_When_FirstFramePasses_Then_FirstChildHasEnterToClass, When_Mounted_Then_EnterFromClassIsAppliedImmediately, Given_InitialFalse_When_ChildAddedLater_Then_TheAdditionStillAnimates",
+ "file": "f3f230517b6981f150c93c849b16ba9c36fe69c8d5bb039f7965ce8734d2c0a8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedFragmentPlacingALabelAheadOfItsMotion_When_ItsKeyIsAdded_Then_TheMotionPlaysTheEnter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionExiting_When_ItsKeyReturnsWithATypeFlip_Then_TheNewElementEnters",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionHoldingAnInnerPresence_When_ATypeFlipCreatesItAgain_Then_TheNewElementEnters",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionSettled_When_ATypeFlipCreatesItAgainUnderItsKey_Then_TheNewElementEnters",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AMotionWithNoVariantsUnderAnInheritedLabel_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AMotionWithVariantsThatNoLabelReaches_When_ItsKeyIsAdded_Then_ItsPresetEnterPlays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_ANewKeyAheadOfASettledOne_When_BothAreEmitted_Then_OnlyTheNewOneEnters",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AnAnchorEnterWaitingForItsChildren_When_AKeyIsAdded_Then_ItEntersOnlyOnceTheChildHasEntered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AnAnchorInheritingItsLabelWithNoInitial_When_ItsKeyIsAdded_Then_ItEntersFromItsOwnClassesNotThePreset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_InitialFalseOnThePresence_When_AMotionBehindAComponentIsAddedLater_Then_ItsEnterPlays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 32,
+  "line": 2838,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,92 @@
+{
+ "detail": "EditMode: 19 failed among the 21 case(s) that ran the site: Given_AComponentListingOnlyIsPlaceholderData_When_TheRequestLands_Then_ItRerenders, Given_AFailedEntryWithoutData_When_APlaceholderIsSet_Then_TheResultIsTheError, Given_APlaceholder_When_NothingIsCached_Then_TheResultShowsItAsASuccess",
+ "file": "3ad8f4d189d31efa986d1a88948d143a0c1d27f5860dc53979d5cc007aee98aa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_AComponentListingOnlyIsPlaceholderData_When_TheRequestLands_Then_ItRerenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_AFailedEntryWithoutData_When_APlaceholderIsSet_Then_TheResultIsTheError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderAndASelectThatThrows_When_ThePlaceholderShows_Then_TheResultIsAnError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderAndASelectThatThrows_When_ThePlaceholderShows_Then_TheResultIsNotFlaggedAsPlaceholderData",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderAndASelect_When_ThePlaceholderShows_Then_ItIsSelected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderFunction_When_TheKeyChanges_Then_ItIsHandedThePreviousQueryKey",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderFunction_When_TheKeyChanges_Then_ThePreviousQueryCarriesItsStatusAndData",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderShowing_When_GetQueryDataReads_Then_ItIsDefault",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderShowing_When_TheComponentRendersAgain_Then_TheFunctionIsNotAskedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryPlaceholderDataTests.Given_APlaceholderShowing_When_TheFunctionIsReplaced_Then_TheNewFunctionIsAsked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryPlaceholderDataTests.cs": "40550db4141bc4ac105b6de9629061fbd57fad3bad7ce76e5b6e8c64bf49c7c5",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40477329951",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 24,
+  "line": 1017,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 2 failed: Given_AFocusManagerInsideAFocusScope_When_FocusLastIsCalled_Then_TheScopesLastElementTakesFocus, Given_ASingleTabStopFocusScope_When_AnArrowMovesFromItsFirstElement_Then_FocusMovesToItsSecond",
+ "detail": "EditMode: 2 failed among the 2 case(s) that ran the site: Given_AFocusManagerInsideAFocusScope_When_FocusLastIsCalled_Then_TheScopesLastElementTakesFocus, Given_ASingleTabStopFocusScope_When_AnArrowMovesFromItsFirstElement_Then_FocusMovesToItsSecond",
  "file": "f8897c0c442a3fe6d29beb4878ae70505991eddf6d4e366c7d39d7466162cf44",
  "killers": [
   {
    "case": "Velvet.Tests.FocusScopeRangeTests.Given_AFocusManagerInsideAFocusScope_When_FocusLastIsCalled_Then_TheScopesLastElementTakesFocus",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "5782de72867725ffc0596536e1a7b42bdc6475b1cf811bbf69229fa462dc4c9e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "2fe023413b0a47b22cc20c43d8a6b84b46683fbbcd850de16b97a3243709d47b",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -16,7 +16,7 @@
   {
    "case": "Velvet.Tests.FocusScopeRangeTests.Given_ASingleTabStopFocusScope_When_AnArrowMovesFromItsFirstElement_Then_FocusMovesToItsSecond",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "5782de72867725ffc0596536e1a7b42bdc6475b1cf811bbf69229fa462dc4c9e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "2fe023413b0a47b22cc20c43d8a6b84b46683fbbcd850de16b97a3243709d47b",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -25,7 +25,7 @@
    }
   }
  ],
- "measured_by": "39913002090",
+ "measured_by": "40477329951",
  "mutant": {
   "after": ";",
   "before": "Visit(child, order);",
@@ -39,6 +39,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "044c9d211f75f50f9cfae4dd5e8e80dda317b66cb32887ffa24e6f52fcbaade0",
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
  "verdict": "killed"
 }
