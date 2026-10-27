@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 127 case(s) that ran the site: Given_AnInnerPresenceInsideAPortal_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes",
+ "file": "6abdec68068348182664a2512281c2b9c2397152ba02e197b4db595d4b07e878",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresencePropagateTests.Given_AnInnerPresenceInsideAPortal_When_TheOuterKeyIsRemoved_Then_TheChildIsHeldUntilTheInnerExitCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePropagateTests.cs": "dce4a40e97215e5879b28f2da1fef059618e8a6a93b058269ebb35e7aa27ef27",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40383781275",
+ "mutant": {
+  "after": ";",
+  "before": "DisposeTogether(doomed);",
+  "column": 12,
+  "line": 752,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

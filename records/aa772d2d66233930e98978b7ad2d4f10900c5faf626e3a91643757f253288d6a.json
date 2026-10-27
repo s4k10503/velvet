@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 20 failed in Velvet.Tests.Component.Editor: Given_ParentWhoseChildrenWereReordered_When_AChildIsAppended_Then_TheChainEndsWithIt, Given_ParentWhoseLastChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt, Given_ParentWhoseMiddleChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt; 1 other editor(s) were up",
+ "file": "44a10c46ade383060e742d34e2d94443a1f29ab195fcb0b3194425528be10ed8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWhoseChildrenWereReordered_When_AChildIsAppended_Then_TheChainEndsWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWhoseLastChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWhoseMiddleChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberPreviousLinkTests.Given_ParentWhoseFirstChildWasRemoved_When_TheNewFirstChildsPreviousLinkIsRead_Then_ItIsNull",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberPreviousLinkTests.cs": "f6fb0f15e099d63524e2c8c93771d4c943304a986ddc61d24e620dc0b384a513"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberPreviousLinkTests.Given_ParentWhoseMiddleChildWasRemoved_When_TheLastChildsPreviousLinkIsRead_Then_ItIsTheFirstChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberPreviousLinkTests.cs": "f6fb0f15e099d63524e2c8c93771d4c943304a986ddc61d24e620dc0b384a513"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_ChildInSiblingChain_When_Detached_Then_RemovesSelfAndClearsParent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c3155d39e104014eaf67ae71a89965bf05d07eff5fd768aba424b70f465453d9"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_ParentWithOneChild_When_SecondChildAppended_Then_LinksAsSiblingOfFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c3155d39e104014eaf67ae71a89965bf05d07eff5fd768aba424b70f465453d9"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_ParentWithTwoChildren_When_ThirdChildAppended_Then_AppendedToTailOfSiblingChain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c3155d39e104014eaf67ae71a89965bf05d07eff5fd768aba424b70f465453d9"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_SiblingChain_When_HeadChildRemoved_Then_SecondBecomesNewHead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c3155d39e104014eaf67ae71a89965bf05d07eff5fd768aba424b70f465453d9"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberTests.Given_SiblingChain_When_MiddleChildRemoved_Then_ChainRelinksAcrossTheGap",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberTests.cs": "c3155d39e104014eaf67ae71a89965bf05d07eff5fd768aba424b70f465453d9"
+   }
+  }
+ ],
+ "measured_by": "40383781275",
+ "mutant": {
+  "after": ";",
+  "before": "_lastChild.Sibling = child;",
+  "column": 16,
+  "line": 1113,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

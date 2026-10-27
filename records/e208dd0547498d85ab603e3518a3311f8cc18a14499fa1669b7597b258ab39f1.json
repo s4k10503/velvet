@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 1099 case(s) that ran the site: Given_AnInlineChildInsideAKeyedHost_When_TheHostTypeSwapsAway_Then_TheChildsSubscriptionIsReleased, Given_InlineChildrenInVirtualListItems_When_ScrolledToADisjointWindow_Then_RecycledChildrenAreReleased",
+ "file": "6abdec68068348182664a2512281c2b9c2397152ba02e197b4db595d4b07e878",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentStateReparityTests.Given_AnInlineChildInsideAKeyedHost_When_TheHostTypeSwapsAway_Then_TheChildsSubscriptionIsReleased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentStateReparityTests.cs": "5848db1a13261519be8f8c82b4567b19e9427f2acd2ac2cee81944b3910e6271",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentStateReparityTests.Given_InlineChildrenInVirtualListItems_When_ScrolledToADisjointWindow_Then_RecycledChildrenAreReleased",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentStateReparityTests.cs": "5848db1a13261519be8f8c82b4567b19e9427f2acd2ac2cee81944b3910e6271",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40383781275",
+ "mutant": {
+  "after": ";",
+  "before": "if (ReferenceEquals(fiber.MountPoint, element)) (into ??= new List<ComponentFiber>()).Add(fiber);",
+  "column": 20,
+  "line": 694,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}
