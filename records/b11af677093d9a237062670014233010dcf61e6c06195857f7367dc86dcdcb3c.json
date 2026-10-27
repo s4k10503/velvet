@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed among the 30 case(s) that ran the site: Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity, Given_ACancelledSequence_When_Played_Then_ItStartsAgainFromStepZero",
+ "file": "ca6b4ae6b66957182fa84acbd7a86512e6d5610d127c6637886d3c3c7b11499f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimationSequenceSpeedCancelTests.Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceSpeedCancelTests.cs": "5684573171f897eca1fc260540ce64262b40274b70b741bc66f157333056c823",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimationSequenceSpeedCancelTests.Given_ACancelledSequence_When_Played_Then_ItStartsAgainFromStepZero",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceSpeedCancelTests.cs": "5684573171f897eca1fc260540ce64262b40274b70b741bc66f157333056c823",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 42,
+  "line": 602,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/SequenceWalker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

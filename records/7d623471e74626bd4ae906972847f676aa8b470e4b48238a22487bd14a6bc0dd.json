@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 118 case(s) that ran the site: Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged, Given_AnUnkeyedLoaderRebuiltEachRender_When_TheComponentRendersAgainAfterACompletedRender_Then_TheNewLoaderRuns",
+ "file": "932e0294c554f0e8a2016fe0a24f35c204797de70c4b2ca39b80e97e5b6a1bd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseAsyncTests.Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAsyncTests.cs": "fb3bfd5a11d847687d53c138f75d3f813068cc45b26f96d971a231fb8fa1b8ca",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAsyncTests.Given_AnUnkeyedLoaderRebuiltEachRender_When_TheComponentRendersAgainAfterACompletedRender_Then_TheNewLoaderRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAsyncTests.cs": "fb3bfd5a11d847687d53c138f75d3f813068cc45b26f96d971a231fb8fa1b8ca",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "resource.Start(factory);",
+  "column": 24,
+  "line": 2275,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

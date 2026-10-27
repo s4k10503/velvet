@@ -1,0 +1,68 @@
+{
+ "detail": "EditMode: 7 failed among the 14 case(s) that ran the site: Given_AFailingRefetch_When_RefetchQueriesRuns_Then_TheTaskCompletesWithoutFaulting, Given_AFailingRefetch_When_RefetchQueriesThrowsOnError_Then_TheTaskFaults, Given_AnEntryFetchedBeforeAndNothingReadsIt_When_RefetchQueriesRuns_Then_ItIsFetchedWithTheEarlierOptions",
+ "file": "3707203ba1f080797e8d4970b323b8d399c1b209fd840586d888f559ec99e350",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRefetch_When_RefetchQueriesRuns_Then_TheTaskCompletesWithoutFaulting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRefetch_When_RefetchQueriesThrowsOnError_Then_TheTaskFaults",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARefetchOverDataInFlight_When_RefetchQueriesRuns_Then_ItCancelsAndStartsOver",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARefetch_When_ItIsPending_Then_TheTaskOfRefetchQueriesIsPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARefetch_When_ItLands_Then_TheTaskOfRefetchQueriesCompletesAndTheEntryHoldsTheData",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AnEntryFetchedBeforeAndNothingReadsIt_When_RefetchQueriesRuns_Then_ItIsFetchedWithTheEarlierOptions",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_TwoEntries_When_RefetchQueriesNamesOneKey_Then_OnlyItIsFetched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 44,
+  "line": 1193,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

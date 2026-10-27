@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 731 case(s) that ran the site: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue, Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
+ "file": "932e0294c554f0e8a2016fe0a24f35c204797de70c4b2ca39b80e97e5b6a1bd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildObservesNewValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentWithPropsTests.Given_MountedComponent_When_ParentRerendersWithDifferentProps_Then_ChildReRendersExactlyOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentWithPropsTests.cs": "a530b9271678e6d1303b79f0048df2e1d2b280c3d1e85412818b0de41a426a95",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "QueueStoreSubscription(fiber, slot);",
+  "column": 16,
+  "line": 172,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

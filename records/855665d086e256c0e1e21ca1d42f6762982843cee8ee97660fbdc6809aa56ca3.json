@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 155 case(s) that ran the site: Given_APrefetchQueryInFlight_When_ItIsCancelled_Then_TheTaskCompletesWithoutFaulting, Given_ARequestInFlight_When_CancelQueriesRuns_Then_TheTaskOfFetchQueryIsCancelled, Given_ARequestThatWasCancelled_When_ItsEntryIsRead_Then_NoTaskIsLeftWaiting",
+ "file": "3707203ba1f080797e8d4970b323b8d399c1b209fd840586d888f559ec99e350",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_APrefetchQueryInFlight_When_ItIsCancelled_Then_TheTaskCompletesWithoutFaulting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARequestInFlight_When_CancelQueriesRuns_Then_TheTaskOfFetchQueryIsCancelled",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARequestThatWasCancelled_When_ItsEntryIsRead_Then_NoTaskIsLeftWaiting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "CancelWaiters();",
+  "column": 12,
+  "line": 1289,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_ABodyWhoseInterfaceDispatchRunsAHook_When_TheHostReRendersWithTheSameProp_Then_TheBodyRuns",
+ "file": "2fa3b3bd9d8aba59d2790116296248c25b371ff3016b4dd7b4ab2e738f1b0d9d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_ABodyWhoseInterfaceDispatchRunsAHook_When_TheHostReRendersWithTheSameProp_Then_TheBodyRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 41,
+  "line": 88,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/MemoScopeCache.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

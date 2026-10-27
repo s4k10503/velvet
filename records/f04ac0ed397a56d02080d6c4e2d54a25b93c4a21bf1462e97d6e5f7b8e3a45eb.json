@@ -1,0 +1,122 @@
+{
+ "detail": "EditMode: 11 failed among the 18 case(s) that ran the site: Given_AClickMountingAStoreWriteAndAStateWriteInEffects_When_TheClickFlushes_Then_TheStateWriteRendersWithTheStoreRerender, Given_ADrainThatEmptiedTheImmediateTier_When_TheStoreChangesAgain_Then_TheMainThreadsPostedWorkRendersIt, Given_AncestorImmediateAndDescendantDelayed_When_AChangeInsideATransitionLandsBetweenDrains_Then_TheDelayedDrainCommitsItToBoth",
+ "file": "a7debdf777444f6b95594393c30bc75b7fba63569e554f5eaf2bee843df703d3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_AClickMountingAStoreWriteAndAStateWriteInEffects_When_TheClickFlushes_Then_TheStateWriteRendersWithTheStoreRerender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_ADrainThatEmptiedTheImmediateTier_When_TheStoreChangesAgain_Then_TheMainThreadsPostedWorkRendersIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_AncestorImmediateAndDescendantDelayed_When_AChangeInsideATransitionLandsBetweenDrains_Then_TheDelayedDrainCommitsItToBoth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_AncestorImmediateAndDescendantDelayed_When_StoreChangesBetweenDrains_Then_TheDelayedDrainCommitsTheChangeToBoth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_GetSnapshotBuildingANewValuePerRead_When_ItsPassiveCheckRuns_Then_ItRerendersPastTheUpdateDepthLimit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_MountedReader_When_RerenderedWithAnEqualSubscribeDelegate_Then_SubscribesOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_ReaderMountedInADrainPassAfterAChange_When_TheDrainEnds_Then_ItRendersTheLatestSnapshot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_StoreChangedBeforeTheMountsEffects_When_ThePassiveFlushRuns_Then_TheChangeRendersBeforeItReturns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_StoreChangedBetweenTheMountAndItsPassiveEffects_When_TheyRun_Then_TheChangedSnapshotRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseSyncExternalStoreTests.Given_StoreChangedOutsideAnyEvent_When_TheMainThreadServicesItsPostedWork_Then_TheReaderRendersTheNewSnapshotWithoutADrain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseSyncExternalStoreTests.cs": "3ac613ebe9aafe90780ce7633ce3c0efe72174d48aff04e1e585f760028ce6d0",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "_checkEffect ??= new HookEffectSlot { EffectFactory = RunCheck };",
+  "column": 16,
+  "line": 836,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookSlots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

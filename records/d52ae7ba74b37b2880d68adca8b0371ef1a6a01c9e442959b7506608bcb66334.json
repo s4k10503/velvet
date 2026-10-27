@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 10 case(s) that ran the site: Given_NoRouterProviderAbove_When_AComponentCallsTheHook_Then_ItsRenderThrowsNamingTheHook(\"UseMatches\")",
+ "file": "932e0294c554f0e8a2016fe0a24f35c204797de70c4b2ca39b80e97e5b6a1bd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterProviderScopeTests.Given_NoRouterProviderAbove_When_AComponentCallsTheHook_Then_ItsRenderThrowsNamingTheHook(\"UseMatches\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterProviderScopeTests.cs": "7d8c5b0230af3a5ee61f5ab5d034033a1cd5a6f12dedff315bbea972ead89fb3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "_ = UseRouterOrThrow(\"UseMatches\");",
+  "column": 12,
+  "line": 1070,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

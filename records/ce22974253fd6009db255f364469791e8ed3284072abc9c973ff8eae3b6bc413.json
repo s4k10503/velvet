@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 9 case(s) that ran the site: Given_AClassHoldingAFrameworkObject_When_ReplacedByOneHoldingAnEqualObject_Then_TheNewInstanceIsTaken",
+ "file": "29a365ed5f05e2b5214ea6f690fa15fc04d0d87a338dbee53fbac701292c2fb3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryStructuralSharingClassTests.Given_AClassHoldingAFrameworkObject_When_ReplacedByOneHoldingAnEqualObject_Then_TheNewInstanceIsTaken",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryStructuralSharingClassTests.cs": "ef95200808bec8a80c2ca597f4077cdf2db36186612279e411e21afa2128c79f"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 18,
+  "line": 100,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryStructuralSharing.cs",
+  "shadowed": [
+   "guard removed",
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

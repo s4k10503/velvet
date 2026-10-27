@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 118 case(s) that ran the site: Given_AnOnMutateTask_When_ItCompletes_Then_TheMutationFunctionRunsAfterIt",
+ "file": "932e0294c554f0e8a2016fe0a24f35c204797de70c4b2ca39b80e97e5b6a1bd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseMutationAsyncCallbackTests.Given_AnOnMutateTask_When_ItCompletes_Then_TheMutationFunctionRunsAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationAsyncCallbackTests.cs": "ba0b24e45de90ac6376df54bb7664e93c7ab4923a26d719f7449ff2ae7897d31",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "context = await slot.InvokeOnMutate(variables);",
+  "column": 16,
+  "line": 2680,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

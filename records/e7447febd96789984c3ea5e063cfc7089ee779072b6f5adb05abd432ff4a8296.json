@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 70 case(s) that ran the site: Given_AToStepOnARepeatingTween_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd",
+ "file": "ca6b4ae6b66957182fa84acbd7a86512e6d5610d127c6637886d3c3c7b11499f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SequenceRepeatHoldTests.Given_AToStepOnARepeatingTween_When_ThePlayIsAboutToEndAndThenEnds_Then_TheCursorMovesOnOnlyAtTheEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/SequenceRepeatHoldTests.cs": "944005287da9ce847f3dbe9ed2ea759618dd5d77f3efd0e0cd8303a7fe5c3509"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 42,
+  "line": 596,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/SequenceWalker.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

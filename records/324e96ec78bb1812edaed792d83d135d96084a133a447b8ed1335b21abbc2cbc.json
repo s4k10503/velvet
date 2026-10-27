@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_ARequestInFlight_When_ResetQueriesRuns_Then_ItsTokenIsCancelled",
+ "file": "3707203ba1f080797e8d4970b323b8d399c1b209fd840586d888f559ec99e350",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARequestInFlight_When_ResetQueriesRuns_Then_ItsTokenIsCancelled",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "CancelInFlight();",
+  "column": 12,
+  "line": 1223,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

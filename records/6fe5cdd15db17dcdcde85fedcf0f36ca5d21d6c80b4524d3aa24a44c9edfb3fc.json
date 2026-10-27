@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ARenderThatReservesTwice_When_Rendered_Then_OnlyTheFirstCallIsGrantedSlots",
+ "file": "2fa3b3bd9d8aba59d2790116296248c25b371ff3016b4dd7b4ab2e738f1b0d9d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoScopeCacheE2ETests.Given_ARenderThatReservesTwice_When_Rendered_Then_OnlyTheFirstCallIsGrantedSlots",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoScopeCacheE2ETests.cs": "88f0c17106ca13eb8b408cdfcd4261fb20949f7bb38ae0b6798b96cb77fa6a11",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "fiber.Indices.MemoHookIndex = slotCount;",
+  "column": 12,
+  "line": 23,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/MemoScopeCache.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 9 case(s) that ran the site: Given_NestedRoutes_When_UseMatchesRenders_Then_EveryMatchSeesTheCapturedParams, Given_NestedRoutesWithLoadersAndHandles_When_UseMatchesRenders_Then_EachMatchCarriesItsIdPathnameDataAndHandle",
+ "file": "932e0294c554f0e8a2016fe0a24f35c204797de70c4b2ca39b80e97e5b6a1bd7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_NestedRoutesWithLoadersAndHandles_When_UseMatchesRenders_Then_EachMatchCarriesItsIdPathnameDataAndHandle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "b87d1bb4129f6fd36d6d562094aa1880c0fdd6eafdc5317ca840869e73c553a3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_NestedRoutes_When_UseMatchesRenders_Then_EveryMatchSeesTheCapturedParams",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "b87d1bb4129f6fd36d6d562094aa1880c0fdd6eafdc5317ca840869e73c553a3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 33,
+  "line": 1073,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

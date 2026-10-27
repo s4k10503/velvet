@@ -1,0 +1,70 @@
+{
+ "detail": "EditMode: 8 failed among the 53 case(s) that ran the site: Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain, Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount, Given_AFailingRefetch_When_RefetchQueriesRuns_Then_TheTaskCompletesWithoutFaulting",
+ "file": "3707203ba1f080797e8d4970b323b8d399c1b209fd840586d888f559ec99e350",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRefetch_When_RefetchQueriesRuns_Then_TheTaskCompletesWithoutFaulting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRefetch_When_RefetchQueriesThrowsOnError_Then_TheTaskFaults",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRequest_When_FetchQueryRuns_Then_ItIsNotRetriedByDefault",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRequest_When_FetchQueryRuns_Then_TheTaskFaultsWithTheFailure",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_AFailingRequest_When_PrefetchQueryRuns_Then_TheTaskCompletesWithoutFaulting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARequestThatFailed_When_ItsEntryIsRead_Then_NoTaskIsLeftWaiting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "14b62ac5661382c64297f0853cbc29c5b098fbba5b726e63165236ff3c78662d"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "fetchOptions.SetRetries(options.Retry ?? 0);",
+  "column": 12,
+  "line": 517,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

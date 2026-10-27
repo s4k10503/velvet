@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 11 case(s) that ran the site: Given_AResolvedMountedQuery_When_InvalidateQueriesThrowsOnError_Then_TheTaskFaultsWithTheFailure, Given_AResolvedMountedQuery_When_TheRefetchOfInvalidateQueriesFails_Then_TheTaskStillCompletes",
+ "file": "3707203ba1f080797e8d4970b323b8d399c1b209fd840586d888f559ec99e350",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientActiveCommandsTests.Given_AResolvedMountedQuery_When_InvalidateQueriesThrowsOnError_Then_TheTaskFaultsWithTheFailure",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientActiveCommandsTests.cs": "c5b82c13b2e729cdb008d87044a0c9ed4638d2fb16a7eb6f9ecd0a4736e1b506",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryClientActiveCommandsTests.Given_AResolvedMountedQuery_When_TheRefetchOfInvalidateQueriesFails_Then_TheTaskStillCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientActiveCommandsTests.cs": "c5b82c13b2e729cdb008d87044a0c9ed4638d2fb16a7eb6f9ecd0a4736e1b506",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": ";",
+  "before": "waiter.TrySetException(error);",
+  "column": 16,
+  "line": 901,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

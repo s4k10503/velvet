@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 10 case(s) that ran the site: Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance",
+ "file": "29a365ed5f05e2b5214ea6f690fa15fc04d0d87a338dbee53fbac701292c2fb3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryStructuralSharingTests.Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryStructuralSharingTests.cs": "9fb4b396d34c071913522f363e4e90ba849352cf8e407bd6338efc1a91ddb320",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40528939449",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 64,
+  "line": 246,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryStructuralSharing.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}
