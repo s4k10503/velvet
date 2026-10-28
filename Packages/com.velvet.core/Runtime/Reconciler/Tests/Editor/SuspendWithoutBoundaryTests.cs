@@ -1092,7 +1092,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AComponentBesideTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsSiblingIsRegistered()
+        public void Given_AComponentBesideTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_NoAbandonedAttemptsSiblingIsRegistered()
         {
             // Arrange
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
@@ -1110,8 +1110,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "sibling"), Is.EqualTo(1),
-                "The sibling mounted ahead of the reader is released when its attempt is given up, not kept for the retry that creates it again");
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "sibling"), Is.EqualTo(0),
+                "Both attempts suspended, and the sibling mounted ahead of the reader is released as each is given up");
         }
 
         [Test]
