@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Reflection;
 using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -1064,6 +1066,41 @@ namespace Velvet.Tests
             // Assert
             Assert.That(NamesOf(s_portalTarget), Is.EqualTo("child:5"),
                 "The boundary retries the host, which patches the Portal the suspended pass left holding none of its children");
+        }
+
+        [Test]
+        public void Given_APortalWhoseChildSuspendsInAHostElementItCreates_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsReaderIsRegistered()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_sourceB = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(ChainedPortalHostRender, key: "chained-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a"), Is.EqualTo(1),
+                "Each attempt creates the host element again, so the fiber of the attempt whose read resolved is released with it");
+        }
+
+        private static int RegisteredFibersMountedOnElementsNamed(MountedTree mounted, string name)
+        {
+            var registry = mounted.Root.Reconciler.Context.ComponentRegistry;
+            var field = registry.GetType().GetField("_inlineFiberToKey", BindingFlags.NonPublic | BindingFlags.Instance);
+            var count = 0;
+            foreach (DictionaryEntry entry in (IDictionary)field!.GetValue(registry)!)
+            {
+                if (((ComponentFiber)entry.Key).MountPoint?.name == name) count++;
+            }
+            return count;
         }
 
         private static string NamesOf(VisualElement element)

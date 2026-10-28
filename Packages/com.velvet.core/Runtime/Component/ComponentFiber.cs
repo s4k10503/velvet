@@ -188,6 +188,10 @@ namespace Velvet
         /// </summary>
         internal ComponentFiber? SuspendedOn { get; set; }
 
+        // Set on a fiber a suspended mount abandoned (ComponentRegistry.DiscardSuspendedMountUnder), which only
+        // waits for its resolve to ask for the retry before it is disposed.
+        internal bool MountDiscarded { get; set; }
+
         /// <summary>
         /// Set where an abandoned pass discarded this fiber's render, until a render of it is kept: the next walk
         /// that reaches the fiber renders it, as for a dirty one, though no flush does. Left off <c>IsDirty</c>

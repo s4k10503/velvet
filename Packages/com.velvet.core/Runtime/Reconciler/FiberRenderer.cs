@@ -960,6 +960,15 @@ namespace Velvet
             else FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
+        // The topmost of the fibers a suspended mount abandoned, which takes the others below it along.
+        private static void DisposeAbandonedMount(ComponentFiber fiber)
+        {
+            if (!fiber.MountDiscarded) return;
+            var top = fiber;
+            while (top.Parent is { MountDiscarded: true } parent) top = parent;
+            fiber.Reconciler!.Context.ComponentRegistry.DisposeAndRemove(top);
+        }
+
         private static bool HasErrorBoundaryBetween(ComponentFiber fiber, ComponentFiber boundary)
         {
             for (var current = fiber.Parent; current != null && !ReferenceEquals(current, boundary); current = current.Parent)
@@ -995,6 +1004,7 @@ namespace Velvet
                 // What React retries is the work that suspended on this read; with none waiting on it, nothing
                 // renders, and a pass that suspended on another read takes this value up when it is retried.
                 RetrySuspendedPasses(fiber);
+                DisposeAbandonedMount(fiber);
                 return;
             }
             // A primary the boundary keeps hidden is still in the container, and the boundary's re-render diffs its

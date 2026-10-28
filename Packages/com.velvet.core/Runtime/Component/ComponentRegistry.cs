@@ -661,6 +661,26 @@ namespace Velvet
             }
         }
 
+        // A mount that suspended where nothing catches the signal is abandoned and the retry creates root again, so
+        // the fibers it registered under root are never reached. The reader and its ancestors under root stay, the
+        // reader's resolve being what asks for the retry (FiberRenderer.NotifyAsyncResourceCompleted), and are
+        // disposed there; the rest go now.
+        internal void DiscardSuspendedMountUnder(VisualElement root, ComponentFiber? reader)
+        {
+            if (reader == null) return;
+            List<ComponentFiber>? mounted = null;
+            CollectFibersInSubtree(root, ref mounted);
+            if (mounted == null || !mounted.Contains(reader)) return;
+            var kept = new HashSet<ComponentFiber>();
+            for (var f = reader; f != null && mounted.Contains(f); f = f.Parent)
+            {
+                kept.Add(f);
+                f.MountDiscarded = true;
+            }
+            mounted.RemoveAll(kept.Contains);
+            if (mounted.Count > 0) DisposeTogether(mounted);
+        }
+
         // Single-root form of DisposeFibersUnder(HashSet), selecting through CollectFibersInSubtree. Element teardown
         // (FiberElementCleaner.CleanupElement) calls this when a subtree leaves the DOM: an inline-mounted
         // fiber nested under a host element anchors on its PARENT FIBER (not the host VE), so Remove(VE) —
