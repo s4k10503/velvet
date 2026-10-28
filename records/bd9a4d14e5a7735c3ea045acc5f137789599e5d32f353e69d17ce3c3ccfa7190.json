@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "5c2db1185aad4731ec844e05655df84afe8a2e8b620a82ea3885312df9776fb4",
+ "killers": [],
+ "measured_by": "40626638737",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 44,
+  "line": 89,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndModifiers.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

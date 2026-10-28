@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "f8c6a9fa64823e88619f8551cd58177b8c8846e0109d60eba68917b5ecc78f10",
+ "killers": [],
+ "measured_by": "40626638737",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 110,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndPanelSpace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

@@ -1,0 +1,99 @@
+{
+ "detail": "EditMode: 7 failed among the 73 case(s) that ran the site: Given_ACancelledDrag_When_TheSessionCloses_Then_TheInlineTranslateIsRestored, Given_AChildWhoseNoDragARenderDropped_When_APressLandsInsideIt_Then_TheDragStarts, Given_ADisabledDraggableInsideAnother_When_APressLandsOnTheInnerOne_Then_TheOuterOneDrags",
+ "file": "b3ceb26e83d363ffd43896f2ffe64b73845739d092f4f38887e0312ecb57b990",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ACancelledDrag_When_TheSessionCloses_Then_TheInlineTranslateIsRestored",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_AChildWhoseNoDragARenderDropped_When_APressLandsInsideIt_Then_TheDragStarts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADisabledDraggableInsideAnother_When_APressLandsOnTheInnerOne_Then_TheOuterOneDrags",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADisabledDroppableUnderTheDraggedRect_When_CollisionRuns_Then_ItNeverBecomesTheOverTarget",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADraggableElement_When_APressStaysBelowTheActivationDistance_Then_ThePointerUpStillReachesBubbleListeners",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADraggableInsideAnother_When_APressLandsOnTheInnerOne_Then_OnlyTheInnerOneDrags",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_ADraggableInsideOneMarkedNoDrag_When_APressLandsOnTheInnerOne_Then_OnlyTheInnerOneDrags",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40626638737",
+ "mutant": {
+  "after": ";",
+  "before": "Binding = binding;",
+  "column": 12,
+  "line": 58,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndSensors.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

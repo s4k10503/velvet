@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "196f1ae40b429122be545bf270bd1de9b93134effa42a511c3d213d826ca6946",
+ "killers": [],
+ "measured_by": "40626638737",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 49,
+  "line": 151,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndSortable.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

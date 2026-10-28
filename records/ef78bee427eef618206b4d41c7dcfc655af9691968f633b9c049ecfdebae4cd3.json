@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b3ceb26e83d363ffd43896f2ffe64b73845739d092f4f38887e0312ecb57b990",
+ "killers": [],
+ "measured_by": "40626638737",
+ "mutant": {
+  "after": ";",
+  "before": "evt.StopPropagation();",
+  "column": 16,
+  "line": 288,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndSensors.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}
