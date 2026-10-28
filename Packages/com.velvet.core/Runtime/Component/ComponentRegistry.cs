@@ -662,22 +662,27 @@ namespace Velvet
         }
 
         // A mount that suspended where nothing catches the signal is abandoned and the retry creates root again, so
-        // the fibers it registered under root are never reached. The reader and its ancestors under root stay, the
-        // reader's resolve being what asks for the retry (FiberRenderer.NotifyAsyncResourceCompleted), and are
-        // disposed there; the rest go now.
+        // the fibers it registered under root are never reached. The reader and the fibers above it that mount under
+        // root stay, the reader's resolve being what asks for the retry (FiberRenderer.NotifyAsyncResourceCompleted),
+        // and are disposed there; the rest go now. A Suspense above the reader is not this method's: there the
+        // resolve takes the boundary branch, which disposes nothing. The chain skips a fiber an inner element's
+        // call flagged, since that element is not attached under root yet.
         internal void DiscardSuspendedMountUnder(VisualElement root, ComponentFiber? reader)
         {
-            if (reader == null) return;
+            if (reader == null || ComponentBoundarySearch.FindSuspenseBoundaryAbove(reader) != null) return;
             List<ComponentFiber>? mounted = null;
             CollectFibersInSubtree(root, ref mounted);
-            if (mounted == null || !mounted.Contains(reader)) return;
+            if (!reader.MountDiscarded && (mounted == null || !mounted.Contains(reader))) return;
             var kept = new HashSet<ComponentFiber>();
-            for (var f = reader; f != null && mounted.Contains(f); f = f.Parent)
+            for (var f = reader; f != null; f = f.Parent)
             {
+                if (f.MountDiscarded) continue;
+                if (mounted == null || !mounted.Contains(f)) break;
                 kept.Add(f);
                 f.MountDiscarded = true;
             }
-            mounted.RemoveAll(kept.Contains);
+            if (mounted == null) return;
+            mounted.RemoveAll(f => kept.Contains(f) || f.MountDiscarded);
             if (mounted.Count > 0) DisposeTogether(mounted);
         }
 

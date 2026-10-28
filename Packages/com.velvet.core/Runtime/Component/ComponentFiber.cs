@@ -188,8 +188,9 @@ namespace Velvet
         /// </summary>
         internal ComponentFiber? SuspendedOn { get; set; }
 
-        // Set on a fiber a suspended mount abandoned (ComponentRegistry.DiscardSuspendedMountUnder), which only
-        // waits for its resolve to ask for the retry before it is disposed.
+        // Set on a fiber a suspended mount with no Suspense above it abandoned
+        // (ComponentRegistry.DiscardSuspendedMountUnder); it waits for its reader's resolve to ask for the retry,
+        // where FiberRenderer.NotifyAsyncResourceCompleted disposes it.
         internal bool MountDiscarded { get; set; }
 
         /// <summary>
