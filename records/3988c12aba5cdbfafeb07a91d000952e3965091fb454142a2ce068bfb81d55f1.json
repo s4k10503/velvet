@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_AShadowedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps, Given_AShadowedBoxWithADashedBorderThatClipsItsContent_When_Painted_Then_ItsTopBandHasGaps",
+ "file": "9c1f30aa06659c790b2dfaa5feb0b3f3210cde407908b86402c938ce8399308c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_AShadowedBoxWithADashedBorderThatClipsItsContent_When_Painted_Then_ItsTopBandHasGaps",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "14d3df29bce6f25dd82cd8da08883bcf1253a4f51eeaa6a3bcd462a77fe065f6",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_AShadowedBoxWithADashedBorder_When_ItsFaceIsRepainted_Then_ItsTopBandHasGaps",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "14d3df29bce6f25dd82cd8da08883bcf1253a4f51eeaa6a3bcd462a77fe065f6",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "shadow.BorderStyle = style;",
+  "column": 16,
+  "line": 109,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b9b1cb58a91cc577b101311f5bb3fcf15028147d66075f21cdb6ef19cfeb778f",
+ "killers": [],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "BoxShadowSilhouette.RecordDeclaredColours(element, classNames);",
+  "column": 12,
+  "line": 21,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBoxShadowApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

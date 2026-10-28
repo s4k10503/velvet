@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 143 case(s) that ran the site: Given_APooledButtonWithAPressRecorded_When_ItIsCleared_Then_ItsGateStaysRegisteredWithNoPressOrigin, Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks",
+ "file": "4c85ab293e281ca7b94d418c4da848d325db3b6cd8ee081cde6dcd0174740581",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_APooledButtonWithAPressRecorded_When_ItIsCleared_Then_ItsGateStaysRegisteredWithNoPressOrigin",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "9dde0a5973c4cd18a50cf399e24c71036d20f205aa8923ced7facd3d0f82168d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "9dde0a5973c4cd18a50cf399e24c71036d20f205aa8923ced7facd3d0f82168d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "s_wiredGates.Add(button, gate);",
+  "column": 12,
+  "line": 724,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

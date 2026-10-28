@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_APooledSliderWhoseLastTenantDeclaredAStep_When_APlainSliderRentsIt_Then_RightMovesByOne",
+ "file": "32851261875398d33ff25b72ee7bf6a380e4a86fc3a2f0bc9fcbc40f43f14f13",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SliderDirectionPanelTests.Given_APooledSliderWhoseLastTenantDeclaredAStep_When_APlainSliderRentsIt_Then_RightMovesByOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SliderDirectionPanelTests.cs": "ede6456ec0ee9c2bcf3c0b1c7fbf7afabc0311a64d9da0f15fd839358ffb94c6",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "VNodePool.ReturnSlider((Slider)element);",
+  "column": 20,
+  "line": 176,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

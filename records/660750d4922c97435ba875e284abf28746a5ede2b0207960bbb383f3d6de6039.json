@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AContainedScopeLeftWithNothingToFocus_When_FocusMovesToAnotherPanel_Then_TheLandingKeepsIt",
+ "file": "f40a5ff13762e2811fe110a77d64c46e543b2a1b902a2254a43499235addfcba",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusCrossPanelContainmentTests.Given_AContainedScopeLeftWithNothingToFocus_When_FocusMovesToAnotherPanel_Then_TheLandingKeepsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusCrossPanelContainmentTests.cs": "7d77da2122e6e0d6c895a1bf714b8cd58e94563452a0505b37368617a11a2ff6",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "back = FocusScopeDriver.FindFirstFocusableInScope(containRoot);",
+  "column": 20,
+  "line": 1092,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

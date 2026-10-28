@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "04c2c65d84cb4c22463cd417758f446248698e8a87006a752c441b56e5265483",
+ "killers": [],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "UnwrapClipPathInPlace(element, binding);",
+  "column": 16,
+  "line": 194,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

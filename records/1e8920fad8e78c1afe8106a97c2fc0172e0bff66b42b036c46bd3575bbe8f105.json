@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode: the editor was killed at 1064s, 1.5 times the baseline's 706s plus 5s, with no readable result",
+ "file": "c54c72c65c16aaea094a8ff782a719c632dc76cea2aaa1b29451c2d6a7c3cbdb",
+ "killers": [],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 35,
+  "line": 379,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberBatchScheduler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed (timed out)"
+}

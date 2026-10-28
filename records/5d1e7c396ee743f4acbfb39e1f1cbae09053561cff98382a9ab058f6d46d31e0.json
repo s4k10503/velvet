@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_AFocusScopeWithRestoreFocus_When_ItUnmountsWhileHoldingFocus_Then_TheElementFocusedAtItsMountRegainsFocus",
+ "file": "32851261875398d33ff25b72ee7bf6a380e4a86fc3a2f0bc9fcbc40f43f14f13",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusScopeRangeTests.Given_AFocusScopeWithRestoreFocus_When_ItUnmountsWhileHoldingFocus_Then_TheElementFocusedAtItsMountRegainsFocus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/FocusScopeRangeTests.cs": "2fe023413b0a47b22cc20c43d8a6b84b46683fbbcd850de16b97a3243709d47b",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "restore.Focus();",
+  "column": 20,
+  "line": 552,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

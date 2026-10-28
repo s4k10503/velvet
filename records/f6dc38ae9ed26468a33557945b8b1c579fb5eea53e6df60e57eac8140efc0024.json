@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "4c85ab293e281ca7b94d418c4da848d325db3b6cd8ee081cde6dcd0174740581",
+ "killers": [],
+ "measured_by": "40673598049",
+ "mutant": {
+  "after": ";",
+  "before": "gate.Scrub();",
+  "column": 16,
+  "line": 685,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}
