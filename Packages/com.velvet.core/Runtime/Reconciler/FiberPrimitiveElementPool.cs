@@ -39,19 +39,41 @@ namespace Velvet
             FiberElementPoolReset.ResetTextElementState(button);
             button.text = string.Empty;
             button.iconImage = default;
-            // Replacing the manipulator is the only way to drop handlers a consumer subscribed to the
-            // Clickable itself: `clicked` is an event, so nothing outside can clear it without holding every
-            // delegate that was added. Leaving the instance in place, as this did, carries a consumer's own
-            // click action into whatever mounts next. This is the one place the pool return buys correctness
-            // with allocation unconditionally — a fresh manipulator, and the callback re-registration the
-            // swap performs — against the stance the class-list overloads in FiberElementPoolReset are
-            // shaped by. The other such trade, in FiberTextFieldPoolHelper, is guarded; this one cannot be.
-            button.clickable = new Clickable((Action)null);
+            ResetClickable(button);
             // The common reset scrubs focusable to the plain-VisualElement default (false), but a Button's
             // OWN constructor default is focusable — without restoring it, a recycled button silently drops
             // out of Tab/gamepad navigation, diverging from the freshly-constructed instance this reset
             // promises to match.
             button.focusable = true;
+        }
+
+        // Keeps the Clickable the Button constructed and scrubs its state in place: swapping the manipulator
+        // costs a UnregisterCallback/RegisterCallback round per reuse, and UnregisterCallback's cost grows with
+        // the number of elements that exist. `clicked` and `clickedWithEventInfo` are field-like events, so
+        // nothing outside can clear them without holding every delegate that was added; the backing fields are
+        // nulled instead. When Unity's Clickable no longer exposes the members this reaches, the manipulator is
+        // replaced as before, so a handler cannot survive the pool either way.
+        // ButtonClickablePoolResetTests pins both the scrub and the instance that is kept.
+        static readonly System.Reflection.FieldInfo s_clicked = typeof(Clickable).GetField(
+            nameof(Clickable.clicked), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        static readonly System.Reflection.FieldInfo s_clickedWithEventInfo = typeof(Clickable).GetField(
+            nameof(Clickable.clickedWithEventInfo), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        static readonly System.Reflection.PropertyInfo s_active = typeof(Clickable).GetProperty(
+            "active", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        static void ResetClickable(Button button)
+        {
+            var clickable = button.clickable;
+            if (clickable == null || s_clicked == null || s_clickedWithEventInfo == null
+                || s_active == null || s_active.GetSetMethod(true) == null)
+            {
+                button.clickable = new Clickable((Action)null);
+                return;
+            }
+
+            s_clicked.SetValue(clickable, null);
+            s_clickedWithEventInfo.SetValue(clickable, null);
+            s_active.SetValue(clickable, false);
         }
     }
 
