@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Reflection;
 using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -1064,6 +1066,131 @@ namespace Velvet.Tests
             // Assert
             Assert.That(NamesOf(s_portalTarget), Is.EqualTo("child:5"),
                 "The boundary retries the host, which patches the Portal the suspended pass left holding none of its children");
+        }
+
+        [Test]
+        public void Given_APortalWhoseChildSuspendsInAHostElementItCreates_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsReaderIsRegistered()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_sourceB = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(ChainedPortalHostRender, key: "chained-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "reader"), Is.EqualTo(1),
+                "Each attempt creates the host element again, so the fiber of the attempt whose read resolved is released with it");
+        }
+
+        [Test]
+        public void Given_AComponentBesideTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_NoAbandonedAttemptsSiblingIsRegistered()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_sourceB = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(SiblingPortalHostRender, key: "chained-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "sibling"), Is.EqualTo(0),
+                "Both attempts suspended, and the sibling mounted ahead of the reader is released as each is given up");
+        }
+
+        [Test]
+        public void Given_AComponentAboveTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsComponentIsRegistered()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_sourceB = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(NestedPortalHostRender, key: "chained-portal-host"));
+            _root.Add(s_portalTarget);
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "wrapper"), Is.EqualTo(1),
+                "The reader mounts under an element the component creates, so the component is reached through its parent chain and released with the reader");
+        }
+
+        [Component]
+        private static VNode SiblingPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_portalHostSetShown = setShown;
+            return V.Div(name: "sibling-portal-host", children: new VNode[]
+            {
+                shown
+                    ? V.Portal(s_portalTarget, new VNode[]
+                    {
+                        V.Div(name: "second-a", children: new VNode[]
+                        {
+                            V.Component(SiblingRender, key: "sibling"),
+                            V.Component(ChainedReaderRender, key: "reader"),
+                        }),
+                    })
+                    : null,
+            });
+        }
+
+        [Component]
+        private static VNode NestedPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_portalHostSetShown = setShown;
+            return V.Div(name: "nested-portal-host", children: new VNode[]
+            {
+                shown
+                    ? V.Portal(s_portalTarget, new VNode[]
+                    {
+                        V.Div(name: "second-a", children: new VNode[] { V.Component(WrapperRender, key: "wrapper") }),
+                    })
+                    : null,
+            });
+        }
+
+        [Component]
+        private static VNode SiblingRender() => V.Label(text: "sibling");
+
+        [Component]
+        private static VNode WrapperRender()
+            => V.Div(name: "inner", children: new VNode[] { V.Component(ChainedReaderRender, key: "reader") });
+
+        private static int RegisteredFibersMountedOnElementsNamed(MountedTree mounted, string name, string key)
+        {
+            var registry = mounted.Root.Reconciler.Context.ComponentRegistry;
+            var field = registry.GetType().GetField("_inlineFiberToKey", BindingFlags.NonPublic | BindingFlags.Instance);
+            var count = 0;
+            foreach (DictionaryEntry entry in (IDictionary)field!.GetValue(registry)!)
+            {
+                var fiber = (ComponentFiber)entry.Key;
+                if (fiber.MountPoint?.name == name && fiber.SourceNode?.Key == key) count++;
+            }
+            return count;
         }
 
         private static string NamesOf(VisualElement element)

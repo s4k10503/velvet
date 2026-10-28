@@ -83,7 +83,9 @@ namespace Velvet
         // what those children left against it — a ref setup the next drain would run, a fiber mounted under
         // it — is released before the throw goes on. A suspend passes through untouched: releasing the
         // element on one too left the Suspense boundary on its fallback after the resource resolved, which
-        // ElementCreationFailureTests holds.
+        // ElementCreationFailureTests holds. That holds where a Suspense primary is open on the walk; with none
+        // open the pass is abandoned and the retry creates the element again, so what was mounted under this one
+        // is released but for the reader, whose resolve is what asks for the retry.
         private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children,
             string[]? classNames = null)
         {
@@ -92,6 +94,11 @@ namespace Velvet
             try
             {
                 _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), children);
+            }
+            catch (FiberSuspendSignal) when (_ctx.SuspensePrimaryDepth == 0)
+            {
+                _ctx.ComponentRegistry.DiscardSuspendedMountUnder(element, _ctx.SuspendingReader);
+                throw;
             }
             catch (Exception exception) when (exception is not FiberSuspendSignal)
             {
