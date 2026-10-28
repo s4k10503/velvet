@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 1 failed among the 19 case(s) that ran the site: Given_ADragOverlayAwayFromItsSource_When_TheDropClearsItsChildren_Then_ItKeepsThemForTheDropAnimation",
+ "file": "c3ab513274926d934e20bb80caca62d79e758c94289697ff53062cee4661cb65",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndParityTests.Given_ADragOverlayAwayFromItsSource_When_TheDropClearsItsChildren_Then_ItKeepsThemForTheDropAnimation",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "e01d0b4539e0b880e73066c8c6fd7d456a9b4209101dd789e7302cdba84523de",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 35,
+  "line": 970,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndActiveDrag.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c3ab513274926d934e20bb80caca62d79e758c94289697ff53062cee4661cb65",
+ "killers": [],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": ";",
+  "before": "WriteSourceTranslate();",
+  "column": 16,
+  "line": 474,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndActiveDrag.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "survived"
+}

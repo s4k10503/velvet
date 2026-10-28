@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 47 case(s) that ran the site: Given_AKeyedRunBeforeATrailingSibling_When_TheRunShrinks_Then_TheTrailingSiblingStaysLast",
+ "file": "91d5f6776eb09dc5952c244e5b624ec968c9509fb4ccb95f3d93115ad22d4cca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FragmentCollapseAndShrinkReconcileTests.Given_AKeyedRunBeforeATrailingSibling_When_TheRunShrinks_Then_TheTrailingSiblingStaysLast",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ReconcilerFragmentTests.cs": "2a9db0ef67a0f9fe96eceb1d8dbddfdda2eed6c49333a601f1a3dba2a2b795a0",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 96,
+  "line": 1342,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 18 case(s) that ran the site: Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands",
+ "file": "91d5f6776eb09dc5952c244e5b624ec968c9509fb4ccb95f3d93115ad22d4cca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "e3b6d7027fbc0463398d1f85793eafb29a7c041ce88d700a7a434026aa6085a7",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 86,
+  "line": 1290,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

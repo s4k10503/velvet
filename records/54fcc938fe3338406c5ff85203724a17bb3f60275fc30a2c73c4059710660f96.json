@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 9 case(s) that ran the site: Given_APortalInsideAPortalChildMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_TheInnerRefAttachesOnlyThen",
+ "file": "91d5f6776eb09dc5952c244e5b624ec968c9509fb4ccb95f3d93115ad22d4cca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_APortalInsideAPortalChildMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_TheInnerRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "e0fc16d99cdd17f46a86ca2dc415e7a156c3a13f082250bb69da4d77f26d5af0",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": ";",
+  "before": "SuspenseHiddenElements.Hide(target[physical]);",
+  "column": 20,
+  "line": 548,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

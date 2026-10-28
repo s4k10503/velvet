@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 348 case(s) that ran the site: Given_ARowAnotherTreePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild, Given_ARowOtherCodePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+ "file": "91d5f6776eb09dc5952c244e5b624ec968c9509fb4ccb95f3d93115ad22d4cca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeAnchorTests.Given_ARowAnotherTreePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeAnchorTests.cs": "8bde18e02011ca17a1cc3852b15d26db96043caba2c8df27a37d06edb286d0f7"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeAnchorTests.Given_ARowOtherCodePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeAnchorTests.cs": "8bde18e02011ca17a1cc3852b15d26db96043caba2c8df27a37d06edb286d0f7"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.PortalState.Anchor(placeholder);",
+  "column": 16,
+  "line": 527,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

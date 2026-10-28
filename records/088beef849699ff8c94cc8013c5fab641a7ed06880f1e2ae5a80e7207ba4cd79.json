@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 4 failed: Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks, Given_PooledLabelsAsRows_When_TheyAreCleared_Then_EachUnregistersItsTextItemCallbacks, Given_RowsOfPlainContainersHoldingButtons_When_TheyAreCleared_Then_NoClickGateStaysTracked",
+ "file": "91d5f6776eb09dc5952c244e5b624ec968c9509fb4ccb95f3d93115ad22d4cca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "9dde0a5973c4cd18a50cf399e24c71036d20f205aa8923ced7facd3d0f82168d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_PooledLabelsAsRows_When_TheyAreCleared_Then_EachUnregistersItsTextItemCallbacks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "9dde0a5973c4cd18a50cf399e24c71036d20f205aa8923ced7facd3d0f82168d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_RowsOfPlainContainersHoldingButtons_When_TheyAreCleared_Then_NoClickGateStaysTracked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "9dde0a5973c4cd18a50cf399e24c71036d20f205aa8923ced7facd3d0f82168d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_RowsOfPlainContainersHoldingTextLeaves_When_TheyAreCleared_Then_NoFlexMinSizeManipulatorStaysTracked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "9dde0a5973c4cd18a50cf399e24c71036d20f205aa8923ced7facd3d0f82168d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 66,
+  "line": 1005,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}

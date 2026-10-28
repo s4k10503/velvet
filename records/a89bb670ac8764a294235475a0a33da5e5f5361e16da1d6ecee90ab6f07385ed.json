@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode survived; PlayMode: 3 failed: Given_ADistanceFactor_When_ARealPanelTicks_Then_TheElementIsScaledByFactorOverTheVisibleHeight, Given_ADistanceFactorAndAnOrthographicCamera_When_ARealPanelTicks_Then_TheElementIsScaledByFactorOverTwiceTheOrthographicSize, Given_ADistanceFactorAndAScaleClassOnTheElement_When_ARealPanelTicks_Then_TheElementDrawsAtTheProductOfBoth",
+ "file": "d1c37b977a429f22473bbcc2b0c7c94b81ebee4ef9b1ede603c3f466ad82cf87",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnchoredPlaybackTests.Given_ADistanceFactorAndAScaleClassOnTheElement_When_ARealPanelTicks_Then_TheElementDrawsAtTheProductOfBoth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/AnchoredPlaybackTests.cs": "366ddd420d1c9ab13238ba3f1147707d2801656d9a525167e6cb653a7d140016",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnchoredPlaybackTests.Given_ADistanceFactorAndAnOrthographicCamera_When_ARealPanelTicks_Then_TheElementIsScaledByFactorOverTwiceTheOrthographicSize",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/AnchoredPlaybackTests.cs": "366ddd420d1c9ab13238ba3f1147707d2801656d9a525167e6cb653a7d140016",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnchoredPlaybackTests.Given_ADistanceFactor_When_ARealPanelTicks_Then_TheElementIsScaledByFactorOverTheVisibleHeight",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/AnchoredPlaybackTests.cs": "366ddd420d1c9ab13238ba3f1147707d2801656d9a525167e6cb653a7d140016",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "40578290426",
+ "mutant": {
+  "after": ";",
+  "before": "AuthoredTransform.SetScale(element, new Scale(new Vector2(scale, scale)));",
+  "column": 16,
+  "line": 227,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/AnchoredDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "verdict": "killed"
+}
