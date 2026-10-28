@@ -49,28 +49,20 @@ namespace Velvet
 
         // Keeps the Clickable the Button constructed and scrubs its state in place: swapping the manipulator
         // costs a UnregisterCallback/RegisterCallback round per reuse, and UnregisterCallback's cost grows with
-        // the number of elements that exist. `clicked` and `clickedWithEventInfo` are field-like events, so
-        // nothing outside can clear them without holding every delegate that was added; the backing fields are
-        // nulled instead. When Unity's Clickable no longer exposes the members this reaches, the manipulator is
-        // replaced as before, so a handler cannot survive the pool either way.
+        // the number of elements that exist. A member that no longer resolves throws when this type first loads,
+        // since a pooled Button that kept a consumer's handler would carry it into whatever mounts next.
         // ButtonClickablePoolResetTests pins both the scrub and the instance that is kept.
-        static readonly System.Reflection.FieldInfo s_clicked = typeof(Clickable).GetField(
-            nameof(Clickable.clicked), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        static readonly System.Reflection.FieldInfo s_clickedWithEventInfo = typeof(Clickable).GetField(
-            nameof(Clickable.clickedWithEventInfo), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        static readonly System.Reflection.PropertyInfo s_active = typeof(Clickable).GetProperty(
-            "active", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        static readonly System.Reflection.FieldInfo s_clicked = Required(EngineMember.ClickableClicked.ResolveField(), EngineMember.ClickableClicked);
+        static readonly System.Reflection.FieldInfo s_clickedWithEventInfo = Required(
+            EngineMember.ClickableClickedWithEventInfo.ResolveField(), EngineMember.ClickableClickedWithEventInfo);
+        static readonly System.Reflection.PropertyInfo s_active = Required(EngineMember.ClickableActive.ResolveProperty(), EngineMember.ClickableActive);
+
+        static T Required<T>(T resolved, EngineMember member) where T : class
+            => resolved ?? throw new InvalidOperationException($"Engine member no longer resolves: {member}");
 
         static void ResetClickable(Button button)
         {
             var clickable = button.clickable;
-            if (clickable == null || s_clicked == null || s_clickedWithEventInfo == null
-                || s_active == null || s_active.GetSetMethod(true) == null)
-            {
-                button.clickable = new Clickable((Action)null);
-                return;
-            }
-
             s_clicked.SetValue(clickable, null);
             s_clickedWithEventInfo.SetValue(clickable, null);
             s_active.SetValue(clickable, false);

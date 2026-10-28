@@ -56,6 +56,18 @@ namespace Velvet
         internal static readonly EngineMember IsCompositeRoot =
             ReadProperty(UIElements, VisualElementType, "isCompositeRoot", "System.Boolean");
 
+        // FiberButtonPoolHelper's scrub of a pooled Button's Clickable: the backing fields of its two events, which
+        // nothing outside can clear without holding every delegate added, and the pressed state.
+        internal static readonly EngineMember ClickableClicked =
+            Field(UIElements, "UnityEngine.UIElements.Clickable", "clicked", "System.Action");
+
+        internal static readonly EngineMember ClickableClickedWithEventInfo = Field(UIElements,
+            "UnityEngine.UIElements.Clickable", "clickedWithEventInfo",
+            "System.Action`1[UnityEngine.UIElements.EventBase]");
+
+        internal static readonly EngineMember ClickableActive =
+            WrittenProperty(UIElements, "UnityEngine.UIElements.Clickable", "active", "System.Boolean");
+
         // V.TextField's onSubmit: — the input's record of an open IME composition.
         internal static readonly EngineMember TextEditingManipulator = ReadProperty(UIElements,
             "UnityEngine.UIElements.TextElement", "editingManipulator", "UnityEngine.UIElements.TextEditingManipulator");

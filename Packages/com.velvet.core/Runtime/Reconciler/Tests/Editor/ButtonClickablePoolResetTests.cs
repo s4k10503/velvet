@@ -11,9 +11,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ButtonClickablePoolResetTests
     {
-        const BindingFlags NonPublicInstance = BindingFlags.Instance | BindingFlags.NonPublic;
-
-        static PropertyInfo ActiveProperty => typeof(Clickable).GetProperty("active", NonPublicInstance);
+        static PropertyInfo ActiveProperty => EngineMember.ClickableActive.ResolveProperty();
 
         [Test]
         public void Given_AButtonWithAClickedHandler_When_ResetForReuse_Then_TheHandlerIsGone()
@@ -21,13 +19,13 @@ namespace Velvet.Tests
             // Arrange
             var button = new Button();
             button.clicked += () => { };
-            var clickedField = typeof(Clickable).GetField(nameof(Clickable.clicked), NonPublicInstance);
+            var clickedField = EngineMember.ClickableClicked.ResolveField();
 
             // Act
             FiberButtonPoolHelper.ResetButtonForReuse(button);
 
             // Assert
-            Assert.IsNull(clickedField?.GetValue(button.clickable) ?? "field not found");
+            Assert.That((clickedField != null, clickedField?.GetValue(button.clickable)), Is.EqualTo((true, (object)null)));
         }
 
         [Test]
@@ -36,13 +34,13 @@ namespace Velvet.Tests
             // Arrange
             var button = new Button();
             button.clickable.clickedWithEventInfo += _ => { };
-            var field = typeof(Clickable).GetField(nameof(Clickable.clickedWithEventInfo), NonPublicInstance);
+            var field = EngineMember.ClickableClickedWithEventInfo.ResolveField();
 
             // Act
             FiberButtonPoolHelper.ResetButtonForReuse(button);
 
             // Assert
-            Assert.IsNull(field?.GetValue(button.clickable) ?? "field not found");
+            Assert.That((field != null, field?.GetValue(button.clickable)), Is.EqualTo((true, (object)null)));
         }
 
         [Test]
