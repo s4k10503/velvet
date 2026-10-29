@@ -1143,24 +1143,7 @@ namespace Velvet
                 fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
                 if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
-                else
-                {
-                    var enclosingReusedOwner = walk.ReusedOwner;
-                    var enclosingInBailedOutput = _ctx.InBailedOutput;
-                    walk.ReusedOwner = reusedAsIs && walk.ReuseSuspended == 0 && !HoldsDirtyFiberBelow(fiber)
-                        ? fiber
-                        : null;
-                    _ctx.InBailedOutput = reusedAsIs && walk.ReuseSuspended == 0;
-                    try
-                    {
-                        ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                    }
-                    finally
-                    {
-                        walk.ReusedOwner = enclosingReusedOwner;
-                        _ctx.InBailedOutput = enclosingInBailedOutput;
-                    }
-                }
+                else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
@@ -1180,6 +1163,30 @@ namespace Velvet
                     // before an ancestor's, matching the commit-phase deletion order.
                     walk.OldFibers.Add(fiber);
                 }
+            }
+        }
+
+        private void ExpandRenderedOrReusedFiber(
+            InlineWalk walk,
+            ComponentFiber fiber,
+            bool reusedAsIs,
+            ComponentNode component,
+            WalkPosition position,
+            int nodeIndex)
+        {
+            var enclosingReusedOwner = walk.ReusedOwner;
+            var enclosingInBailedOutput = _ctx.InBailedOutput;
+            var rendersNothing = reusedAsIs && walk.ReuseSuspended == 0;
+            walk.ReusedOwner = rendersNothing && !HoldsDirtyFiberBelow(fiber) ? fiber : null;
+            _ctx.InBailedOutput = rendersNothing;
+            try
+            {
+                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+            }
+            finally
+            {
+                walk.ReusedOwner = enclosingReusedOwner;
+                _ctx.InBailedOutput = enclosingInBailedOutput;
             }
         }
 
