@@ -206,8 +206,11 @@ namespace Velvet
         private void ReconcileUnder(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs, int slotStart, int slotLimit)
         {
+            using var _pf = PerfStage.Begin("ChildReconciler.ReconcileUnder");
+            var pf = PerfStage.Start();
             if (_ctx.IsAborted) return;
             FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
+            PerfStage.Lap(ref pf, "RU.NoteChildrenReconciled");
 
             // Slot indices are LOGICAL throughout: a slot counts rendered children only, and the
             // reconciler-invisible ones (a relocated z-* element, a filter bounds spacer, a ring band)
@@ -233,6 +236,7 @@ namespace Velvet
             }
             PendingIndexedState = null;
             DiscardPendingKeyedState();
+            PerfStage.Lap(ref pf, "RU.discardPending");
 
             // ContextProviderNode / ComponentNode are expanded inline (no wrapper VE
             // emitted). Old-side expansion is structural-only (no context push, no fiber render).
@@ -267,6 +271,7 @@ namespace Velvet
             // The boundary reproductions this container's own walk takes, retirable only once the removal
             // pass below has run — see ReconcilerContext.EndBoundaryReproductionScope.
             var boundaryScope = _ctx.BeginBoundaryReproductionScope();
+            PerfStage.Lap(ref pf, "RU.rentBuffers+BeginBoundary");
             // Only an exception unwinding out of the try below reads this, since both branches assign first.
             var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try
@@ -274,6 +279,7 @@ namespace Velvet
                 // Old side is always expanded structurally into the flat leaf array used for matching.
                 // (No context push, no render — it reproduces the previously committed leaf order.)
                 oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners, keys: oldKeys);
+                PerfStage.Lap(ref pf, "RU.ExpandOld(call)");
 
                 // oldFibers is non-empty wherever the old side reached a descendant fiber, so a leaf of
                 // this container may have been emitted by one. That pairing is what the fast path cannot
@@ -287,9 +293,11 @@ namespace Velvet
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
+                    PerfStage.Lap(ref pf, "RU.gate");
                     removals = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing)
                         ? ReconcilerContext.BoundaryRemovalOutcome.Ran
                         : ReconcilerContext.BoundaryRemovalOutcome.Skipped;
+                    PerfStage.Lap(ref pf, "RU.ReconcileGeneral(call)");
                 }
                 else
                 {
@@ -298,22 +306,29 @@ namespace Velvet
                     // retains the time-sliced Indexed/Keyed diff state machine unchanged. The keyed
                     // path is selected if either side carries a key (unifying keyed/unkeyed transitions),
                     // or an old leaf's slot is not its flat index.
+                    PerfStage.Lap(ref pf, "RU.gate");
                     _general.RunOrphanEffectCleanups(oldFibers, newFibers);
+                    PerfStage.Lap(ref pf, "RU.fast.RunOrphanCleanups");
                     var newNodes = newChildren ?? Array.Empty<VNode>();
                     // Null where the old side needed no expansion; OldKey says what that stands for.
                     var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;
                     if (_keying.HasAnyKey(newNodes)
                         || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.AnyKeyOffItsFlatIndex(scopedOldKeys)))
                     {
+                        PerfStage.Lap(ref pf, "RU.fast.keyCheck");
                         ReportRepeatedKeys(newNodes);
                         ReconcileKeyed(parent, oldNodes, newNodes, scopedOldKeys, frameBudgetMs, slotStart, slotLimit);
+                        PerfStage.Lap(ref pf, "RU.fast.ReconcileKeyed(call)");
                     }
                     else
                     {
+                        PerfStage.Lap(ref pf, "RU.fast.keyCheck");
                         ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
+                        PerfStage.Lap(ref pf, "RU.fast.ReconcileIndexed(call)");
                     }
                     _general.SweepOrphans(oldFibers, newFibers);
                     removals = FastPathRemovalOutcome();
+                    PerfStage.Lap(ref pf, "RU.fast.tail");
                 }
             }
             finally
@@ -324,6 +339,7 @@ namespace Velvet
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
                 _ctx.BufferPool.ReturnFiberOwnerList(oldOwners);
                 _ctx.BufferPool.ReturnLeafKeyList(oldKeys);
+                PerfStage.Lap(ref pf, "RU.finally");
             }
         }
 
@@ -1041,7 +1057,9 @@ namespace Velvet
             {
                 if (_ctx.IsAborted) return true;
 
+                var pfa = PerfStage.Start();
                 var newElement = _factory.CreateElement(newNodes[i]);
+                PerfStage.Lap(ref pfa, "AP.CreateElement(call)");
                 if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
                 if (_ctx.IsAborted) return true;
                 // Insert at the absolute slot to avoid colliding with siblings outside this fiber's
@@ -1049,7 +1067,10 @@ namespace Velvet
                 // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
                 // DOM-desync resume directly into this phase (the live range shrank since the slice was parked)
                 // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
-                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), newElement);
+                var physicalAt = LogicalChildSlots.ToPhysical(parent, slotStart + i);
+                PerfStage.Lap(ref pfa, "AP.ToPhysical");
+                parent.Insert(physicalAt, newElement);
+                PerfStage.Lap(ref pfa, "AP.Insert");
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {

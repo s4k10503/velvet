@@ -106,6 +106,7 @@ namespace Velvet
         internal static VNode InvokeBodyInRenderPhase(ComponentFiber fiber)
         {
             fiber.IsInRenderPhase = true;
+            using var _pf = PerfStage.Begin("RR.Body(Render)");
             try
             {
                 return Render(fiber);

@@ -32,6 +32,7 @@ namespace Velvet
         // deferred descendant commits before this fiber's own layout effects.
         internal static void CommitSubtreeEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.CommitSubtreeEffects");
             // During a batch drain, defer the effect commit to the end of the drain so all fibers' renders
             // (mutations) land before any layout effect runs (commit-phase order). Outside a drain
             // (mount / synchronous flush) run inline as before — there is no other fiber to order against.
@@ -57,6 +58,7 @@ namespace Velvet
         // layout effect that triggers further work commits inline.
         internal static void FlushDeferredDrainLayoutEffects(ReconcilerContext ctx)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.FlushDeferredDrainLayoutEffects");
             ctx.DeferDrainLayoutEffects = false;
             CommitDeferred(ctx, ctx.PendingDrainLayoutEffects);
         }
@@ -152,6 +154,7 @@ namespace Velvet
         // What a parked time-sliced pass pushed stays on the stack for the commit that completes the pass.
         internal static void CommitStrandedLayoutWork(ReconcilerContext ctx)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.CommitStrandedLayoutWork");
             if (IsCommitOnTheStack(ctx)) return;
             var commits = 0;
             while (HasStrandedWork(ctx))
@@ -510,6 +513,7 @@ namespace Velvet
         // lists since CleanupAll clears the lists after running.
         internal static void RunOrphanFiberEffectCleanups(ComponentFiber fiber)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.RunOrphanFiberEffectCleanups");
             if (fiber == null || !fiber.IsMounted || fiber.IsDisposed) return;
             CleanupAllInsertionEffects(fiber);
             CleanupAllLayoutEffects(fiber);
@@ -532,6 +536,7 @@ namespace Velvet
         // behaviors but is a more invasive refactor (deferred).
         internal static void ScheduleRunEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.ScheduleRunEffects");
             if (fiber.PendingEffects == null || fiber.PendingEffects.Count == 0) return;
             if (fiber.EffectFlushScheduled)
             {
@@ -606,6 +611,7 @@ namespace Velvet
         // its enclosing child is gone by the flush, and Framer Motion still calls its onExitComplete.
         internal static void RunPassiveCompletions(ReconcilerContext context)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.RunPassiveCompletions");
             if (context.PendingPassiveCompletions.Count == 0) return;
             var completions = context.PendingPassiveCompletions.ToArray();
             context.PendingPassiveCompletions.Clear();
@@ -830,6 +836,7 @@ namespace Velvet
 
         internal static void CleanupAllEffects(ComponentFiber fiber)
         {
+            using var _pf = PerfStage.Begin("FiberEffects.CleanupAllEffects");
             HookEffectExecutor.CleanupAll(fiber, fiber.Effects, fiber.PendingEffects);
             fiber.EffectFlushScheduled = false;
         }
