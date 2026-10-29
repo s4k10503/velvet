@@ -141,6 +141,11 @@ namespace Velvet
             }
         }
 
+        // A token one of the checks in ApplyClassNames skips carries at least one of these: a variant has a ':' or
+        // opens a bracket, a custom-property token has a '[', a '(' or a '_', and an important modifier is a '!'.
+        // ApplyClassNamesTokenOwnershipTests holds each kind of token to it.
+        private static readonly char[] s_specialTokenMarkers = { ':', '[', '(', '_', '!' };
+
         internal static void ApplyClassNames(VisualElement element, string[] classNames)
         {
             if (classNames == null)
@@ -152,6 +157,12 @@ namespace Velvet
             {
                 if (string.IsNullOrEmpty(className))
                 {
+                    continue;
+                }
+
+                if (className.IndexOfAny(s_specialTokenMarkers) < 0)
+                {
+                    AddClassToken(element, className, StyleLayerPriority.Base);
                     continue;
                 }
 
@@ -234,18 +245,22 @@ namespace Velvet
                     ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
                     : StyleLayerPriority.Base;
 
-                // Plain classes (the overwhelming majority) go to the USS class list through the projection,
-                // which ranks them against the variant payloads; inline-value tokens (bracketed,
-                // color-opacity, static-scale) resolve to inline style — the same routing AddClass uses on a
-                // re-render.
-                if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
-                {
-                    StyleClassProjection.Add(element, cls, priority);
-                }
-                else
-                {
-                    StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority);
-                }
+                AddClassToken(element, cls, priority);
+            }
+        }
+
+        // Plain classes (the overwhelming majority) go to the USS class list through the projection, which ranks
+        // them against the variant payloads; inline-value tokens (bracketed, color-opacity, static-scale)
+        // resolve to inline style — the same routing AddClass uses on a re-render.
+        private static void AddClassToken(VisualElement element, string cls, long priority)
+        {
+            if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
+            {
+                StyleClassProjection.Add(element, cls, priority);
+            }
+            else
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority);
             }
         }
 
@@ -331,7 +346,13 @@ namespace Velvet
         }
 
         internal static void ApplyStyles(VisualElement element, StyleOverrides? styles)
-            => StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles ?? StyleOverrides.Empty);
+        {
+            if (styles == null)
+            {
+                return;
+            }
+            StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles);
+        }
 
         internal void ApplyEvents(VisualElement element, FiberEventBinding[] events)
         {

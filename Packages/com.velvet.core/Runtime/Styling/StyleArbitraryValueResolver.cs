@@ -77,7 +77,28 @@ namespace Velvet
         // overwhelming majority — are added to the USS class list verbatim and skip the resolvers. The
         // caller strips the important bang first; an empty token resolves to false.
         public static bool IsInlineResolved(string core)
-            => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
+        {
+            if (s_plainClasses.Contains(core))
+            {
+                return false;
+            }
+            if (core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core))
+            {
+                return true;
+            }
+            if (s_plainClasses.Count < MaxPlainClasses)
+            {
+                s_plainClasses.Add(core);
+            }
+            return false;
+        }
+
+        // The tokens IsInlineResolved has answered false for: the same token reaches it on every element that carries
+        // it, and MayBeStaticScale is a run of prefix scans. Bounded so a stream of distinct tokens cannot grow it
+        // without limit; past the bound a token is answered by the scans as before.
+        private const int MaxPlainClasses = 4096;
+
+        private static readonly HashSet<string> s_plainClasses = new(StringComparer.Ordinal);
 
         // TryParse for a token that becomes a layer: a logical radius takes the property of its own that Tailwind's
         // order ranks it by (StyleLogicalUtilities.AsLayer), where TryParse reads it as the physical property it

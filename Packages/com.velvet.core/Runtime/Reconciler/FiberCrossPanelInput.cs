@@ -130,6 +130,7 @@ namespace Velvet
                 foreach (var unregister in registrations.Undo) unregister();
             });
             s_bridged.Add(ctx);
+            FiberEventBindingManager.WireClickGates();
             return release;
         }
 
@@ -265,6 +266,8 @@ namespace Velvet
         // portal content, not through the context that bound the handler being asked.
         private static readonly HashSet<ReconcilerContext> s_bridged = new();
 
+        internal static bool HasBridges => s_bridged.Count != 0;
+
 #if UNITY_EDITOR
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticFields() => s_bridged.Clear();
@@ -289,7 +292,7 @@ namespace Velvet
         // skipped for that.
         internal static bool OffLogicalChain(VisualElement element, VisualElement? target)
         {
-            if (s_bridged.Count == 0) return false;
+            if (!HasBridges) return false;
             for (var current = target; current != null; current = ParentOnChain(current))
             {
                 if (ReferenceEquals(current, element)) return false;

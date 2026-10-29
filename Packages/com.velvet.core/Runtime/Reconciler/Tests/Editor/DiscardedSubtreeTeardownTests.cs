@@ -37,6 +37,11 @@ namespace Velvet.Tests
         {
             VNodePoolTestAccess.ClearButtonPoolForTest();
             VNodePoolTestAccess.ClearLabelPoolForTest();
+            // A click gate registers its callbacks once a portal bridge exists in the process, so a bridge another
+            // case left behind would register them in the cases that count on there being none.
+            typeof(FiberCrossPanelEventDispatcher)
+                .GetMethod("ResetStaticFields", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
         }
 
         // Rows of plain containers holding a Label and a Button with a click handler, which is what gives the Button
@@ -52,6 +57,26 @@ namespace Velvet.Tests
         private static ReconcilerScope Mounted(VNode[] rows)
         {
             var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), rows);
+            return scope;
+        }
+
+        // The bridge a portal puts on its target, held on the scope's root; the click gates register their callbacks
+        // once one exists.
+        private readonly struct HeldBridge : IDisposable
+        {
+            private readonly Action _release;
+
+            public HeldBridge(ReconcilerScope scope) =>
+                _release = FiberCrossPanelEventDispatcher.AttachBridge(scope.Root, ReconcilerContextProbe.Of(scope));
+
+            public void Dispose() => _release();
+        }
+
+        private static ReconcilerScope MountedUnderABridge(VNode[] rows, out HeldBridge bridge)
+        {
+            var scope = new ReconcilerScope();
+            bridge = new HeldBridge(scope);
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), rows);
             return scope;
         }
@@ -77,12 +102,15 @@ namespace Velvet.Tests
                 .GetField("s_Pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
         }
 
+        // GREEN_ON_BASE(characterization): the base registers every gate at its Button's first binding and leaves it
+        // registered below a discarded root; the bridge held here gives this base-side count the same gates to count.
         [Test]
         public void Given_RowsOfPlainContainersHoldingButtons_When_TheyAreCleared_Then_NoClickGateCallbackIsUnregistered()
         {
             // Arrange
             var rows = PlainContainerRows();
-            using var scope = Mounted(rows);
+            using var scope = MountedUnderABridge(rows, out var bridge);
+            using var held = bridge;
 
             // Act
             var returned = RecordsReturnedBy(() => Clear(scope, rows), s_clickGateEvents);
@@ -105,12 +133,15 @@ namespace Velvet.Tests
             Assert.AreEqual(0, returned);
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps a pooled Button's gate registered through the clear; the
+        // bridge held here gives the count the same gates to count.
         [Test]
         public void Given_PooledButtonsAsRows_When_TheyAreCleared_Then_NoClickGateCallbackIsUnregistered()
         {
             // Arrange
             var rows = ButtonRows();
-            using var scope = Mounted(rows);
+            using var scope = MountedUnderABridge(rows, out var bridge);
+            using var held = bridge;
 
             // Act
             var returned = RecordsReturnedBy(() => Clear(scope, rows), s_clickGateEvents);
@@ -119,13 +150,16 @@ namespace Velvet.Tests
             Assert.AreEqual(0, returned);
         }
 
-        // GREEN_ON_BASE(characterization): the base unregisters the gate and registers it again on the rent; this holds the adopting side to one set of callbacks per Button.
+        // GREEN_ON_BASE(characterization): the base keeps the gate registered through the clear and adopts it on the
+        // rent; this holds the adopting side to one set of callbacks per Button, with the bridge held that the gate
+        // registers under.
         [Test]
         public void Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks()
         {
             // Arrange
             var rows = ButtonRows();
-            using var scope = Mounted(rows);
+            using var scope = MountedUnderABridge(rows, out var bridge);
+            using var held = bridge;
             var first = scope.Root.Query<Button>().ToList();
             Clear(scope, rows);
 
@@ -139,12 +173,15 @@ namespace Velvet.Tests
                 Is.EqualTo((Rows, 3 * Rows)));
         }
 
+        // GREEN_ON_BASE(characterization): the base scrubs a pooled Button's gate and keeps it registered; the bridge
+        // held here is what registers it under the change.
         [Test]
         public void Given_APooledButtonWithAPressRecorded_When_ItIsCleared_Then_ItsGateStaysRegisteredWithNoPressOrigin()
         {
             // Arrange
             var rows = ButtonRows().Take(1).ToArray();
-            using var scope = Mounted(rows);
+            using var scope = MountedUnderABridge(rows, out var bridge);
+            using var held = bridge;
             var button = scope.Root.Q<Button>();
             var tracked = (IDictionary)typeof(FiberEventBindingManager)
                 .GetField("_clickGates", BindingFlags.NonPublic | BindingFlags.Instance)!
@@ -157,20 +194,44 @@ namespace Velvet.Tests
             Clear(scope, rows);
 
             // Assert
-            Assert.That(WiredGateState(button, gate), Is.EqualTo("wired,0,False"));
+            Assert.That(GateAfterClear(button, gate), Is.EqualTo("3,0,False"));
         }
 
-        // The gate the manager keeps registered on button across a pool return, rendered as its press count and verdict.
-        private static string WiredGateState(Button button, object gate)
+        // The gate a pooled Button keeps through a clear, rendered as the trickle-down callbacks still registered on
+        // the Button, the press origins it holds and its verdict.
+        private static string GateAfterClear(Button button, object gate)
         {
-            var table = typeof(FiberEventBindingManager)
-                .GetField("s_wiredGates", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
-            if (table == null) return "not wired";
-            var args = new object?[] { button, null };
-            var wired = (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!;
-            if (!wired || !ReferenceEquals(args[1], gate)) return "not wired";
             var downs = (System.Collections.Generic.ISet<int>)gate.GetType().GetField("OffChainDowns")!.GetValue(gate)!;
-            return $"wired,{downs.Count},{gate.GetType().GetField("Suppress")!.GetValue(gate)}";
+            return $"{TrickleDownCallbacks(button)},{downs.Count},{gate.GetType().GetField("Suppress")!.GetValue(gate)}";
+        }
+
+        [Test]
+        public void Given_NoPortalBridge_When_ButtonsWithAnOnClickAreMounted_Then_NoneHoldsAClickGateCallback()
+        {
+            // Arrange
+            var rows = ButtonRows();
+
+            // Act
+            using var scope = Mounted(rows);
+
+            // Assert
+            Assert.AreEqual(0, scope.Root.Query<Button>().ToList().Sum(TrickleDownCallbacks));
+        }
+
+        // GREEN_ON_BASE(characterization): the base registers each gate when its Button binds, so the count holds
+        // there before a bridge attaches as well; this holds the gates made before one to registering when it does.
+        [Test]
+        public void Given_ButtonsMountedBeforeAnyPortalBridge_When_ABridgeAttaches_Then_EachHoldsOneSetOfClickGateCallbacks()
+        {
+            // Arrange
+            using var scope = Mounted(ButtonRows());
+            var buttons = scope.Root.Query<Button>().ToList();
+
+            // Act
+            using var bridge = new HeldBridge(scope);
+
+            // Assert
+            Assert.AreEqual(3 * Rows, buttons.Sum(TrickleDownCallbacks));
         }
 
         // GREEN_ON_BASE(characterization): the base unregisters every callback, so a pooled Label root returns at least one text-item record there as well.

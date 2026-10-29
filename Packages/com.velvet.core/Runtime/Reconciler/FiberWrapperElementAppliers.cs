@@ -44,7 +44,8 @@ namespace Velvet
             _backdrop = new FiberBackdropApplier(ctx);
             _clipPath = new FiberClipPathApplier(ctx, wrappers);
             _gesture = new FiberGestureApplier(ctx);
-            ctx.PaintLeases = new FiberPaintLeases(ctx, _skew, _gradient, _boxShadow);
+            // One per context: a replacement would strand the holds a Motion play has taken in the old one.
+            ctx.PaintLeases ??= new FiberPaintLeases(ctx, _skew, _gradient, _boxShadow);
         }
 
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)

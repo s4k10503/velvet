@@ -16,10 +16,49 @@ namespace Velvet
         private static readonly ProfilerMarker s_continueReconcileMarker = new("Velvet.ContinueReconcile");
 
         private readonly ReconcilerContext _ctx;
-        private readonly ChildReconciler _childReconciler;
-        private readonly FiberNodeFactory _factory;
-        private readonly FiberNodePatcher _patcher;
-        private readonly FiberElementCleaner _cleaner;
+        // Built by the first member that needs them (BuildParts) for a Reconciler that does not own its context:
+        // a component mounted inline, whose render its parent's pass reconciles, reaches none of them
+        // (ReconcilerLazyPartsTests).
+        private ChildReconciler? _childReconciler;
+        private FiberNodeFactory? _factory;
+        private FiberNodePatcher? _patcher;
+        private FiberElementCleaner? _cleaner;
+
+        private ChildReconciler ChildPass
+        {
+            get
+            {
+                if (_childReconciler == null) BuildParts();
+                return _childReconciler!;
+            }
+        }
+
+        private FiberNodeFactory NodeFactory
+        {
+            get
+            {
+                if (_factory == null) BuildParts();
+                return _factory!;
+            }
+        }
+
+        private FiberNodePatcher NodePatcher
+        {
+            get
+            {
+                if (_patcher == null) BuildParts();
+                return _patcher!;
+            }
+        }
+
+        private FiberElementCleaner ElementCleaner
+        {
+            get
+            {
+                if (_cleaner == null) BuildParts();
+                return _cleaner!;
+            }
+        }
 
         /// <summary>
         /// True when this Reconciler created the <see cref="_ctx"/> itself (root Reconciler).
@@ -67,13 +106,9 @@ namespace Velvet
         {
             _ctx = ctx;
             _ownsContext = ownsContext;
-            _cleaner = new FiberElementCleaner(_ctx);
-            _patcher = new FiberNodePatcher(_ctx);
-            _factory = new FiberNodeFactory(_ctx, _patcher, _cleaner);
-            _childReconciler = new ChildReconciler(_ctx, _patcher, _factory, _cleaner);
-
-            _factory.SetHost(this);
-            _patcher.SetHost(this);
+            // The root builds its parts now rather than at first use: constructing them is what assigns the
+            // context's PaintLeases, ClipPathReResolve and VariantGatedReSync.
+            if (ownsContext) BuildParts();
             // The root Reconciler owns the bridge so internal elements (FiberVirtualListController etc.)
             // can re-enter the reconciler via _ctx.ReconcilerBridge. Inherited contexts already have a
             // bridge assigned; skipping the set avoids the fail-fast double-call check.
@@ -111,6 +146,21 @@ namespace Velvet
             }
         }
 
+        private void BuildParts()
+        {
+            var cleaner = new FiberElementCleaner(_ctx);
+            var patcher = new FiberNodePatcher(_ctx);
+            var factory = new FiberNodeFactory(_ctx, patcher, cleaner);
+            var childReconciler = new ChildReconciler(_ctx, patcher, factory, cleaner);
+
+            factory.SetHost(this);
+            patcher.SetHost(this);
+            _cleaner = cleaner;
+            _patcher = patcher;
+            _factory = factory;
+            _childReconciler = childReconciler;
+        }
+
         // The drag session's overlay join follows the layout effects but does not depend on them completing.
         private void FlushDrainEndCommitWork()
         {
@@ -138,8 +188,8 @@ namespace Velvet
         /// True when either the Indexed or Keyed path was suspended.
         /// </summary>
         public bool HasPendingWork
-            => _childReconciler.PendingIndexedState.HasValue
-               || _childReconciler.PendingKeyedState != null;
+            => _childReconciler != null
+               && (_childReconciler.PendingIndexedState.HasValue || _childReconciler.PendingKeyedState != null);
 
         /// <summary>
         /// Diff-updates the direct children of <paramref name="parent"/> within the slot range
@@ -201,7 +251,7 @@ namespace Velvet
                     catchingBoundary);
                 // A parent that no CreateElement or PatchNode is running for (the mount host, or one only a
                 // wrapper-less component re-renders into) gets no post-children structural pass of its own.
-                _patcher.ApplyStructuralVariants(parent);
+                NodePatcher.ApplyStructuralVariants(parent);
                 walked = true;
             }
             finally
@@ -244,14 +294,14 @@ namespace Velvet
         {
             if (catchingBoundary == null)
             {
-                _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                ChildPass.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
                 return null;
             }
             var completionsBefore = _ctx.PendingCompletions.Count;
             catchingBoundary.CatchesInTheWalk = true;
             try
             {
-                _childReconciler.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
+                ChildPass.Reconcile(parent, oldChildren, newChildren, frameBudgetMs, slotStart, slotLimit);
                 return null;
             }
             catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, catchingBoundary))
@@ -296,11 +346,11 @@ namespace Velvet
             {
                 try
                 {
-                    var suspended = _childReconciler.DrainPendingPortalMounts();
+                    var suspended = ChildPass.DrainPendingPortalMounts();
                     // After the drain, whose own reconciles can tear down a Portal too.
                     foreach (var target in _ctx.PortalTargetsToRestyle)
                     {
-                        _patcher.ApplyStructuralVariants(target);
+                        NodePatcher.ApplyStructuralVariants(target);
                     }
                     if (suspended) throw walked ? FiberSuspendSignal.AfterTheWalk : FiberSuspendSignal.Instance;
                 }
@@ -309,7 +359,7 @@ namespace Velvet
                     // After the drain, which places the relocated elements this pass deferred, and in a finally of
                     // its own so a drain that throws still leaves neither a retired child standing nor a parent
                     // pending into the next pass, and a coordinator call that throws still reaches the resets below.
-                    _cleaner.ReleaseRetiredZLayerReals();
+                    ElementCleaner.ReleaseRetiredZLayerReals();
                     FiberZLayerCoordinator.DrainTeardowns(_ctx);
                     FiberZLayerCoordinator.ResortLayers(_ctx);
                 }
@@ -437,13 +487,13 @@ namespace Velvet
             {
                 // Indexed and Keyed never become pending simultaneously (the other is cleared when a new
                 // Reconcile starts), so resuming whichever path is pending is sufficient.
-                if (_childReconciler.PendingIndexedState.HasValue)
+                if (ChildPass.PendingIndexedState.HasValue)
                 {
-                    _childReconciler.ContinueIndexed(frameBudgetMs);
+                    ChildPass.ContinueIndexed(frameBudgetMs);
                 }
                 else
                 {
-                    _childReconciler.ContinueKeyed(frameBudgetMs);
+                    ChildPass.ContinueKeyed(frameBudgetMs);
                 }
                 resumed = true;
             }
@@ -486,14 +536,14 @@ namespace Velvet
         internal void RebasePendingSlotStart(int delta)
         {
             if (_ctx.IsDisposed || !HasPendingWork) { return; }
-            _childReconciler.RebasePendingSlotStart(delta);
+            ChildPass.RebasePendingSlotStart(delta);
         }
 
         #region IReconcilerBridge
 
-        VisualElement IReconcilerBridge.CreateElementForController(VNode node) => _factory.CreateElement(node);
+        VisualElement IReconcilerBridge.CreateElementForController(VNode node) => NodeFactory.CreateElement(node);
 
-        void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
+        void IReconcilerBridge.CleanupElementForController(VisualElement element) => ElementCleaner.CleanupElement(element);
 
         void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
 
@@ -523,12 +573,12 @@ namespace Velvet
             // The controller stores the slot's top-level element, which for a shadow-*/clip-path-*
             // item root is the structural WRAPPER; patch the real inner (the ChildReconciler does
             // the same via ResolveWrapped before every PatchNode).
-            var inner = _patcher.ResolveWrapped(element);
-            _patcher.PatchNode(inner, oldNode, newNode);
+            var inner = NodePatcher.ResolveWrapped(element);
+            NodePatcher.PatchNode(inner, oldNode, newNode);
             // A class change can wrap/unwrap during the patch, swapping the slot's top-level
             // element; return the current outermost so the controller re-mounts the right node
             // (the parallel of ChildReconciler's post-patch re-fetch).
-            return _patcher.ResolveOuter(inner);
+            return NodePatcher.ResolveOuter(inner);
         }
 
         object? IReconcilerBridge.BeginDetachedItemScope(
@@ -610,18 +660,18 @@ namespace Velvet
         #region IReconcilerHost
 
         void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
-            => _cleaner.ReleasePortalRangeForRetarget(placeholder);
+            => ElementCleaner.ReleasePortalRangeForRetarget(placeholder);
 
         void IReconcilerHost.RemoveRows(VisualElement target, int slotStart, int count)
-            => _childReconciler.RemoveRows(target, slotStart, count);
+            => ChildPass.RemoveRows(target, slotStart, count);
 
         void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
-            => _childReconciler.Reconcile(
+            => ChildPass.Reconcile(
                 parent, FiberKeying.UnwrapLoneFragment(oldChildren), FiberKeying.UnwrapLoneFragment(newChildren),
                 slotStart: slotStart);
 
         void IReconcilerHost.NotifyContextValueChange(ContextProviderNode newProvider)
-            => _childReconciler.NotifyContextValueChange(newProvider);
+            => ChildPass.NotifyContextValueChange(newProvider);
 
         #endregion
 
@@ -629,7 +679,7 @@ namespace Velvet
         {
             // Per-Reconciler pending state always needs releasing — even non-owners may have
             // suspended their own keyed run while sharing the root's registries.
-            _childReconciler.DiscardPendingKeyedState();
+            _childReconciler?.DiscardPendingKeyedState();
 
             // Owner-only teardown: ctx-level state is the root's responsibility. Disposing it from
             // a child Reconciler would invalidate sibling fibers that still share the same ctx.
