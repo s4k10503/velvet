@@ -967,7 +967,7 @@ namespace Velvet
         // The topmost of the fibers a suspended mount abandoned, which takes the others below it along.
         private static void DisposeAbandonedMount(ComponentFiber fiber)
         {
-            if (!fiber.MountDiscarded) return;
+            if (!fiber.MountDiscarded || fiber.IsDisposed) return;
             var top = fiber;
             while (top.Parent is { MountDiscarded: true } parent) top = parent;
             fiber.Reconciler!.Context.ComponentRegistry.DisposeAndRemove(top);
@@ -1022,6 +1022,7 @@ namespace Velvet
                 FiberWorkLoop.RequestRenderFromHook(fiber);
                 boundary.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(boundary);
+                DisposeAbandonedMount(fiber);
                 return;
             }
             // Settle the child's subtree to its resolved output. The child's host slot is currently occupied by
@@ -1062,6 +1063,7 @@ namespace Velvet
                 if (settles && retainedOutput) SettleSubsumedFiber(fiber);
             }
             FiberEffects.CommitStrandedLayoutWork(context);
+            DisposeAbandonedMount(fiber);
         }
 
         #endregion
