@@ -1219,6 +1219,102 @@ namespace Velvet.Tests
                 "A pass that suspended commits nothing more until its retry, and the resume would place rows of a tree no commit has reached");
         }
 
+        // GREEN_ON_BASE(characterization): the merge base already shows the fallback when a Suspense is above the host.
+        // This pins that the boundary path, which the discard of an abandoned mount skips, still shows it.
+        [Test]
+        public void Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheBoundaryHasRendered_Then_ItShowsItsFallback()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(BoundaryElementPortalHostRender, key: "boundary-element-portal-host"));
+            var beforeTheUpdate = _root.DisplayedLabelTexts("|");
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Act
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((beforeTheUpdate, _root.DisplayedLabelTexts("|")), Is.EqualTo(("host", "host|loading")),
+                "A suspend with a Suspense above the reader is the boundary's to show, whichever element the mount that suspended was creating");
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base already reveals the content when the resource resolves.
+        // This pins that the reveal mounts it into the Portal, which the discard of an abandoned mount skipped.
+        [Test]
+        public void Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_TheBoundaryRevealsTheContent()
+        {
+            // Arrange
+            using var mounted = MountAndSuspendUnderTheBoundary();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            SettleBoundaryPasses(mounted);
+
+            // Assert
+            Assert.That(LabelTextsIn(s_portalTarget), Is.EqualTo("sibling|stable:5"),
+                "The boundary's reveal creates the host element again with the resolved value, beside the component that mounted ahead of the reader");
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base already registers one fiber for the reader after the reveal.
+        // This pins that the fibers of the attempt that suspended are not left registered beside the reveal's.
+        [Test]
+        public void Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_OneReaderIsRegistered()
+        {
+            // Arrange
+            using var mounted = MountAndSuspendUnderTheBoundary();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            SettleBoundaryPasses(mounted);
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "reader"), Is.EqualTo(1),
+                "Under a Suspense the abandoned attempt is the boundary's to release, and what the resolve leaves registered is the reveal's reader alone");
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base already registers one fiber for the sibling after the reveal.
+        // This pins that a component mounted ahead of the reader is not left registered by the attempt that suspended.
+        [Test]
+        public void Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_OneSiblingIsRegistered()
+        {
+            // Arrange
+            using var mounted = MountAndSuspendUnderTheBoundary();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            SettleBoundaryPasses(mounted);
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "sibling"), Is.EqualTo(1),
+                "The sibling of the attempt that suspended is neither disposed ahead of the reveal nor left registered beside the reveal's");
+        }
+
+        private MountedTree MountAndSuspendUnderTheBoundary()
+        {
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            var mounted = V.Mount(_root, V.Component(BoundaryElementPortalHostRender, key: "boundary-element-portal-host"));
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            return mounted;
+        }
+
+        // A reveal takes the boundary's render and the retried host's, which one flush of the tree may order either way.
+        private static void SettleBoundaryPasses(MountedTree mounted)
+        {
+            for (var pass = 0; pass < 4; pass++)
+            {
+                mounted.FlushStateForTest();
+                mounted.GetSchedulerForTest().DrainImmediateForTest();
+            }
+        }
+
+        private static string LabelTextsIn(VisualElement element)
+            => string.Join("|", element.Query<Label>().ToList().Select(label => label.text));
+
         private static int s_parkedRowCount;
         private static int s_parkedPortalAt;
         private static int s_parkedReads;
@@ -1245,6 +1341,38 @@ namespace Velvet.Tests
             s_parkedReads++;
             var value = Hooks.Use<int>(_ => s_sourceA.Task, 1);
             return V.Label(text: "child:" + value);
+        }
+
+        [Component]
+        private static VNode BoundaryElementPortalHostRender()
+            => V.Div(name: "boundary-element-portal-host", children: new VNode[]
+            {
+                V.Label(text: "host"),
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(ElementPortalHostRender, key: "element-portal-host") }),
+            });
+
+        // The reader mounts under an element the Portal's child creates, which is what a mount that suspends with no
+        // Suspense above it abandons and releases.
+        [Component]
+        private static VNode ElementPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_portalHostSetShown = setShown;
+            return V.Div(name: "element-portal-host", children: new VNode[]
+            {
+                shown
+                    ? V.Portal(s_portalTarget, new VNode[]
+                    {
+                        V.Div(name: "second-a", children: new VNode[]
+                        {
+                            V.Component(SiblingRender, key: "sibling"),
+                            V.Component(StableReaderRender, key: "reader"),
+                        }),
+                    })
+                    : null,
+            });
         }
 
         [Component]
