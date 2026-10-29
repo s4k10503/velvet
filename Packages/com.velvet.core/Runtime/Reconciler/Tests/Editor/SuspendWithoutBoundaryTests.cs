@@ -1287,6 +1287,26 @@ namespace Velvet.Tests
                 "The sibling of the attempt that suspended is neither disposed ahead of the reveal nor left registered beside the reveal's");
         }
 
+        [Test]
+        public void Given_AnErrorBoundaryBetweenASuspenseAndTheReaderOfAnAbandonedMount_When_TheResourceResolves_Then_OneReaderIsRegistered()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(BoundaryErrorBoundaryHostRender, key: "boundary-error-boundary-host"));
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            SettleBoundaryPasses(mounted);
+
+            // Assert
+            Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "reader"), Is.EqualTo(1),
+                "An error boundary between the Suspense and the reader does not keep the abandoned attempt's reader registered beside the reveal's");
+        }
+
         private MountedTree MountAndSuspendUnderTheBoundary()
         {
             s_portalTarget = new VisualElement { name = "portal-target" };
@@ -1347,6 +1367,21 @@ namespace Velvet.Tests
                 V.Suspense(
                     fallback: V.Label(text: "loading"),
                     children: new VNode[] { V.Component(ElementPortalHostRender, key: "element-portal-host") }),
+            });
+
+        [Component]
+        private static VNode BoundaryErrorBoundaryHostRender()
+            => V.Div(name: "boundary-error-boundary-host", children: new VNode[]
+            {
+                V.Label(text: "host"),
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[]
+                    {
+                        V.ErrorBoundary(
+                            _ => V.Label(text: "error"),
+                            new VNode?[] { V.Component(ElementPortalHostRender, key: "element-portal-host") }),
+                    }),
             });
 
         // The reader mounts under an element the Portal's child creates, which is what a mount that suspends with no
