@@ -244,5 +244,25 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(payloadsBefore, HoverPayloadsOf(manipulator)), Is.True,
                 "A content-identical class array must not re-derive the variant manipulator payloads");
         }
+
+        [Test]
+        public void Given_AHoverVariantLeafWasMounted_When_RepatchedWithPlainClasses_Then_ItIsNoLongerTrackedAsAVariantManipulator()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Label(name: "leaf", className: "hover:bg-red-500", text: "x") };
+            var newTree = new VNode[] { V.Label(name: "leaf", className: "flex", text: "x") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), oldTree);
+            var leaf = scope.Root[0];
+            var trackedBefore = scope.Reconciler.Context.VariantManipulators.ContainsKey(leaf);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(
+                (trackedBefore, ReferenceEquals(scope.Root[0], leaf), scope.Reconciler.Context.VariantManipulators.ContainsKey(leaf)),
+                Is.EqualTo((true, true, false)));
+        }
     }
 }
