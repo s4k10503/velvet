@@ -184,10 +184,10 @@ namespace Velvet
             }
             else
             {
-                // Non-memo component: a parent re-render always re-renders the child,
-                // so the props bail never applies. Props are still synced below for the next render.
-                // Inside the committed output of a memoized fiber that bailed, the node is the instance the
-                // fiber last rendered from, so the parent did not re-render it; only a pending update does.
+                // Non-memo component: the props bail never applies, so a parent re-render re-renders it, except
+                // inside the committed output of a fiber that rendered nothing in this pass: there the node is
+                // the instance the fiber last rendered from, which the parent did not produce again, and only a
+                // pending update renders it. Props are still synced below for the next render.
                 propsChanged = !(_ctx.InBailedOutput && renderedFromThisNode);
             }
             if (propsChanged)

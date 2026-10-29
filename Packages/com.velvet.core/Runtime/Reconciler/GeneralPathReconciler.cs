@@ -1142,8 +1142,17 @@ namespace Velvet
                 walk.NewFibers.Add(fiber);
                 fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
-                if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
-                else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
+                var enclosingInBailedOutput = _ctx.InBailedOutput;
+                _ctx.InBailedOutput = RendersNothingHere(walk, reusedAsIs);
+                try
+                {
+                    if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
+                    else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
+                }
+                finally
+                {
+                    _ctx.InBailedOutput = enclosingInBailedOutput;
+                }
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
@@ -1175,10 +1184,7 @@ namespace Velvet
             int nodeIndex)
         {
             var enclosingReusedOwner = walk.ReusedOwner;
-            var enclosingInBailedOutput = _ctx.InBailedOutput;
-            var rendersNothing = reusedAsIs && walk.ReuseSuspended == 0;
-            walk.ReusedOwner = rendersNothing && !HoldsDirtyFiberBelow(fiber) ? fiber : null;
-            _ctx.InBailedOutput = rendersNothing;
+            walk.ReusedOwner = RendersNothingHere(walk, reusedAsIs) && !HoldsDirtyFiberBelow(fiber) ? fiber : null;
             try
             {
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -1186,9 +1192,11 @@ namespace Velvet
             finally
             {
                 walk.ReusedOwner = enclosingReusedOwner;
-                _ctx.InBailedOutput = enclosingInBailedOutput;
             }
         }
+
+        private static bool RendersNothingHere(InlineWalk walk, bool reusedAsIs)
+            => reusedAsIs && walk.ReuseSuspended == 0;
 
         // A dirty fiber below root, or one owed a render, is rendered by the patch of root's output (ComponentRegistry.ReconcileExistingFiber),
         // so that patch is kept while one exists. Walks the fiber links without a stack.

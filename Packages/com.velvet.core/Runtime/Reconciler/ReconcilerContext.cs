@@ -1794,9 +1794,10 @@ namespace Velvet
 
         internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
 
-        // True while the walk expands the committed output of an inline fiber that rendered nothing in this pass
-        // (GeneralPathReconciler.ExpandComponentInline writes it per component), including the patch of an
-        // element of that output kept because a fiber below it has an update pending.
+        // True while the walk expands the committed output of an inline fiber that rendered nothing in this pass,
+        // including the patch of an element of that output kept because a fiber below it has an update pending.
+        // GeneralPathReconciler.ExpandComponentInline writes it for every component it expands, an error
+        // boundary included, and restores it after.
         internal bool InBailedOutput;
 
         // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again; boundary
