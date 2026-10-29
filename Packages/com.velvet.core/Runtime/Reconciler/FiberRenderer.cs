@@ -674,11 +674,14 @@ namespace Velvet
         // completes would, with the Portal that suspended recorded as holding nothing
         // (PortalSlotInfo.ChildrenPending). The cached output of this render is dropped: CommitSettledValues has
         // promoted it, and a retry that took it would diff this tree against itself, which the indexed diff skips.
+        // A walk that parked is retained the same way, its baseline parked for the resume
+        // (FiberCommitWork.ReturnOldTreeAfterReconcile): the rows it placed are on the target and the resume places
+        // the rest, so a retry diffing from the older tree would create the placed ones again.
         private static void RetainWalkedTree(ComponentFiber fiber, Exception signal, VNode?[] newTree, VNode?[] oldTree)
         {
             var reconciler = fiber.Reconciler;
             if (!ReferenceEquals(signal, FiberSuspendSignal.AfterTheWalk) || reconciler == null
-                || reconciler.HasPendingWork || reconciler.LastTopLevelWasAborted || fiber.FallbackReplacedPreviousTree)
+                || reconciler.LastTopLevelWasAborted || fiber.FallbackReplacedPreviousTree)
             {
                 return;
             }
