@@ -1291,6 +1291,37 @@ namespace Velvet.Tests
                 "The sibling of the attempt that suspended is neither disposed ahead of the reveal nor left registered beside the reveal's");
         }
 
+        [Test]
+        public void ZzDiagnosticDump()
+        {
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(BoundaryElementPortalHostRender, key: "boundary-element-portal-host"));
+            s_portalHostSetShown.Invoke(true);
+            mounted.FlushStateForTest();
+            var s1 = DumpFibers(mounted);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var s2 = DumpFibers(mounted);
+            s_sourceA.TrySetResult(5);
+            SettleBoundaryPasses(mounted);
+            var s3 = DumpFibers(mounted);
+            Assert.Fail("S1\n" + s1 + "\nS2\n" + s2 + "\nS3\n" + s3);
+        }
+
+        private static string DumpFibers(MountedTree mounted)
+        {
+            var registry = mounted.Root.Reconciler.Context.ComponentRegistry;
+            var field = registry.GetType().GetField("_inlineFiberToKey", BindingFlags.NonPublic | BindingFlags.Instance);
+            var lines = new System.Collections.Generic.List<string>();
+            foreach (DictionaryEntry entry in (IDictionary)field!.GetValue(registry)!)
+            {
+                var f = (ComponentFiber)entry.Key;
+                lines.Add($"{f.SourceNode?.Key}@{f.MountPoint?.name}#{f.MountPoint?.GetHashCode()} disposed={f.IsDisposed} off={f.IsOffscreen} disc={f.MountDiscarded} parent={f.Parent?.SourceNode?.Key}");
+            }
+            lines.Sort();
+            return string.Join("\n", lines);
+        }
+
         private MountedTree MountAndSuspendUnderTheBoundary()
         {
             s_portalTarget = new VisualElement { name = "portal-target" };
