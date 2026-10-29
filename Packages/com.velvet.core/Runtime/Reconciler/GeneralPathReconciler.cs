@@ -648,7 +648,9 @@ namespace Velvet
             }
             PerfStage.Lap(ref pf, "F.patchedSet");
             // Removal (reverse so not-yet-visited indices stay valid).
+            PerfStage.Count(oldNodes.Length > 0 ? "F.oldNodes.nonempty" : "F.oldNodes.empty");
             var cursor = new DescendingSlotCursor();
+            PerfStage.Lap(ref pf, "F.cursorCtor");
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 if (!patched.Contains(i))
