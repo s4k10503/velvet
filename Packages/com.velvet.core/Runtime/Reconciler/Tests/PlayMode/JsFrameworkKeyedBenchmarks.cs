@@ -74,25 +74,6 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        [Test, Performance]
-        public void Create_1000Rows_GcOff()
-        {
-            System.GC.Collect();
-            UnityEngine.Scripting.GarbageCollector.GCMode = UnityEngine.Scripting.GarbageCollector.Mode.Disabled;
-            try
-            {
-                Execute(
-                    new Operation(() => Apply(Clear()), () => RunRows(Rows), Rows, Rows),
-                    WarmupCount,
-                    MeasurementCount);
-            }
-            finally
-            {
-                UnityEngine.Scripting.GarbageCollector.GCMode = UnityEngine.Scripting.GarbageCollector.Mode.Enabled;
-                System.GC.Collect();
-            }
-        }
-
         // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
         [Test, Performance]
         public void Replace_AllOf1000Rows()
@@ -280,6 +261,9 @@ namespace Velvet.Tests.Performance
             recorder.enabled = false;
             recorder.FilterToCurrentThread();
             recorder.enabled = true;
+            var gcRecorder = Recorder.Get("GC.Collect");
+            gcRecorder.enabled = false;
+            gcRecorder.enabled = true;
 
             if (operation.Profile)
             {
@@ -299,6 +283,9 @@ namespace Velvet.Tests.Performance
             recorder.enabled = false;
             var blocks = recorder.sampleBlockCount;
             recorder.CollectFromAllThreads();
+            gcRecorder.enabled = false;
+            var gcMs = gcRecorder.elapsedNanoseconds / 1e6;
+            var gcCount = gcRecorder.sampleBlockCount;
 
             VerifyTree(operation);
 
@@ -306,6 +293,8 @@ namespace Velvet.Tests.Performance
             {
                 Measure.Custom(time, sw.Elapsed.TotalMilliseconds);
                 Measure.Custom(allocation, blocks);
+                Measure.Custom(new SampleGroup("Op.GcMs", SampleUnit.Millisecond), gcMs);
+                Measure.Custom(new SampleGroup("Op.GcCount", SampleUnit.Undefined), gcCount);
                 if (operation.Profile)
                 {
                     EmitStages(sw.Elapsed.TotalMilliseconds);
