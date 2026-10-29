@@ -89,6 +89,7 @@ namespace Velvet
         private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children,
             string[]? classNames = null)
         {
+            using var _pf = PerfStage.Begin("FiberNodeFactory.ReconcileChildrenOfNewElement");
             using var host = _ctx.OpenChildVariantHost(
                 classNames != null && StyleChildVariantClass.HasChildVariantClass(classNames));
             try
@@ -127,7 +128,10 @@ namespace Velvet
 
         private VisualElement CreateForElementNode(ElementNode elementNode)
         {
+            var pf = PerfStage.Start();
+            using var _pf = PerfStage.Begin("FiberNodeFactory.CreateForElementNode");
             var element = _ctx.FiberElementFactory.Create(elementNode);
+            PerfStage.Lap(ref pf, "N.CE.FiberElementFactory.Create(call)");
             // Stamps the ComponentFiber whose Body is mid-render right now (the element's
             // logical owner) onto the reserved userData slot — reset to null on pool reuse
             // (FiberElementPoolReset.ResetCommonState) and otherwise never written by Velvet.
@@ -136,7 +140,9 @@ namespace Velvet
             // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
             // physically landed. Null at the true tree root (nothing on FiberStack yet).
             element.userData = _ctx.FiberStack.Current;
+            PerfStage.Lap(ref pf, "N.CE.userData");
             CaptureOwnRawText(element, elementNode.Props);
+            PerfStage.Lap(ref pf, "N.CE.CaptureOwnRawText");
             if (elementNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -147,6 +153,7 @@ namespace Velvet
                 // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
                 // symmetric — both omit the per-Component wrapper VE.
                 ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children, elementNode.ClassNames);
+                PerfStage.Lap(ref pf, "N.CE.children(call)");
             }
             try
             {
@@ -169,17 +176,23 @@ namespace Velvet
             // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
             // ApplyPostChildrenClassPasses for the same ordering on the patch path).
             _patcher.ApplyChildVariantManipulator(element, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ApplyChildVariantManipulator");
             _patcher.ApplyLayoutManipulators(element, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ApplyLayoutManipulators");
             // Same post-children timing: structural variants (first:/last:/odd:/…) need the placed children.
             _patcher.ApplyStructuralVariants(element);
+            PerfStage.Lap(ref pf, "N.CE.ApplyStructuralVariants");
             // has-[.class]: (element as subject) likewise needs the placed children to scan.
             _patcher.ApplyHasClassVariants(element);
+            PerfStage.Lap(ref pf, "N.CE.ApplyHasClassVariants");
             // has-[:checked]: / has-[:focus]: re-scan: an already-checked descendant mounted under this
             // element fires no ChangeEvent, so re-derive the manipulator from the placed children.
             _patcher.ApplyHasVariantManipulators(element);
+            PerfStage.Lap(ref pf, "N.CE.ApplyHasVariantManipulators");
             // text-transform / -decoration cascade: after children are placed so it can reach descendant
             // text leaves, and after the element's own text is set so it transforms the final value.
             _patcher.ApplyTextEffectsOnCreate(element, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ApplyTextEffectsOnCreate");
 
             // The paint layers read a class source that also carries what the passes above have already
             // written onto the live class list, so a payload ALREADY LIT at this point paints from the
@@ -189,36 +202,47 @@ namespace Velvet
             // supports- — and not dark: or md:, which are still off while the element is detached and
             // arrive later through attach.
             _ctx.ExpectPlayGates(element, null);
+            PerfStage.Lap(ref pf, "N.CE.ExpectPlayGates");
             var paintClasses = _patcher.ResolveVariantClassesOnCreate(element, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ResolveVariantClassesOnCreate");
             // Skew is wrapper-less (the element's own inline rotate and scale), so it attaches before — and
             // composes with — any wrap layer below, including a user wrapElement.
             _patcher.Appliers.ApplySkewOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplySkewOnCreate");
             // Gradient is also wrapper-less (baked texture set as the element's own
             // background-image, clipped to its border-radius), so it attaches on the element too.
             _patcher.Appliers.ApplyGradientOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyGradientOnCreate");
             // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
             // after the gradient so a pan mode sees the baked gradient already applied.
             _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyAnimateOnCreate");
             // transition-filter: bind the filter tween so teardown can pause its tick (FiberFilterTransitionApplier).
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyFilterTransitionOnCreate");
             // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
             // element's own content, bleeding outside the box) — a non-structural paint like CSS
             // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
             // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
             _patcher.Appliers.ApplyShadowOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyShadowOnCreate");
             // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
             // element's own generateVisualContent; only the border color is suppressed). Attaches after
             // skew / shadow so it can defer to whichever owns the face.
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyBorderStyleOnCreate");
             // ring-* / outline-*: the band is a native-border overlay hosted as a reconciler-invisible
             // SIBLING of this element (RingOverlay), so nothing is added to the element's own slot and it
             // composes with every layer above and with a user wrapElement. The element has no parent yet at
             // this point; the overlay places itself when the reconcile boundary drains.
             _patcher.Appliers.ApplyRingOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyRingOnCreate");
             // backdrop-*: an immediate-mode sibling placed before this element (BackdropFilterLayer), placed at the
             // drain as the ring band is.
             _patcher.Appliers.ApplyBackdropOnCreate(element, paintClasses);
+            PerfStage.Lap(ref pf, "N.CE.ApplyBackdropOnCreate");
             ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ApplyOptionalCreateBindings(call)");
 
             VisualElement outer;
             if (elementNode.WrapElement != null)
@@ -252,6 +276,7 @@ namespace Velvet
                 // layers are wrapper-less and attached above, and both self-suppress on an active clip
                 // (CSS clip-path clips a box-shadow and an outline alike).
                 outer = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
+                PerfStage.Lap(ref pf, "N.CE.ApplyClipPathOnCreate");
             }
 
             // Stacking: the OUTERMOST element is what relocates — a clip-path-*/wrapElement wrapper is what
@@ -602,6 +627,7 @@ namespace Velvet
 
         private VisualElement CreateForTextNode(TextNode textNode)
         {
+            using var _pf = PerfStage.Begin("FiberNodeFactory.CreateForTextNode");
             var label = _ctx.FiberElementFactory.CreateText(textNode);
             // Capture the raw text (and apply any already-resolved ancestor effect) so a text-transform /
             // -decoration carried by an ANCESTOR cascades onto this leaf — a TextNode has no class of its
@@ -614,6 +640,7 @@ namespace Velvet
 
         private VisualElement CreateForComponentNode(ComponentNode componentNode)
         {
+            using var _pf = PerfStage.Begin("FiberNodeFactory.CreateForComponentNode");
             // Wrapper-mount path, reached from a VirtualList item and nothing else: the item renderer's
             // return goes to IReconcilerBridge.CreateElementForController unexpanded, while a reconcile
             // rules a ComponentNode out on both of its paths — the fast one runs only where
@@ -660,6 +687,7 @@ namespace Velvet
         // ApplyParticlesSpacer reads the utility classes off it.
         private void ApplyOptionalCreateBindings(VisualElement element, FiberElementProps? props, string[] classNames)
         {
+            using var _pf = PerfStage.Begin("FiberNodeFactory.ApplyOptionalCreateBindings");
             // SceneView (V.SceneView): wire the camera-output binding. The element has no panel
             // yet, so the first real texture sync runs from the binding's geometry callback once
             // layout settles; later camera swaps arrive through the props diff.
