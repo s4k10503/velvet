@@ -352,7 +352,7 @@ namespace Velvet
             {
                 if (element == null) return;
                 if (_pool.Count >= _max) return;
-                _reset(element);
+                using (PerfStage.Begin("U.Pool.reset")) { _reset(element); }
                 _pool.Push(element);
             }
 
@@ -372,6 +372,7 @@ namespace Velvet
 
         public static Label RentLabel(string text)
         {
+            using var _pf = PerfStage.Begin("VNodePool.RentLabel");
             var label = s_labelPool.Rent();
             label.AddToClassList(VelvetLabelClassName);
             label.text = text ?? string.Empty;
@@ -396,6 +397,7 @@ namespace Velvet
 
         public static Button RentButton()
         {
+            using var _pf = PerfStage.Begin("VNodePool.RentButton");
             var button = s_buttonPool.Rent();
             button.AddToClassList(VelvetButtonClassName);
             return button;
