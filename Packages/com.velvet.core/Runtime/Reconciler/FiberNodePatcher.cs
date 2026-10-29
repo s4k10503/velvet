@@ -21,12 +21,12 @@ namespace Velvet
             _appliers = new FiberWrapperElementAppliers(ctx, _wrappers);
             // Let the variant manipulators (via StyleVariantPayload) re-resolve a clip-path mask when a
             // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
-            _ctx.ClipPathReResolve = _appliers.ReResolveClipPathLive;
+            _ctx.ClipPathReResolve ??= _appliers.ReResolveClipPathLive;
             // Same seam for every other class-driven pass a variant can change — the layout manipulators and
             // the paint layers (gradient / animate / shadow / border-style) and the skew. A variant that toggles
             // one of their gate tokens changes what the element should carry, and that toggle never reaches
             // the reconciled class array those passes are otherwise configured from.
-            _ctx.VariantGatedReSync = ReSyncVariantGatedPasses;
+            _ctx.VariantGatedReSync ??= ReSyncVariantGatedPasses;
         }
 
         // The className-driven effect appliers (skew/gradient/motion/shadow/ring/clip-path/gesture).

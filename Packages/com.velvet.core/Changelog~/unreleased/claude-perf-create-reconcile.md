@@ -5,3 +5,4 @@
 - Creating an element looks for the marks of a variant, custom-property, arbitrary font or line-height token once per plain class (`flex`, `p-4`) instead of running a check for each kind, and remembers the class tokens that resolve to no inline style, so the static-scale scan does not repeat for a token it has already ruled out.
 - Tearing an element down skips the side tables that hold nothing, and creating one with no style overrides no longer diffs them.
 - Creating an element that declares no children, as a Label or a Button without children does, no longer runs a child reconcile into it, which had nothing to place.
+- A component mounting or updating mid-play no longer replaces the context's paint leases, which dropped the holds of a running Motion play and let the class pass paint over it.
