@@ -2524,7 +2524,6 @@ namespace Velvet
         // from the state-variant tokens (hover:/focus:/active:/disabled:) found in classNames.
         internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyVariantManipulator");
             var hover = ExtractVariant(classNames, StyleVariantKind.Hover, out var hoverDecl);
             var focus = ExtractVariant(classNames, StyleVariantKind.Focus, out var focusDecl);
             var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible, out var focusVisibleDecl);
@@ -2595,7 +2594,6 @@ namespace Velvet
         // (sm:/md:/lg:/xl:/2xl:) and dark: tokens in classNames.
         internal void ApplyConditionalVariantManipulator(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyConditionalVariantManipulator");
             var responsiveKinds = new[]
             {
                 StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg,
@@ -2624,7 +2622,6 @@ namespace Velvet
         // (@md:/@max-lg:/@min-[475px]:/@md/main:) in classNames.
         internal void ApplyContainerVariantManipulator(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyContainerVariantManipulator");
             var bindings = BuildContainerBindings(classNames);
 
             Configure<ContainerVariantOp, StyleContainerVariantManipulator>(element, bindings.Length > 0,
@@ -2691,7 +2688,6 @@ namespace Velvet
         // named group-*/name · peer-*/name forms) in classNames.
         internal void ApplyRelationalVariantManipulator(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyRelationalVariantManipulator");
             var configs = BuildRelationalConfigs(classNames);
             var hasAny = configs != null && configs.Count > 0;
 
@@ -2833,7 +2829,6 @@ namespace Velvet
         // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
         private void ApplyCustomPropertyConfig(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyCustomPropertyConfig");
             List<(string Core, long Priority, int Declaration, int Order)>? tokens = null;
             if (classNames != null)
             {
@@ -2924,7 +2919,6 @@ namespace Velvet
         // manipulator).
         internal void ApplyHasVariantManipulator(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyHasVariantManipulator");
             var @checked = ExtractHas(classNames, StyleHasKind.Checked, out var checkedDeclarations);
             var focus = ExtractHas(classNames, StyleHasKind.Focus, out var focusDeclarations);
             var hasAny = @checked.Length > 0 || focus.Length > 0;
@@ -2972,7 +2966,6 @@ namespace Velvet
         // the element's post-children pass (ApplyHasClassVariants) applies it once they are.
         private void ApplyHasClassVariantConfig(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyHasClassVariantConfig");
             if (_ctx.HasClassVariants.TryGetValue(element, out var oldRules))
             {
                 foreach (var rule in oldRules)
@@ -3211,7 +3204,6 @@ namespace Velvet
         // comes from this config pass (a class change) and from ApplyAttributes (an attribute-store change).
         private void ApplyAttributeVariantConfig(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyAttributeVariantConfig");
             if (_ctx.AttributeVariants.TryGetValue(element, out var oldRules))
             {
                 foreach (var rule in oldRules)
@@ -3343,7 +3335,6 @@ namespace Velvet
         // always-on layer (StyleVariantPayload.Apply is a no-op when the layer is unchanged).
         private void ApplySupportsVariantConfig(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplySupportsVariantConfig");
             if (_ctx.SupportsVariants.TryGetValue(element, out var oldRules))
             {
                 foreach (var rule in oldRules)
@@ -3398,7 +3389,6 @@ namespace Velvet
         // mount it is not parented yet, so the container's post-children pass applies it once placed.
         private void ApplyStructuralVariantConfig(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyStructuralVariantConfig");
             if (_ctx.StructuralVariants.TryGetValue(element, out var oldRules))
             {
                 foreach (var rule in oldRules)
@@ -3634,7 +3624,6 @@ namespace Velvet
         // did not change leaves an equivalent array already recorded.
         private void RecordVariantGateSource(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.RecordVariantGateSource");
             if (_ctx.VariantGateClasses.TryGetValue(element, out var state))
             {
                 state.Reconciled = classNames;
@@ -3664,7 +3653,6 @@ namespace Velvet
         // load-bearing either.
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberNodePatcher.ApplyResolvedLayoutManipulators");
             // Ahead of gap, which reads the direction and wrap this writes onto the inner box.
             ApplyCompositeFlowManipulator(element);
             if (StyleGridClass.HasGridClass(classNames))
@@ -3701,9 +3689,8 @@ namespace Velvet
                 existing.Refresh(classNames);
                 return;
             }
-            StyleFlexMinSizeManipulator manipulator;
-            using (PerfStage.Begin("P.FlexMin.new")) { manipulator = new StyleFlexMinSizeManipulator(_ctx, classNames); }
-            using (PerfStage.Begin("P.FlexMin.AddManipulator")) { element.AddManipulator(manipulator); }
+            var manipulator = new StyleFlexMinSizeManipulator(_ctx, classNames);
+            element.AddManipulator(manipulator);
             _ctx.FlexMinSizeManipulators[element] = manipulator;
         }
 
