@@ -158,6 +158,7 @@ namespace Velvet
                 return;
             }
 
+            var pfc = PerfStage.Start();
             foreach (var className in classNames)
             {
                 if (string.IsNullOrEmpty(className))
@@ -235,7 +236,9 @@ namespace Velvet
                 // Important modifier (!utility / utility!): strip the bang and, when present, elevate the
                 // utility into the important band so it wins over every other layer, whether it lands on the
                 // class list or as an inline value.
+                PerfStage.Lap(ref pfc, "AC.skipPredicates");
                 var cls = StyleArbitraryValueResolver.StripImportant(className, out var important);
+                PerfStage.Lap(ref pfc, "AC.StripImportant");
                 if (string.IsNullOrEmpty(cls))
                 {
                     continue;
@@ -248,7 +251,9 @@ namespace Velvet
                 // which ranks them against the variant payloads; inline-value tokens (bracketed,
                 // color-opacity, static-scale) resolve to inline style — the same routing AddClass uses on a
                 // re-render.
-                if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
+                var inlineResolved = StyleArbitraryValueResolver.IsInlineResolved(cls);
+                PerfStage.Lap(ref pfc, "AC.IsInlineResolved");
+                if (!inlineResolved)
                 {
                     using (PerfStage.Begin("E.cls.StyleClassProjection.Add")) { StyleClassProjection.Add(element, cls, priority); }
                 }
