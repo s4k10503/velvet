@@ -224,7 +224,17 @@ namespace Velvet
                 ? InsertIndexFrom(container, logical)
                 : LogicalChildSlots.ToPhysical(container, logical);
             container.Insert(physical, element);
-            Remember(container, logical, physical);
+            // An insert into a container on a panel can put a sibling ahead of the element before this returns (a
+            // layer hosted before its element), which moves it past where it was put; the slot is remembered only
+            // while the element still stands there, and the next call walks from the start otherwise.
+            if (physical < container.childCount && ReferenceEquals(container[physical], element))
+            {
+                Remember(container, logical, physical);
+            }
+            else
+            {
+                _container = null;
+            }
         }
 
         // ToPhysical's answer for a slot above the remembered one, which holds its own rendered occupant: the walk
