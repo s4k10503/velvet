@@ -1980,6 +1980,12 @@ namespace Velvet
 
         private static void AddClass(VisualElement element, string cls)
         {
+            if (FiberElementFactory.IsPlainClassToken(cls))
+            {
+                AddPlainClass(element, cls, StyleLayerPriority.Base);
+                return;
+            }
+
             if (IsManipulatorOwnedClass(cls))
             {
                 return;
@@ -1996,9 +2002,14 @@ namespace Velvet
                 ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
                 : StyleLayerPriority.Base;
 
-            // Plain classes (the common case) go to the USS class list through the projection, which decides
-            // whether a higher-priority payload has already taken every property they write; inline-value
-            // tokens (bracketed, color-opacity, static-scale) resolve to inline style.
+            AddPlainClass(element, core, priority);
+        }
+
+        // Plain classes (the common case) go to the USS class list through the projection, which decides
+        // whether a higher-priority payload has already taken every property they write; inline-value
+        // tokens (bracketed, color-opacity, static-scale) resolve to inline style.
+        private static void AddPlainClass(VisualElement element, string core, long priority)
+        {
             if (!StyleArbitraryValueResolver.IsInlineResolved(core))
             {
                 StyleClassProjection.Add(element, core, priority);
@@ -2015,6 +2026,12 @@ namespace Velvet
         // StyleTextEffectResolver re-resolving) — never by this method.
         private static void RemoveClass(VisualElement element, string cls)
         {
+            if (FiberElementFactory.IsPlainClassToken(cls))
+            {
+                RemovePlainClass(element, cls, StyleLayerPriority.Base);
+                return;
+            }
+
             if (IsManipulatorOwnedClass(cls))
             {
                 return;
@@ -2030,9 +2047,14 @@ namespace Velvet
                 ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
                 : StyleLayerPriority.Base;
 
-            // Plain classes (the common case) leave the USS class list through the projection, which may
-            // hand the properties they held back to a payload it had suppressed; inline-value tokens
-            // (bracketed, color-opacity, static-scale) clear the inline style they applied.
+            RemovePlainClass(element, core, priority);
+        }
+
+        // Plain classes (the common case) leave the USS class list through the projection, which may
+        // hand the properties they held back to a payload it had suppressed; inline-value tokens
+        // (bracketed, color-opacity, static-scale) clear the inline style they applied.
+        private static void RemovePlainClass(VisualElement element, string core, long priority)
+        {
             if (!StyleArbitraryValueResolver.IsInlineResolved(core))
             {
                 StyleClassProjection.Remove(element, core, priority);

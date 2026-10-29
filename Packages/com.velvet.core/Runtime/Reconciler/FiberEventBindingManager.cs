@@ -446,6 +446,22 @@ namespace Velvet
             _bindingsByElement.Remove(element);
         }
 
+        // As UnbindAll, leaving the registrations in place: the element is below a discarded teardown root
+        // (ReconcilerContext.IsBelowDiscardedRoot), so they go with it. The one unbind action that also drops state
+        // of the manager's own, a Button's click-event slot, is dropped by ForgetDiscarded, which the cleaner calls
+        // next for every Button it reaches here.
+        internal void ForgetDiscardedBindings(VisualElement element)
+        {
+            if (element == null)
+            {
+                return;
+            }
+
+            _unbindActions.Remove(element);
+            _boundDelegates.Remove(element);
+            _bindingsByElement.Remove(element);
+        }
+
         // Order-sensitive: assumes the insertion order of _boundDelegates matches newEvents. Called where
         // Bind invocation order guarantees this, so it reads newEvents the way Bind read them, passing over
         // an entry Bind would skip as a repeat of an earlier one.
@@ -783,11 +799,13 @@ namespace Velvet
         }
 
         // As Forget, leaving the gate's own callbacks registered: the Button is below a discarded teardown root
-        // (ReconcilerContext.IsBelowDiscardedRoot), so they go with it.
+        // (ReconcilerContext.IsBelowDiscardedRoot), so they go with it. Also drops the click-event slot the unbind
+        // action ForgetDiscardedBindings leaves unrun would have dropped.
         internal void ForgetDiscarded(Button button)
         {
             _clickGates.Remove(button);
             s_gates.Remove(button);
+            _clickedEventSlots.Remove(button);
         }
 
         // The callback registered first runs first on Button.clicked, so the one registered here ahead of

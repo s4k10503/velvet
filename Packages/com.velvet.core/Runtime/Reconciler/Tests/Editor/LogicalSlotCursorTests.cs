@@ -14,6 +14,10 @@ namespace Velvet.Tests
     /// sits ahead of a trailing invisible child rather than at the end of the child list.</item>
     /// </list>
     /// <see cref="GeneralPathSlotLookupScalingTests"/> holds that the cursor walks on rather than from the start.
+    /// <para>
+    /// <see cref="LogicalSlotCursor.Insert"/> puts a child where <see cref="LogicalChildSlots.ToPhysical"/> does,
+    /// whether or not the slot it remembers still describes the container.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class LogicalSlotCursorTests
@@ -75,6 +79,86 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((occupied, physical), Is.EqualTo((false, 3)));
+        }
+
+        private static VisualElement Named(string name) => new VisualElement { name = name };
+
+        private static VisualElement Marked(string name, string markerClass)
+        {
+            var child = Named(name);
+            child.AddToClassList(markerClass);
+            return child;
+        }
+
+        private static string Names(VisualElement container)
+        {
+            var names = new string[container.childCount];
+            for (var i = 0; i < names.Length; i++) names[i] = container[i].name;
+            return string.Join(",", names);
+        }
+
+        [Test]
+        public void Given_ATrailingSpacer_When_RowsAreInsertedAtAscendingSlotsPastTheLastRenderedChild_Then_EachLandsAheadOfTheSpacer()
+        {
+            // Arrange
+            var container = Container(2);
+            container.Add(Marked("spacer", SilhouetteBoundsSpacer.MarkerClass));
+            var cursor = new LogicalSlotCursor();
+
+            // Act
+            cursor.Insert(container, 2, Named("n2"));
+            cursor.Insert(container, 3, Named("n3"));
+            cursor.Insert(container, 4, Named("n4"));
+
+            // Assert
+            Assert.That(Names(container), Is.EqualTo("r0,r1,n2,n3,n4,spacer"));
+        }
+
+        [Test]
+        public void Given_RenderedChildrenBeyondTheSlots_When_RowsAreInsertedAtAscendingSlotsAmongThem_Then_EachLandsBeforeTheChildHoldingItsSlot()
+        {
+            // Arrange
+            var container = Container(4);
+            var cursor = new LogicalSlotCursor();
+
+            // Act
+            cursor.Insert(container, 1, Named("n1"));
+            cursor.Insert(container, 2, Named("n2"));
+
+            // Assert
+            Assert.That(Names(container), Is.EqualTo("r0,n1,n2,r1,r2,r3"));
+        }
+
+        [Test]
+        public void Given_AnInsetBandHostedAfterTheLastInsertedChild_When_TheNextSlotIsInserted_Then_ItLandsAfterTheBand()
+        {
+            // Arrange — the band stays ahead of what is appended, as ToPhysical places an append.
+            var container = new VisualElement();
+            var cursor = new LogicalSlotCursor();
+            cursor.Insert(container, 0, Named("n0"));
+            container.Add(Marked("band", RingOverlay.InsetMarkerClass));
+
+            // Act
+            cursor.Insert(container, 1, Named("n1"));
+
+            // Assert
+            Assert.That(Names(container), Is.EqualTo("n0,band,n1"));
+        }
+
+        [Test]
+        public void Given_AnInvisibleChildInsertedAheadOfTheRememberedSlot_When_ASlotPastTheLastRenderedChildIsInserted_Then_ItLandsAfterTheLastRenderedChild()
+        {
+            // Arrange — the spacer moves the remembered child one place on, so it is not where the cursor left it.
+            var container = Container(2);
+            var cursor = new LogicalSlotCursor();
+            cursor.Insert(container, 2, Named("n2"));
+            container.Insert(0, Marked("spacer", SilhouetteBoundsSpacer.MarkerClass));
+
+            // Act
+            cursor.Insert(container, 3, Named("n3"));
+
+            // Assert
+            Assert.That(Names(container), Is.EqualTo("spacer,r0,r1,n2,n3"));
         }
     }
 }

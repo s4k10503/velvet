@@ -141,10 +141,14 @@ namespace Velvet
             }
         }
 
-        // A token one of the checks in ApplyClassNames skips carries at least one of these: a variant has a ':' or
+        // A token one of the ownership checks skips carries at least one of these: a variant has a ':' or
         // opens a bracket, a custom-property token has a '[', a '(' or a '_', and an important modifier is a '!'.
-        // ApplyClassNamesTokenOwnershipTests holds each kind of token to it.
+        // ApplyClassNamesTokenOwnershipTests holds each kind of token to it, on this path and on the re-render
+        // path (FiberNodePatcher.AddClass / RemoveClass), which asks IsPlainClassToken before running the checks.
         private static readonly char[] s_specialTokenMarkers = { ':', '[', '(', '_', '!' };
+
+        internal static bool IsPlainClassToken(string className)
+            => !string.IsNullOrEmpty(className) && className.IndexOfAny(s_specialTokenMarkers) < 0;
 
         internal static void ApplyClassNames(VisualElement element, string[] classNames)
         {
@@ -160,7 +164,7 @@ namespace Velvet
                     continue;
                 }
 
-                if (className.IndexOfAny(s_specialTokenMarkers) < 0)
+                if (IsPlainClassToken(className))
                 {
                     AddClassToken(element, className, StyleLayerPriority.Base);
                     continue;

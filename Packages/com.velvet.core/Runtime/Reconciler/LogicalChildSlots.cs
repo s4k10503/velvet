@@ -32,10 +32,10 @@ namespace Velvet
     /// the whole list, so a loop calling these once per child is quadratic in the child count. The general
     /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
     /// it resolved, and the removal loops, which visit slots from the last downward, hold a
-    /// <see cref="DescendingSlotCursor"/>. The flat keyed and indexed paths' insert loops in
-    /// <c>ChildReconciler</c> and <c>FiberNodePatcher.ApplyStructuralVariants</c> still walk from slot zero per
-    /// child; the fix for them is a cursor too, not a cached count, which every insert and remove would have
-    /// to invalidate.
+    /// <see cref="DescendingSlotCursor"/>. The loops in <c>ChildReconciler</c> that add rows at ascending
+    /// slots insert through <see cref="LogicalSlotCursor.Insert"/>. The keyed pass's lookup of each matched row
+    /// (<c>ProcessKeyedNode</c>) and <c>PatchOrReplaceAtSlot</c> still walk from slot zero per child; the fix
+    /// for them is a cursor too, not a cached count, which every insert and remove would have to invalidate.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -142,7 +142,7 @@ namespace Velvet
             return appendAt;
         }
 
-        private static bool StaysFirst(VisualElement child)
+        internal static bool StaysFirst(VisualElement child)
             => FiberZLayerCoordinator.IsBackBandMember(child)
                 || child.ClassListContains(SceneViewDriver.FeedMarkerClass)
                 || child.ClassListContains(ParticlesDriver.LayerMarkerClass)
@@ -210,6 +210,49 @@ namespace Velvet
             }
             Remember(container, logical, physical);
             return true;
+        }
+
+        /// <summary>
+        /// Inserts <paramref name="element"/>, a rendered child, where <see cref="LogicalChildSlots.ToPhysical"/> puts
+        /// a child at <paramref name="logical"/>, and remembers it as the slot's occupant. A caller inserting at
+        /// ascending slots pays the distance from the slot it last inserted at rather than the slot's index; an
+        /// append, past the last rendered child, is the common case.
+        /// </summary>
+        internal void Insert(VisualElement container, int logical, VisualElement element)
+        {
+            var physical = IsCurrentFor(container) && logical > _logical
+                ? InsertIndexFrom(container, logical)
+                : LogicalChildSlots.ToPhysical(container, logical);
+            container.Insert(physical, element);
+            Remember(container, logical, physical);
+        }
+
+        // ToPhysical's answer for a slot above the remembered one, which holds its own rendered occupant: the walk
+        // starts after it, with the append position ToPhysical would have reached at it.
+        private int InsertIndexFrom(VisualElement container, int logical)
+        {
+            var rendered = _logical;
+            var appendAt = _physical + 1;
+            var physicalCount = container.childCount;
+            for (var i = _physical + 1; i < physicalCount; i++)
+            {
+                var child = container[i];
+                if (LogicalChildSlots.IsInvisible(child))
+                {
+                    if (LogicalChildSlots.StaysFirst(child))
+                    {
+                        appendAt = i + 1;
+                    }
+                    continue;
+                }
+                rendered++;
+                if (rendered == logical)
+                {
+                    return i;
+                }
+                appendAt = i + 1;
+            }
+            return appendAt;
         }
 
         private bool IsCurrentFor(VisualElement container)

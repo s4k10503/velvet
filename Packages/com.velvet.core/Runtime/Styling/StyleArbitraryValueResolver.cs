@@ -3295,8 +3295,20 @@ namespace Velvet
             ReleaseShownImageWatch(element);
         }
 
-        // Also the cleaner's, beside ClearAll, which drops the watch with the rest of the layer map.
-        internal static void ReleaseShownImageWatch(VisualElement element)
+        // The cleaner's, ahead of ClearAll, which drops the watch with the rest of the layer map. The marker class and
+        // the two callbacks are written only by WatchShownImage, in the same step that records the watch, so an
+        // element whose layer map holds none has nothing to take off.
+        internal static void ReleaseShownImageWatchOf(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map) || map.ImageWatch == null)
+            {
+                return;
+            }
+            map.ImageWatch = null;
+            ReleaseShownImageWatch(element);
+        }
+
+        private static void ReleaseShownImageWatch(VisualElement element)
         {
             element.RemoveFromClassList(ShownImageMarkerClass);
             // MUTANT_SURVIVES(equivalent, line removed): a callback left registered finds no watch and returns.
