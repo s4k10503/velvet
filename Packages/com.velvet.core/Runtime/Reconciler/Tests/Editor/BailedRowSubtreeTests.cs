@@ -90,6 +90,17 @@ namespace Velvet.Tests
             return V.Custom<VisualElement>(name: "box", children: new VNode[] { V.Component(PairRow, 0, key: "k0") });
         }
 
+        [Component(Memoize = true, Compiler = false)]
+        private static VNode RootChildRow(int id) => V.Component(Sibling);
+
+        [Component(Compiler = false)]
+        private static VNode RootChildList()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Custom<VisualElement>(name: "box", children: new VNode[] { V.Component(RootChildRow, 0, key: "k0") });
+        }
+
         private static int RowReadsDuringParentRerender(int offsetAfter)
         {
             s_offset = 0;
@@ -168,6 +179,22 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(PairList));
             s_setCell.Invoke(1);
             mounted.FlushStateForTest();
+
+            // Act
+            s_setTick.Invoke(t => t + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_siblingRenders, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARowWhosePropsAreUnchangedAndWhoseOutputIsAComponent_When_TheirParentReRenders_Then_ThatComponentIsNotRenderedAgain()
+        {
+            // Arrange
+            s_siblingRenders = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RootChildList));
 
             // Act
             s_setTick.Invoke(t => t + 1);
