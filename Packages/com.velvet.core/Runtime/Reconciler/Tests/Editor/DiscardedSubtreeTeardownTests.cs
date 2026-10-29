@@ -194,23 +194,15 @@ namespace Velvet.Tests
             Clear(scope, rows);
 
             // Assert
-            Assert.That(WiredGateState(button, gate), Is.EqualTo("wired,0,False"));
+            Assert.That(GateAfterClear(button, gate), Is.EqualTo("3,0,False"));
         }
 
-        // The gate the manager keeps registered on button across a pool return, rendered as its press count and verdict.
-        private static string WiredGateState(Button button, object gate)
+        // The gate a pooled Button keeps through a clear, rendered as the trickle-down callbacks still registered on
+        // the Button, the press origins it holds and its verdict.
+        private static string GateAfterClear(Button button, object gate)
         {
-            var table = typeof(FiberEventBindingManager)
-                .GetField("s_gates", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
-            if (table == null) return "not wired";
-            var args = new object?[] { button, null };
-            var wired = (bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!;
-            if (!wired || !ReferenceEquals(args[1], gate) || gate.GetType().GetField("Unwire")!.GetValue(gate) == null)
-            {
-                return "not wired";
-            }
             var downs = (System.Collections.Generic.ISet<int>)gate.GetType().GetField("OffChainDowns")!.GetValue(gate)!;
-            return $"wired,{downs.Count},{gate.GetType().GetField("Suppress")!.GetValue(gate)}";
+            return $"{TrickleDownCallbacks(button)},{downs.Count},{gate.GetType().GetField("Suppress")!.GetValue(gate)}";
         }
 
         [Test]
