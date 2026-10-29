@@ -37,6 +37,7 @@ namespace Velvet.Tests
         private static int s_offset;
         private static StateUpdater<int> s_setTick;
         private static StateUpdater<int> s_setCell;
+        private static int s_siblingRenders;
 
         [Component(Compiler = false)]
         private static VNode List()
@@ -68,6 +69,25 @@ namespace Velvet.Tests
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             return V.Custom<VisualElement>(name: "box", children: new VNode[] { V.Component(CellRow, 0, key: "k0") });
+        }
+
+        [Component(Memoize = true, Compiler = false)]
+        private static VNode PairRow(int id) => V.Custom<CountingRow>(
+            name: "r" + id, children: new VNode[] { V.Component(Cell), V.Component(Sibling) });
+
+        [Component(Compiler = false)]
+        private static VNode Sibling()
+        {
+            s_siblingRenders++;
+            return V.Label(name: "sibling");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PairList()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Custom<VisualElement>(name: "box", children: new VNode[] { V.Component(PairRow, 0, key: "k0") });
         }
 
         private static int RowReadsDuringParentRerender(int offsetAfter)
@@ -111,6 +131,59 @@ namespace Velvet.Tests
             // Arrange
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CellList));
+
+            // Act
+            s_setCell.Invoke(1);
+            s_setTick.Invoke(t => t + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(root.Q<Label>("cell").text, Is.EqualTo("1"));
+        }
+
+        [Test]
+        public void Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItAndItsParentUpdateTogether_Then_ItsSiblingBelowTheRowIsNotRenderedAgain()
+        {
+            // Arrange
+            s_siblingRenders = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(PairList));
+
+            // Act
+            s_setCell.Invoke(1);
+            s_setTick.Invoke(t => t + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_siblingRenders, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the order the component below the row is flushed before its parent in, the outcome the case above has to match.
+        [Test]
+        public void Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItUpdatesAndIsFlushedBeforeItsParentUpdates_Then_ItsSiblingBelowTheRowIsNotRenderedAgain()
+        {
+            // Arrange
+            s_siblingRenders = 0;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(PairList));
+            s_setCell.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setTick.Invoke(t => t + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_siblingRenders, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the component with the update pending shows it beside a sibling that has none.
+        [Test]
+        public void Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItAndItsParentUpdateTogether_Then_ThatComponentShowsItsState()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(PairList));
 
             // Act
             s_setCell.Invoke(1);

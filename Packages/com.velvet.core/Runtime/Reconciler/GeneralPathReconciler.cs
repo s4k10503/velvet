@@ -1146,9 +1146,11 @@ namespace Velvet
                 else
                 {
                     var enclosingReusedOwner = walk.ReusedOwner;
+                    var enclosingInBailedOutput = _ctx.InBailedOutput;
                     walk.ReusedOwner = reusedAsIs && walk.ReuseSuspended == 0 && !HoldsDirtyFiberBelow(fiber)
                         ? fiber
                         : null;
+                    _ctx.InBailedOutput = reusedAsIs && walk.ReuseSuspended == 0;
                     try
                     {
                         ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -1156,6 +1158,7 @@ namespace Velvet
                     finally
                     {
                         walk.ReusedOwner = enclosingReusedOwner;
+                        _ctx.InBailedOutput = enclosingInBailedOutput;
                     }
                 }
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
