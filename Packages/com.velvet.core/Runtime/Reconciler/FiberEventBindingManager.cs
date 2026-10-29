@@ -166,7 +166,7 @@ namespace Velvet
                 typedBindings.Add(binding);
             }
 
-            RegisterFieldBinding(actions, element, binding);
+            using (PerfStage.Begin("B.RegisterFieldBinding")) { RegisterFieldBinding(actions, element, binding); }
         }
 
         // The bindings that ride an element-specific hook (Button.clicked, INotifyValueChanged<T>) rather
@@ -181,13 +181,14 @@ namespace Velvet
                 case ClickedBinding clicked when element is Button button:
                 {
                     var handler = clicked.Handler;
-                    var gate = GateClicks(button);
+                    ClickGate gate;
+                    using (PerfStage.Begin("B.GateClicks")) { gate = GateClicks(button); }
                     Action wrapped = () =>
                     {
                         if (gate.Suppress) return;
                         RunDiscrete(handler);
                     };
-                    button.clicked += wrapped;
+                    using (PerfStage.Begin("B.clicked+=")) { button.clicked += wrapped; }
                     actions.Add(() => button.clicked -= wrapped);
                     break;
                 }

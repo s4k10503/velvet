@@ -164,14 +164,20 @@ namespace Velvet
                 ContainCreationCallbackFailure(element, exception);
             }
             _ctx.SyncRefCallback(element, elementNode.RefCallback);
+            PerfStage.Lap(ref pf, "N.CE.SyncRefCallback");
             _patcher.Appliers.ApplyGestureManipulator(element, elementNode.WhileHoverClass, elementNode.WhileTapClass, elementNode.WhileFocusClass);
+            PerfStage.Lap(ref pf, "N.CE.ApplyGestureManipulator");
             _patcher.Appliers.ExpectDragGates(element, elementNode.Props);
+            PerfStage.Lap(ref pf, "N.CE.ExpectDragGates");
             _patcher.ApplyVariantManipulators(element, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ApplyVariantManipulators");
             // After ApplyVariantManipulators (which registers the data-/aria- variant rules): seed the
             // attribute store from the props and evaluate, so a data-[..]/aria-[..] variant lights from
             // the element's carried attribute values at mount.
             _patcher.ApplyAttributes(element, elementNode.Props);
+            PerfStage.Lap(ref pf, "N.CE.ApplyAttributes");
             _patcher.ApplyFontLayerOnCreate(element, elementNode.ClassNames);
+            PerfStage.Lap(ref pf, "N.CE.ApplyFontLayerOnCreate");
             // After ReconcileChildren so the gap / divide manipulators see the final child list.
             // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
             // ApplyPostChildrenClassPasses for the same ordering on the patch path).
@@ -282,8 +288,11 @@ namespace Velvet
             // Stacking: the OUTERMOST element is what relocates — a clip-path-*/wrapElement wrapper is what
             // physically occupies the slot. An element whose classes name no z, order or position (the
             // overwhelming majority) returns `outer` unchanged at the cost of one prefix scan.
-            return FiberZLayerCoordinator.OnCreated(_ctx, outer, element, elementNode.ClassNames, paintClasses,
-                elementNode.Props?.Anchored != null);
+            using (PerfStage.Begin("N.CE.ZLayer.OnCreated"))
+            {
+                return FiberZLayerCoordinator.OnCreated(_ctx, outer, element, elementNode.ClassNames, paintClasses,
+                    elementNode.Props?.Anchored != null);
+            }
         }
 
         // Runs before either create path's text-effect pass: that pass rewrites the element's displayed text
