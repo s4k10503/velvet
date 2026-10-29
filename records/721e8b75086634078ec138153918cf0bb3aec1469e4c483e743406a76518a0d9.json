@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "877abe70d1cd3628e94f140a611a7e2cef0e1de87f48261392ad5984122e8d0f",
+ "killers": [],
+ "measured_by": "40737972124",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 80,
+  "line": 279,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "verdict": "survived"
+}

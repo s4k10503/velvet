@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed: Given_KeyedContainersEachHoldingTwoComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheTwoInAContainerKeepTheirOrder, Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder",
+ "file": "6134c8eceec3eb5443bb2c2cad19b3c27b4d43fa240227082c5d16338955ae7d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutEffectDrainPhaseTests.Given_KeyedContainersEachHoldingTwoComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheTwoInAContainerKeepTheirOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/EffectOrderTests.cs": "392257e5cc596780337121d3e2a6b8a995700ce81d29b631108c2053f1a15bc5",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LayoutEffectDrainPhaseTests.Given_KeyedContainersHoldingComponentsThatWereReordered_When_TheComponentsUpdatesAreEnqueuedInTheirFormerOrder_Then_TheirLayoutSetupsRunInTheNewTreeOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/EffectOrderTests.cs": "392257e5cc596780337121d3e2a6b8a995700ce81d29b631108c2053f1a15bc5",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40737972124",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 36,
+  "line": 611,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "verdict": "killed"
+}

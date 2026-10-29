@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed: Given_ParentWhoseLastChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt, Given_ParentWhoseMiddleChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt, Given_ParentWithAppendedChildren_When_ItsLastLinkIsRead_Then_ItIsTheChildAppendedLast",
+ "file": "877abe70d1cd3628e94f140a611a7e2cef0e1de87f48261392ad5984122e8d0f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWhoseLastChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWhoseMiddleChildWasRemoved_When_AChildIsAppended_Then_TheChainEndsWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberChildTailTests.Given_ParentWithAppendedChildren_When_ItsLastLinkIsRead_Then_ItIsTheChildAppendedLast",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberChildTailTests.cs": "864a0d278df846416b9796def2d373f9bf47d912482dc6cd70ad343bc6d57ed2"
+   }
+  }
+ ],
+ "measured_by": "40737972124",
+ "mutant": {
+  "after": ";",
+  "before": "_lastChild = child;",
+  "column": 12,
+  "line": 1120,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "verdict": "killed"
+}

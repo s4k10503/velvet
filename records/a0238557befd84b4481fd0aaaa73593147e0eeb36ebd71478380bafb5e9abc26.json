@@ -1,0 +1,94 @@
+{
+ "detail": "EditMode: 8 failed: Given_ABoundaryResetByItsKeysWhoseLoadFailsAgain_When_ItsParentRendersAgain_Then_ItKeepsItsFallbackAndLoadsNothing, Given_ABoundaryResetOnceWhoseLoadFailsAgain_When_ItsParentRendersAgain_Then_ItKeepsItsFallbackAndLoadsNothing, Given_ABoundaryThatCaughtAFailedLoad_When_ItsFallbackContentResetsTheBoundary_Then_TheLoadRunsAgainAndItsValueRenders",
+ "file": "6134c8eceec3eb5443bb2c2cad19b3c27b4d43fa240227082c5d16338955ae7d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryResetByItsKeysWhoseLoadFailsAgain_When_ItsParentRendersAgain_Then_ItKeepsItsFallbackAndLoadsNothing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryResetOnceWhoseLoadFailsAgain_When_ItsParentRendersAgain_Then_ItKeepsItsFallbackAndLoadsNothing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryThatCaughtAFailedLoad_When_ItsFallbackContentResetsTheBoundary_Then_TheLoadRunsAgainAndItsValueRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryThatCaughtAFailedLoad_When_ItsResetIsInvokedAsAnAction_Then_TheLoadRunsAgainAndItsValueRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryThatCaughtAFailedLoad_When_ItsResetIsInvoked_Then_TheLoadRunsAgainAndItsValueRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryThatCaughtAFailedLoad_When_ItsResetKeyChanges_Then_TheLoadRunsAgainAndItsValueRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryThatCaughtAFailedLoad_When_ItsResetKeysGainAnElement_Then_TheLoadRunsAgainAndItsValueRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseErrorBoundaryResetTests.Given_ABoundaryThatCaughtAFailedLoad_When_OneHandlerResetsItAndChangesItsResetKey_Then_OnlyTheImperativeResetCallsOnReset",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseErrorBoundaryResetTests.cs": "2412ed6c0edd4df37398202945f39a168ad253da7d3ec5e93d54c135582739e2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40737972124",
+ "mutant": {
+  "after": ";",
+  "before": "DisposeTogether(doomed);",
+  "column": 12,
+  "line": 482,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "verdict": "killed"
+}

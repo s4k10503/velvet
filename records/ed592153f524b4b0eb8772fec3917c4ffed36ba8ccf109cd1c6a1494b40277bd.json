@@ -1,0 +1,51 @@
+{
+ "detail": "EditMode: 3 failed: Given_AMemoizedComponentWhoseEffectDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheEffectRunsOnlyWithTheRetry, Given_AMemoizedComponentWhoseHandleDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheHandleIsCreatedOnlyWithTheRetry, Given_AMemoizedShownProbeRenderedWhileHidden_When_TheBoundaryReveals_Then_ItsInsertionEffectRuns",
+ "file": "6134c8eceec3eb5443bb2c2cad19b3c27b4d43fa240227082c5d16338955ae7d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_AMemoizedComponentWhoseEffectDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheEffectRunsOnlyWithTheRetry",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "bd8b32391e5b2e36d666c19a847c53529612c92e7ff6207db7d38ffb893e77b2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_AMemoizedComponentWhoseHandleDepsChangedInAPassThatSuspendedBelowIt_When_TheResourceResolves_Then_TheHandleIsCreatedOnlyWithTheRetry",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "bd8b32391e5b2e36d666c19a847c53529612c92e7ff6207db7d38ffb893e77b2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenAttemptTests.Given_AMemoizedShownProbeRenderedWhileHidden_When_TheBoundaryReveals_Then_ItsInsertionEffectRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenAttemptTests.cs": "83999149131caabdaee6bdd7c2ea1673f3ff554df768ebd9c405a5d592451b51",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40737972124",
+ "mutant": {
+  "after": "",
+  "before": " || existingFiber.IsDirty",
+  "column": 43,
+  "line": 212,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "verdict": "killed"
+}

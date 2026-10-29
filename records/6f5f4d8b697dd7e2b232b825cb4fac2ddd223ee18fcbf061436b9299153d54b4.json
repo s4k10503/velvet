@@ -1,8 +1,8 @@
 {
- "detail": "EditMode survived; PlayMode: -; 1 other editor(s) were up",
+ "detail": "EditMode survived; PlayMode: -",
  "file": "eb47ebd0fa0da3d7d71d2d1652b18b8f58be1f575865e8b41c82d0e75f738063",
  "killers": [],
- "measured_by": "40383781275",
+ "measured_by": "40737972124",
  "mutant": {
   "after": ";",
   "before": "retained.Set(null);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
  "verdict": "survived"
 }

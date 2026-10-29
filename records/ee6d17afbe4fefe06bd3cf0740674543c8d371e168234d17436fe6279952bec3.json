@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed: Given_SuspendedPrimaryWithContainerFiber_When_RolledBack_Then_DeferredChildEffectDoesNotRun, Given_SuspendedPrimaryWithCustomLeafSubclassFiber_When_RolledBack_Then_DeferredChildEffectDoesNotRun",
+ "file": "6134c8eceec3eb5443bb2c2cad19b3c27b4d43fa240227082c5d16338955ae7d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseBoundaryTests.Given_SuspendedPrimaryWithContainerFiber_When_RolledBack_Then_DeferredChildEffectDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseBoundaryTests.cs": "d17f37783b00f3a466613cf50fb2155e00c1a71afc741f4fe7ea1bb1b0bbbf5a",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseBoundaryTests.Given_SuspendedPrimaryWithCustomLeafSubclassFiber_When_RolledBack_Then_DeferredChildEffectDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseBoundaryTests.cs": "d17f37783b00f3a466613cf50fb2155e00c1a71afc741f4fe7ea1bb1b0bbbf5a",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40737972124",
+ "mutant": {
+  "after": ";",
+  "before": "DisposeTogether(snapshot);",
+  "column": 12,
+  "line": 650,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "verdict": "killed"
+}
