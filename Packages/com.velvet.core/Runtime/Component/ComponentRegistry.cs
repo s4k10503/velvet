@@ -251,8 +251,10 @@ namespace Velvet
         private ComponentFiber CreateAndMountFiber(ComponentNode node, object identity, in FiberMountSite site)
         {
             using var _pf = PerfStage.Begin("ComponentRegistry.CreateAndMountFiber");
+            var pf = PerfStage.Start();
             var isInline = site.IsInline;
             var fiber = FiberRenderer.CreateChild(node.Body, node.IsErrorBoundary);
+            PerfStage.Lap(ref pf, "CMF.CreateChild");
             _ctx.FiberStack.Current?.AppendChild(fiber);
             fiber.BlocksInitialEnters = _ctx.ComponentContextStack.Get(MotionContext.EntersWithheld)
                 || (_ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)
@@ -263,12 +265,14 @@ namespace Velvet
             // rethrows, so a write placed after the try would not run for it.
             fiber.SourceNode = node;
             fiber.SourceTree = _ctx.CurrentFiberTree;
+            PerfStage.Lap(ref pf, "CMF.setup");
 
             try
             {
                 if (isInline)
                 {
                     FiberRenderer.MountInline(fiber, site.MountPoint, site.SlotStart, _ctx);
+                    PerfStage.Lap(ref pf, "CMF.MountInline(call)");
                 }
                 else
                 {
