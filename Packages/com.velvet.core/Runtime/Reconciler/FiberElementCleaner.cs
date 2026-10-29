@@ -22,11 +22,18 @@ namespace Velvet
                 return;
             }
 
+            var pf = PerfStage.Start();
+            using var _pf = PerfStage.Begin("FiberElementCleaner.RemoveElement");
             var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
-            CleanupElement(element, element.panel, IsDiscardedAfterCleanup(element, poolable) ? element : null);
+            var discarded = IsDiscardedAfterCleanup(element, poolable);
+            PerfStage.Lap(ref pf, "RM.occupant+discard");
+            CleanupElement(element, element.panel, discarded ? element : null);
+            PerfStage.Lap(ref pf, "RM.CleanupElement(call)");
             RemoveCleaned(parent, element, index);
+            PerfStage.Lap(ref pf, "RM.RemoveCleaned");
             ReturnOccupantToPool(element, poolable);
+            PerfStage.Lap(ref pf, "RM.ReturnOccupantToPool");
         }
 
         // Whether nothing outside the subtree keeps element or anything below it once its removal returns: the
@@ -198,6 +205,8 @@ namespace Velvet
         // nested in it (a portal's children, a relocated element) names its own, so none inherits it.
         private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot)
         {
+            var pf = PerfStage.Start();
+            using var _pf = PerfStage.Begin("FiberElementCleaner.CleanupElement");
             var enclosingRoot = _ctx.DiscardedSubtreeRoot;
             _ctx.DiscardedSubtreeRoot = discardedRoot;
             try
@@ -209,8 +218,10 @@ namespace Velvet
             {
                 _ctx.DiscardedSubtreeRoot = enclosingRoot;
             }
+            PerfStage.Lap(ref pf, "CE.Core(call)");
             // After the core, whose restore focus reads the focus this would drop.
             PanelFocusMemory.Forget(panel, element);
+            PerfStage.Lap(ref pf, "CE.PanelFocusMemory.Forget");
 
             // Wrapper-mounted fibers under this subtree were disposed by the recursive Remove(VE) above, but
             // an inline-mounted fiber nested under a host element anchors on its PARENT FIBER, not a VE: when a
@@ -221,6 +232,7 @@ namespace Velvet
             // set is disjoint from the orphan sweep's (top-level inline fibers anchor on the parent, outside any
             // removed child), so the disposal does not overlap; FiberRenderer.Dispose is idempotent regardless.
             _ctx.ComponentRegistry.DisposeFibersUnder(element);
+            PerfStage.Lap(ref pf, "CE.DisposeFibersUnder(call)");
         }
 
         // Detaches an element-keyed manipulator: removes it from the element and drops its side-table entry.
@@ -245,16 +257,26 @@ namespace Velvet
         // bindings, once the style group has unbound the element's handlers.
         private void CleanupElementResources(VisualElement element)
         {
+            var pf = PerfStage.Start();
+            using var _pf = PerfStage.Begin("FiberElementCleaner.CleanupElementResources");
             _ctx.ActiveDrag?.ReleaseClassesOf(element);
+            PerfStage.Lap(ref pf, "CR.ActiveDrag");
             CleanupEffectAndStyleBindingResources(element);
+            PerfStage.Lap(ref pf, "CR.effectStyle(call)");
             CleanupPaintResources(element);
+            PerfStage.Lap(ref pf, "CR.paint");
             CleanupElementDriverResources(element);
+            PerfStage.Lap(ref pf, "CR.drivers");
             CleanupFocusAndNavigationResources(element);
+            PerfStage.Lap(ref pf, "CR.focusNav");
             CleanupDndResources(element);
+            PerfStage.Lap(ref pf, "CR.dnd");
             CleanupControllerResources(element);
             _ctx.PrunePresenceParentElementState(element);
+            PerfStage.Lap(ref pf, "CR.controller+presence");
             _ctx.PruneSuspenseContainerState(element);
             _ctx.FiberMemoCache.Forget(element);
+            PerfStage.Lap(ref pf, "CR.suspense+memo");
         }
 
         // Refs, animation/layout scheduling, the event + component registries, and every
@@ -265,8 +287,10 @@ namespace Velvet
             // An element leaving inside the pass that created it — a row removed after being created, a
             // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
             // is what keeps the drain from installing a ref on an element no tree holds.
+            var pfe = PerfStage.Start();
             _ctx.DropPendingRefAttach(element);
             _ctx.ForgetRefDetachedWhileHidden(element);
+            PerfStage.Lap(ref pfe, "ES.refDrop");
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
@@ -283,6 +307,7 @@ namespace Velvet
                     FiberLogger.LogException("FiberElementCleaner", exception);
                 }
             }
+            PerfStage.Lap(ref pfe, "ES.refCallbacks");
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             // Teardown-flavored: this element is being released for good (pool return / disposal), not merely
             // interrupted, so an ordinary CancelExit's reversal hand-off (which assumes the element keeps
@@ -299,8 +324,11 @@ namespace Velvet
             // pure side-tables that call clears) to find this element's layoutId, if any, and cancels
             // its in-flight tick / drops its LayoutIdRegistry entry so a departing element's tween
             // never keeps ticking against it.
+            PerfStage.Lap(ref pfe, "ES.cancelAnimations+presence");
             MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
+            PerfStage.Lap(ref pfe, "ES.layoutId");
             _ctx.EventManager.UnbindAll(element);
+            PerfStage.Lap(ref pfe, "ES.UnbindAll");
             // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
             // not survive into whatever mounts it next; its gate callbacks stay registered (Park).
             if (element is Button button)
@@ -309,8 +337,11 @@ namespace Velvet
                 else if (_ctx.DiscardedSubtreeRoot == null && PoolKindOf(button) == PoolKind.Button) _ctx.EventManager.Park(button);
                 else _ctx.EventManager.Forget(button);
             }
+            PerfStage.Lap(ref pfe, "ES.gateForget");
             _ctx.ComponentRegistry.Remove(element);
+            PerfStage.Lap(ref pfe, "ES.ComponentRegistry.Remove");
             RelationalSourceSet.DropDeparted(_ctx, element);
+            PerfStage.Lap(ref pfe, "ES.RelationalSourceSet.DropDeparted");
             DetachManipulator(element, _ctx.GestureManipulators);
             DetachManipulator(element, _ctx.VariantManipulators);
             DetachManipulator(element, _ctx.ConditionalVariantManipulators);
@@ -330,10 +361,13 @@ namespace Velvet
             // Cleared through one mechanism so a new such side-table is wired by enrolling it in
             // ReconcilerContext, not by adding a line here. Dropping these also prevents a pooled widget from
             // ghosting a prior consumer's attributes / propagated-variant classes into its next mount.
+            PerfStage.Lap(ref pfe, "ES.manipulatorDetaches1");
             _ctx.ClearElementSideTables(element);
+            PerfStage.Lap(ref pfe, "ES.ClearElementSideTables");
             // Detaching the element's stacked manipulators releases their inner-variant subscriptions (incl. a
             // stacked dark:'s process-wide VelvetTheme.DarkModeChanged), which would otherwise outlive unmount.
             _ctx.DetachStackedVariants(element);
+            PerfStage.Lap(ref pfe, "ES.DetachStackedVariants");
             DetachManipulator(element, _ctx.GapManipulators);
             DetachManipulator(element, _ctx.CompositeFlowManipulators);
             DetachManipulator(element, _ctx.DivideManipulators);
@@ -347,18 +381,25 @@ namespace Velvet
                 _ctx.PointerEventsScopes.Remove(element);
             }
             // Before the pool return, which resets a control's own picking mode and not its internals'.
+            PerfStage.Lap(ref pfe, "ES.manipulatorDetaches2+pointerScopes");
             PointerEventsScope.ReleaseTorn(element);
+            PerfStage.Lap(ref pfe, "ES.PointerEventsScope.ReleaseTorn");
             // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
             StyleArbitraryValueResolver.HandBackAll(element);
+            PerfStage.Lap(ref pfe, "ES.HandBackAll");
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
+            PerfStage.Lap(ref pfe, "ES.ClearAll");
             StyleArbitraryValueResolver.ReleaseShownImageWatch(element);
+            PerfStage.Lap(ref pfe, "ES.ReleaseShownImageWatch");
             // Same reason for the per-frame drivers' transition suspension: a driver whose release this teardown
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.
             MotionNativeTransitionGuard.ReleaseAll(element);
+            PerfStage.Lap(ref pfe, "ES.MotionNativeTransitionGuard.ReleaseAll");
             StyleAnimateDriver.ForgetHolds(element);
+            PerfStage.Lap(ref pfe, "ES.ForgetHolds");
         }
 
         // The generateVisualContent-driven paint bindings: shadow/clip/ring/border/divide/overline

@@ -79,7 +79,7 @@ namespace Velvet.Tests.Performance
         public void Replace_AllOf1000Rows()
         {
             Execute(
-                new Operation(() => EnsureRows(Rows), () => RunRows(Rows), Rows, Rows),
+                new Operation(() => EnsureRows(Rows), () => RunRows(Rows), Rows, Rows, Profile: true),
                 WarmupCount,
                 MeasurementCount);
         }

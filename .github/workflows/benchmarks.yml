@@ -145,7 +145,7 @@ jobs:
               if 'v' not in v:
                   continue
               if name.startswith(test + '.'):
-                  if v['v'] >= 0.15:
+                  if v['v'] >= 0.2:
                       stages.append(f"{test[:6]}|{name[len(test) + 1:]}|{v['v']:.2f}|{v.get('c', '')}")
               else:
                   lines.append(f"{test}|{name}|{v['v']:.3f}|{v.get('c', '')}")

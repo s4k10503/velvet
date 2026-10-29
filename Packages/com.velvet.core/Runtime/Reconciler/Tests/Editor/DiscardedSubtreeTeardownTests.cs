@@ -102,6 +102,8 @@ namespace Velvet.Tests
                 .GetField("s_Pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
         }
 
+        // GREEN_ON_BASE(characterization): the base registers every gate at its Button's first binding and leaves it
+        // registered below a discarded root; the bridge held here gives this base-side count the same gates to count.
         [Test]
         public void Given_RowsOfPlainContainersHoldingButtons_When_TheyAreCleared_Then_NoClickGateCallbackIsUnregistered()
         {
@@ -131,6 +133,8 @@ namespace Velvet.Tests
             Assert.AreEqual(0, returned);
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps a pooled Button's gate registered through the clear; the
+        // bridge held here gives the count the same gates to count.
         [Test]
         public void Given_PooledButtonsAsRows_When_TheyAreCleared_Then_NoClickGateCallbackIsUnregistered()
         {
@@ -146,7 +150,9 @@ namespace Velvet.Tests
             Assert.AreEqual(0, returned);
         }
 
-        // GREEN_ON_BASE(characterization): the base unregisters the gate and registers it again on the rent; this holds the adopting side to one set of callbacks per Button.
+        // GREEN_ON_BASE(characterization): the base keeps the gate registered through the clear and adopts it on the
+        // rent; this holds the adopting side to one set of callbacks per Button, with the bridge held that the gate
+        // registers under.
         [Test]
         public void Given_PooledButtonsAsRows_When_TheyAreClearedAndMountedAgain_Then_TheSameButtonsHoldOneSetOfClickGateCallbacks()
         {
@@ -167,6 +173,8 @@ namespace Velvet.Tests
                 Is.EqualTo((Rows, 3 * Rows)));
         }
 
+        // GREEN_ON_BASE(characterization): the base scrubs a pooled Button's gate and keeps it registered; the bridge
+        // held here is what registers it under the change.
         [Test]
         public void Given_APooledButtonWithAPressRecorded_When_ItIsCleared_Then_ItsGateStaysRegisteredWithNoPressOrigin()
         {
