@@ -140,16 +140,23 @@ jobs:
               slot = merged.setdefault(key, {})
               slot['c' if kind == 'C.' else 'v'] = r['value']
           lines = [f"CPU {cpu}"]
+          stages = []
           for (test, name), v in sorted(merged.items()):
-              if 'v' in v:
+              if 'v' not in v:
+                  continue
+              if name.startswith(test + '.'):
+                  if v['v'] >= 0.15:
+                      stages.append(f"{test[:6]}|{name[len(test) + 1:]}|{v['v']:.2f}|{v.get('c', '')}")
+              else:
                   lines.append(f"{test}|{name}|{v['v']:.3f}|{v.get('c', '')}")
+          lines += stages
           chunks, cur, size = [], [], 0
           for l in lines:
-              if size + len(l) > 5500 and cur:
+              if size + len(l) > 3600 and cur:
                   chunks.append(cur); cur, size = [], 0
               cur.append(l); size += len(l) + 1
           chunks.append(cur)
-          for i, c in enumerate(chunks[:9]):
+          for i, c in enumerate(chunks[:10]):
               print(f"::notice title=medians {i + 1}/{len(chunks)}::" + '%0A'.join(c))
           PY
 
