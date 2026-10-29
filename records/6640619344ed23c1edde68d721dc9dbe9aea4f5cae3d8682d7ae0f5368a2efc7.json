@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the editor was killed at 578s, 1.5 times the baseline's 382s plus 5s, with no readable result",
+ "detail": "EditMode: the editor was killed at 1117s, 1.5 times the baseline's 741s plus 5s, with no readable result; 1 other editor(s) were up",
  "file": "eb47ebd0fa0da3d7d71d2d1652b18b8f58be1f575865e8b41c82d0e75f738063",
  "killers": [],
- "measured_by": "40737972124",
+ "measured_by": "40801013149",
  "mutant": {
   "after": ";",
   "before": "fiber = fiber.Parent;",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "d9d882cb5340c18a946bed509d5c8083d1c63afbef92e2f06c9f6ddf05090c1d",
+ "tests": "f6fb24ebdcf6e929953fbc1dd8c9b82219804cd6e283bd121a356b80faec5ba7",
  "verdict": "killed (timed out)"
 }

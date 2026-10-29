@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "2aed1cc75c5f3df9d0e702bde3c4442ad13e2da513c2780c61ad1ef28dc35389",
+ "killers": [],
+ "measured_by": "40801013149",
+ "mutant": {
+  "after": ";",
+  "before": "restored = WhenKeyed<T>(stashed, key);",
+  "column": 16,
+  "line": 280,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f6fb24ebdcf6e929953fbc1dd8c9b82219804cd6e283bd121a356b80faec5ba7",
+ "verdict": "survived"
+}
