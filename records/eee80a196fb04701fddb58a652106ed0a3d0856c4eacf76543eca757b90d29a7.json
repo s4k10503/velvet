@@ -1,0 +1,79 @@
+{
+ "detail": "EditMode: 7 failed in Velvet.Tests.Component.Editor: Given_HeadInsertion_When_Patched_Then_NewElementLandsAtTheHead, Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered, Given_SiblingAfterPresence_When_ExitChurnAndSiblingRerender_Then_AnchorVeNeverDestructivelyRebuilt",
+ "file": "59f78c7b70847cf6cf805e88bd794287c1b5c6e0af1a19988f5f493df21a92ae",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_HeadInsertion_When_Patched_Then_NewElementLandsAtTheHead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_KeyedChildren_When_OrderReversed_Then_ElementsAreReordered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReconcilerInlineSlotDesyncTests.Given_SiblingAfterPresence_When_ExitChurnAndSiblingRerender_Then_AnchorVeNeverDestructivelyRebuilt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ReconcilerInlineSlotDesyncTests.cs": "5210e0341c461d0e181aac6fe88e464fd82319a7a67df009fad43e6fb732ec4a",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReconcilerInlineSlotDesyncTests.Given_SiblingBeforePresence_When_ExitChurnAndSiblingRerender_Then_AnchorVeNeverDestructivelyRebuilt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ReconcilerInlineSlotDesyncTests.cs": "5210e0341c461d0e181aac6fe88e464fd82319a7a67df009fad43e6fb732ec4a",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReconcilerInlineSlotDesyncTests.Given_WaitModeRapidSwap_When_OldExitsWhileNewWithheld_Then_NoStrandedOrDuplicatedCard",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ReconcilerInlineSlotDesyncTests.cs": "5210e0341c461d0e181aac6fe88e464fd82319a7a67df009fad43e6fb732ec4a",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_AHostWhosePassMountsAComponentAheadOfAVirtualListItem_When_TheItemCommitsItsOwnSubtree_Then_TheComponentsLayoutEffectWaitsForItsRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VirtualListTests.Given_ARowBoundaryWhoseFailedRenderQueuedAnEnter_When_ItCatchesInItsHostsPass_Then_OnlyTheHostsEnterCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "40853660789",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 556,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "54da77f7f9825cca8145eca3b505ccb00aaf96539c5ee5582aa0c4c7dafed487",
+ "verdict": "killed"
+}

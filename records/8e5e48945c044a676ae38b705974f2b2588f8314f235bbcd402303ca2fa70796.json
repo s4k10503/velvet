@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Component.Editor: Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+ "file": "59f78c7b70847cf6cf805e88bd794287c1b5c6e0af1a19988f5f493df21a92ae",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncalledRuntimeMemberTests.Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/UncalledRuntimeMemberTests.cs": "60bd57285e73ac27e4ef7dc25ca75ad041d9a148e352a1e585eb23e774bb9665"
+   }
+  }
+ ],
+ "measured_by": "40853660789",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.PassJournal.RecordSubsumed(existingFiber, in committed);",
+  "column": 20,
+  "line": 238,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "54da77f7f9825cca8145eca3b505ccb00aaf96539c5ee5582aa0c4c7dafed487",
+ "verdict": "killed"
+}

@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 54 case(s) that ran the site: Given_AnEmptyPortalWrittenAheadAppearingLater_When_TheOneBehindAndThenItGrow_Then_TheRowsFollowTheWrittenOrder, Given_APassThatMovedAComponentAndCaught_When_TheComponentRerenders_Then_ItRewritesTheRowThatPassGaveIt",
+ "file": "59f78c7b70847cf6cf805e88bd794287c1b5c6e0af1a19988f5f493df21a92ae",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_APassThatMovedAComponentAndCaught_When_TheComponentRerenders_Then_ItRewritesTheRowThatPassGaveIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "a95e6f45d0857f820a5da1531cf828235302a01d7d71512ea384a3b5ddf1e4a2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AnEmptyPortalWrittenAheadAppearingLater_When_TheOneBehindAndThenItGrow_Then_TheRowsFollowTheWrittenOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "a95e6f45d0857f820a5da1531cf828235302a01d7d71512ea384a3b5ddf1e4a2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "40853660789",
+ "mutant": {
+  "after": ";",
+  "before": "siblings.Add(sibling);",
+  "column": 20,
+  "line": 582,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "54da77f7f9825cca8145eca3b505ccb00aaf96539c5ee5582aa0c4c7dafed487",
+ "verdict": "killed"
+}
