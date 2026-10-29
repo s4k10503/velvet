@@ -732,7 +732,10 @@ namespace Velvet
         {
             foreach (var table in _pureElementSideTables)
             {
-                table.Remove(element);
+                if (table.Count != 0)
+                {
+                    table.Remove(element);
+                }
             }
         }
 

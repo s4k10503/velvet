@@ -150,6 +150,10 @@ namespace Velvet
             }
         }
 
+        // What every token the checks in ApplyClassNames skip carries: a variant form has a ':' or opens a
+        // bracket, a custom-property token a '[', a '(' or a '_', and an important modifier is a '!'.
+        private static readonly char[] s_specialTokenMarkers = { ':', '[', '(', '_', '!' };
+
         internal static void ApplyClassNames(VisualElement element, string[] classNames)
         {
             using var _pf = PerfStage.Begin("FiberElementFactory.ApplyClassNames");
@@ -158,11 +162,16 @@ namespace Velvet
                 return;
             }
 
-            var pfc = PerfStage.Start();
             foreach (var className in classNames)
             {
                 if (string.IsNullOrEmpty(className))
                 {
+                    continue;
+                }
+
+                if (className.IndexOfAny(s_specialTokenMarkers) < 0)
+                {
+                    AddClassToken(element, className, StyleLayerPriority.Base);
                     continue;
                 }
 
@@ -236,9 +245,7 @@ namespace Velvet
                 // Important modifier (!utility / utility!): strip the bang and, when present, elevate the
                 // utility into the important band so it wins over every other layer, whether it lands on the
                 // class list or as an inline value.
-                PerfStage.Lap(ref pfc, "AC.skipPredicates");
                 var cls = StyleArbitraryValueResolver.StripImportant(className, out var important);
-                PerfStage.Lap(ref pfc, "AC.StripImportant");
                 if (string.IsNullOrEmpty(cls))
                 {
                     continue;
@@ -247,20 +254,22 @@ namespace Velvet
                     ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
                     : StyleLayerPriority.Base;
 
-                // Plain classes (the overwhelming majority) go to the USS class list through the projection,
-                // which ranks them against the variant payloads; inline-value tokens (bracketed,
-                // color-opacity, static-scale) resolve to inline style — the same routing AddClass uses on a
-                // re-render.
-                var inlineResolved = StyleArbitraryValueResolver.IsInlineResolved(cls);
-                PerfStage.Lap(ref pfc, "AC.IsInlineResolved");
-                if (!inlineResolved)
-                {
-                    using (PerfStage.Begin("E.cls.StyleClassProjection.Add")) { StyleClassProjection.Add(element, cls, priority); }
-                }
-                else
-                {
-                    using (PerfStage.Begin("E.cls.ApplyClassToken")) { StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority); }
-                }
+                AddClassToken(element, cls, priority);
+            }
+        }
+
+        // Plain classes (the overwhelming majority) go to the USS class list through the projection, which ranks
+        // them against the variant payloads; inline-value tokens (bracketed, color-opacity, static-scale)
+        // resolve to inline style — the same routing AddClass uses on a re-render.
+        private static void AddClassToken(VisualElement element, string cls, long priority)
+        {
+            if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
+            {
+                StyleClassProjection.Add(element, cls, priority);
+            }
+            else
+            {
+                StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority);
             }
         }
 
@@ -347,7 +356,13 @@ namespace Velvet
         }
 
         internal static void ApplyStyles(VisualElement element, StyleOverrides? styles)
-            => StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles ?? StyleOverrides.Empty);
+        {
+            if (styles == null)
+            {
+                return;
+            }
+            StyleOverridesLayer.Diff(element, StyleOverrides.Empty, styles);
+        }
 
         internal void ApplyEvents(VisualElement element, FiberEventBinding[] events)
         {
