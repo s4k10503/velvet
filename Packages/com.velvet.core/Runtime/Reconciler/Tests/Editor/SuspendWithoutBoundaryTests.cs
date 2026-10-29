@@ -29,7 +29,8 @@ namespace Velvet.Tests
     /// suspended pass first mounted included. A component whose own render suspended before it
     /// reconciled anything shows what it showed before, and a transition whose render suspended stays
     /// pending. A Portal the pass mounted whose child suspended holds none of its children until the retry
-    /// mounts them, and the Portals mounted behind it in the same pass do not wait for it.</item>
+    /// mounts them, and the Portals mounted behind it in the same pass do not wait for it. A pass that parked
+    /// with rows still to place keeps the rows it placed, and the retry does not create them again.</item>
     /// <item>With a boundary above, that boundary renders again and shows its fallback, a boundary the compiler
     /// memoized included, and the component whose update suspended renders that update inside it, a memoized
     /// one included. The boundary is the nearest above the component whose read suspended, so one that renders
@@ -114,6 +115,10 @@ namespace Velvet.Tests
             s_portalHostSetShown = default;
             s_portalHostEffects = 0;
             s_portalHostSetTick = default;
+            s_parkedRowCount = 0;
+            s_parkedPortalAt = 0;
+            s_parkedReads = 0;
+            s_parkedListFiber = null;
             FiberStrictMode.Enabled = false;
         }
 
@@ -1135,6 +1140,111 @@ namespace Velvet.Tests
             // Assert
             Assert.That(RegisteredFibersMountedOnElementsNamed(mounted, "second-a", "wrapper"), Is.EqualTo(1),
                 "The reader mounts under an element the component creates, so the component is reached through its parent chain and released with the reader");
+        }
+
+        [Test]
+        public void Given_AParkedPassWhoseMountedPortalChildSuspendsWithNoBoundary_When_TheResourceResolves_Then_TheHostHoldsEachRowOnceAndThePortalHoldsTheChild()
+        {
+            // Arrange — the budget runs out after the Portal row, so the pass parks with the rows behind it unplaced
+            // while the drain at its end mounts the Portal
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(ParkedListRender, key: "parked-list"));
+            var fiber = s_parkedListFiber;
+            s_parkedRowCount = 41;
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+            var parked = fiber.HasPendingReconcileWorkForTest();
+
+            // Act
+            s_sourceA.TrySetResult(5);
+            mounted.FlushStateForTest();
+            fiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That((parked, _root.childCount, NamesOf(s_portalTarget)), Is.EqualTo((true, 41, "child:5")),
+                "The retry diffs from the tree whose rows the parked pass placed and resumes, rather than placing them again");
+        }
+
+        [Test]
+        public void Given_ATimeSlicedPassWhoseLaterSliceParksAndThenSuspendsInThePortalDrain_When_TheSliceEnds_Then_TheParkedPassStillHoldsItsBaseline()
+        {
+            // Arrange — the Portal is the twenty-first row, so a slice that has placed it parks with rows behind it
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_parkedRowCount = 1;
+            s_parkedPortalAt = -1;
+            using var mounted = V.Mount(_root, V.Component(ParkedListRender, key: "parked-list"));
+            var fiber = s_parkedListFiber;
+            s_parkedRowCount = 41;
+            s_parkedPortalAt = 20;
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+
+            // Act — resumes until the slice whose drain mounted the Portal's reader
+            for (var slices = 0; slices < 100 && fiber.HasPendingReconcileWorkForTest() && s_parkedReads == 0; slices++)
+            {
+                FiberWorkLoop.ContinueReconcile(fiber);
+            }
+
+            // Assert
+            Assert.That((fiber.HasPendingReconcileWorkForTest(), fiber.PendingOldTree != null), Is.EqualTo((true, true)),
+                "The rows the parked pass has yet to place diff against its baseline, which is not returned to the pool while they wait");
+        }
+
+        [Test]
+        public void Given_AParkedPassTheSuspendedPortalDrainAbandoned_When_ItsScheduledResumeRuns_Then_ItPlacesNoRow()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_portalTarget = new VisualElement { name = "portal-target" };
+            s_sourceA = new VelvetTaskCompletionSource<int>();
+            s_parkedRowCount = 1;
+            s_parkedPortalAt = -1;
+            using var mounted = V.Mount(_root, V.Component(ParkedListRender, key: "parked-list"));
+            var fiber = s_parkedListFiber;
+            s_parkedRowCount = 41;
+            s_parkedPortalAt = 0;
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+            var rowsBefore = _root.childCount;
+
+            // Act
+            FiberWorkLoop.ContinueReconcile(fiber);
+
+            // Assert
+            Assert.That(_root.childCount - rowsBefore, Is.EqualTo(0),
+                "A pass that suspended commits nothing more until its retry, and the resume would place rows of a tree no commit has reached");
+        }
+
+        private static int s_parkedRowCount;
+        private static int s_parkedPortalAt;
+        private static int s_parkedReads;
+        private static ComponentFiber s_parkedListFiber;
+
+        // The Portal sits at s_parkedPortalAt, and a pass with a one-row budget parks after each row it places.
+        [Component]
+        private static VNode ParkedListRender()
+        {
+            s_parkedListFiber = FiberAmbientStack.Current;
+            var children = new VNode[s_parkedRowCount];
+            for (var i = 0; i < s_parkedRowCount; i++)
+            {
+                children[i] = i == s_parkedPortalAt
+                    ? V.Portal(s_portalTarget, new VNode[] { V.Component(ParkedReaderRender, key: "reader") })
+                    : V.Label(text: "row-" + i);
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode ParkedReaderRender()
+        {
+            s_parkedReads++;
+            var value = Hooks.Use<int>(_ => s_sourceA.Task, 1);
+            return V.Label(text: "child:" + value);
         }
 
         [Component]

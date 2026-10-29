@@ -963,7 +963,8 @@ render retried later runs an effect whose deps changed and creates the handle, a
 alone before then uses those props. The elements the walk had patched ahead of the suspend stay patched, and
 a component the pass mounted stays mounted. A child of a `V.Portal` the pass mounted suspends after the walk, and
 the render's rows are then in place: the Portal holds none of its children, the Portals mounted behind it in the
-pass mount as they would have, and the retry mounts the children by patching it. That holds for a suspend in a render's first slice, which is every
+pass mount as they would have, and the retry mounts the children by patching it. A time-sliced render that parked
+before that suspend keeps the rows it placed and places no more until its retry, which resumes it and mounts the children the same way. That holds for a suspend in a render's first slice, which is every
 render that is not time-sliced; a later slice of a time-sliced render finds the components of the earlier
 slices committed. The boundary is the nearest one above the component whose read
 suspended, so a component that renders its own `V.Suspense` reveals through the boundary above it, and a component in a boundary's fallback

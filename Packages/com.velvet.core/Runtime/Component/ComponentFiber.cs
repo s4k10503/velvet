@@ -204,6 +204,11 @@ namespace Velvet
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition { get; set; }
 
+        // Set while a time-sliced pass that suspended with no Suspense above it still has slices to place. Its
+        // scheduled resume does not run: the slices would commit a pass that has not, and the retry's render
+        // places them first (FiberCommitWork.DrainPendingWork), which clears this.
+        internal bool ParkedPassSuspended { get; set; }
+
         /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
         /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
