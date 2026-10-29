@@ -298,8 +298,10 @@ namespace Velvet.Tests.Performance
         private void EmitStages(double windowMs)
         {
             double attributed = 0;
-            foreach (var (name, ms, count) in PerfStage.Snapshot())
+            var testName = NUnit.Framework.TestContext.CurrentContext.Test.Name;
+            foreach (var (stage, ms, count) in PerfStage.Snapshot())
             {
+                var name = testName + "." + stage;
                 if (!_stageGroups.TryGetValue(name, out var groups))
                 {
                     groups = (new SampleGroup("S." + name, SampleUnit.Millisecond), new SampleGroup("C." + name, SampleUnit.Undefined));
