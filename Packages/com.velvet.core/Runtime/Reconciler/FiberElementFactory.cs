@@ -16,23 +16,14 @@ namespace Velvet
 
         public VisualElement Create(ElementNode node)
         {
-            var pf = PerfStage.Start();
             var element = CreateByType(node.ElementType);
-            PerfStage.Lap(ref pf, node.ElementType == typeof(Button) ? "E.CreateByType.Button" : node.ElementType == typeof(Label) ? "E.CreateByType.Label" : "E.CreateByType.Other");
             ApplyName(element, node.Name);
-            PerfStage.Lap(ref pf, "E.ApplyName");
             ApplyClassNames(element, node.ClassNames);
-            PerfStage.Lap(ref pf, "E.ApplyClassNames(call)");
             ApplyProps(element, node.Props);
-            PerfStage.Lap(ref pf, "E.ApplyProps(call)");
             ApplyStyles(element, node.Styles);
-            PerfStage.Lap(ref pf, "E.ApplyStyles");
             ApplyEvents(element, node.Events);
-            PerfStage.Lap(ref pf, "E.ApplyEvents(call)");
             StyleTextInputColors.Track(element);
-            PerfStage.Lap(ref pf, "E.StyleTextInputColors.Track");
             CornerRadiusFit.Observe(element);
-            PerfStage.Lap(ref pf, "E.CornerRadiusFit.Observe");
             return element;
         }
 
@@ -59,7 +50,7 @@ namespace Velvet
         {
             if (type == null || type == typeof(VisualElement))
             {
-                using (PerfStage.Begin("E.new SkewPickElement")) { return new SkewPickElement(); }
+                return new SkewPickElement();
             }
 
             if (type == typeof(Button))
@@ -157,7 +148,6 @@ namespace Velvet
 
         internal static void ApplyClassNames(VisualElement element, string[] classNames)
         {
-            using var _pf = PerfStage.Begin("FiberElementFactory.ApplyClassNames");
             if (classNames == null)
             {
                 return;
@@ -276,7 +266,6 @@ namespace Velvet
 
         internal static void ApplyProps(VisualElement element, FiberElementProps? props)
         {
-            using var _pf = PerfStage.Begin("FiberElementFactory.ApplyProps");
             // Ordering: before anything can type into the field, and whether or not any props are declared.
             // A field a refCallback makes delayed can hold typing by the first render that declares a limit
             // or multiline, and a record taken then would take that typing for Velvet's own text.
@@ -367,7 +356,6 @@ namespace Velvet
 
         internal void ApplyEvents(VisualElement element, FiberEventBinding[] events)
         {
-            using var _pf = PerfStage.Begin("FiberElementFactory.ApplyEvents");
             if (events == null)
             {
                 return;

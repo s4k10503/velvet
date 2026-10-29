@@ -115,19 +115,15 @@ namespace Velvet
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.RunOrphanEffectCleanups");
             if (oldFibers.Count == 0) return;
-            var pf = PerfStage.Start();
             foreach (var fiber in oldFibers)
             {
                 if (!newFibers.Contains(fiber)) fiber.MarkBeingDeleted();
             }
-            PerfStage.Lap(ref pf, "G.orphan.MarkBeingDeleted");
             foreach (var fiber in oldFibers)
             {
                 if (!newFibers.Contains(fiber)) fiber.RecordTheNearestAncestorOutsideTheDeletion();
             }
-            PerfStage.Lap(ref pf, "G.orphan.RecordNearestAncestor");
             foreach (var fiber in oldFibers)
             {
                 if (!newFibers.Contains(fiber)) FiberEffects.RunOrphanFiberEffectCleanups(fiber);
@@ -154,7 +150,6 @@ namespace Velvet
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.SweepOrphans");
             if (oldFibers.Count == 0) return;
             foreach (var fiber in oldFibers)
             {
@@ -178,12 +173,10 @@ namespace Velvet
             int slotStart,
             in InlinePairing pairing)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.ReconcileGeneral");
             var oldFibers = pairing.OldFibers;
             var newFibers = pairing.NewFibers;
             var oldProviders = pairing.OldProviders;
             var pool = _ctx.BufferPool;
-            var pf = PerfStage.Start();
             var commit = new GeneralCommitState
             {
                 Parent = parent,
@@ -212,7 +205,6 @@ namespace Velvet
                     commit.OldKeyMap[commit.OldKeys[i]] = (i, oldNodes[i]);
                 }
 
-                PerfStage.Lap(ref pf, "G.RG.setup+oldKeyMap");
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
                 var prevFlag = _ctx.ContextValueChanged;
                 var walk = pool.RentInlineWalk();
@@ -226,7 +218,6 @@ namespace Velvet
                 try
                 {
                     ExpandInlineRecursive(walk, newChildren, FiberKeying.WalkRoot);
-                    PerfStage.Lap(ref pf, "G.RG.newSideWalk(call)");
                 }
                 catch (Exception exception)
                 {
@@ -259,15 +250,12 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                PerfStage.Lap(ref pf, "G.RG.RunOrphanEffectCleanups(call)");
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
                     FinalizeGeneralCommit(commit);
-                    PerfStage.Lap(ref pf, "G.RG.FinalizeGeneralCommit(call)");
                     ApplyOffscreenChanges(commit);
-                    PerfStage.Lap(ref pf, "G.RG.ApplyOffscreenChanges");
                     if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
                 }
                 else
@@ -278,7 +266,6 @@ namespace Velvet
                     RestoreWhatTheSuspensesWrote(commit);
                 }
                 SweepOrphans(oldFibers, newFibers);
-                PerfStage.Lap(ref pf, "G.RG.SweepOrphans(call)");
                 return removalsRan;
             }
             finally
@@ -362,8 +349,6 @@ namespace Velvet
         // itself. The element keeps the slot the old leaf held, so the placement after the walk still moves it.
         private void CommitLeaf(VNode? node, GeneralCommitState commit, ChildKey emittedKey, bool reusedByOwner)
         {
-            var pf = PerfStage.Start();
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.CommitLeaf");
             // A walk a catch on the aborting path stopped commits no further leaf: a leaf matched by slot would
             // patch whatever the fallback's reconcile left at that slot.
             if (_ctx.IsAborted) return;
@@ -378,11 +363,9 @@ namespace Velvet
                     $"Duplicate key detected among new siblings: {key}. " +
                     "Both siblings render; give each sibling a unique key.");
             }
-            PerfStage.Lap(ref pf, "M.CL.key+NewKeys.Add");
             var ordinal = commit.NewElements.Count;
             var linear = ordinal == 0 || commit.Committed[ordinal - 1].Linear;
             var oldIndex = MatchOldLeaf(commit, key, ordinal, linear, out var oldPhysical);
-            PerfStage.Lap(ref pf, "M.CL.MatchOldLeaf(call)");
             if (oldIndex >= 0)
             {
                 var oldNode = oldNodes[oldIndex];
@@ -397,7 +380,6 @@ namespace Velvet
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
                     _patcher.PatchNode(actual, oldNode, node);
-                    PerfStage.Lap(ref pf, "M.CL.PatchNode(call)");
                     if (_ctx.IsAborted) return;
                     // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
                     commit.OldSlots.TryGetPhysical(parent, slotStart + oldIndex, out oldPhysical);
@@ -413,11 +395,9 @@ namespace Velvet
             else
             {
                 var newElement = _factory.CreateElement(node);
-                PerfStage.Lap(ref pf, "M.CL.CreateElement(call)");
                 commit.NewElements.Add((newElement, false));
             }
             commit.Committed.Add(new CommittedLeaf(oldIndex, linear && oldIndex == ordinal, key));
-            PerfStage.Lap(ref pf, "M.CL.record");
         }
 
         // React's reconcileChildrenArray: while each leaf so far took the old leaf at its own index, a leaf
@@ -433,7 +413,6 @@ namespace Velvet
         private static int MatchOldLeaf(
             GeneralCommitState commit, ChildKey key, int ordinal, bool linear, out int physical)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.MatchOldLeaf");
             physical = -1;
             int oldIndex;
             if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key)
@@ -463,7 +442,6 @@ namespace Velvet
         // moved it, and what an earlier sibling emits moves none of them.
         private void Emit(InlineWalk walk, VNode? node, WalkPosition position, int nodeIndex)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.Emit");
             var key = ReconcileKeying.ScopedKey(node, position.Scope, nodeIndex, position.SlotPath);
             if (walk.Commit != null)
             {
@@ -580,7 +558,6 @@ namespace Velvet
         // cost is the placements plus the child chains of those parents.
         private void CommitComponentOrder(List<(ComponentFiber Fiber, int FirstRow, int Rows)> placements)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.CommitComponentOrder");
             // MUTANT_SURVIVES(equivalent): with fewer than two placements no parent gets two, so the loops below
             // reorder nothing.
             if (placements.Count < 2) return;
@@ -632,8 +609,6 @@ namespace Velvet
         // matched linearly are placed with the rest rather than ahead of them.
         private void FinalizeGeneralCommit(GeneralCommitState commit)
         {
-            var pf = PerfStage.Start();
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.FinalizeGeneralCommit");
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var oldNodes = commit.OldNodes!;
@@ -646,11 +621,8 @@ namespace Velvet
             {
                 if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
             }
-            PerfStage.Lap(ref pf, "F.patchedSet");
             // Removal (reverse so not-yet-visited indices stay valid).
-            PerfStage.Count(oldNodes.Length > 0 ? "F.oldNodes.nonempty" : "F.oldNodes.empty");
             var cursor = new DescendingSlotCursor();
-            PerfStage.Lap(ref pf, "F.cursorCtor");
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 if (!patched.Contains(i))
@@ -659,7 +631,6 @@ namespace Velvet
                 }
             }
 
-            PerfStage.Lap(ref pf, "F.removeLoop");
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
             {
@@ -669,12 +640,9 @@ namespace Velvet
                 LogicalNewLen = newElements.Count,
             };
             var reordered = _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
-            PerfStage.Lap(ref pf, "F.ComputeAnchorsAndReorder(call)");
 
             CommitComponentOrder(commit.Placements);
-            PerfStage.Lap(ref pf, "F.CommitComponentOrder(call)");
             if (reordered) _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, commit.Placements);
-            PerfStage.Lap(ref pf, "F.CommitChildOrderToRows");
             foreach (var (fiber, firstRow, rows) in commit.Placements)
             {
                 fiber.MountSlotStart = slotStart + firstRow;
@@ -969,7 +937,6 @@ namespace Velvet
             VNode?[] nodes,
             WalkPosition position)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.ExpandInlineRecursive");
             var isNewSide = walk.IsNewSide;
 
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
@@ -1097,8 +1064,6 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
-            var pf = PerfStage.Start();
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.ExpandComponentInline");
             var identity = component.ResolvedIdentity;
             var occurrence = component.Key is { } explicitKey
                 ? walk.ClaimComponentOccurrence(_ctx.FiberStack.Current, position.SlotPath, explicitKey, identity)
@@ -1144,7 +1109,6 @@ namespace Velvet
                         $"Duplicate component key detected among siblings: '{component.Key}'. " +
                         "Both siblings render; give each sibling a unique key.");
                 }
-                PerfStage.Lap(ref pf, "M.ECI.keying");
                 ComponentFiber fiber;
                 var reusedAsIs = false;
                 try
@@ -1175,7 +1139,6 @@ namespace Velvet
                     if (suspended == null || !_ctx.HoldSuspendInPrimary()) throw;
                     fiber = suspended;
                 }
-                PerfStage.Lap(ref pf, "M.ECI.GetOrCreateInline(call)");
                 walk.NewFibers.Add(fiber);
                 fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
@@ -1191,7 +1154,6 @@ namespace Velvet
                     _ctx.InBailedOutput = enclosingInBailedOutput;
                 }
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
-                PerfStage.Lap(ref pf, "M.ECI.tail");
             }
             else
             {
@@ -1435,7 +1397,6 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
-            using var _pf = PerfStage.Begin("GeneralPathReconciler.ExpandFiberTree");
             // Ahead of the empty-tree return: a fiber rendering nothing now can render a presence later.
             if (_ctx.EnclosingPresenceChild is { } enclosingChild)
             {
