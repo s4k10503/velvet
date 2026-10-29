@@ -161,6 +161,7 @@ namespace Velvet
             // force a re-render below so RunImperativeHandleSlots adopts the new ref.
             var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
             var committed = FiberInputs.Of(existingFiber);
+            var renderedFromThisNode = ReferenceEquals(existingFiber.SourceNode, node);
             existingFiber.ExternalRef = node.ExternalRef;
             // V.Component<TProps> overload allocates a fresh closure each render that captures
             // the latest props; sync Body so the next render sees the current values.
@@ -183,9 +184,11 @@ namespace Velvet
             }
             else
             {
-                // Non-memo component: a parent re-render always re-renders the child,
-                // so the props bail never applies. Props are still synced below for the next render.
-                propsChanged = true;
+                // Non-memo component: the props bail never applies, so a parent re-render re-renders it, except
+                // inside the committed output of a fiber that rendered nothing in this pass: there the node is
+                // the instance the fiber last rendered from, which the parent did not produce again, and only a
+                // pending update renders it. Props are still synced below for the next render.
+                propsChanged = !(_ctx.InBailedOutput && renderedFromThisNode);
             }
             if (propsChanged)
             {
