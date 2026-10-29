@@ -46,9 +46,9 @@ namespace Velvet
             }
         }
 
-        // Every Button's gate, by Button. Kept apart from _clickGates because a pooled Button leaves the tree with
-        // its gate (Park), and whichever manager rents it next adopts that gate, registered as it stands, rather
-        // than registering six more callbacks: unregistering is what a pooled row's teardown paid for.
+        // The gates by Button. Kept apart from _clickGates because a pooled Button leaves the tree with its gate
+        // (Park), and whichever manager rents it next adopts that gate, registered as it stands, rather than
+        // registering six more callbacks: unregistering is what a pooled row's teardown paid for.
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, ClickGate> s_gates = new();
 
         // The managers whose tracked gates WireClickGates registers once a portal bridge exists.

@@ -42,6 +42,22 @@ namespace Velvet.Tests
             Assert.IsEmpty(element.GetClasses().ToArray());
         }
 
+        // GREEN_ON_BASE(characterization): the base strips the important modifier before it adds the class, and a
+        // plain class carrying one has no mark but the '!', so this is what reaches it.
+        [TestCase("!p-4")]
+        [TestCase("p-4!")]
+        public void Given_AnImportantPlainClass_When_ClassesAreApplied_Then_TheTokenWithItsModifierIsNotOnTheClassList(string token)
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            FiberElementFactory.ApplyClassNames(element, new[] { token });
+
+            // Assert
+            Assert.IsFalse(element.ClassListContains(token));
+        }
+
         // GREEN_ON_BASE(characterization): the base adds each plain class by the same routing; this holds the
         // tokens that now skip the checks to it.
         [Test]

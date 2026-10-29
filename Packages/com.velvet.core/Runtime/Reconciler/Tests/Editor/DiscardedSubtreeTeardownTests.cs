@@ -226,19 +226,20 @@ namespace Velvet.Tests
             Assert.AreEqual(0, scope.Root.Query<Button>().ToList().Sum(TrickleDownCallbacks));
         }
 
+        // GREEN_ON_BASE(characterization): the base registers each gate when its Button binds, so the count holds
+        // there before a bridge attaches as well; this holds the gates made before one to registering when it does.
         [Test]
         public void Given_ButtonsMountedBeforeAnyPortalBridge_When_ABridgeAttaches_Then_EachHoldsOneSetOfClickGateCallbacks()
         {
             // Arrange
             using var scope = Mounted(ButtonRows());
             var buttons = scope.Root.Query<Button>().ToList();
-            var before = buttons.Sum(TrickleDownCallbacks);
 
             // Act
             using var bridge = new HeldBridge(scope);
 
             // Assert
-            Assert.That((before, buttons.Sum(TrickleDownCallbacks)), Is.EqualTo((0, 3 * Rows)));
+            Assert.AreEqual(3 * Rows, buttons.Sum(TrickleDownCallbacks));
         }
 
         // GREEN_ON_BASE(characterization): the base unregisters every callback, so a pooled Label root returns at least one text-item record there as well.

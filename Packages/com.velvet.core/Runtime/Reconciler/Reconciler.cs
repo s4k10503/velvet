@@ -16,8 +16,9 @@ namespace Velvet
         private static readonly ProfilerMarker s_continueReconcileMarker = new("Velvet.ContinueReconcile");
 
         private readonly ReconcilerContext _ctx;
-        // Built by the first member that needs them (BuildParts) for a Reconciler that does not own its context,
-        // since an inline-mounted fiber whose render is reconciled by its parent's pass never reaches any of them.
+        // Built by the first member that needs them (BuildParts) for a Reconciler that does not own its context:
+        // a component mounted inline, whose render its parent's pass reconciles, reaches none of them
+        // (ReconcilerLazyPartsTests).
         private ChildReconciler? _childReconciler;
         private FiberNodeFactory? _factory;
         private FiberNodePatcher? _patcher;

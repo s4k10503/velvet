@@ -141,8 +141,9 @@ namespace Velvet
             }
         }
 
-        // What every token the checks in ApplyClassNames skip carries: a variant form has a ':' or opens a
-        // bracket, a custom-property token a '[', a '(' or a '_', and an important modifier is a '!'.
+        // A token one of the checks in ApplyClassNames skips carries at least one of these: a variant has a ':' or
+        // opens a bracket, a custom-property token has a '[', a '(' or a '_', and an important modifier is a '!'.
+        // ApplyClassNamesTokenOwnershipTests holds each kind of token to it.
         private static readonly char[] s_specialTokenMarkers = { ':', '[', '(', '_', '!' };
 
         internal static void ApplyClassNames(VisualElement element, string[] classNames)
