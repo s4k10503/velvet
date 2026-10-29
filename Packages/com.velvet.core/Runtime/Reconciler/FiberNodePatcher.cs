@@ -2773,6 +2773,10 @@ namespace Velvet
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
             RecordVariantGateSource(element, classNames);
+            if (!MayDeclareVariantState(classNames) && !HoldsVariantState(element))
+            {
+                return;
+            }
             ApplyVariantManipulator(element, classNames);
             ApplyConditionalVariantManipulator(element, classNames);
             ApplyContainerVariantManipulator(element, classNames);
@@ -2784,6 +2788,41 @@ namespace Velvet
             ApplySupportsVariantConfig(element, classNames);
             ApplyCustomPropertyConfig(element, classNames);
         }
+
+        // Every token the passes of ApplyVariantManipulators read is a variant (its prefix ends in ':') or a
+        // custom-property token (StyleCustomPropertyClass.IsCustomPropertyToken: leading '[', or a '(' or '_'),
+        // so a list with none of those characters configures nothing. The '[' covers the arbitrary-property form.
+        private static bool MayDeclareVariantState(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var className in classNames)
+            {
+                if (className != null && className.IndexOfAny(s_variantStateChars) >= 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static readonly char[] s_variantStateChars = { ':', '[', '(', '_' };
+
+        // The tables ApplyVariantManipulators' passes write, so an element a previous render configured is still
+        // visited by the passes that take its entries out.
+        private bool HoldsVariantState(VisualElement element)
+            => _ctx.VariantManipulators.ContainsKey(element)
+                || _ctx.ConditionalVariantManipulators.ContainsKey(element)
+                || _ctx.ContainerVariantManipulators.ContainsKey(element)
+                || _ctx.RelationalVariantManipulators.ContainsKey(element)
+                || _ctx.HasVariantManipulators.ContainsKey(element)
+                || _ctx.StructuralVariants.ContainsKey(element)
+                || _ctx.HasClassVariants.ContainsKey(element)
+                || _ctx.AttributeVariants.ContainsKey(element)
+                || _ctx.SupportsVariants.ContainsKey(element)
+                || _ctx.CustomPropertyClasses.ContainsKey(element);
 
         // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
         // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
