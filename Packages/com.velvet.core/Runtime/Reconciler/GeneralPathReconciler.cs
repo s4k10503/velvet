@@ -651,6 +651,8 @@ namespace Velvet
             PerfStage.Count(oldNodes.Length > 0 ? "F.oldNodes.nonempty" : "F.oldNodes.empty");
             var cursor = new DescendingSlotCursor();
             PerfStage.Lap(ref pf, "F.cursorCtor");
+            var probeGc = System.GC.CollectionCount(0);
+            PerfStage.Lap(ref pf, "F.probe.a");
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 if (!patched.Contains(i))
@@ -658,6 +660,9 @@ namespace Velvet
                     _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
                 }
             }
+            PerfStage.Lap(ref pf, "F.probe.b");
+            if (System.GC.CollectionCount(0) != probeGc) PerfStage.Count("F.probe.gc0DuringLoop");
+            PerfStage.Lap(ref pf, "F.probe.c");
 
             PerfStage.Lap(ref pf, "F.removeLoop");
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
