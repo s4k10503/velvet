@@ -206,7 +206,6 @@ namespace Velvet
         private void ReconcileUnder(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs, int slotStart, int slotLimit)
         {
-            using var _pf = PerfStage.Begin("ChildReconciler.ReconcileUnder");
             if (_ctx.IsAborted) return;
             FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, parent);
 
