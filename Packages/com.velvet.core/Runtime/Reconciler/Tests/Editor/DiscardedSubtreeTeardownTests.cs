@@ -310,7 +310,7 @@ namespace Velvet.Tests
             Assert.That((gatedWhileMounted, TrickleDownCallbacks(held)), Is.EqualTo((true, 3)));
         }
 
-        private static FiberEventBinding[] PointerDown() => new FiberEventBinding[] { new PointerDownBinding { Handler = _ => { } } };
+        private static FiberEventBinding[] PressBindings() => new FiberEventBinding[] { new PointerDownBinding { Handler = _ => { } } };
 
         private static readonly Type[] s_pointerDownEvents = { typeof(PointerDownEvent) };
 
@@ -318,7 +318,7 @@ namespace Velvet.Tests
         public void Given_RowsOfPlainContainersHoldingAChildWithAPointerDownBinding_When_TheyAreCleared_Then_NoPointerDownCallbackIsUnregistered()
         {
             // Arrange
-            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", V.Div("p-1", PointerDown()))).ToArray();
+            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", V.Div("p-1", PressBindings()))).ToArray();
             using var scope = Mounted(rows);
 
             // Act
@@ -334,7 +334,7 @@ namespace Velvet.Tests
         public void Given_RowsOfPlainContainersWithAPointerDownBindingOfTheirOwn_When_TheyAreCleared_Then_EachUnregistersIt()
         {
             // Arrange
-            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", PointerDown())).ToArray();
+            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", PressBindings())).ToArray();
             using var scope = Mounted(rows);
 
             // Act
