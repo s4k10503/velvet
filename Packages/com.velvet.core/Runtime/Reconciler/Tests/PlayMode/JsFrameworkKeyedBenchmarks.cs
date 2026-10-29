@@ -74,31 +74,12 @@ namespace Velvet.Tests.Performance
                 MeasurementCount);
         }
 
-        [Test, Performance]
-        public void Create_1000Rows_GcOff()
-        {
-            System.GC.Collect();
-            UnityEngine.Scripting.GarbageCollector.GCMode = UnityEngine.Scripting.GarbageCollector.Mode.Disabled;
-            try
-            {
-                Execute(
-                    new Operation(() => Apply(Clear()), () => RunRows(Rows), Rows, Rows),
-                    WarmupCount,
-                    MeasurementCount);
-            }
-            finally
-            {
-                UnityEngine.Scripting.GarbageCollector.GCMode = UnityEngine.Scripting.GarbageCollector.Mode.Enabled;
-                System.GC.Collect();
-            }
-        }
-
         // GREEN_ON_BASE(characterization): a benchmark asserts nothing about its numbers, so the base runs it green; its tree check holds behaviour the base already has.
         [Test, Performance]
         public void Replace_AllOf1000Rows()
         {
             Execute(
-                new Operation(() => EnsureRows(Rows), () => RunRows(Rows), Rows, Rows),
+                new Operation(() => EnsureRows(Rows), () => RunRows(Rows), Rows, Rows, Profile: true),
                 WarmupCount,
                 MeasurementCount);
         }
@@ -284,7 +265,6 @@ namespace Velvet.Tests.Performance
             if (operation.Profile)
             {
                 PerfStage.Reset();
-                PerfStage.TrackAllocations = true;
                 PerfStage.Enabled = true;
             }
             var pf = PerfStage.Start();
@@ -294,7 +274,6 @@ namespace Velvet.Tests.Performance
             sw.Stop();
             PerfStage.Lap(ref pf, "Z.Unattributed(window)");
             PerfStage.Enabled = false;
-            PerfStage.TrackAllocations = false;
 
             recorder.enabled = false;
             var blocks = recorder.sampleBlockCount;
@@ -313,7 +292,7 @@ namespace Velvet.Tests.Performance
             }
         }
 
-        private readonly System.Collections.Generic.Dictionary<string, (SampleGroup Time, SampleGroup Count, SampleGroup Alloc)> _stageGroups = new();
+        private readonly System.Collections.Generic.Dictionary<string, (SampleGroup Time, SampleGroup Count)> _stageGroups = new();
         private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<double>> _stageTimes = new();
 
         private void EmitStages(double windowMs)
@@ -325,12 +304,11 @@ namespace Velvet.Tests.Performance
                 var name = testName + "." + stage;
                 if (!_stageGroups.TryGetValue(name, out var groups))
                 {
-                    groups = (new SampleGroup("S." + name, SampleUnit.Millisecond), new SampleGroup("C." + name, SampleUnit.Undefined), new SampleGroup("A." + name, SampleUnit.Undefined));
+                    groups = (new SampleGroup("S." + name, SampleUnit.Millisecond), new SampleGroup("C." + name, SampleUnit.Undefined));
                     _stageGroups[name] = groups;
                 }
                 Measure.Custom(groups.Time, ms);
                 Measure.Custom(groups.Count, count);
-                Measure.Custom(groups.Alloc, PerfStage.AllocsOf(stage));
                 attributed += ms;
                 if (!_stageTimes.TryGetValue(name, out var list))
                 {

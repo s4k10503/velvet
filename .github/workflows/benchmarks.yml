@@ -136,17 +136,17 @@ jobs:
           for r in rows:
               test, _, group = r['name'].partition(' / ')
               kind = group[:2]
-              key = (test.split('.')[-1], group[2:] if kind in ('S.', 'C.', 'A.') else group)
+              key = (test.split('.')[-1], group[2:] if kind in ('S.', 'C.') else group)
               slot = merged.setdefault(key, {})
-              slot[{'C.': 'c', 'A.': 'a'}.get(kind, 'v')] = r['value']
+              slot['c' if kind == 'C.' else 'v'] = r['value']
           lines = [f"CPU {cpu}"]
           stages = []
           for (test, name), v in sorted(merged.items()):
               if 'v' not in v:
                   continue
               if name.startswith(test + '.'):
-                  if v['v'] >= 0.2 or v.get('a', 0) >= 1000:
-                      stages.append(f"{test[:6]}|{name[len(test) + 1:]}|{v['v']:.2f}|{v.get('c', '')}|{v.get('a', '')}")
+                  if v['v'] >= 0.2:
+                      stages.append(f"{test[:6]}|{name[len(test) + 1:]}|{v['v']:.2f}|{v.get('c', '')}")
               else:
                   lines.append(f"{test}|{name}|{v['v']:.3f}|{v.get('c', '')}")
           lines += stages
