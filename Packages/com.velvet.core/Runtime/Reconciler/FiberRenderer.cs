@@ -688,6 +688,7 @@ namespace Velvet
             fiber.PreviousTree = newTree;
             fiber.InvalidateMemoCache();
             FiberCommitWork.ReturnOldTreeAfterReconcile(fiber, reconciler, oldTree, null, deferReconcile: false);
+            fiber.ParkedPassSuspended = reconciler.HasPendingWork;
             fiber.RenderCount++;
         }
 

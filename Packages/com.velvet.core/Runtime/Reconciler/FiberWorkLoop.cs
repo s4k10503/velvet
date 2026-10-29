@@ -653,6 +653,7 @@ namespace Velvet
             var mountPoint = fiber.MountPoint;
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
+            if (fiber.ParkedPassSuspended) return;
 
             var owed = OpenOwedSettleWindow(out var enclosingOwed);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
@@ -744,6 +745,16 @@ namespace Velvet
             }
             catch (Exception ex)
             {
+                if (ex is FiberSuspendSignal && fiber.Reconciler?.HasPendingWork == true)
+                {
+                    // This slice parked again before the drain at its end suspended, so the parked state still diffs
+                    // against the baseline: it stays parked, and the retry's render resumes the slices.
+                    fiber.ParkedPassSuspended = true;
+                    FiberRenderer.SuspendPassOwner(fiber, fiber.PendingReconcileDrainsTransitionWork);
+                    var parkedContext = fiber.Reconciler?.Context;
+                    if (parkedContext != null) FiberEffects.CommitStrandedLayoutWork(parkedContext);
+                    return;
+                }
                 fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
                 // Detach before retiring — same self-mark hazard as the completion path above.
                 var abortedBaseline = fiber.PendingOldTree;

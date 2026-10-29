@@ -319,6 +319,7 @@ namespace Velvet
         // drain, so it would otherwise absorb the drain's delta and leave the starts behind it stale.
         internal static void DrainPendingWork(ComponentFiber fiber)
         {
+            fiber.ParkedPassSuspended = false;
             if (fiber.IsInlineMounted)
             {
                 var drain = new RowCountWindow(fiber);
