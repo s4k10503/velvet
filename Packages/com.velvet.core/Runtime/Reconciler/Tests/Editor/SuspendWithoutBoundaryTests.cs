@@ -1257,8 +1257,6 @@ namespace Velvet.Tests
                 "The boundary's reveal creates the host element again with the resolved value, beside the component that mounted ahead of the reader");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already registers one fiber for the reader after the reveal.
-        // This pins that the fibers of the attempt that suspended are not left registered beside the reveal's.
         [Test]
         public void Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_OneReaderIsRegistered()
         {
@@ -1274,8 +1272,6 @@ namespace Velvet.Tests
                 "Under a Suspense the abandoned attempt is the boundary's to release, and what the resolve leaves registered is the reveal's reader alone");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already registers one fiber for the sibling after the reveal.
-        // This pins that a component mounted ahead of the reader is not left registered by the attempt that suspended.
         [Test]
         public void Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_OneSiblingIsRegistered()
         {
