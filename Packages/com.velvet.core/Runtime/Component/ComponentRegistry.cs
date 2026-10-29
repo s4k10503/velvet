@@ -127,7 +127,6 @@ namespace Velvet
 
         private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site, out bool reusedAsIs)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.GetOrCreateCore");
             reusedAsIs = false;
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (node.Body == null) throw new ArgumentException("ComponentNode.Body must not be null.", nameof(node));
@@ -151,7 +150,6 @@ namespace Velvet
             in FiberMountSite site,
             out bool reusedAsIs)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.ReconcileExistingFiber");
             reusedAsIs = false;
             // Context is read live from the cursor (ComponentContextStack) during
             // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
@@ -250,11 +248,8 @@ namespace Velvet
 
         private ComponentFiber CreateAndMountFiber(ComponentNode node, object identity, in FiberMountSite site)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.CreateAndMountFiber");
-            var pf = PerfStage.Start();
             var isInline = site.IsInline;
             var fiber = FiberRenderer.CreateChild(node.Body, node.IsErrorBoundary);
-            PerfStage.Lap(ref pf, "CMF.CreateChild");
             _ctx.FiberStack.Current?.AppendChild(fiber);
             fiber.BlocksInitialEnters = _ctx.ComponentContextStack.Get(MotionContext.EntersWithheld)
                 || (_ctx.ComponentContextStack.Get(MotionContext.EntersBlocked)
@@ -265,14 +260,12 @@ namespace Velvet
             // rethrows, so a write placed after the try would not run for it.
             fiber.SourceNode = node;
             fiber.SourceTree = _ctx.CurrentFiberTree;
-            PerfStage.Lap(ref pf, "CMF.setup");
 
             try
             {
                 if (isInline)
                 {
                     FiberRenderer.MountInline(fiber, site.MountPoint, site.SlotStart, _ctx);
-                    PerfStage.Lap(ref pf, "CMF.MountInline(call)");
                 }
                 else
                 {
@@ -341,7 +334,6 @@ namespace Velvet
 
         private void RegisterFiber(in FiberMountSite site, object identity, ComponentFiber fiber)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.RegisterFiber");
             var anchor = site.Anchor;
             if (site.IsInline)
             {
@@ -415,27 +407,21 @@ namespace Velvet
 
         private void UnregisterFiber(ComponentFiber fiber)
         {
-            var pf = PerfStage.Start();
-            using var _pf = PerfStage.Begin("ComponentRegistry.UnregisterFiber");
             // A wrapper-less Suspense makes the fiber rendering it the boundary. When that fiber
             // unmounts while still suspended, prune its boundary state so no dangling fiber
             // reference survives in the context-level Suspense registries (they are keyed by the
             // boundary fiber).
             _ctx.PruneSuspenseBoundaryState(fiber);
-            PerfStage.Lap(ref pf, "R.Unreg.PruneSuspense");
             // Same rationale for DOM-less AnimatePresence: the rendering fiber is the boundary that keys
             // its presence state, so prune it when the fiber unmounts (e.g. while a child is exiting).
             _ctx.PrunePresenceBoundaryState(fiber);
-            PerfStage.Lap(ref pf, "R.Unreg.PrunePresence");
             _ctx.FiberMemoCache.Forget(fiber);
-            PerfStage.Lap(ref pf, "R.Unreg.FiberMemoCache.Forget");
 
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
             {
                 _inlineFiberToKey.Remove(fiber);
                 _inlineInstances.Remove(key);
                 ReleaseExplicitPositionKey(key.positionKey);
-                PerfStage.Lap(ref pf, "R.Unreg.dictRemoves");
                 if (key.container != null && _tenancies.TryGetValue(key.container, out var tenancy))
                 {
                     tenancy.Fibers.Remove(fiber);
@@ -444,7 +430,6 @@ namespace Velvet
                 if (key.parentFiber != null && _parentToInlineFibers.TryGetValue(key.parentFiber, out var siblings))
                 {
                     siblings.Remove(fiber);
-                    PerfStage.Lap(ref pf, "R.Unreg.parentSiblings.Remove");
                     if (siblings.Count == 0) _parentToInlineFibers.Remove(key.parentFiber);
                 }
                 return;
@@ -470,8 +455,6 @@ namespace Velvet
         // already-disposed) — those differ per site and must stay outside this helper.
         private void DisposeFiberInternal(ComponentFiber fiber)
         {
-            var pf = PerfStage.Start();
-            using var _pf = PerfStage.Begin("ComponentRegistry.DisposeFiberInternal");
             if (fiber.IsInlineMounted && fiber.PreviousTree != null)
             {
                 // Retire the tree's pooled objects HERE: nulling PreviousTree suppresses Unmount's
@@ -483,7 +466,6 @@ namespace Velvet
                 var retired = fiber.PreviousTree;
                 fiber.PreviousTree = null;
                 FiberTreeReturn.ReturnRetiredTree(retired, fiber);
-                PerfStage.Lap(ref pf, "R.DisposeFiberInternal.ReturnRetiredTree(call)");
             }
             FiberRenderer.Dispose(fiber);
             UnregisterFiber(fiber);
@@ -675,7 +657,6 @@ namespace Velvet
         // fiber disposed by an earlier one's cascade is skipped.
         private void DisposeTogether(List<ComponentFiber> doomed)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.DisposeTogether");
             ComponentFiber.BeginDeletion(doomed);
             for (var i = 0; i < doomed.Count; i++)
             {
@@ -718,7 +699,6 @@ namespace Velvet
         // containment here closes that gap. Nothing is walked when the registry holds no fibers.
         internal void DisposeFibersUnder(VisualElement root)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.DisposeFibersUnder");
             if (root == null) return;
             if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
             List<ComponentFiber>? snapshot = null;
@@ -735,7 +715,6 @@ namespace Velvet
         // A fiber whose disposal has cleared its MountPoint sits under no element, so it is not selected.
         private void CollectFibersInSubtree(VisualElement element, ref List<ComponentFiber>? into)
         {
-            using var _pf = PerfStage.Begin("ComponentRegistry.CollectFibersInSubtree");
             if (_tenancies.TryGetValue(element, out var tenancy))
             {
                 foreach (var fiber in tenancy.Fibers)

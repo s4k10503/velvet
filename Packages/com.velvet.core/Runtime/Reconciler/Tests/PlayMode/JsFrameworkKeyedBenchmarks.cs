@@ -5,7 +5,6 @@ using Unity.PerformanceTesting;
 using UnityEngine.Profiling;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
-using Velvet;
 
 namespace Velvet.Tests.Performance
 {
@@ -43,8 +42,7 @@ namespace Velvet.Tests.Performance
             Action Arrange,
             Func<KeyedAction> Next,
             int RowsAfter,
-            int RowRendersAfter,
-            bool Profile = false);
+            int RowRendersAfter);
 
         private VisualElement _root = null!;
         private MountedTree _mounted = null!;
@@ -69,7 +67,7 @@ namespace Velvet.Tests.Performance
         public void Create_1000Rows()
         {
             Execute(
-                new Operation(() => Apply(Clear()), () => RunRows(Rows), Rows, Rows, Profile: true),
+                new Operation(() => Apply(Clear()), () => RunRows(Rows), Rows, Rows),
                 WarmupCount,
                 MeasurementCount);
         }
@@ -79,7 +77,7 @@ namespace Velvet.Tests.Performance
         public void Replace_AllOf1000Rows()
         {
             Execute(
-                new Operation(() => EnsureRows(Rows), () => RunRows(Rows), Rows, Rows, Profile: true),
+                new Operation(() => EnsureRows(Rows), () => RunRows(Rows), Rows, Rows),
                 WarmupCount,
                 MeasurementCount);
         }
@@ -177,37 +175,9 @@ namespace Velvet.Tests.Performance
         public void Clear_1000Rows()
         {
             Execute(
-                new Operation(() => Apply(RunRows(Rows)), Clear, 0, 0, Profile: true),
+                new Operation(() => Apply(RunRows(Rows)), Clear, 0, 0),
                 WarmupCount,
                 MeasurementCount);
-        }
-
-        [Test, Performance]
-        public void ProfilerCalibration()
-        {
-            var group = new SampleGroup("Lap.NsPerCall", SampleUnit.Nanosecond);
-            const int calls = 200000;
-            for (var round = 0; round < 5; round++)
-            {
-                PerfStage.Reset();
-                PerfStage.Enabled = true;
-                var pf = PerfStage.Start();
-                var sw = Stopwatch.StartNew();
-                for (var i = 0; i < calls; i++)
-                {
-                    PerfStage.Lap(ref pf, "Z.calibration.lap");
-                }
-                sw.Stop();
-                var scopeSw = Stopwatch.StartNew();
-                for (var i = 0; i < calls; i++)
-                {
-                    using (PerfStage.Begin("Z.calibration.scope")) { }
-                }
-                scopeSw.Stop();
-                PerfStage.Enabled = false;
-                Measure.Custom(group, sw.Elapsed.TotalMilliseconds * 1e6 / calls);
-                Measure.Custom(new SampleGroup("Scope.NsPerCall", SampleUnit.Nanosecond), scopeSw.Elapsed.TotalMilliseconds * 1e6 / calls);
-            }
         }
 
         private static KeyedAction RunRows(int count) => new(KeyedActionKind.Run, Count: count);
@@ -262,18 +232,10 @@ namespace Velvet.Tests.Performance
             recorder.FilterToCurrentThread();
             recorder.enabled = true;
 
-            if (operation.Profile)
-            {
-                PerfStage.Reset();
-                PerfStage.Enabled = true;
-            }
-            var pf = PerfStage.Start();
             var sw = Stopwatch.StartNew();
             KeyedBenchmarkApp.Dispatch(action);
             _mounted.FlushStateForTest();
             sw.Stop();
-            PerfStage.Lap(ref pf, "Z.Unattributed(window)");
-            PerfStage.Enabled = false;
 
             recorder.enabled = false;
             var blocks = recorder.sampleBlockCount;
@@ -285,39 +247,7 @@ namespace Velvet.Tests.Performance
             {
                 Measure.Custom(time, sw.Elapsed.TotalMilliseconds);
                 Measure.Custom(allocation, blocks);
-                if (operation.Profile)
-                {
-                    EmitStages(sw.Elapsed.TotalMilliseconds);
-                }
             }
-        }
-
-        private readonly System.Collections.Generic.Dictionary<string, (SampleGroup Time, SampleGroup Count)> _stageGroups = new();
-        private readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<double>> _stageTimes = new();
-
-        private void EmitStages(double windowMs)
-        {
-            double attributed = 0;
-            var testName = NUnit.Framework.TestContext.CurrentContext.Test.Name;
-            foreach (var (stage, ms, count) in PerfStage.Snapshot())
-            {
-                var name = testName + "." + stage;
-                if (!_stageGroups.TryGetValue(name, out var groups))
-                {
-                    groups = (new SampleGroup("S." + name, SampleUnit.Millisecond), new SampleGroup("C." + name, SampleUnit.Undefined));
-                    _stageGroups[name] = groups;
-                }
-                Measure.Custom(groups.Time, ms);
-                Measure.Custom(groups.Count, count);
-                attributed += ms;
-                if (!_stageTimes.TryGetValue(name, out var list))
-                {
-                    list = new System.Collections.Generic.List<double>();
-                    _stageTimes[name] = list;
-                }
-                list.Add(ms);
-            }
-            UnityEngine.Debug.Log($"PERFSTAGE window={windowMs:F2}ms attributed={attributed:F2}ms stages={_stageGroups.Count}");
         }
 
         private void VerifyTree(Operation operation)

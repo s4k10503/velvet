@@ -92,13 +92,10 @@ namespace Velvet
         // sharedContext: see SetupMount.
         public static void MountInline(ComponentFiber fiber, VisualElement? parent, int slotStart, ReconcilerContext? sharedContext = null)
         {
-            var pfm = PerfStage.Start();
             SetupMount(fiber, parent, sharedContext);
-            PerfStage.Lap(ref pfm, "MI.SetupMount(new Reconciler)");
             fiber.IsInlineMounted = true;
             fiber.MountSlotStart = slotStart;
             RenderAndReconcile(fiber, deferReconcile: true);
-            PerfStage.Lap(ref pfm, "MI.RenderAndReconcile(call)");
             // Layout effects setup runs AFTER the DOM mutations are committed for
             // the entire subtree. Inline-mount
             // defers child CreateElement to the parent expansion, which happens AFTER MountInline
@@ -109,9 +106,7 @@ namespace Velvet
             // root commits last.
             var mountContext = fiber.Reconciler!.Context;
             mountContext.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true, mountContext.CurrentPass));
-            PerfStage.Lap(ref pfm, "MI.pushDeferred");
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
-            PerfStage.Lap(ref pfm, "MI.ScheduleRunEffects(call)");
         }
 
         // Synchronously re-renders an already-mounted inline fiber into the caller's batch pass and settles
@@ -474,7 +469,6 @@ namespace Velvet
 
             // Hooks.cs (the function-component path) resolves the fiber from FiberAmbientStack.Current and uses
             // Fiber.IsRendering to determine the Render() context, so set it here.
-            var pfr = PerfStage.Start();
             fiber.IsRendering = true;
             FiberAmbientStack.Push(fiber);
             var retainedOutput = false;
@@ -506,7 +500,6 @@ namespace Velvet
                 && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
             var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
             var ownedJournal = OpenPassJournal(fiber);
-            PerfStage.Lap(ref pfr, "RR.prologue");
             try
             {
                 using var _ = s_renderMarker.Auto();
@@ -521,9 +514,7 @@ namespace Velvet
                 // before this render began is not read as this one's.
                 fiber.FallbackReplacedPreviousTree = false;
 
-                PerfStage.Lap(ref pfr, "RR.beforeLoop");
                 var rendered = FiberBeginWork.RunRenderPhaseLoop(fiber);
-                PerfStage.Lap(ref pfr, "RR.RunRenderPhaseLoop(call)");
 
                 // Before the settle promotes any staged deps: a render refused for fewer hooks must leave
                 // every slot's committed deps where the last committed render left them.
@@ -555,10 +546,8 @@ namespace Velvet
                     fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
                 }
 
-                PerfStage.Lap(ref pfr, "RR.settle");
                 reconciling = !deferReconcile;
                 ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
-                PerfStage.Lap(ref pfr, "RR.ReconcileRenderedTree(call)");
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
                 // (e.g. an ErrorBoundary unmount cascade that re-enters this fiber's owner).
@@ -600,7 +589,6 @@ namespace Velvet
 #endif
                 }
                 fiber.RenderCount++;
-                PerfStage.Lap(ref pfr, "RR.commit");
             }
             catch (Exception ex)
             {

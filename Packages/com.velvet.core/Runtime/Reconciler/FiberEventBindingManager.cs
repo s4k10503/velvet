@@ -140,8 +140,6 @@ namespace Velvet
                 return;
             }
 
-            var pfb = PerfStage.Start();
-            using var _pfb = PerfStage.Begin("FiberEventBindingManager.Bind");
             var newDelegate = GetDelegate(binding);
             if (newDelegate != null && _bindingsByElement.TryGetValue(element, out var existingBindings))
             {
@@ -154,13 +152,11 @@ namespace Velvet
                 }
             }
 
-            PerfStage.Lap(ref pfb, "BN.delegate+existing");
             if (!_unbindActions.TryGetValue(element, out var actions))
             {
                 actions = new List<Action>();
                 _unbindActions[element] = actions;
             }
-            PerfStage.Lap(ref pfb, "BN.unbindActions");
 
             if (!_boundDelegates.TryGetValue(element, out var delegates))
             {
@@ -179,8 +175,7 @@ namespace Velvet
                 typedBindings.Add(binding);
             }
 
-            PerfStage.Lap(ref pfb, "BN.delegatesAndBindings");
-            using (PerfStage.Begin("B.RegisterFieldBinding")) { RegisterFieldBinding(actions, element, binding); }
+            RegisterFieldBinding(actions, element, binding);
         }
 
         // The bindings that ride an element-specific hook (Button.clicked, INotifyValueChanged<T>) rather
@@ -195,14 +190,13 @@ namespace Velvet
                 case ClickedBinding clicked when element is Button button:
                 {
                     var handler = clicked.Handler;
-                    ClickGate gate;
-                    using (PerfStage.Begin("B.GateClicks")) { gate = GateClicks(button); }
+                    var gate = GateClicks(button);
                     Action wrapped = () =>
                     {
                         if (gate.Suppress) return;
                         RunDiscrete(handler);
                     };
-                    using (PerfStage.Begin("B.clicked+=")) { button.clicked += wrapped; }
+                    button.clicked += wrapped;
                     actions.Add(() => button.clicked -= wrapped);
                     break;
                 }
@@ -697,9 +691,7 @@ namespace Velvet
         // ones when a bridge attaches.
         private ClickGate GateClicks(Button button)
         {
-            var pfg = PerfStage.Start();
             if (_clickGates.TryGetValue(button, out var gate)) return gate;
-            PerfStage.Lap(ref pfg, "GK.lookup");
 
             if (s_gates.TryGetValue(button, out gate))
             {
@@ -707,14 +699,10 @@ namespace Velvet
             }
             else
             {
-                PerfStage.Lap(ref pfg, "GK.cwtLookup");
                 gate = new ClickGate(button);
-                PerfStage.Lap(ref pfg, "GK.newGate");
                 s_gates.Add(button, gate);
-                PerfStage.Lap(ref pfg, "GK.cwtAdd");
             }
             _clickGates[button] = gate;
-            PerfStage.Lap(ref pfg, "GK.dictSet");
             if (FiberCrossPanelEventDispatcher.HasBridges) WireGate(gate);
             return gate;
         }
