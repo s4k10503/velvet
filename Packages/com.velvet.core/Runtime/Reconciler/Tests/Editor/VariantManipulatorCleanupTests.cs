@@ -245,6 +245,7 @@ namespace Velvet.Tests
                 "A content-identical class array must not re-derive the variant manipulator payloads");
         }
 
+        // GREEN_ON_BASE(refactor): the base already takes the manipulator off a leaf repatched to plain classes; the early return in ApplyVariantManipulators has to leave that to the passes.
         [Test]
         public void Given_AHoverVariantLeafWasMounted_When_RepatchedWithPlainClasses_Then_ItIsNoLongerTrackedAsAVariantManipulator()
         {
