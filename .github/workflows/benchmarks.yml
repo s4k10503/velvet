@@ -125,6 +125,41 @@ jobs:
             --json benchmark.json --summary benchmark-summary.md
           { echo '### Benchmark medians'; echo; cat benchmark-summary.md; } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Echo the medians as annotations
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          cpu = next((l.split(':', 1)[1].strip() for l in open('/proc/cpuinfo') if l.startswith('model name')), '?')
+          rows = json.load(open('benchmark.json'))
+          merged = {}
+          for r in rows:
+              test, _, group = r['name'].partition(' / ')
+              kind = group[:2]
+              key = (test.split('.')[-1], group[2:] if kind in ('S.', 'C.') else group)
+              slot = merged.setdefault(key, {})
+              slot['c' if kind == 'C.' else 'v'] = r['value']
+          lines = [f"CPU {cpu}"]
+          stages = []
+          for (test, name), v in sorted(merged.items()):
+              if 'v' not in v:
+                  continue
+              if name.startswith(test + '.'):
+                  if v['v'] >= 0.2:
+                      stages.append(f"{test[:6]}|{name[len(test) + 1:]}|{v['v']:.2f}|{v.get('c', '')}")
+              else:
+                  lines.append(f"{test}|{name}|{v['v']:.3f}|{v.get('c', '')}")
+          lines += stages
+          chunks, cur, size = [], [], 0
+          for l in lines:
+              if size + len(l) > 3600 and cur:
+                  chunks.append(cur); cur, size = [], 0
+              cur.append(l); size += len(l) + 1
+          chunks.append(cur)
+          for i, c in enumerate(chunks[:10]):
+              print(f"::notice title=medians {i + 1}/{len(chunks)}::" + '%0A'.join(c))
+          PY
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Benchmark medians
