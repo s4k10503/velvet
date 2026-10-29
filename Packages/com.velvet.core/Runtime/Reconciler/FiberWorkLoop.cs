@@ -366,6 +366,7 @@ namespace Velvet
         // to inherit.
         internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
+            using var _pf = PerfStage.Begin("FiberWorkLoop.FlushState");
             OpenOwedSettleWindow(out var enclosing);
             try
             {

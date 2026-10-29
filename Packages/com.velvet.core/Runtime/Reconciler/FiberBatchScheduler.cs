@@ -593,7 +593,7 @@ namespace Velvet
                 // if a deferred effect throws — otherwise a single user exception would wedge the scheduler.
                 try
                 {
-                    if (openedWave) _onDrainEnd?.Invoke();
+                    if (openedWave) { using (PerfStage.Begin("S.onDrainEnd(self)")) { _onDrainEnd?.Invoke(); } }
                 }
                 finally
                 {
@@ -687,7 +687,7 @@ namespace Velvet
         internal void FlushPendingPassiveEffects()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
-            _flushPassiveEffects?.Invoke();
+            using (PerfStage.Begin("S.flushPassiveEffects(self)")) { _flushPassiveEffects?.Invoke(); }
         }
 
         // Drops fiber from both pending queues. Called on Unmount / Dispose so a

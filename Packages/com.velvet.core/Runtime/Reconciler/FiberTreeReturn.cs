@@ -69,6 +69,7 @@ namespace Velvet
         // garbage, so correctness is one-sided.
         internal static void DrainDeferredInlineOldTreeReturns(ReconcilerContext ctx)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.DrainDeferredInlineOldTreeReturns");
             var queue = ctx.DeferredInlineOldTreeReturns;
             if (queue.Count == 0) return;
             var live = AcquireLiveMarks();
@@ -95,6 +96,7 @@ namespace Velvet
         internal static void ReturnRetiredTree(
             VNode?[]? retired, ComponentFiber? owner, FiberMemoCache? memoCache = null, VNode?[]? alsoLive = null)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.ReturnRetiredTree");
             if (retired == null || retired.Length == 0) return;
 
             var live = AcquireLiveMarks();
@@ -131,6 +133,7 @@ namespace Velvet
         internal static void ReturnRetiredTreesForUnmount(
             ComponentFiber fiber, VNode?[]? retiredTree, VNode?[]? parkedTree, List<VNode>? slotRoots)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.ReturnRetiredTreesForUnmount");
             if (retiredTree == null && parkedTree == null && (slotRoots == null || slotRoots.Count == 0))
             {
                 return;
@@ -163,6 +166,7 @@ namespace Velvet
         // only when a slot actually holds a node — unmount-path-only cost.
         internal static List<VNode>? CollectSlotRootsForUnmount(ComponentFiber fiber)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.CollectSlotRootsForUnmount");
             List<VNode>? roots = null;
             VisitDisposableSlotRoots(fiber, root => CollectRootNodes(root, ref roots));
             return roots;
@@ -174,6 +178,7 @@ namespace Velvet
         // node's pooled parts forever.
         internal static List<VNode>? CollectStateSlotRootsForDispose(ComponentFiber fiber)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.CollectStateSlotRootsForDispose");
             List<VNode>? roots = null;
             VisitPersistentSlotRoots(fiber, root => CollectRootNodes(root, ref roots));
             return roots;
@@ -247,6 +252,7 @@ namespace Velvet
         // already-marked subtrees short-circuit, so overlapping chains cost one walk.
         private static void MarkOwnerRoots(ComponentFiber? owner, HashSet<object> live)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.MarkOwnerRoots");
             if (owner == null) return;
 
             WalkTree(owner.PreviousTree, live, WalkMode.Mark);
@@ -291,6 +297,7 @@ namespace Velvet
 
         private static void MarkFiberSlotRoots(ComponentFiber fiber, HashSet<object> live)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.MarkFiberSlotRoots");
             void Mark(object root) => MarkSlotRoot(root, live);
             VisitDisposableSlotRoots(fiber, Mark);
             VisitPersistentSlotRoots(fiber, Mark);
@@ -385,7 +392,9 @@ namespace Velvet
         // the array itself before any node prune applies.
         internal static void MarkNode(VNode? node, HashSet<object> live)
         {
+            PerfStage.Count("TR.MarkNode.calls");
             if (node == null || !live.Add(node)) return;
+            PerfStage.Count("TR.MarkNode.newMarks");
             WalkChildSlots(node, live, WalkMode.Mark);
         }
 
@@ -395,6 +404,7 @@ namespace Velvet
 
         private static void SweepTree(VNode?[] tree, HashSet<object> live)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.SweepTree");
             if (tree == null || tree.Length == 0) return;
             if (live.Count > 0 && live.Contains(tree)) return;
             for (var i = 0; i < tree.Length; i++)
@@ -406,6 +416,7 @@ namespace Velvet
 
         private static void SweepNode(VNode? node, HashSet<object> live)
         {
+            PerfStage.Count("TR.SweepNode.calls");
             if (node == null) return;
             // A marked node's entire subtree is committed state — nothing below it retires.
             if (live.Count > 0 && live.Contains(node)) return;
@@ -493,6 +504,7 @@ namespace Velvet
 
         private static void WalkTree(VNode?[]? tree, HashSet<object> live, WalkMode mode)
         {
+            using var _pf = PerfStage.Begin("FiberTreeReturn.WalkTree");
             if (tree == null || tree.Length == 0) return;
             if (mode == WalkMode.Release)
             {
