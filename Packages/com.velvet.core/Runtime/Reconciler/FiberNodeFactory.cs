@@ -137,7 +137,8 @@ namespace Velvet
             // physically landed. Null at the true tree root (nothing on FiberStack yet).
             element.userData = _ctx.FiberStack.Current;
             CaptureOwnRawText(element, elementNode.Props);
-            if (elementNode.Children != null)
+            // An element that declares no children has nothing to reconcile into it.
+            if (elementNode.Children is { Length: > 0 })
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
                 // ReconcileChildren (= GeneralPathReconciler.ExpandInlineRecursive) inline-expands
