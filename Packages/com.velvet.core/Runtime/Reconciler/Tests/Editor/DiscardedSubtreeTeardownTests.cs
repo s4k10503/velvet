@@ -13,8 +13,9 @@ namespace Velvet.Tests
     /// Specifies which callbacks the teardown of a removed element unregisters from Unity, counted as the records
     /// those unregistrations return to Unity's pools (<see cref="UnregisterCallbackRecordPoolTests"/>).
     /// <list type="bullet">
-    /// <item>Below the root of a removal that nothing pools afterwards, the Button click gate and the text-item
-    /// manipulators leave their callbacks registered: the elements they sit on go with the subtree.</item>
+    /// <item>Below the root of a removal that nothing pools afterwards, the Button click gate, the text-item
+    /// manipulators and the element's event bindings leave their callbacks registered: the elements they sit on
+    /// go with the subtree.</item>
     /// <item>A removal that pools its root, or that tears out a Portal range lying inside the subtree, still
     /// unregisters what the next rent could not use again. A pooled Button's click gate is not one of them: it stays
     /// registered, scrubbed, for whoever rents the Button next.</item>
@@ -307,6 +308,63 @@ namespace Velvet.Tests
 
             // Assert — the count while mounted is read with it, so a Button that never carried a gate does not pass for one parked.
             Assert.That((gatedWhileMounted, TrickleDownCallbacks(held)), Is.EqualTo((true, 3)));
+        }
+
+        private static FiberEventBinding[] PressBindings() => new FiberEventBinding[] { new PointerDownBinding { Handler = _ => { } } };
+
+        private static readonly Type[] s_pointerDownEvents = { typeof(PointerDownEvent) };
+
+        [Test]
+        public void Given_RowsOfPlainContainersHoldingAChildWithAPointerDownBinding_When_TheyAreCleared_Then_NoPointerDownCallbackIsUnregistered()
+        {
+            // Arrange
+            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", V.Div("p-1", PressBindings()))).ToArray();
+            using var scope = Mounted(rows);
+
+            // Act
+            var returned = RecordsReturnedBy(() => Clear(scope, rows), s_pointerDownEvents);
+
+            // Assert
+            Assert.AreEqual(0, returned);
+        }
+
+        // GREEN_ON_BASE(characterization): the base unregisters every binding, the removal's own root included, which
+        // is what the root keeps doing: only what lies below it is left registered.
+        [Test]
+        public void Given_RowsOfPlainContainersWithAPointerDownBindingOfTheirOwn_When_TheyAreCleared_Then_EachUnregistersIt()
+        {
+            // Arrange
+            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", PressBindings())).ToArray();
+            using var scope = Mounted(rows);
+
+            // Act
+            var returned = RecordsReturnedBy(() => Clear(scope, rows), s_pointerDownEvents);
+
+            // Assert
+            Assert.GreaterOrEqual(returned, Rows);
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs each unbind action, one of which drops the Button's click-event
+        // slot; this holds the bookkeeping to being dropped where the actions are left unrun.
+        [Test]
+        public void Given_RowsOfPlainContainersHoldingButtonsWithAClickedEventBinding_When_TheyAreCleared_Then_NothingStaysTrackedForThem()
+        {
+            // Arrange
+            var bindings = new FiberEventBinding[] { new ClickedEventBinding { Handler = _ => { } } };
+            var rows = Enumerable.Range(0, Rows).Select(_ => (VNode)V.Div("flex flex-row", V.Button("p-1", bindings))).ToArray();
+            using var scope = Mounted(rows);
+            var manager = ReconcilerContextProbe.Of(scope).EventManager;
+            IDictionary Table(string name) => (IDictionary)typeof(FiberEventBindingManager)
+                .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(manager)!;
+            var trackedWhileMounted = Table("_clickedEventSlots").Count > 0 && Table("_unbindActions").Count > 0;
+
+            // Act
+            Clear(scope, rows);
+
+            // Assert — read with the counts while mounted, so a table nothing ever filled does not pass for one emptied.
+            Assert.That(
+                (trackedWhileMounted, Table("_clickedEventSlots").Count, Table("_unbindActions").Count),
+                Is.EqualTo((true, 0, 0)));
         }
 
         // The click gate registers its pointer-down, pointer-up and submit callbacks in the trickle-down phase.

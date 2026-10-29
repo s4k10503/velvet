@@ -809,12 +809,13 @@ namespace Velvet
                 _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, i));
                 if (_ctx.IsAborted) return true;
             }
+            var slots = new LogicalSlotCursor();
             for (var i = 0; i < newNodes.Length; i++)
             {
                 var element = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) ReleaseUnplacedElement(element);
                 if (_ctx.IsAborted) return true;
-                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), element);
+                slots.Insert(parent, slotStart + i, element);
             }
             return true;
         }
@@ -1037,6 +1038,7 @@ namespace Velvet
             var slotStart = inputs.SlotStart;
             var budgeted = frameBudgetMs > 0;
 
+            var slots = new LogicalSlotCursor();
             for (var i = startIndex; i < newNodes.Length; i++)
             {
                 if (_ctx.IsAborted) return true;
@@ -1049,7 +1051,7 @@ namespace Velvet
                 // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
                 // DOM-desync resume directly into this phase (the live range shrank since the slice was parked)
                 // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
-                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), newElement);
+                slots.Insert(parent, slotStart + i, newElement);
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -1175,8 +1177,9 @@ namespace Velvet
             // Tail-add only.
             if (linearEnd == oldNodes.Length)
             {
+                var slots = new LogicalSlotCursor();
                 for (var i = linearEnd; i < newNodes.Length; i++)
-                    parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), _factory.CreateElement(newNodes[i]));
+                    slots.Insert(parent, slotStart + i, _factory.CreateElement(newNodes[i]));
                 return false;
             }
 
@@ -1274,9 +1277,10 @@ namespace Velvet
             if (oldMidEnd == linearEnd)
             {
                 // Old middle empty → pure insert of new[linearEnd, newMidEnd) ahead of the suffix.
+                var slots = new LogicalSlotCursor();
                 for (var i = linearEnd; i < newMidEnd; i++)
                 {
-                    parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), _factory.CreateElement(newNodes[i]));
+                    slots.Insert(parent, slotStart + i, _factory.CreateElement(newNodes[i]));
                     if (_ctx.IsAborted) return;
                 }
             }
@@ -1555,6 +1559,7 @@ namespace Velvet
             var newNodes = state.NewNodes!;
             var slotStart = state.SlotStart;
 
+            var slots = new LogicalSlotCursor();
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
             {
                 if (AbortIfCanceled(state)) return true;
@@ -1562,7 +1567,7 @@ namespace Velvet
                 var newElement = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
                 if (AbortIfCanceled(state)) return true;
-                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), newElement);
+                slots.Insert(parent, slotStart + i, newElement);
 
                 var next = i + 1;
                 if (next < newNodes.Length && TryYield(state, next, frameBudgetMs)) return false;

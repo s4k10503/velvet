@@ -300,12 +300,14 @@ namespace Velvet
             // its in-flight tick / drops its LayoutIdRegistry entry so a departing element's tween
             // never keeps ticking against it.
             MotionLayoutIdDriver.CancelForTeardown(element, _ctx);
-            _ctx.EventManager.UnbindAll(element);
+            var belowDiscardedRoot = _ctx.IsBelowDiscardedRoot(element);
+            if (belowDiscardedRoot) _ctx.EventManager.ForgetDiscardedBindings(element);
+            else _ctx.EventManager.UnbindAll(element);
             // A pooled Button is handed out again as the same instance, so the press origin recorded for it must
             // not survive into whatever mounts it next; its gate callbacks stay registered (Park).
             if (element is Button button)
             {
-                if (_ctx.IsBelowDiscardedRoot(button)) _ctx.EventManager.ForgetDiscarded(button);
+                if (belowDiscardedRoot) _ctx.EventManager.ForgetDiscarded(button);
                 else if (_ctx.DiscardedSubtreeRoot == null && PoolKindOf(button) == PoolKind.Button) _ctx.EventManager.Park(button);
                 else _ctx.EventManager.Forget(button);
             }
@@ -350,10 +352,11 @@ namespace Velvet
             PointerEventsScope.ReleaseTorn(element);
             // Must run before ClearAll, which drops the holds and the layers the hand-back resolves to.
             StyleArbitraryValueResolver.HandBackAll(element);
+            // Ahead of ClearAll, which drops the layer map the watch is recorded in.
+            StyleArbitraryValueResolver.ReleaseShownImageWatchOf(element);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
-            StyleArbitraryValueResolver.ReleaseShownImageWatch(element);
             // Same reason for the per-frame drivers' transition suspension: a driver whose release this teardown
             // pre-empted would otherwise stay recorded as an owner, and the reused element's next play would read
             // that stale owner as "another driver is still live" and never hand transitions back to the cascade.
