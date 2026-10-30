@@ -129,6 +129,23 @@ namespace Velvet.Tests
             Assert.That((hostedAtRest, RingOverlayIn(btn.parent) != null), Is.EqualTo((true, false)));
         }
 
+        [TestCase("focus:ring-2 focus:ring-4")]
+        [TestCase("focus:ring-4 focus:ring-2")]
+        public void Given_TwoRingWidthsBehindOneVariant_When_Focused_Then_TheOneTailwindEmitsLastWins(string rings)
+        {
+            // Arrange — both tokens apply at one priority, which a rule's place in Tailwind's order breaks.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Button(name: "btn", className: "w-[80px] h-[30px] " + rings, text: "ok"));
+            var btn = _window.rootVisualElement.Q<VisualElement>("btn");
+            ForcePanelUpdate(btn.panel);
+
+            // Act
+            using (var e = FocusEvent.GetPooled()) { btn.SimulateEvent(e); }
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(btn)?.Spec.Ring.Width, Is.EqualTo((float?)4f));
+        }
+
         // Geometry
 
         [Test]
@@ -196,6 +213,33 @@ namespace Velvet.Tests
 
             // Assert — the outline its own offset plus its width, 3px.
             Assert.That(Mathf.Round(OutlineBandOf(card).worldBound.x - card.worldBound.x), Is.EqualTo(-3f));
+        }
+
+        [Test]
+        public void Given_AnOutline_When_LaidOut_Then_ItsBandIsTheElementsBoxGrownByItsWidth()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-2");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — 2px outside each edge.
+            Assert.That(OutlineBandOf(card).resolvedStyle.width, Is.EqualTo(44f));
+        }
+
+        [Test]
+        public void Given_AnInsetRingBesideAnOutline_When_LaidOut_Then_TheOutlineBandIsStillSized()
+        {
+            // Arrange — the inset band is the element's child and never measures the element itself.
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-inset outline-2");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(OutlineBandOf(card).resolvedStyle.width, Is.EqualTo(44f));
         }
 
         [Test]

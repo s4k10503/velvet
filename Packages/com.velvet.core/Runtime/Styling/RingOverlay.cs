@@ -355,6 +355,11 @@ namespace Velvet
             {
                 return;
             }
+            if (binding.Width > 0f)
+            {
+                PlaceBand(binding.OutlineElement, binding.Spec.Outline.Offset + binding.Spec.Outline.Width, binding);
+                binding.OutlineElement.MarkDirtyRepaint();
+            }
             OutlineHosting.Place(element, binding, force: true);
             SyncElementState(element, binding);
         }
@@ -413,6 +418,7 @@ namespace Velvet
             Stretch(overlay);
             Stretch(binding.RingElement);
             Stretch(binding.OffsetElement);
+            ReadBox(element, binding);
             SyncInsideRadii(element, binding);
         }
 
@@ -451,27 +457,32 @@ namespace Velvet
         // by its spread, which is where it paints.
         private static void SyncGeometry(VisualElement element, RingBinding binding, VisualElement host)
         {
-            var width = element.resolvedStyle.width;
-            var height = element.resolvedStyle.height;
-            if (float.IsNaN(width) || float.IsNaN(height) || width <= 0f || height <= 0f)
-            {
-                return; // pre-layout: the geometry callback re-enters with a real box
-            }
-            binding.Width = width;
-            binding.Height = height;
-            binding.Radii = BorderBandPainter.Fitted(ResolveRadii(element, binding), width, height);
-
-            if (!OutlineHosting.TryOffsetWithin(element, host, out var x, out var y))
+            if (!ReadBox(element, binding) || !OutlineHosting.TryOffsetWithin(element, host, out var x, out var y))
             {
                 return;
             }
-            OutlineHosting.SetBox(binding.Overlay, x, y, width, height);
+            OutlineHosting.SetBox(binding.Overlay, x, y, binding.Width, binding.Height);
 
             var spec = binding.Spec;
             PlaceBand(binding.RingElement, spec.RingSpread, binding);
             PlaceBand(binding.OffsetElement, spec.OffsetSpread, binding);
-            PlaceBand(binding.OutlineElement, spec.Outline.Offset + spec.Outline.Width, binding);
             MarkBandsDirty(binding);
+        }
+
+        // Reads the element's laid-out size and its radii fitted to it into the binding, which the outline's placement
+        // and the outset bands measure from. False while there is no box: the geometry callback re-enters with one.
+        private static bool ReadBox(VisualElement element, RingBinding binding)
+        {
+            var width = element.resolvedStyle.width;
+            var height = element.resolvedStyle.height;
+            if (float.IsNaN(width) || float.IsNaN(height) || width <= 0f || height <= 0f)
+            {
+                return false;
+            }
+            binding.Width = width;
+            binding.Height = height;
+            binding.Radii = BorderBandPainter.Fitted(ResolveRadii(element, binding), width, height);
+            return true;
         }
 
         // A band's box is the element's grown by grow.

@@ -68,7 +68,7 @@ namespace Velvet
         // else in the panel costs an outline nothing.
         internal static void Place(VisualElement element, RingBinding binding, bool force)
         {
-            if (!force && Unchanged(element, binding))
+            if (!force && (Unchanged(element, binding) || (binding.OutlineHost == null && binding.Spec.Outline.Width <= 0f)))
             {
                 return;
             }
