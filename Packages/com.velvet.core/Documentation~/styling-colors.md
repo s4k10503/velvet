@@ -63,7 +63,17 @@ The functions follow CSS Color 4:
 - **Function names, `none` and angle units** are read in any case.
 - **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`, `text-…/[30%]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
-  quarter.
+  quarter. The modifier is written the forms Tailwind generates: a number in steps of 0.25 as a number prints it (`/50`,
+  `/2.25`, not `/05`, `/.5` or `/50.0`), a bracketed number, which is a fraction (`/[0.33]`), or a bracketed percentage
+  (`/[33.3%]`). One outside 0–100% leaves the `color-mix()` invalid once computed, so the property takes its unset value:
+  `bg-red-500/150` is transparent, `text-red-500/150` the inherited text colour and `border-red-500/150` `currentcolor`
+  (`outline-red-500/150` is the text colour, and a ring, `shadow-*` or inset colour discards the element's box-shadow).
+- **`current` and `inherit`** (`text-current`, `bg-inherit`, `border-current`, `ring-current`, `ring-inherit`,
+  `outline-inherit`, …) read their value off a live source: `current` is the element's own text colour (the inherited one
+  on `text-current` itself), `current/50` scales its alpha, and `inherit` is the parent's value of the same property, which
+  an `inherit` there passes on. Both follow their source as it changes. `inherit` takes no modifier, which `color-mix()`
+  cannot hold. An element that sets a border width and names no border colour has a `currentcolor` border, as Tailwind's
+  preflight gives every element, and any border colour utility outranks it.
 
 ## Where Velvet differs from CSS
 

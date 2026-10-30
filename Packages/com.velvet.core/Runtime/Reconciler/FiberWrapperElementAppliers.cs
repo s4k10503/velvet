@@ -100,10 +100,16 @@ namespace Velvet
             => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
 
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
-            => _ring.ApplyRingOnCreate(element, classNames);
+        {
+            PreflightBorderColor.Sync(element, classNames);
+            _ring.ApplyRingOnCreate(element, classNames);
+        }
 
         internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)
-            => _ring.ApplyRingOnPatch(element, classNames, clipActive);
+        {
+            PreflightBorderColor.Sync(element, classNames);
+            _ring.ApplyRingOnPatch(element, classNames, clipActive);
+        }
 
         internal void ApplyBackdropOnCreate(VisualElement element, string[] classNames)
             => _backdrop.ApplyBackdropOnCreate(element, classNames);

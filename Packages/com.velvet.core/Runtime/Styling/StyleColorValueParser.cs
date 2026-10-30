@@ -227,10 +227,85 @@ namespace Velvet
             // MUTANT_SURVIVES(unreachable, literal): the slash found above means TryParseColorValue never reaches the slashless branch that reads longhand.
             if (!TryParseColorValue(className, prefixLen, false, out var color))
             {
-                return false;
+                // A modifier outside 0..100% (TryParseColourKeyword).
+                return TryParseColourKeyword(property, className, prefixLen, out result);
             }
 
             result = new ArbitraryStyle(property, color);
+            return true;
+        }
+
+        // {text|bg|border}-{current|inherit}, current's opacity modifier, and a colour Tailwind writes through
+        // color-mix() with a modifier outside 0..100%, which the browser computes as invalid and so as the property's
+        // unset value. Cheap enough for IsInlineResolved's per-class check.
+        internal static bool IsColourKeywordUtility(string core)
+            => (core.StartsWith("bg-", StringComparison.Ordinal) || core.StartsWith("text-", StringComparison.Ordinal)
+                    || core.StartsWith("border-", StringComparison.Ordinal))
+                && (core.EndsWith("-current", StringComparison.Ordinal) || core.EndsWith("-inherit", StringComparison.Ordinal)
+                    || core.IndexOf("-current/", StringComparison.Ordinal) >= 0);
+
+        internal static bool TryParseColourKeywordUtility(string className, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!IsColourKeywordUtility(className))
+            {
+                return false;
+            }
+            if (className.StartsWith("bg-", StringComparison.Ordinal))
+            {
+                return TryParseColourKeyword(ArbitraryProperty.BackgroundColor, className, 3, out result);
+            }
+            if (className.StartsWith("text-", StringComparison.Ordinal))
+            {
+                return TryParseColourKeyword(ArbitraryProperty.TextColor, className, 5, out result);
+            }
+            return className.StartsWith("border-", StringComparison.Ordinal)
+                && TryParseColourKeyword(ArbitraryProperty.BorderColor, className, 7, out result);
+        }
+
+        // The colour token from start, for property: `current` and `inherit`, and current's opacity modifier, as
+        // Tailwind writes currentcolor and inherit; and a colour whose modifier lies outside 0..100%, which leaves the
+        // color-mix() Tailwind writes invalid once computed, so property takes its unset value — a background's
+        // transparent, the text colour's inherited one, a border's currentcolor. `inherit` takes no modifier, which
+        // color-mix() cannot hold: Tailwind's declaration is dropped.
+        internal static bool TryParseColourKeyword(ArbitraryProperty property, string token, int start, out ArbitraryStyle result)
+        {
+            result = default;
+            var rest = token.AsSpan(start);
+            if (rest.SequenceEqual("inherit".AsSpan()))
+            {
+                result = new ArbitraryStyle(property, Color.white, ColorReference.Inherit);
+                return true;
+            }
+            var factor = Color.white;
+            if (rest.StartsWith("current".AsSpan(), StringComparison.Ordinal))
+            {
+                if (rest.Length == "current".Length)
+                {
+                    result = new ArbitraryStyle(property, factor, ColorReference.Current);
+                    return true;
+                }
+                if (rest[7] != '/' || !TryParseModifierPercent(rest.Slice(8), out var percent))
+                {
+                    return false;
+                }
+                if (percent >= 0f && percent <= 100f)
+                {
+                    factor.a = percent / 100f;
+                    result = new ArbitraryStyle(property, factor, ColorReference.Current);
+                    return true;
+                }
+            }
+            else if (VerdictOfColourValue(token, start) != ColourVerdict.Rejected)
+            {
+                return false;
+            }
+            result = property switch
+            {
+                ArbitraryProperty.BackgroundColor => new ArbitraryStyle(property, Color.clear),
+                ArbitraryProperty.TextColor => new ArbitraryStyle(property, factor, ColorReference.Inherit),
+                _ => new ArbitraryStyle(property, factor, ColorReference.Current),
+            };
             return true;
         }
 
