@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 4 failed among the 118 case(s) that ran the site: Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged, Given_AnUnkeyedLoaderRebuiltEachRender_When_TheComponentRendersAgainAfterACompletedRender_Then_TheNewLoaderRuns, Given_ChangedResourceKey_When_ReRendered_Then_ReplacesResourceInstance",
+ "file": "9a58b01e5907d87a9f493e879f013752e78618d5385c223a1203947d7d093567",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseAsyncTests.Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAsyncTests.cs": "fb3bfd5a11d847687d53c138f75d3f813068cc45b26f96d971a231fb8fa1b8ca",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAsyncTests.Given_AnUnkeyedLoaderRebuiltEachRender_When_TheComponentRendersAgainAfterACompletedRender_Then_TheNewLoaderRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAsyncTests.cs": "fb3bfd5a11d847687d53c138f75d3f813068cc45b26f96d971a231fb8fa1b8ca",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAsyncTests.Given_ChangedResourceKey_When_ReRendered_Then_ReplacesResourceInstance",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAsyncTests.cs": "fb3bfd5a11d847687d53c138f75d3f813068cc45b26f96d971a231fb8fa1b8ca",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAsyncTests.Given_NoResourceKey_When_InlineLambdaFactoryReRenders_Then_WarnsOnSecondRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAsyncTests.cs": "fb3bfd5a11d847687d53c138f75d3f813068cc45b26f96d971a231fb8fa1b8ca",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "40942382711",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 23,
+  "line": 278,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}

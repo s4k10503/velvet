@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 384 case(s) that ran the site: Given_ParentWhoseChildrenWereReordered_When_TheMiddleChildIsRemoved_Then_TheChainSkipsIt, Given_ParentWhoseChildrenWereReordered_When_TheThirdChildsPreviousLinkIsRead_Then_ItIsTheSecondInTheNewOrder",
+ "file": "9a58b01e5907d87a9f493e879f013752e78618d5385c223a1203947d7d093567",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentFiberPreviousLinkTests.Given_ParentWhoseChildrenWereReordered_When_TheMiddleChildIsRemoved_Then_TheChainSkipsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberPreviousLinkTests.cs": "f6fb0f15e099d63524e2c8c93771d4c943304a986ddc61d24e620dc0b384a513"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentFiberPreviousLinkTests.Given_ParentWhoseChildrenWereReordered_When_TheThirdChildsPreviousLinkIsRead_Then_ItIsTheSecondInTheNewOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentFiberPreviousLinkTests.cs": "f6fb0f15e099d63524e2c8c93771d4c943304a986ddc61d24e620dc0b384a513"
+   }
+  }
+ ],
+ "measured_by": "40942382711",
+ "mutant": {
+  "after": ";",
+  "before": "child._previousSibling = previous;",
+  "column": 16,
+  "line": 1146,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}

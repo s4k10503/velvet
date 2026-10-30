@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "24e11524bf5d8a8662c506a9f509a8832d4177eed6059ac8482031db9a6d6fd5",
+ "killers": [],
+ "measured_by": "40942382711",
+ "mutant": {
+  "after": ";",
+  "before": "AddToRowOrder(byParent, fiber, RowHolding(info.wrapper, container, rowOf), 1);",
+  "column": 16,
+  "line": 572,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "survived"
+}
