@@ -1635,6 +1635,9 @@ namespace Velvet
         private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<long, ArbitraryStyle>>,
             StyleClassProjection.ILayerHost
         {
+            // Whether a border width written off a panel waits for the element to attach (SnapBorderWidthOnAttach).
+            public bool BorderSnapPending;
+
             // Per-NAME priority stacks for filter-[name:args] custom filters, in first-application
             // order. Unlike every other arbitrary property, a custom filter cannot share the single
             // FilterCustom slot in the base dictionary above — "dissolve" and "glow" (or a base and a
@@ -4438,6 +4441,10 @@ namespace Velvet
                 {
                     return;
                 }
+                if (element.panel == null && style.Expression == null && IsBorderWidth(style.Property))
+                {
+                    SnapBorderWidthOnAttach(element);
+                }
                 var width = style.Keyword == StyleKeyword.Undefined
                     ? new StyleFloat(measured)
                     : new StyleFloat(style.Keyword);
@@ -4499,6 +4506,35 @@ namespace Velvet
                 return;
             }
             WriteTransformOrigin(element, style);
+        }
+
+        // A border width written before the element is on a panel is written again once it is, when the panel's device
+        // pixels are known to snap it to.
+        private static void SnapBorderWidthOnAttach(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map) || map.BorderSnapPending)
+            {
+                return;
+            }
+            map.BorderSnapPending = true;
+            EventCallback<AttachToPanelEvent>? onAttach = null;
+            onAttach = _ =>
+            {
+                element.UnregisterCallback(onAttach!);
+                map.BorderSnapPending = false;
+                if (!s_layers.TryGetValue(element, out var live) || !ReferenceEquals(live, map))
+                {
+                    return;
+                }
+                foreach (var written in new List<ArbitraryProperty>(map.Keys))
+                {
+                    if (IsBorderWidth(written))
+                    {
+                        ResolveAndApply(element, written, map);
+                    }
+                }
+            };
+            element.RegisterCallback(onAttach);
         }
 
         // The value written, or what the element measures its expression to, which takes no percentage; false

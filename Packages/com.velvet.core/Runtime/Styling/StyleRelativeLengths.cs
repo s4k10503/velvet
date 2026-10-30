@@ -128,28 +128,33 @@ namespace Velvet
         // length snapped as the browser snaps a border width to element's device pixels: under one device pixel
         // to one, any other down to a whole number of them, the sign kept. Unsnapped off a panel.
         public static float SnapAsBorderWidth(VisualElement element, float length)
+            => element.panel == null ? length : SnapToDevicePixels(length, element.panel.scaledPixelsPerPoint);
+
+        // length snapped to a grid of perPixel device pixels a point: under one device pixel to one, any other down to a
+        // whole number of them, the sign kept.
+        public static float SnapToDevicePixels(float length, float perPixel)
         {
-            if (length == 0f || element.panel == null)
+            if (length == 0f)
             {
                 return length;
             }
-            var perPixel = element.panel.scaledPixelsPerPoint;
             var devicePixels = Math.Abs(length) * perPixel;
             return Math.Sign(length) * (devicePixels < 1f ? 1f : (float)Math.Floor(devicePixels)) / perPixel;
         }
 
-        // A reading of everything container's children measure, for a poll over a container whose children hold a
-        // measured length (a space margin, a divide width): their font units, their sizes and the panel scale.
+        // A reading of what container's children measure their lengths against, for a poll over a container whose
+        // children hold a measured length (a space margin, a divide width): their count and font sizes. The container's
+        // own reading is the poll's, so no child is walked up the tree here.
         public static int ChildrenReading(VisualElement? container)
         {
             if (container == null)
             {
                 return 0;
             }
-            var reading = 17;
+            var reading = container.hierarchy.childCount;
             for (var i = 0; i < container.hierarchy.childCount; i++)
             {
-                reading = unchecked((reading * 31) + Capture(container.hierarchy[i]).GetHashCode());
+                reading = unchecked((reading * 31) + container.hierarchy[i].resolvedStyle.fontSize.GetHashCode());
             }
             return reading;
         }

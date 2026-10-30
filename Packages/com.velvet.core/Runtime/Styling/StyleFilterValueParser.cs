@@ -92,6 +92,7 @@ namespace Velvet
                     return true;
                 }
                 if (!TryParseMeasuredLength(valueSpan, out var measured)) return false;
+                if (IsNegativeLiteral(valueSpan)) return false;
                 result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!.AtLeast(0f));
                 return true;
             }
@@ -119,6 +120,14 @@ namespace Velvet
         // StyleRelativeLengths.TryMeasure measures. blur() and drop-shadow() take no percentage.
         private static bool TryParseMeasuredLength(ReadOnlySpan<char> value, out StyleLengthExpression? expression)
             => StyleLengthExpression.TryParse(value, out expression) && !expression!.ReadsPercentage;
+
+        // A length written with a minus sign and no math function around it, which the browser rejects where the property
+        // takes none below zero; one a math function comes to below zero is zero.
+        private static bool IsNegativeLiteral(ReadOnlySpan<char> value)
+        {
+            var trimmed = value.Trim("_ ".AsSpan());
+            return trimmed.Length > 0 && trimmed[0] == '-' && !StyleLengthExpression.OpensMathFunction(trimmed);
+        }
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
         internal static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
@@ -259,7 +268,8 @@ namespace Velvet
                 }
                 if (TryParseMeasuredLength(token.AsSpan(), out var expression))
                 {
-                    if (lengthCount == 3)
+                    // A deviation below zero as a literal rejects the shadow, as a literal deviation does.
+                    if (lengthCount == 3 || (lengthCount == 2 && IsNegativeLiteral(token.AsSpan())))
                     {
                         return false;
                     }

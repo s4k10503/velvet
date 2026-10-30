@@ -301,8 +301,10 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert — the 40px box, and the offset and the 2px width on each side.
-            Assert.That(BandFor(card).style.width.value.value, Is.EqualTo(47.5f));
+            // Assert — the 40px box, and on each side the offset as written and the band's own width, which the panel's
+            // scale may have snapped.
+            var band = BandFor(card);
+            Assert.That(band.style.width.value.value, Is.EqualTo(40f + (2f * (1.75f + band.style.borderTopWidth.value))).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): a ring is a box-shadow, which the browser does not snap, nor does this.
@@ -488,6 +490,34 @@ namespace Velvet.Tests
                 }
             }
             return null;
+        }
+
+        [Test]
+        public void Given_AnInsetRingOfAFifthOfAnEm_When_Mounted_Then_TheBandIsFourPixelsWide()
+        {
+            // Arrange / Act
+            var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] text-[20px] ring-[0.2em] ring-inset"));
+
+            // Assert
+            Assert.That(InsetBandIn(card).style.borderTopWidth.value, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_AnInsetRingOfAFifthOfAnEm_When_TheFontSizeChanges_Then_TheBandFollowsIt()
+        {
+            // Arrange
+            var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] text-[20px] ring-[0.2em] ring-inset"));
+
+            // Act — a font change that leaves the box where it was, carried by the band's per-frame sample.
+            card.style.fontSize = 30f;
+            ForcePanelUpdate(card.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(card.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert
+            Assert.That(InsetBandIn(card).style.borderTopWidth.value, Is.EqualTo(6f));
         }
 
         [Test]

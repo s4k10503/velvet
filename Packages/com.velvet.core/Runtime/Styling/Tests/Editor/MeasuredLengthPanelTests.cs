@@ -96,7 +96,22 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): at a panel scale that is a whole number a whole-pixel width is already on the
-        // grid. Dropping the snap of a literal width in TryMeasuredValue reddens it at any other scale.
+        // grid, as the base left it. At any other scale it is red without the snap on attach.
+        [TestCase(3f, 1.5f, 2.6666667f)]
+        [TestCase(2.75f, 2f, 2.5f)]
+        [TestCase(0.25f, 2f, 0.5f)]
+        [TestCase(-3f, 1.5f, -2.6666667f)]
+        [TestCase(3f, 1f, 3f)]
+        public void Given_ALengthAndAPanelScale_When_SnappedToDevicePixels_Then_ItIsTheBrowsersBorderWidth(
+            float length, float perPixel, float expected)
+        {
+            // Act
+            var snapped = StyleRelativeLengths.SnapToDevicePixels(length, perPixel);
+
+            // Assert
+            Assert.That(snapped, Is.EqualTo(expected).Within(1e-5f));
+        }
+
         [Test]
         public void Given_AWholePixelBorderWidth_When_Settled_Then_ItIsSnappedDownToDevicePixels()
         {
@@ -163,6 +178,28 @@ namespace Velvet.Tests
         [TestCase("bg-radial-[ellipse_2em_3em_at_1em_50%,#ff0000,#0000ff]")]
         [TestCase("bg-conic-[from_0deg_at_1em_50%,#ff0000,#0000ff]")]
         public void Given_AGradientShapeInEms_When_Mounted_Then_ItPaintsOnceMeasured(string gradient)
+        {
+            // Act
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] " + gradient);
+
+            // Assert
+            Assert.That(First.style.backgroundImage.value.texture, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_AnEmRadialRadius_When_Mounted_Then_TheBoundGradientIsReadAgainstTheElement()
+        {
+            // Act — the radius is bound on a provisional basis while the element is detached, and the poll reads it again.
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] bg-radial-[circle_2em_at_center,#ff0000,#0000ff]");
+
+            // Assert — two ems of the element's own 20px, not of the 16px a provisional basis gives.
+            var spec = _mounted.Root.Reconciler.Context.GradientBackgrounds[First].Spec;
+            Assert.That(GradientBackground.RadialRadii(spec, 50f, 50f).x, Is.EqualTo(40f));
+        }
+
+        [TestCase("bg-linear-[to_right,#ff0000_1em,#0000ff_3em]")]
+        [TestCase("bg-linear-[to_right,#ff0000,2em,#0000ff]")]
+        public void Given_AnEmStopPositionInAList_When_Mounted_Then_ItPaintsOnceMeasured(string gradient)
         {
             // Act
             Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] " + gradient);

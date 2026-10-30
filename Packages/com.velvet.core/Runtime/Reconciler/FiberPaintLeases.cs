@@ -197,7 +197,7 @@ namespace Velvet
                 {
                     _skewTo = SkewOf(_target) ?? default;
                     _shadowTo = ShadowOf(_target) ?? Array.Empty<ShadowSpec>();
-                    _gradientTo = GradientOf(_target);
+                    _gradientTo = GradientOf(_target, _element);
                     Attach(_target);
                     return;
                 }
@@ -206,22 +206,22 @@ namespace Velvet
                 // names it, for each layer it names.
                 if (_isExit)
                 {
-                    ResolveFromClasses(_toClasses, ref _skewTo, ref _shadowTo, ref _gradientTo);
+                    ResolveFromClasses(_element, _toClasses, ref _skewTo, ref _shadowTo, ref _gradientTo);
                     return;
                 }
                 _skewTo = _skewFrom;
                 _shadowTo = _shadowFrom;
                 _gradientTo = _gradientFrom;
-                ResolveFromClasses(_fromClasses, ref _skewFrom, ref _shadowFrom, ref _gradientFrom);
+                ResolveFromClasses(_element, _fromClasses, ref _skewFrom, ref _shadowFrom, ref _gradientFrom);
             }
 
-            private static void ResolveFromClasses(string[] classNames, ref SkewSpec skew, ref ShadowSpec[] shadow,
+            private static void ResolveFromClasses(VisualElement element, string[] classNames, ref SkewSpec skew, ref ShadowSpec[] shadow,
                 ref GradientSpec? gradient)
             {
                 var names = Named(classNames);
                 if ((names & Layer.Skew) != 0) skew = SkewOf(classNames) ?? default;
                 if ((names & Layer.Shadow) != 0) shadow = ShadowOf(classNames) ?? Array.Empty<ShadowSpec>();
-                if ((names & Layer.Gradient) != 0) gradient = GradientOf(classNames);
+                if ((names & Layer.Gradient) != 0) gradient = GradientOf(classNames, element);
             }
 
             private static SkewSpec? SkewOf(string[] classNames)
@@ -231,8 +231,9 @@ namespace Velvet
                 => StyleShadowClass.HasShadowClass(classNames) && StyleShadowClass.TryExtract(classNames, out var spec)
                     ? spec : null;
 
-            private static GradientSpec? GradientOf(string[] classNames)
-                => StyleGradientClass.HasGradientClass(classNames) && StyleGradientClass.TryExtract(classNames, out var spec)
+            private static GradientSpec? GradientOf(string[] classNames, VisualElement element)
+                => StyleGradientClass.HasGradientClass(classNames)
+                    && StyleGradientClass.TryExtract(classNames, element, out var spec, out _)
                     ? spec : null;
 
             // A layer the end pose names and the element has not yet gets attached through the reconciler's own

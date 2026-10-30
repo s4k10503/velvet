@@ -477,16 +477,17 @@ namespace Velvet
         [ThreadStatic] private static RelativeLengthBasis? s_basis;
         [ThreadStatic] private static bool s_measuredRead;
 
-        // What a length in the gradient's shape (a radius, a centre) is read against while there is no basis: the
-        // gradient binds on it, and the poll reads the classes again against the element once it is on a panel. A
-        // stop's position waits instead, since a wrong one is drawn.
+        // What a length in a gradient's shape (a radius, a centre) or in an arbitrary stop list (a position, a hint) is
+        // read against while there is no basis: the gradient binds on it, and the poll reads the classes again against
+        // the element once it is on a panel. A from-/via-/to- utility's position waits instead, which leaves that stop
+        // at its default position until then.
         private static readonly RelativeLengthBasis s_provisional = new(StyleLengthExpression.RootFontSize, 0f, 0f, 0f);
 
         // A length-percentage as a fraction of its basis plus pixels where it is affine in its percentage, and as At,
         // read once the basis is known, where it is not; one reading a font-relative or viewport unit is measured on
         // s_basis, and declined where there is none.
         private static bool TryMeasuredLength(string token, out float fraction, out float px, out MeasuredLength? at,
-            bool inShape = false)
+            bool provisional = false)
         {
             fraction = 0f;
             px = 0f;
@@ -507,7 +508,7 @@ namespace Velvet
                 {
                     basis = measured;
                 }
-                else if (inShape)
+                else if (provisional)
                 {
                     basis = s_provisional;
                 }
@@ -1121,7 +1122,7 @@ namespace Velvet
                 return true;
             }
             // A length the element measures, or a percentage beside a length or under a function of one.
-            if (!TryMeasuredLength(token, out var measuredFraction, out var measuredPx, out at))
+            if (!TryMeasuredLength(token, out var measuredFraction, out var measuredPx, out at, provisional: true))
             {
                 return false;
             }
@@ -1318,7 +1319,7 @@ namespace Velvet
             // A circle takes no percentage.
             var read = TryParseStopLength(token, out px)
                 || (StyleLengthExpression.TryParse(token.AsSpan(), out var expression) && !expression!.ReadsPercentage
-                    && TryMeasuredLength(token, out _, out px, out _, inShape: true));
+                    && TryMeasuredLength(token, out _, out px, out _, provisional: true));
             px = literal ? px : Mathf.Max(px, 0f);
             return read && px >= 0f;
         }
@@ -1506,7 +1507,7 @@ namespace Velvet
                 offset = unit == LengthUnit.Percent ? new Offset(value / 100f, 0f) : new Offset(0f, value);
                 return true;
             }
-            if (TryMeasuredLength(token, out var fraction, out var pixels, out var at, inShape: true))
+            if (TryMeasuredLength(token, out var fraction, out var pixels, out var at, provisional: true))
             {
                 offset = new Offset(fraction, pixels, at);
                 return true;

@@ -31,6 +31,17 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        [TestCase("blur-[-1em]")]
+        [TestCase("drop-shadow-[0_0_-1em_#ff0000]")]
+        public void Given_ANegativeBlurLiteralInEms_When_Parsed_Then_TheClassIsDeclined(string cls)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(cls, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         [Test]
         public void Given_AClipPathInsetInEms_When_Extracted_Then_TheShapeIsRead()
         {

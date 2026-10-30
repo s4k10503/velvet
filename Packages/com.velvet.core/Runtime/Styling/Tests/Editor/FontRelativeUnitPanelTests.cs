@@ -108,7 +108,6 @@ namespace Velvet.Tests
             // Assert
             var engineWidth = zeros.MeasureTextSize("0000000000", 0f, VisualElement.MeasureMode.Undefined, 0f,
                 VisualElement.MeasureMode.Undefined).x;
-            // The engine's width is the same quantity before it is rounded to a device pixel.
             Assert.That(Written, Is.EqualTo(engineWidth).Within(1f / Child.panel.scaledPixelsPerPoint));
         }
 

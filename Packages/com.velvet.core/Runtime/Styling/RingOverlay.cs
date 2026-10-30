@@ -329,7 +329,23 @@ namespace Velvet
             style.bottom = 0f;
             style.width = StyleKeyword.Null;
             style.height = StyleKeyword.Null;
+            SyncInsideWidth(element, binding);
             SyncElementState(element, binding);
+        }
+
+        // An inset band's width where the element measures or snaps it, which the outset path writes in SyncGeometry: it
+        // is zero while the element is on no panel, and follows the font and the panel scale after.
+        private static void SyncInsideWidth(VisualElement element, RingBinding binding)
+        {
+            if (binding.Spec.WidthExpression == null && !binding.Spec.Snaps)
+            {
+                return;
+            }
+            var width = WidthOf(element, binding.Spec);
+            if (width != binding.Overlay.style.borderTopWidth.value)
+            {
+                ApplyWidth(binding.Overlay, width);
+            }
         }
 
         // The padding box's corners are the element's less the border beside them, the larger side's where the
@@ -420,6 +436,7 @@ namespace Velvet
             if (binding.Inside)
             {
                 // Everything else reaches the band from the element it is a child of (see SetMode).
+                SyncInsideWidth(element, binding);
                 SyncInsideRadii(element, binding);
                 if (!float.IsNaN(rs.width))
                 {
