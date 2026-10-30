@@ -120,6 +120,7 @@ namespace Velvet.Tests
                 && CountInPanelRect(overlapped, IsGreen) == 0, Is.True, $"a={a} b={b} strip={overlapped}");
         }
 
+        // GREEN_ON_BASE(characterization): the control for the case above: the base drew an outline where nothing covers it, and still does.
         [UnityTest]
         public IEnumerator Given_AnOutlinedElementBesideALaterSibling_When_Rendered_Then_TheOutlineReachesTheScreen()
         {
@@ -167,6 +168,7 @@ namespace Velvet.Tests
                 $"a={a} b={b}");
         }
 
+        // GREEN_ON_BASE(characterization): the panel's own clipping, which no Velvet code decides; the control for the clipped-band case.
         [UnityTest]
         public IEnumerator Given_AChildPokingAboveAClip_When_Rendered_Then_TheClipCutsIt()
         {
@@ -192,6 +194,7 @@ namespace Velvet.Tests
             Assert.That(CountInPanelRect(outside, IsRed), Is.EqualTo(0), $"a={a} poke={poke.worldBound}");
         }
 
+        // GREEN_ON_BASE(characterization): the base drew an outline as a band beside its element, inside the clip, so the clip cut it there too. Hosting it above the clip without a clip proxy reddens it.
         [UnityTest]
         public IEnumerator Given_AnOutlineInsideAClipUnderLaterContent_When_Rendered_Then_TheClipCutsTheBandAboveIt()
         {
@@ -224,14 +227,15 @@ namespace Velvet.Tests
                 V.Div(name: "a", className: "w-[60px] h-[60px] bg-[#0000ff] ring-[8px] ring-[#ff0000]"),
             });
 
-            // Act — a 3px square just inside the band's outer top-left corner, which a rounded corner leaves bare,
-            // beside the same square along the band's left edge as the control.
+            // Act — the 2px square at the band's outer top-left corner, all of which a corner rounded by the band's
+            // width leaves bare, beside the same square along the band's left edge as the control.
             var box = _host.Root.Q<VisualElement>("a").worldBound;
-            var corner = new RectInt(Mathf.RoundToInt(box.xMin - BandWidth), Mathf.RoundToInt(box.yMin - BandWidth), 3, 3);
-            var edge = new RectInt(Mathf.RoundToInt(box.xMin - BandWidth), Mathf.RoundToInt(box.center.y), 3, 3);
+            var corner = new RectInt(Mathf.RoundToInt(box.xMin - BandWidth), Mathf.RoundToInt(box.yMin - BandWidth), 2, 2);
+            var edge = new RectInt(Mathf.RoundToInt(box.xMin - BandWidth), Mathf.RoundToInt(box.center.y), 2, 2);
 
             // Assert
-            Assert.That(CountInPanelRect(edge, IsRed) > 0 && CountInPanelRect(corner, IsRed) > 0, Is.True);
+            Assert.That(CountInPanelRect(edge, IsRed) == 4 && CountInPanelRect(corner, IsRed) == 4, Is.True,
+                $"edge={CountInPanelRect(edge, IsRed)} corner={CountInPanelRect(corner, IsRed)}");
         }
     }
 }
