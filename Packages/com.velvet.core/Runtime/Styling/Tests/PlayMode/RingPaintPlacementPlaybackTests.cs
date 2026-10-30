@@ -76,6 +76,17 @@ namespace Velvet.Tests
             return n;
         }
 
+        // Where every outline node and clip proxy sits, for a failure message.
+        private string OutlineNodes()
+        {
+            var parts = new System.Text.StringBuilder();
+            _host.Root.Query<VisualElement>(className: RingOverlay.OutlineMarkerClass).ForEach(n => parts
+                .Append(n.name).Append(" under ").Append(n.parent?.name).Append(' ').Append(n.worldBound)
+                .Append(" overflow=").Append(n.resolvedStyle.overflow).Append("; "));
+            parts.Append("clip clips=").Append(OutlineHosting.Clips(_host.Root.Q<VisualElement>("clip")));
+            return parts.ToString();
+        }
+
         private static bool IsRed(Color32 p) => p.r > 140 && p.g < 90 && p.b < 90;
         private static bool IsGreen(Color32 p) => p.g > 140 && p.r < 90 && p.b < 90;
 
@@ -185,7 +196,8 @@ namespace Velvet.Tests
             var inside = OuterStrip(a, right: true);
 
             // Assert — the right band, inside the clip, is the control: it reads red where the one above does not.
-            Assert.That(CountInPanelRect(inside, IsRed) > 0 && CountInPanelRect(outside, IsRed) == 0, Is.True, $"a={a}");
+            Assert.That(CountInPanelRect(inside, IsRed) > 0 && CountInPanelRect(outside, IsRed) == 0, Is.True,
+                $"a={a} inside={CountInPanelRect(inside, IsRed)} outside={CountInPanelRect(outside, IsRed)} {OutlineNodes()}");
         }
 
         [UnityTest]
