@@ -575,7 +575,7 @@ namespace Velvet
                 {
                     return false;
                 }
-                return expression!.IsFinite();
+                return true;
             }
             if (lengthUnit == LengthUnit.Percent)
             {

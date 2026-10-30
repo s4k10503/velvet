@@ -212,7 +212,6 @@ namespace Velvet.Tests
         [TestCase("calc(1px+2)")]
         [TestCase("calc(1px*2px)")]
         [TestCase("calc(1px/2px)")]
-        [TestCase("calc(1px/0)")]
         [TestCase("calc(4)")]
         [TestCase("calc(1px))")]
         [TestCase("min()")]
@@ -359,6 +358,25 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property), Is.EqualTo((true, property)));
         }
 
+        [TestCase("ex")]
+        [TestCase("ch")]
+        [TestCase("cap")]
+        [TestCase("ic")]
+        [TestCase("lh")]
+        [TestCase("rex")]
+        [TestCase("RCH")]
+        [TestCase("rcap")]
+        [TestCase("ric")]
+        [TestCase("rlh")]
+        public void Given_AFontRelativeUnitOtherThanEm_When_ParsedAsAWidth_Then_ItIsClaimed(string unit)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[2" + unit + "]", out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
         [TestCase("vw")]
         [TestCase("vh")]
         [TestCase("vmin")]
@@ -387,26 +405,18 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): an em beside an overflowing length was never read, and still is not.
-        [Test]
-        public void Given_AnEmBesideAnOverflowingLength_When_ParsedAsAWidth_Then_TheClassIsDeclined()
+        [TestCase("w-[calc(1e38px*10+1em)]")]
+        [TestCase("w-[calc(1em/0)]")]
+        public void Given_AnEmBesideAnInfiniteTerm_When_ParsedAsAWidth_Then_ItMeasuresTheLargestFloat(string cls)
         {
+            // Arrange
+            StyleArbitraryValueResolver.TryParse(cls, out var s);
+
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("w-[calc(1e38px*10+1em)]", out _);
+            var px = s.Expression?.Evaluate(new RelativeLengthBasis(10f, 200f, 800f, 600f)) ?? float.NaN;
 
             // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): an em divided by zero was never read as a width, and still is not.
-        [Test]
-        public void Given_AnEmDividedByZero_When_ParsedAsAWidth_Then_TheClassIsDeclined()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("w-[calc(1em/0)]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(px, Is.EqualTo(float.MaxValue));
         }
 
         // GREEN_ON_BASE(characterization): a stop at a bare number or a malformed function was never read.

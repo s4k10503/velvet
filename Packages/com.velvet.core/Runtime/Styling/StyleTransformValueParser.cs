@@ -104,7 +104,8 @@ namespace Velvet
         {
             result = default;
             if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue)
-                || opacityValue < 0f || opacityValue > 1f)
+                || (opacityValue = StyleArbitraryValueResolver.ClampMathResult(valueSpan, opacityValue, 0f, 1f)) < 0f
+                || opacityValue > 1f)
             {
                 return false;
             }
@@ -122,7 +123,8 @@ namespace Velvet
             bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var factor) || factor < 0f)
+            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var factor)
+                || (factor = StyleArbitraryValueResolver.ClampMathResult(valueSpan, factor, 0f)) < 0f)
             {
                 return false;
             }
@@ -224,8 +226,7 @@ namespace Velvet
             }
             // A length the element measures, as basis-[…] reads one (TryParseRelativeLength). One spelled with a
             // leading minus is declined, as the shorthand declines a negative basis above.
-            if (part.Length == 0 || part[0] == '-' || !StyleLengthExpression.TryParse(part, out var measured)
-                || !measured.IsFinite())
+            if (part.Length == 0 || part[0] == '-' || !StyleLengthExpression.TryParse(part, out var measured))
             {
                 return false;
             }

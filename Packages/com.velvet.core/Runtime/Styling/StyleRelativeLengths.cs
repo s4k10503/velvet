@@ -44,7 +44,8 @@ namespace Velvet
             }
             // On a panel, only its root has no parent, and Velvet writes no length to it.
             var parent = outer.hierarchy.parent!;
-            var em = axis == RelativeLengthAxis.ParentFont ? parent.resolvedStyle.fontSize : element.resolvedStyle.fontSize;
+            var font = UnitsOf(axis == RelativeLengthAxis.ParentFont ? parent : element);
+            var em = font.Em;
             // Null on the two font axes, whose percentage is the em.
             bool? vertical = axis == RelativeLengthAxis.Width ? false
                 : axis == RelativeLengthAxis.Height ? true
@@ -61,23 +62,22 @@ namespace Velvet
             var box = PercentBox(parent, outer.resolvedStyle.position == Position.Absolute);
             var percent = !definite ? 0f : vertical is { } across ? (across ? box.y : box.x) : em;
             var viewport = ViewportOf(element);
-            var px = expression.Evaluate(new RelativeLengthBasis(em, percent, viewport.width, viewport.height));
+            var px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), percent, viewport.width, viewport.height));
             length = new StyleLength(new Length(px, LengthUnit.Pixel));
-            return float.IsFinite(px);
+            return true;
         }
 
-        // What an expression reading no percentage comes to on element, an em being its own font size, as blur() and
+        // What expression reading no percentage comes to on element, an em being its own font size, as blur() and
         // drop-shadow() take one; false where TryResolve would be.
         public static bool TryMeasure(VisualElement element, StyleLengthExpression expression, out float px)
         {
             px = 0f;
-            if (element.panel == null || float.IsNaN(element.layout.width))
+            if (element.panel == null || float.IsNaN(element.layout.width) || !TryBasisOf(element, out var basis))
             {
                 return false;
             }
-            var viewport = ViewportOf(element);
-            px = expression.Evaluate(new RelativeLengthBasis(element.resolvedStyle.fontSize, 0f, viewport.width, viewport.height));
-            return float.IsFinite(px);
+            px = expression.Evaluate(basis);
+            return true;
         }
 
         // What expression comes to as a line height: an em and a percentage are both the element's own font size,
@@ -89,11 +89,34 @@ namespace Velvet
             {
                 return false;
             }
-            var font = element.resolvedStyle.fontSize;
+            // A leading cannot be measured against the line height it is itself, so `lh` takes the font's own.
+            var font = StyleFontUnits.Of(element, element.resolvedStyle.fontSize, float.NaN);
             var viewport = ViewportOf(element);
-            px = expression.Evaluate(new RelativeLengthBasis(font, font, viewport.width, viewport.height));
-            return float.IsFinite(px);
+            px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), font.Em, viewport.width,
+                viewport.height));
+            return true;
         }
+
+        // What a length that takes no percentage is measured against on element, or false while it is on no panel.
+        public static bool TryBasisOf(VisualElement element, out RelativeLengthBasis basis)
+        {
+            if (element.panel == null)
+            {
+                basis = default;
+                return false;
+            }
+            var viewport = ViewportOf(element);
+            basis = new RelativeLengthBasis(UnitsOf(element), RootUnitsOf(element), 0f, viewport.width, viewport.height);
+            return true;
+        }
+
+        // The font-relative units on element, at its computed font size and line height.
+        private static FontUnitPixels UnitsOf(VisualElement element)
+            => StyleFontUnits.Of(element, element.resolvedStyle.fontSize, StyleTextEffectResolver.LineHeightOf(element));
+
+        // The root-relative units: the panel root's font, at the font size a rem is taken at.
+        private static FontUnitPixels RootUnitsOf(VisualElement element)
+            => StyleFontUnits.Of(element.panel.visualTree, StyleLengthExpression.RootFontSize, float.NaN);
 
         private static UnityEngine.Vector2 PercentBox(VisualElement parent, bool absolute)
         {
@@ -235,25 +258,25 @@ namespace Velvet
         {
             var outer = ClipPathLayoutBox.Of(element);
             var parent = outer.hierarchy.parent;
-            return new Snapshot(element.resolvedStyle.fontSize, outer.resolvedStyle.position,
+            return new Snapshot(UnitsOf(element), outer.resolvedStyle.position,
                 parent == null ? default : Read(parent), element.panel == null ? default : ViewportOf(element).size,
-                float.IsNaN(element.layout.width));
+                float.IsNaN(element.layout.width), element.panel == null ? default : RootUnitsOf(element));
         }
 
         private static ParentReading Read(VisualElement parent)
         {
             var style = parent.resolvedStyle;
-            return new ParentReading(style.fontSize, parent.layout.size,
+            return new ParentReading(UnitsOf(parent), parent.layout.size,
                 new UnityEngine.Vector4(style.borderLeftWidth, style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth),
                 new UnityEngine.Vector4(style.paddingLeft, style.paddingTop, style.paddingRight, style.paddingBottom),
                 IsRow(parent), (IsDefinite(parent, false), IsDefinite(parent, true)));
         }
 
-        internal readonly record struct ParentReading(float Font, UnityEngine.Vector2 Size, UnityEngine.Vector4 Border,
+        internal readonly record struct ParentReading(FontUnitPixels Font, UnityEngine.Vector2 Size, UnityEngine.Vector4 Border,
             UnityEngine.Vector4 Padding, bool Row, (bool Width, bool Height) Definite);
 
-        internal readonly record struct Snapshot(float OwnFont, Position Position, ParentReading Parent,
-            UnityEngine.Vector2 Viewport, bool Unlaid);
+        internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ParentReading Parent,
+            UnityEngine.Vector2 Viewport, bool Unlaid, FontUnitPixels RootFont);
     }
 
     // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has

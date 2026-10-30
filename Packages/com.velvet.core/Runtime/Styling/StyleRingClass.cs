@@ -18,6 +18,9 @@ namespace Velvet
     internal readonly struct RingSpec
     {
         public readonly float Width;
+        // An outline width only the element can measure (outline-[2em]), which stands in for Width
+        // (RingOverlay.WidthOf).
+        public readonly StyleLengthExpression? WidthExpression;
         // The band's colour where a class named one; unused where CurrentColor is set.
         public readonly Color Color;
         // No class named the colour, so the band takes the element's text colour, as Tailwind v4's
@@ -30,9 +33,11 @@ namespace Velvet
         // ring-inset: the band is drawn just INSIDE the element edge rather than outset around it.
         public readonly bool Inset;
 
-        public RingSpec(float width, Color color, float offset, bool inset, bool currentColor = false)
+        public RingSpec(float width, Color color, float offset, bool inset, bool currentColor = false,
+            StyleLengthExpression? widthExpression = null)
         {
             Width = width;
+            WidthExpression = widthExpression;
             Color = color;
             Offset = offset;
             Inset = inset;
@@ -89,6 +94,7 @@ namespace Velvet
             public bool HasIntent;   // a width-bearing class (bare ring or outline, a width) establishes a band
             public bool WidthSet;
             public float Width;
+            public StyleLengthExpression? WidthExpression;
             public bool IsOutline;   // which family established intent, for the default width and the colour
             public bool OutlineDeclared; // bare `outline`, which declares its 1px width
             // Each family's colour is its own property (--tw-ring-color, outline-color), so a ring colour does
@@ -140,7 +146,8 @@ namespace Velvet
             // outline-offset may be negative, drawing the outline inside the border edge; a ring's offset is a
             // spread Tailwind adds to its width, which Velvet floors at zero.
             var offset = slots.IsOutline ? slots.Offset : Mathf.Max(0f, slots.Offset);
-            spec = new RingSpec(effectiveWidth, color, offset, slots.Inset, currentColor: !colorSet);
+            spec = new RingSpec(effectiveWidth, color, offset, slots.Inset, currentColor: !colorSet,
+                widthExpression: slots.WidthSet ? slots.WidthExpression : null);
             return true;
         }
 
@@ -327,6 +334,7 @@ namespace Velvet
                 slots.IsOutline = isOutlineFamily;
                 slots.WidthSet = true;
                 slots.Width = 0f;
+                slots.WidthExpression = null;
                 return;
             }
 
@@ -341,6 +349,7 @@ namespace Velvet
                 slots.IsOutline = isOutlineFamily;
                 slots.WidthSet = true;
                 slots.Width = w;
+                slots.WidthExpression = null;
                 return;
             }
 
@@ -398,6 +407,13 @@ namespace Velvet
             {
                 slots.WidthSet = true;
                 slots.Width = width;
+                slots.WidthExpression = null;
+            }
+            else if (StyleLengthExpression.TryParse(inner, out var expression) && !expression!.ReadsPercentage)
+            {
+                slots.WidthSet = true;
+                slots.Width = float.NaN;
+                slots.WidthExpression = expression.AtLeast(0f);
             }
             return true;
         }

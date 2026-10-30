@@ -244,6 +244,40 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOutlineOfTwoEmsUnderATwelvePixelFont_When_LaidOut_Then_TheBandIsTwentyFourPixelsWide()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] text-[12px] outline-[2em]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — the card's own 12px is the class taking effect.
+            Assert.That((card.resolvedStyle.fontSize, BandFor(card)?.resolvedStyle.borderTopWidth),
+                Is.EqualTo((12f, (float?)24f)));
+        }
+
+        [Test]
+        public void Given_AnOutlineOfTwoEms_When_TheFontSizeChanges_Then_TheBandFollowsIt()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] text-[12px] outline-[2em]");
+            ForcePanelUpdate(card.panel);
+
+            // Act — a font change that leaves the box where it was, carried by the band's per-frame sample.
+            card.style.fontSize = 20f;
+            ForcePanelUpdate(card.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(card.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)40f));
+        }
+
+        [Test]
         public void Given_ARingNamingNoColour_When_LaidOut_Then_TheBandIsTheTextColour()
         {
             // Arrange

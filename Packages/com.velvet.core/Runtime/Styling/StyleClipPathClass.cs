@@ -285,10 +285,10 @@ namespace Velvet
         private static bool TryParsePolygon(string inner, out ClipPathSpec? spec)
         {
             spec = null;
-            var args = inner.Split(',');
+            var args = StyleGradientClass.SplitTopLevel(inner, ',');
             var start = 0;
             var fillRule = FillRule.NonZero;
-            var first = args.Length > 0 ? args[0].Trim() : string.Empty;
+            var first = args[0].Trim();
             if (first == "nonzero")
             {
                 start = 1;
@@ -299,7 +299,7 @@ namespace Velvet
                 start = 1;
             }
 
-            var count = args.Length - start;
+            var count = args.Count - start;
             if (count < 3)
             {
                 return false;
@@ -387,7 +387,7 @@ namespace Velvet
 
             string edgePart = inner;
             string? roundPart = null;
-            var round = inner.IndexOf(" round ", StringComparison.Ordinal);
+            var round = TopLevelIndexOf(inner, " round ");
             if (round >= 0)
             {
                 edgePart = inner.Substring(0, round);
@@ -463,7 +463,7 @@ namespace Velvet
         // Splits "radius-part at position-part"; positionPart is null when no `at` clause exists.
         private static void SplitAtPosition(string inner, out string radiusPart, out string? positionPart)
         {
-            var at = inner.IndexOf(" at ", StringComparison.Ordinal);
+            var at = TopLevelIndexOf(inner, " at ");
             if (at >= 0)
             {
                 radiusPart = inner.Substring(0, at).Trim();
@@ -569,7 +569,23 @@ namespace Velvet
             return true;
         }
 
+        // Words outside parentheses, so a math function's own spaces stay in its word.
         private static string[] SplitWhitespace(string text)
-            => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            => StyleGradientClass.SplitTopLevel(text, ' ').FindAll(word => word.Length > 0).ToArray();
+
+        // Where word first occurs outside parentheses, or -1.
+        private static int TopLevelIndexOf(string text, string word)
+        {
+            var depth = 0;
+            for (var i = 0; i < text.Length; i++)
+            {
+                depth += text[i] == '(' ? 1 : text[i] == ')' ? -1 : 0;
+                if (depth == 0 && string.CompareOrdinal(text, i, word, 0, word.Length) == 0)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 }

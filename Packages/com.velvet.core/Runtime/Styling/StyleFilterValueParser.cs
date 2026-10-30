@@ -87,11 +87,12 @@ namespace Velvet
                 if (StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit))
                 {
                     if (blurUnit != LengthUnit.Pixel) return false;
-                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
+                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur,
+                        StyleArbitraryValueResolver.ClampMathResult(valueSpan, blurPx, 0f), LengthUnit.Pixel);
                     return true;
                 }
                 if (!TryParseMeasuredLength(valueSpan, out var measured)) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!);
+                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!.AtLeast(0f));
                 return true;
             }
             if (prefix == null)
@@ -108,7 +109,8 @@ namespace Velvet
                 return null;
             }
             var amount = 0f;
-            if (!TryParseAmount(valueSpan, out amount) || amount < 0f) return false;
+            if (!TryParseAmount(valueSpan, out amount)
+                || (amount = StyleArbitraryValueResolver.ClampMathResult(valueSpan, amount, 0f)) < 0f) return false;
             result = new ArbitraryStyle(property, Mathf.Min(amount, ceiling), LengthUnit.Pixel);
             return true;
         }
@@ -116,7 +118,7 @@ namespace Velvet
         // A length only the element can measure: an em, a viewport unit, or a math function reading one, which
         // StyleRelativeLengths.TryMeasure measures. blur() and drop-shadow() take no percentage.
         private static bool TryParseMeasuredLength(ReadOnlySpan<char> value, out StyleLengthExpression? expression)
-            => StyleLengthExpression.TryParse(value, out expression) && expression!.IsFinite() && !expression.ReadsPercentage;
+            => StyleLengthExpression.TryParse(value, out expression) && !expression!.ReadsPercentage;
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
         internal static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
