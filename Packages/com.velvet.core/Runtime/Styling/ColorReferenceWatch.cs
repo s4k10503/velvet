@@ -6,20 +6,18 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Re-writes an element's colours read off a live source (ArbitraryStyle.Reference) once a colour they read has
-    // changed, on the style-resolved events of the two elements the sources live on: the element, whose text colour
-    // currentcolor reads and which inherits it from its own parent, and the element it is laid out in, whose
-    // text, background and border colours inherit reads. Nothing runs between those events, so an element
-    // elsewhere in the panel costs this one nothing. An element's events reach every watch that reads it through one
-    // Hub, because UI Toolkit keeps a single entry for a callback however many arguments it is registered with.
-    //
-    // A background or border colour that transitions, or that is written to an element's style directly, raises no style
-    // pass, so each watch also compares the six colours it reads once per tick (Differs), and reads at once when a
-    // transition on the watched parent ends or is cancelled and when the resolver writes a colour inline on the element
-    // it reads (NotifyWritten).
+    // changed. The colours are the element's own text colour, which currentcolor reads and which it inherits from its
+    // own parent, and the text, background and four border colours of the element it is laid out in, which inherit
+    // reads. A read follows the style-resolved events of those two elements; a background or border colour that
+    // transitions, or that is written to an element's style directly, raises no style pass, so each watch also compares
+    // the seven colours once per tick (Differs), and reads at once when a transition on the watched parent ends or is
+    // cancelled and when the resolver or a face writes a colour inline on the element it reads (NotifyWritten).
     //
     // UI Toolkit sends CustomStyleResolvedEvent only to an element holding a custom property, and custom properties
     // do not inherit, so each watched element carries MarkerClass, whose rule in _preflight.uss declares one, as
     // LeadingLengthProbe's does. Marking the element restyles it, which is also what reads its colours the first time.
+    // An element's events reach every watch that reads it through one Hub, because UI Toolkit keeps a single entry for
+    // a callback however many arguments it is registered with.
     internal sealed class ColorReferenceWatch
     {
         internal const string MarkerClass = "velvet-color-reference";

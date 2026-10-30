@@ -7,7 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies when a colour read off a live source (<c>border-current</c>, <c>text-inherit</c>, …) is written
-    /// again: on the style-resolved events of the elements its sources live on, and at no other time.
+    /// again: on the style-resolved events of the elements its sources live on, when a transition on its parent ends or
+    /// is cancelled, when Velvet writes a colour inline on the element it reads, and on a tick that finds a colour it reads
+    /// has moved.
     /// </summary>
     internal sealed class ColourReferenceWatchTests : PanelTestBase
     {
@@ -282,9 +284,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADescendantsTransition_When_ItRuns_Then_TheWatchIsNotReadOnTicks()
+        public void Given_ADescendantsTransition_When_ItRuns_Then_NothingIsReResolved()
         {
-            // Transition events bubble, so one under the parent is heard there; only the parent's own starts a tick.
+            // Transition events bubble, so one under the parent is heard there; it moves no colour the watch reads, so the
+            // tick's comparison finds nothing to re-resolve.
             var tree = Tree();
             var sibling = new VisualElement();
             tree.Parent.Add(sibling);
@@ -547,6 +550,92 @@ namespace Velvet.Tests
             var parent = MountBorderInheritor("w-[80px] h-[80px] border-dashed border-2 border-red-500");
 
             ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_ADashedBorderCurrent_When_Mounted_Then_TheNativeBorderStaysUnderItsSentinel()
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "box", className: "w-[80px] h-[80px] border-dashed border-2 border-current text-[#ff0000]"));
+            var box = _window.rootVisualElement.Q<VisualElement>("box");
+
+            ForcePanelUpdate(box.panel);
+            ForcePanelUpdate(box.panel);
+
+            Assert.That(SilhouetteFace.IsSentinel(box.style.borderTopColor.value), Is.True);
+        }
+
+        [Test]
+        public void Given_ADashedBorderCurrent_When_Mounted_Then_TheDashesAreTheTextColour()
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "box", className: "w-[80px] h-[80px] border-dashed border-2 border-current text-[#ff0000]"));
+            var box = _window.rootVisualElement.Q<VisualElement>("box");
+
+            ForcePanelUpdate(box.panel);
+            ForcePanelUpdate(box.panel);
+
+            Assert.That(SilhouetteFaceStash.TryReadFace(box, DivideEdge.Top, out var shown, out _) ? shown : Color.clear,
+                Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AShadowedInheritor_When_TheParentsBackgroundChanges_Then_ItsFaceFollows()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, ShadowedInheritorTree("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            _mounted.Render(ShadowedInheritorTree("bg-[#0000ff]"));
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(SilhouetteFaceStash.TryReadFace(_window.rootVisualElement.Q<VisualElement>("child"), null, out var shown, out _)
+                ? shown : Color.clear, Is.EqualTo(Color.blue));
+        }
+
+        private static VNode ShadowedInheritorTree(string parentClass)
+            => V.Div(name: "parent", className: "w-[100px] h-[100px] " + parentClass, children: new VNode[]
+            {
+                V.Div(name: "child", className: "w-[40px] h-[40px] shadow-md rounded-xl bg-inherit"),
+            });
+
+        [Test]
+        public void Given_AnInheritorOfAParentWithAColourTransitionAndAShadow_When_TheFaceTakesTheBackground_Then_ItStaysWhite()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("w-[80px] h-[80px] transition shadow-md bg-white"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            var clock = new double[] { 100.0 };
+            EditorPanelTestHelpers.SetPanelTimeFunction(parent.panel, () => clock[0]);
+
+            ForcePanelUpdate(parent.panel);
+            clock[0] += 0.05;
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.EqualTo(Color.white));
+        }
+
+        [Test]
+        public void Given_BorderInherit_When_TheParentIsADashedDividerRow_Then_TheChildTakesTheDividersColour()
+        {
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "list", className: "divide-y-2 divide-dashed divide-red-500", children: new VNode[]
+                {
+                    V.Div(name: "first", className: "h-[20px]", key: "a"),
+                    V.Div(name: "row", className: "h-[40px]", key: "b", children: new VNode[]
+                    {
+                        V.Div(name: "child", className: "w-[10px] h-[10px] border-2 border-inherit"),
+                    }),
+                }));
+            var list = _window.rootVisualElement.Q<VisualElement>("list");
+
+            ForcePanelUpdate(list.panel);
+            ForcePanelUpdate(list.panel);
 
             Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(red));
         }

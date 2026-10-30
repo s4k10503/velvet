@@ -547,6 +547,7 @@ namespace Velvet
                 stash.Capture(element);
                 stash.WriteSentinels(element);
                 element.MarkDirtyRepaint();
+                ColorReferenceWatch.NotifyWritten(element);
             }
         }
 

@@ -74,7 +74,7 @@ The functions follow CSS Color 4:
 - **`current` and `inherit`** (`text-current`, `bg-inherit`, `border-current`, `ring-current`, `ring-inherit`,
   `outline-inherit`, …) read their value off a live source: `current` is the element's own text colour (the inherited one
   on `text-current` itself), `current/50` scales its alpha, and `inherit` is the parent's value of the same property, which
-  an `inherit` there passes on. Both follow their source as it changes, through a transition included: an element reading one, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
+  an `inherit` there passes on. Both follow their source as it changes, through a transition included: an element reading one through `text-`, `bg-` or `border-`, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
   cannot hold.
 
 ## Where Velvet differs from CSS

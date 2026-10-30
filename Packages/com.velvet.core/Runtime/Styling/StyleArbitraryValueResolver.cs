@@ -1587,21 +1587,49 @@ namespace Velvet
             [ArbitraryProperty.BorderBlockEndColor] = new DivideEdge?[] { DivideEdge.Bottom },
         };
 
-        // What parent paints for the colour a setter writes: its resolved colour, or the colour a silhouette face shows
-        // where the face holds the slot under its suppression sentinel (SilhouetteFaceStash.TryReadFace).
+        // What parent paints for the colour a setter writes: the colour a face that holds the slot shows in place of the
+        // sentinel in the slot's inline value, else its resolved colour. Asked of the inline slot first, since a colour
+        // transition animates the sentinel's own write and the resolved slot is then neither value.
         internal static Color ParentColor(VisualElement parent, ArbitraryProperty property, int index)
         {
-            var resolved = ColorSources[property][index](parent.resolvedStyle);
-            if (!SilhouetteFace.IsSentinel(resolved))
+            if (property != ArbitraryProperty.TextColor)
             {
-                return resolved;
+                DivideEdge? edge = ColorEdges.TryGetValue(property, out var edges) ? edges[index] : null;
+                if (HeldFaceColor(parent, edge, out var shown))
+                {
+                    return shown;
+                }
             }
-            DivideEdge? edge = ColorEdges.TryGetValue(property, out var edges) ? edges[index] : null;
-            if (property != ArbitraryProperty.TextColor && SilhouetteFaceStash.TryReadFace(parent, edge, out var shown, out _))
+            return ColorSources[property][index](parent.resolvedStyle);
+        }
+
+        // The colour a silhouette face, a dashed divider's mask or a projected corner face shows on element's background
+        // (edge null) or border edge in place of the sentinel it writes to the slot; false where none holds it.
+        private static bool HeldFaceColor(VisualElement element, DivideEdge? edge, out Color color)
+        {
+            if (SilhouetteFaceStash.TryReadFace(element, edge, out color, out _))
             {
-                return shown;
+                return true;
             }
-            return resolved;
+            if (edge is { } masked && DivideDashPainter.ColorUnderMask(element, masked) is { } under)
+            {
+                color = under;
+                return true;
+            }
+            var slot = edge switch
+            {
+                null => 0,
+                DivideEdge.Top => 1,
+                DivideEdge.Right => 2,
+                DivideEdge.Bottom => 3,
+                _ => 4,
+            };
+            if (ProjectedCornerFace.Drawn(element, slot) is { } drawn)
+            {
+                color = drawn;
+                return true;
+            }
+            return false;
         }
 
         // A colour read off a live source, which ColorReferenceWatch writes again as the source moves. currentcolor is
@@ -3734,6 +3762,8 @@ namespace Velvet
             {
                 ResolveAndApply(element, property, map);
             }
+            // A face the element itself holds in these slots has had its sentinel written over.
+            SilhouetteFaceStash.Retake(element);
         }
 
         // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and
