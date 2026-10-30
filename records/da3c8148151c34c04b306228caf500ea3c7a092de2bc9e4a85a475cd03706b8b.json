@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 174 case(s) that ran the site: Given_APortalDeclaredBeforeTheContainer_When_TheContainerGainsAChildAndAComponentInThePortalRerendersAlone_Then_ItPatchesItsOwnElement",
+ "file": "371a755b34c2d5608003ef21ef0d55062d82d348f8c1841739b3540b4da92d52",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalDeclaredBeforeTheContainer_When_TheContainerGainsAChildAndAComponentInThePortalRerendersAlone_Then_ItPatchesItsOwnElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "41065113338",
+ "mutant": {
+  "after": ";",
+  "before": "ctx.OwnRowFrames[target] = PortalSlotTracker.RowsBehindRanges(ctx.PortalState.Stored, target);",
+  "column": 16,
+  "line": 299,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}

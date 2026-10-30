@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "371a755b34c2d5608003ef21ef0d55062d82d348f8c1841739b3540b4da92d52",
+ "killers": [],
+ "measured_by": "41065113338",
+ "mutant": {
+  "after": ";",
+  "before": "PortalSlotTracker.ShiftRangesOn(ctx.PortalState.Stored, target, delta);",
+  "column": 12,
+  "line": 269,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "survived"
+}

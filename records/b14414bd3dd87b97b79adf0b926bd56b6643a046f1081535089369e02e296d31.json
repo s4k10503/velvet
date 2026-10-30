@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed: Given_RowsOfPlainContainersHoldingAChildWithAPointerDownBinding_When_TheyAreCleared_Then_NoPointerDownCallbackIsUnregistered, Given_RowsOfPlainContainersHoldingTextLeaves_When_TheyAreCleared_Then_NoTextItemCallbackIsUnregistered",
+ "file": "9841cc58ce6ef5580397230682474fc1c99152dafc74cb9b2e5c70fa1addbaa0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_RowsOfPlainContainersHoldingAChildWithAPointerDownBinding_When_TheyAreCleared_Then_NoPointerDownCallbackIsUnregistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "41ae87d4b5d8bb83445e8feb95bb2e193fd5bfe05c586e8a4e1b96c73065893f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DiscardedSubtreeTeardownTests.Given_RowsOfPlainContainersHoldingTextLeaves_When_TheyAreCleared_Then_NoTextItemCallbackIsUnregistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DiscardedSubtreeTeardownTests.cs": "41ae87d4b5d8bb83445e8feb95bb2e193fd5bfe05c586e8a4e1b96c73065893f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerContextProbe.cs": "ff50974275702aaaf62e00d84d5f39dc9ff1606a93351bee15d28e7ddc87cb83",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "41065113338",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 46,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}
