@@ -34,7 +34,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("mt-[-5px]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, -5f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(-5f));
         }
 
         [TestCase("w-[1e39px]")]
@@ -48,7 +48,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, float.MaxValue)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(float.MaxValue));
         }
 
         [Test]
@@ -58,7 +58,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("mt-[-1e39px]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, -float.MaxValue)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(-float.MaxValue));
         }
 
         // GREEN_ON_BASE(characterization): a spelled-out infinity is no CSS number, was declined, and still is.
@@ -80,7 +80,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("opacity-[-1]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, 0f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(0f));
         }
     }
 }

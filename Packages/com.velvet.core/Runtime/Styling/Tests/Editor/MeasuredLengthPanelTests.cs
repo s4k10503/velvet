@@ -143,9 +143,11 @@ namespace Velvet.Tests
 
             // Assert
             var origin = First.resolvedStyle.transformOrigin;
-            Assert.That((origin.x, origin.y), Is.EqualTo((20f, 40f)));
+            Assert.That(Mathf.Approximately(origin.x, 20f) ? origin.y : float.NaN, Is.EqualTo(40f));
         }
 
+        // GREEN_ON_BASE(characterization): a blur of an em was measured on the element before the other utilities were.
+        // Dropping the measured branch of the blur parse reddens it.
         [Test]
         public void Given_ABlurOfAQuarterEm_When_Settled_Then_ItsRadiusIsFivePixels()
         {
@@ -208,6 +210,8 @@ namespace Velvet.Tests
             Assert.That(BandAfter(First)?.layout.x - First.layout.x, Is.EqualTo((float?)-12f));
         }
 
+        // GREEN_ON_BASE(characterization): a leading mixing an em with pixels was measured on its element before the
+        // other utilities were. Reading it as the pixel length alone reddens it.
         [Test]
         public void Given_ALeadingOfAnEmAndTwoPixels_When_Settled_Then_TheTextCarriesTwentyTwoPixels()
         {

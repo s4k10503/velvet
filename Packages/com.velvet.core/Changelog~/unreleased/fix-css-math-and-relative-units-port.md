@@ -28,8 +28,8 @@ Packages/com.velvet.core/Changelog~/unreleased/fix-css-math-and-relative-units-p
 - An outline's width and offset are snapped to the panel's device pixels as the browser snaps a border width
   (`outline-[2.75px]` is 2.5px at two device pixels a point), where they were drawn as written.
 - A length only an element can measure — a font-relative or viewport unit, or a math function reading one — is
-  read by every utility that takes a length, where it left the class inert outside the sizing, position, spacing
-  and type utilities: border widths, `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-[…]`, `gap-*`,
+  read by these utilities too, where it left the class inert: border widths, `rounded-*`, `translate-*`,
+  `origin-[…]`, `shadow-[…]`, `gap-*`,
   `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`, `clip-path-[…]`, a gradient's stops,
   radii and centre, and `leading-[…]`. A `translate-*` and an `origin-[…]` read a percentage of the element's own
   box beside one, and a clip-path or gradient length a percentage under a math function (`calc(100%_-_10px)`,

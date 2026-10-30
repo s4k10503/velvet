@@ -3624,7 +3624,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("opacity-[2]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, 1f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(1f));
         }
 
         [Test]

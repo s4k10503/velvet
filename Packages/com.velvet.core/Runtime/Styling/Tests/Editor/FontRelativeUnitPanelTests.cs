@@ -134,7 +134,7 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[300px] h-[200px]", "w-[10ic] h-[10px]");
 
             // Assert — the font lacking the glyph is what makes the em CSS's stand-in.
-            Assert.That((_font.HasCharacter('水', false, true), Child.layout.width), Is.EqualTo((false, 200f)));
+            Assert.That(_font.HasCharacter('水', false, true) ? float.NaN : Child.layout.width, Is.EqualTo(200f));
         }
 
         [Test]
@@ -179,7 +179,7 @@ namespace Velvet.Tests
             Settle();
 
             // Assert
-            Assert.That((before, Child.layout.width), Is.EqualTo((30f, 40f)));
+            Assert.That(before == 30f ? Child.layout.width : float.NaN, Is.EqualTo(40f));
         }
 
         [Test]

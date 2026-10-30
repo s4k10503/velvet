@@ -182,7 +182,7 @@ while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take no
 | `50svw`, `50lvh`, `50dvmin`, … | the same as the unprefixed unit: a panel has no browser chrome to show or hide, which is where CSS makes the small, large and dynamic viewports equal |
 | a math function mixing a percentage with a length, or reading an `em` or a viewport unit | each term against its own basis, as CSS evaluates it |
 
-Every utility that takes a length reads them. Those that write a length-percentage inline are these:
+The utilities that write a length-percentage inline read them:
 
 - sizing: `w-`, `h-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `size-`, `basis-`;
 - position: `inset-`, `inset-x-`, `inset-y-`, `top-`, `right-`, `bottom-`, `left-`, `start-`, `end-`;
@@ -203,7 +203,7 @@ element's own font size. The parent's size is its content box, and its padding b
 element, as CSS and UI Toolkit both take it. On an element with a `clip-path-*`, every longhand — padding included — is measured against the parent the clip wrapper
 sits in, not the wrapper.
 
-The others measure them on the element they style, and its percentages as their property takes them: a border
+These utilities read them too, each measuring them on the element it styles, its percentages as its property takes them: a border
 width, `rounded-*`, `translate-*` and `origin-[…]` (a percentage of the element's own box), `shadow-[…]`,
 `ring-*`, `ring-offset-*`, `outline-*` and `outline-offset-*`, `clip-path-[…]`, a gradient's stops, radii and
 centre, and `leading-[…]` (a percentage of the font size of the element declaring it). A `gap-*` is measured on

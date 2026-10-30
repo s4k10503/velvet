@@ -216,7 +216,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, 0f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(0f));
         }
 
         [Test]
@@ -226,7 +226,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("opacity-[calc(2)]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, 1f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(1f));
         }
 
         [Test]
@@ -264,7 +264,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse(cls, out var s);
 
             // Assert
-            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, property, 90f)));
+            Assert.That(ok && s.Property == property ? s.Value : float.NaN, Is.EqualTo(90f));
         }
 
         [Test]
@@ -274,7 +274,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("scale-[calc(1.5*2)]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, 3f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(3f));
         }
 
         [Test]
@@ -284,7 +284,7 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("duration-[calc(1s/2)]", out var s);
 
             // Assert
-            Assert.That((ok, s.Value), Is.EqualTo((true, 0.5f)));
+            Assert.That(ok ? s.Value : float.NaN, Is.EqualTo(0.5f));
         }
 
         [Test]
@@ -294,7 +294,7 @@ namespace Velvet.Tests
             var ok = StyleSkewClass.TryExtract(new[] { "skew-x-[calc(10deg_+_5deg)]" }, out var spec);
 
             // Assert
-            Assert.That((ok, spec.XDeg), Is.EqualTo((true, 15f)));
+            Assert.That(ok ? spec.XDeg : float.NaN, Is.EqualTo(15f));
         }
 
         // A bracket list splits into words on `_` outside parentheses, so a math function written with spaces
@@ -327,7 +327,7 @@ namespace Velvet.Tests
             StyleClipPathClass.TryExtract(new[] { "clip-path-[circle(calc(10px_+_5px)_at_calc(10%_+_15%)_50%)]" }, out var spec);
 
             // Assert
-            Assert.That((spec?.RadiusX.Value, spec?.CenterX.Value), Is.EqualTo(((float?)15f, (float?)25f)));
+            Assert.That(spec?.RadiusX.Value == 15f ? spec.CenterX.Value : float.NaN, Is.EqualTo(25f));
         }
 
         [Test]
@@ -337,7 +337,7 @@ namespace Velvet.Tests
             StyleGradientClass.TryExtract(new[] { "bg-radial-[ellipse_calc(25%_*_2)_calc(1px_+_1px),#ff0000,#0000ff]" }, out var spec);
 
             // Assert
-            Assert.That((spec.Radial.X, spec.Radial.Y), Is.EqualTo((0.5f, 2f)));
+            Assert.That(spec.Radial.X == 0.5f ? spec.Radial.Y : float.NaN, Is.EqualTo(2f));
         }
 
         [Test]
@@ -347,7 +347,7 @@ namespace Velvet.Tests
             var ok = StyleGradientClass.TryExtract(new[] { "bg-linear-[calc(45deg_*_2),#000000,#ffffff]" }, out var spec);
 
             // Assert
-            Assert.That((ok, spec.AngleDeg), Is.EqualTo((true, 90f)));
+            Assert.That(ok ? spec.AngleDeg : float.NaN, Is.EqualTo(90f));
         }
 
         [Test]
@@ -357,7 +357,7 @@ namespace Velvet.Tests
             var ok = StyleGradientClass.TryExtract(new[] { "bg-conic-[from_calc(45deg_*_2)_at_50%_50%,#ff0000,#0000ff]" }, out var spec);
 
             // Assert
-            Assert.That((ok, spec.AngleDeg), Is.EqualTo((true, 90f)));
+            Assert.That(ok ? spec.AngleDeg : float.NaN, Is.EqualTo(90f));
         }
 
         [Test]

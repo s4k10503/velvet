@@ -4991,8 +4991,8 @@ namespace Velvet
         }
 
         // A finite float, where a literal CSS number past a float's range is the largest float of its sign, as
-        // Chromium reads one. Mono's parser declines such a literal where .NET's returns an infinity, so both are
-        // replaced; a spelled-out "Infinity" or "NaN" is no CSS number and is declined.
+        // Chromium reads one, whether the parser declined it or returned an infinity; a spelled-out "Infinity" or
+        // "NaN" is no CSS number and is declined.
         internal static bool TryParseCssFloat(ReadOnlySpan<char> text, out float value)
         {
             if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && float.IsFinite(value))
