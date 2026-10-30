@@ -1635,9 +1635,6 @@ namespace Velvet
         private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<long, ArbitraryStyle>>,
             StyleClassProjection.ILayerHost
         {
-            // Whether a border width written off a panel waits for the element to attach (SnapBorderWidthOnAttach).
-            public bool BorderSnapPending;
-
             // Per-NAME priority stacks for filter-[name:args] custom filters, in first-application
             // order. Unlike every other arbitrary property, a custom filter cannot share the single
             // FilterCustom slot in the base dictionary above — "dissolve" and "glow" (or a base and a
@@ -3458,6 +3455,7 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
+            if (element != null) PanelScaleWatch.Untrack(element, s_resnapBorderWidths);
             if (element != null) StyleCustomProperties.Release(element);
             if (element != null && s_layers.TryGetValue(element, out var map))
             {
@@ -4441,9 +4439,9 @@ namespace Velvet
                 {
                     return;
                 }
-                if (element.panel == null && style.Expression == null && IsBorderWidth(style.Property))
+                if (style.Expression == null && style.Keyword == StyleKeyword.Undefined && IsBorderWidth(style.Property))
                 {
-                    SnapBorderWidthOnAttach(element);
+                    PanelScaleWatch.Track(element, s_resnapBorderWidths, s_resnapBorderWidths);
                 }
                 var width = style.Keyword == StyleKeyword.Undefined
                     ? new StyleFloat(measured)
@@ -4508,34 +4506,25 @@ namespace Velvet
             WriteTransformOrigin(element, style);
         }
 
-        // A border width written before the element is on a panel is written again once it is, when the panel's device
-        // pixels are known to snap it to.
-        private static void SnapBorderWidthOnAttach(VisualElement element)
+        // A border width written in pixels is snapped to the panel's device pixels, so it is written again when the
+        // element attaches and when the panel's scale changes (PanelScaleWatch), through the layers so that the class
+        // holding the width is still the one that wins.
+        private static void ResnapBorderWidths(VisualElement element)
         {
-            if (!s_layers.TryGetValue(element, out var map) || map.BorderSnapPending)
+            if (!s_layers.TryGetValue(element, out var map))
             {
                 return;
             }
-            map.BorderSnapPending = true;
-            EventCallback<AttachToPanelEvent>? onAttach = null;
-            onAttach = _ =>
+            foreach (var written in new List<ArbitraryProperty>(map.Keys))
             {
-                element.UnregisterCallback(onAttach!);
-                map.BorderSnapPending = false;
-                if (!s_layers.TryGetValue(element, out var live) || !ReferenceEquals(live, map))
+                if (IsBorderWidth(written))
                 {
-                    return;
+                    ResolveAndApply(element, written, map);
                 }
-                foreach (var written in new List<ArbitraryProperty>(map.Keys))
-                {
-                    if (IsBorderWidth(written))
-                    {
-                        ResolveAndApply(element, written, map);
-                    }
-                }
-            };
-            element.RegisterCallback(onAttach);
+            }
         }
+
+        private static readonly Action<VisualElement> s_resnapBorderWidths = ResnapBorderWidths;
 
         // The value written, or what the element measures its expression to, which takes no percentage; false
         // until the element can.

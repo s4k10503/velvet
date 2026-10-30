@@ -236,7 +236,9 @@ these moves:
 - the parent's font-relative units, size, border widths, padding and flex direction;
 - the panel root's font;
 - whether the parent's width and height are definite (above);
-- the panel's size.
+- the panel's size and scale;
+- for a `space-*` margin or a `divide-*` width, which each child measures, the number of children and their font
+  sizes and fonts.
 
 The utilities that measure on their own element, above, are measured again on the same tick, or, for a
 ring or an outline, on the frame's sample of its element. Unlike CSS, where the value is part of layout, the

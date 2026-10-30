@@ -90,6 +90,7 @@ namespace Velvet
         {
             _spec = spec;
             StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
+            SyncScaleWatch();
             _hasSignature = false;
             Apply();
         }
@@ -107,12 +108,32 @@ namespace Velvet
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
             StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
+            SyncScaleWatch();
             Apply();
+        }
+
+        // A divider width written in pixels is snapped to the panel's device pixels (WidthOn), so it is applied again
+        // when the panel's scale changes; a measured one is applied again by the poll, which reads the scale.
+        private void SyncScaleWatch()
+        {
+            if (target == null)
+            {
+                return;
+            }
+            if (_spec.WidthMeasured == null)
+            {
+                PanelScaleWatch.Track(target, this, _ => Reapply());
+            }
+            else
+            {
+                PanelScaleWatch.Untrack(target, this);
+            }
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
             StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
+            PanelScaleWatch.Untrack(target, this);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);

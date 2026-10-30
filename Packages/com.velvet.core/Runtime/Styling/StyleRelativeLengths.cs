@@ -143,8 +143,8 @@ namespace Velvet
         }
 
         // A reading of what container's children measure their lengths against, for a poll over a container whose
-        // children hold a measured length (a space margin, a divide width): their count and font sizes. The container's
-        // own reading is the poll's, so no child is walked up the tree here.
+        // children hold a measured length (a space margin, a divide width): their count, font sizes and font assets. The
+        // container's own reading is the poll's, so no child is walked up the tree here.
         public static int ChildrenReading(VisualElement? container)
         {
             if (container == null)
@@ -154,7 +154,9 @@ namespace Velvet
             var reading = container.hierarchy.childCount;
             for (var i = 0; i < container.hierarchy.childCount; i++)
             {
-                reading = unchecked((reading * 31) + container.hierarchy[i].resolvedStyle.fontSize.GetHashCode());
+                var child = container.hierarchy[i];
+                reading = unchecked((reading * 31) + child.resolvedStyle.fontSize.GetHashCode());
+                reading = unchecked((reading * 31) + (StyleFontUnits.AssetOf(child)?.GetInstanceID() ?? 0));
             }
             return reading;
         }

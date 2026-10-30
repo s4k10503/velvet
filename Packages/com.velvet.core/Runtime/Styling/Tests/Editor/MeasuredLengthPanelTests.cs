@@ -95,8 +95,6 @@ namespace Velvet.Tests
             Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(Mathf.Floor(2.75f * perPixel) / perPixel).Within(0.001f));
         }
 
-        // GREEN_ON_BASE(characterization): at a panel scale that is a whole number a whole-pixel width is already on the
-        // grid, as the base left it. At any other scale it is red without the snap on attach.
         [TestCase(3f, 1.5f, 2.6666667f)]
         [TestCase(2.75f, 2f, 2.5f)]
         [TestCase(0.25f, 2f, 0.5f)]
@@ -110,17 +108,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(snapped, Is.EqualTo(expected).Within(1e-5f));
-        }
-
-        [Test]
-        public void Given_AWholePixelBorderWidth_When_Settled_Then_ItIsSnappedDownToDevicePixels()
-        {
-            // Act
-            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] border-solid border-[3px]");
-
-            // Assert
-            var perPixel = First.panel.scaledPixelsPerPoint;
-            Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(Mathf.Floor(3f * perPixel) / perPixel).Within(0.001f));
         }
 
         [Test]

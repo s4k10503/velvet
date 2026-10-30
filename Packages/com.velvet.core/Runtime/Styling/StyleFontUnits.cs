@@ -35,6 +35,9 @@ namespace Velvet
                 float.IsNaN(lineHeight) ? Scale(ratios?.Lh, fontSize, fallback.Lh) : lineHeight);
         }
 
+        // The font asset element's text is drawn in, which the units are read from; null off a panel or without one.
+        public static FontAsset? AssetOf(VisualElement element) => element.panel != null ? s_assetOf?.Invoke(element) : null;
+
         private static float Scale(float? ratio, float fontSize, float fallback)
             => ratio is { } r && !float.IsNaN(r) ? r * fontSize : fallback;
 

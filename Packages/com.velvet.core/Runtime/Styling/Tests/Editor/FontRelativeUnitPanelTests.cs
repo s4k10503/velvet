@@ -68,6 +68,8 @@ namespace Velvet.Tests
                 }),
             });
 
+        private VisualElement Parent => _sim.rootVisualElement.Q<VisualElement>("parent");
+
         private VisualElement Child => _sim.rootVisualElement.Q<VisualElement>("child");
 
         // Enough frames for the poll to measure a laid-out tree and for what it wrote to be laid out in turn.
@@ -184,6 +186,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(before == 30f ? Child.layout.width : float.NaN, Is.EqualTo(40f));
+        }
+
+        [Test]
+        public void Given_AChildsFontAsset_When_ItChanges_Then_TheReadingOfTheContainersChildrenChanges()
+        {
+            // Arrange
+            Mount("text-[20px] w-[300px] h-[200px]", "w-[10px] h-[10px]");
+            var before = StyleRelativeLengths.ChildrenReading(Parent);
+            var other = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+
+            // Act — the child's text is drawn in another font asset, its size and the child count as they were.
+            Child.style.unityFontDefinition = FontDefinition.FromSDFFont(other);
+            Settle();
+            var after = StyleRelativeLengths.ChildrenReading(Parent);
+            Object.DestroyImmediate(other);
+
+            // Assert
+            Assert.That(after, Is.Not.EqualTo(before));
         }
 
         [Test]
