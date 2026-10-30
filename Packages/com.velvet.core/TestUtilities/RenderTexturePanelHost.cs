@@ -21,16 +21,16 @@ namespace Velvet.TestUtilities
         /// <summary>The panel's root, ready to V.Mount a VNode tree onto.</summary>
         public VisualElement Root => _document.rootVisualElement;
 
-        public RenderTexturePanelHost(string name, int width, int height, int depth = 32)
+        /// <param name="clear">Clears the texture before each frame, so a pixel nothing draws reads transparent rather
+        /// than whatever the texture held before.</param>
+        public RenderTexturePanelHost(string name, int width, int height, int depth = 32, bool clear = false)
         {
             TargetTexture = new RenderTexture(width, height, depth);
             _document = new GameObject(name).AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             _settings.targetTexture = TargetTexture;
-            // Without a clear, a pixel nothing draws keeps whatever the texture held before: a red band of an earlier
-            // fixture's panel was measured to read back in a later one that drew nothing there.
-            _settings.clearColor = true;
+            _settings.clearColor = clear;
             _settings.colorClearValue = Color.clear;
             _document.panelSettings = _settings;
         }

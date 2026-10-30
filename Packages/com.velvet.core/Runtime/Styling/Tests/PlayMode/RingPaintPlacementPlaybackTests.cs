@@ -43,7 +43,9 @@ namespace Velvet.Tests
             _mounted?.Dispose();
             _mounted = null;
             _host?.Dispose();
-            _host = new RenderTexturePanelHost(name, Size, Size);
+            // Cleared: an earlier fixture's outline at the same spot was measured to read back in a panel that drew
+            // nothing there.
+            _host = new RenderTexturePanelHost(name, Size, Size, clear: true);
         }
 
         // Counts matching pixels inside a PANEL-space rect. GetPixels32 returns the texture bottom-up while
