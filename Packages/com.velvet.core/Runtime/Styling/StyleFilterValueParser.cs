@@ -122,15 +122,7 @@ namespace Velvet
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
         internal static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
-        {
-            if (valueSpan.EndsWith("%"))
-            {
-                var parsed = StyleArbitraryValueResolver.TryParseFloat(valueSpan.Slice(0, valueSpan.Length - 1), out amount);
-                amount /= 100f;
-                return parsed;
-            }
-            return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
-        }
+            => StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out amount);
 
         // Tailwind's --drop-shadow-* theme, and the bare drop-shadow's deprecated --drop-shadow.
         private static readonly Dictionary<string, DropShadowLayer[]> s_dropShadowPreset = new()

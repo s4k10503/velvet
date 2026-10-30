@@ -111,10 +111,15 @@ namespace Velvet
             return true;
         }
 
-        // Whether the browser takes value where Tailwind writes it for function. A value only a math function or a
-        // var() spells is taken, since nothing here reads one to the end.
+        // Whether the browser takes value where Tailwind writes it for function. A math function is judged by the type
+        // it comes to; a var() or another function nothing here reads to the end is taken.
         private static bool Accepts(string function, string value)
         {
+            if (StyleLengthExpression.OpensMathFunction(value.AsSpan()))
+            {
+                return AcceptsMath(function, StyleLengthExpression.TypeOf(value.AsSpan()));
+            }
+            // A var() or another function this does not read may come to anything.
             if (value.IndexOf('(') >= 0)
             {
                 return true;
@@ -166,6 +171,17 @@ namespace Velvet
             => value.IndexOf('(') >= 0 || IsZero(value) || IsLength(value) || IsPercentage(value);
 
         internal static bool IsLength(string value) => IsDimension(value, TailwindDataTypes.s_lengthUnits);
+
+        // Whether the type a math function comes to is one the browser takes where Tailwind writes it for function.
+        private static bool AcceptsMath(string function, MathType? type)
+            => function switch
+            {
+                "translate" => type is MathType.Length or MathType.Percentage,
+                "angle" or "hue-rotate" => type == MathType.Angle,
+                "blur" => type == MathType.Length,
+                "drop-shadow" => true,
+                _ => type is MathType.Number or MathType.Percentage,
+            };
 
         private static readonly string[] s_angleUnits = { "deg", "grad", "rad", "turn" };
 

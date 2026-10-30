@@ -90,8 +90,9 @@ below what its property takes is raised to it, as CSS clamps a calculation: `w-[
 amounts stop at 0, and `opacity-[…]` at 0 and 1.
 
 The same functions are read where a utility takes an angle (`rotate-[calc(45deg*2)]`, `skew-x-[…]`,
-`hue-rotate-[…]`, a gradient's angle), a number (`scale-[…]`, `opacity-[…]`, `grow-[…]`, the filter amounts)
-or a time (`duration-[…]`), coming to that type. What CSS rejects is declined and leaves the class inert:
+`hue-rotate-[…]`, a gradient's angle), a number (`grow-[…]`), a number or a percentage (`scale-[…]`,
+`opacity-[…]`, the filter amounts, each of which takes a percentage literal too: `scale-[150%]` is 1.5) or a time
+(`duration-[…]`), coming to that type. What CSS rejects is declined and leaves the class inert:
 adding a number to a length (`calc(1px+2)`), a result of the wrong type (`calc(4)` or `calc(1px*2px)` for a
 length, `rotate-[calc(45)]`), a function given a type it does not take (`sin(1px)`, `mod(10px,3)`), `round()`
 leaving out a length's step, `clamp()` without three arguments, and any function other than these
@@ -138,7 +139,8 @@ Tailwind composes four more families through one declaration each: `translate-*`
 `drop-shadow-*`. Each utility writes custom properties of the element, and whenever the value holding one of them
 is one the browser rejects, the family's declaration is dropped and the family draws nothing:
 `translate-x-4 translate-y-[10]` translates nowhere, and `blur-sm brightness-[abc]`, `drop-shadow-lg blur-[2]` and
-`blur-sm drop-shadow-[foo]` filter nothing. Velvet answers which value holds as it does for any value of the
+`blur-sm drop-shadow-[foo]` filter nothing. A math function coming to a type the property does not take is
+such a value: `translate-y-[calc(45deg)]`, `skew-y-[calc(10px)]`, `blur-[calc(50%)]`. Velvet answers which value holds as it does for any value of the
 property, in the state the element is in: an important one first
 (`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not), then the one whose
 variants rank higher, by the selector they add and then by the order Tailwind registers them, with every

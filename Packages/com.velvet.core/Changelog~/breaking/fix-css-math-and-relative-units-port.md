@@ -7,3 +7,9 @@
 - A negative literal where the CSS property takes none leaves the class inert, as the browser rejects it:
   `w-[-5px]`, `p-[-5px]`, `rounded-[-2px]`, `border-[-2px]`, `text-[-4px]`, `basis-[-4px]` and `w-[-2em]` used to
   write the negative value. `opacity-[2]` is 1 and `opacity-[-1]` 0, where both were declined.
+- A math function of a type the browser does not take in a family Tailwind composes through one declaration
+  discards that declaration, as a rejected literal does: `translate-x-4 translate-y-[calc(45deg)]` translates
+  nowhere, where the x translation used to apply.
+- A math function of a type the browser does not take in a family Tailwind composes through one declaration
+  discards that declaration, as a rejected literal does: `translate-x-4 translate-y-[calc(45deg)]` translates
+  nowhere, where the x translation used to apply.

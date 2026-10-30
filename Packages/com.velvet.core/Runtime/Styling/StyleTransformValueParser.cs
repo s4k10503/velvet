@@ -68,12 +68,12 @@ namespace Velvet
             return null;
         }
 
-        // A unitless factor, so the float grammar rather than the length one: that grammar converts a
-        // suffix instead of rejecting it, and scale-[2rem] would arrive as a 32x scale.
+        // A number or a percentage, so not the length grammar: that grammar converts a suffix instead of
+        // rejecting it, and scale-[2rem] would arrive as a 32x scale.
         private static bool TryParseScale(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var scaleValue)) return false;
+            if (!StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out var scaleValue)) return false;
             result = new ArbitraryStyle(ArbitraryProperty.Scale, negate ? -scaleValue : scaleValue, LengthUnit.Pixel);
             return true;
         }
@@ -82,7 +82,7 @@ namespace Velvet
             out ArbitraryStyle result)
         {
             result = default;
-            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var axisScale)) return false;
+            if (!StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out var axisScale)) return false;
             result = new ArbitraryStyle(property, negate ? -axisScale : axisScale, LengthUnit.Pixel);
             return true;
         }
@@ -102,7 +102,7 @@ namespace Velvet
         private static bool TryParseOpacity(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue))
+            if (negate || !StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out var opacityValue))
             {
                 return false;
             }
