@@ -4433,33 +4433,8 @@ namespace Velvet
                 return;
             }
 
-            if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
+            if (TryWriteBorderOrRadius(element, style))
             {
-                if (!TryMeasuredValue(element, style, out var measured))
-                {
-                    return;
-                }
-                if (style.Expression == null && style.Keyword == StyleKeyword.Undefined && IsBorderWidth(style.Property))
-                {
-                    PanelScaleWatch.Track(element, s_resnapBorderWidths, s_resnapBorderWidths);
-                }
-                var width = style.Keyword == StyleKeyword.Undefined
-                    ? new StyleFloat(measured)
-                    : new StyleFloat(style.Keyword);
-                var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
-                foreach (var setter in floatSetters)
-                {
-                    setter(fs, width);
-                }
-                return;
-            }
-
-            if (RadiusCornersOf.TryGetValue(style.Property, out var corners))
-            {
-                if (TryMeasuredValue(element, style, out var radius))
-                {
-                    CornerRadiusFit.SetInline(element, corners, new Length(radius, style.Expression == null ? style.Unit : LengthUnit.Pixel));
-                }
                 return;
             }
 
@@ -4469,6 +4444,46 @@ namespace Velvet
             }
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
+        }
+
+        // A border width or a corner radius, whose pixels the element settles itself: it measures an expression, and
+        // snaps a border width to the panel's device pixels. False for any other property.
+        private static bool TryWriteBorderOrRadius(VisualElement element, in ArbitraryStyle style)
+        {
+            if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
+            {
+                WriteBorderWidth(element, style, floatSetters);
+                return true;
+            }
+            if (RadiusCornersOf.TryGetValue(style.Property, out var corners))
+            {
+                if (TryMeasuredValue(element, style, out var radius))
+                {
+                    CornerRadiusFit.SetInline(element, corners, new Length(radius, style.Expression == null ? style.Unit : LengthUnit.Pixel));
+                }
+                return true;
+            }
+            return false;
+        }
+
+        private static void WriteBorderWidth(VisualElement element, in ArbitraryStyle style, Action<IStyle, StyleFloat>[] setters)
+        {
+            if (!TryMeasuredValue(element, style, out var measured))
+            {
+                return;
+            }
+            if (style.Expression == null && style.Keyword == StyleKeyword.Undefined && IsBorderWidth(style.Property))
+            {
+                PanelScaleWatch.Track(element, s_resnapBorderWidths, s_resnapBorderWidths);
+            }
+            var width = style.Keyword == StyleKeyword.Undefined
+                ? new StyleFloat(measured)
+                : new StyleFloat(style.Keyword);
+            var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
+            foreach (var setter in setters)
+            {
+                setter(fs, width);
+            }
         }
 
         // A keyword is written to each of the three longhands the shorthand sets.

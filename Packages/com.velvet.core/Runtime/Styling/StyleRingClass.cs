@@ -279,20 +279,9 @@ namespace Velvet
             return number < 1e21 && new System.Numerics.BigInteger(number) == integer;
         }
 
-        private static void Accumulate(string cls, ref RingSlots slots)
+        // The band's offset: ring-offset-{N} / outline-offset-{N}, a measured one included. False for any other class.
+        private static bool AccumulateOffset(string cls, ref RingSlots slots)
         {
-            if (string.IsNullOrEmpty(cls))
-            {
-                return;
-            }
-
-            // Inset modifier (ring only).
-            if (cls == "ring-inset")
-            {
-                slots.Inset = true;
-                return;
-            }
-
             // Offset: ring-offset-{N} / outline-offset-{N}. (A color suffix here is the offset-color fill,
             // which Velvet does not model yet; an unrecognized offset suffix is ignored.)
             if (TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix))
@@ -307,7 +296,7 @@ namespace Velvet
                     slots.Offset = 0f;
                     slots.OffsetExpression = measured;
                 }
-                return;
+                return true;
             }
             // outline-offset-* and its negation -outline-offset-*, as Tailwind's supportsNegative writes it.
             var negative = TryMatchPrefix(cls, "-outline-offset-", out var outlineOffSuffix);
@@ -323,6 +312,28 @@ namespace Velvet
                     slots.Offset = 0f;
                     slots.OffsetExpression = negative ? measuredOffset!.Negated() : measuredOffset;
                 }
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void Accumulate(string cls, ref RingSlots slots)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return;
+            }
+
+            // Inset modifier (ring only).
+            if (cls == "ring-inset")
+            {
+                slots.Inset = true;
+                return;
+            }
+
+            if (AccumulateOffset(cls, ref slots))
+            {
                 return;
             }
 

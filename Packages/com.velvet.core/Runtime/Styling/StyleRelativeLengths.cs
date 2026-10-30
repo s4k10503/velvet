@@ -156,7 +156,7 @@ namespace Velvet
             {
                 var child = container.hierarchy[i];
                 reading = unchecked((reading * 31) + child.resolvedStyle.fontSize.GetHashCode());
-                reading = unchecked((reading * 31) + (StyleFontUnits.AssetOf(child)?.GetInstanceID() ?? 0));
+                reading = unchecked((reading * 31) + (StyleFontUnits.AssetOf(child)?.GetEntityId().GetHashCode() ?? 0));
             }
             return reading;
         }
@@ -339,11 +339,12 @@ namespace Velvet
         {
             var outer = ClipPathLayoutBox.Of(element);
             var parent = outer.hierarchy.parent;
+            var onPanel = element.panel != null;
             return new Snapshot(UnitsOf(element), outer.resolvedStyle.position,
+                new ElementBox(element.layout.size, float.IsNaN(element.layout.width)),
                 parent == null ? default : Read(parent),
-                (element.panel == null ? default : ViewportOf(element).size, element.layout.size),
-                float.IsNaN(element.layout.width), element.panel == null ? default : RootUnitsOf(element),
-                element.panel == null ? 0f : element.panel.scaledPixelsPerPoint);
+                new PanelReading(onPanel ? ViewportOf(element).size : default, onPanel ? RootUnitsOf(element) : default,
+                    onPanel ? element.panel.scaledPixelsPerPoint : 0f));
         }
 
         private static ParentReading Read(VisualElement parent)
@@ -358,9 +359,15 @@ namespace Velvet
         internal readonly record struct ParentReading(FontUnitPixels Font, UnityEngine.Vector2 Size, UnityEngine.Vector4 Border,
             UnityEngine.Vector4 Padding, bool Row, (bool Width, bool Height) Definite);
 
-        // OwnBox is what a translate's and a transform-origin's percentage is taken of.
-        internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ParentReading Parent,
-            (UnityEngine.Vector2 Viewport, UnityEngine.Vector2 OwnBox) Boxes, bool Unlaid, FontUnitPixels RootFont, float PixelsPerPoint);
+        // The element's own box, which a translate's and a transform-origin's percentage is taken of, and whether it
+        // has been laid out.
+        internal readonly record struct ElementBox(UnityEngine.Vector2 Size, bool Unlaid);
+
+        // What the panel gives every element on it: the viewport, the root's font units and the device pixels a point.
+        internal readonly record struct PanelReading(UnityEngine.Vector2 Viewport, FontUnitPixels RootFont, float PixelsPerPoint);
+
+        internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ElementBox Box,
+            ParentReading Parent, PanelReading Panel);
     }
 
     // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has
