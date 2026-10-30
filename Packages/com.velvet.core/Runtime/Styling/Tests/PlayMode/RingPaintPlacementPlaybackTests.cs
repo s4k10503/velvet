@@ -314,6 +314,18 @@ namespace Velvet.Tests
                 overlay.ClearClassList();
                 yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
                 steps.Append(" afterClassesCleared=").Append(CountInPanelRect(outside, IsRed));
+                band.RemoveFromHierarchy();
+                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+                steps.Append(" afterBandRemoved=").Append(CountInPanelRect(outside, IsRed));
+                steps.Append(" panelTree=");
+                _host.Root.panel.visualTree.Query<VisualElement>().ForEach(n =>
+                {
+                    if (!_host.Root.Contains(n) && n != _host.Root)
+                    {
+                        steps.Append(n.name).Append('[').Append(string.Join(" ", n.GetClasses())).Append("] ")
+                            .Append(n.worldBound).Append("; ");
+                    }
+                });
             }
 
             // Assert — the right band, inside the clip, is the control: it reads red where the one above does not.
