@@ -624,18 +624,15 @@ namespace Velvet.Tests
             Assert.That(ClipPathLayoutBox.Of(Child).layout.width, Is.EqualTo(expected).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): the base never read an em margin, so it handed the slot to the cascade.
         [Test]
-        public void Given_AnEmMarginThatOverflowsUnderItsFont_When_ItsSlotIsHandedBack_Then_TheSlotIsLeftToTheCascade()
+        public void Given_AnEmMarginThatOverflowsUnderItsFont_When_Settled_Then_ItIsTheLargestFloat()
         {
-            // Arrange — 1e37em is finite at the 1px em it is parsed against and overflows at 100px.
+            // Act — 1e37em is finite at the 1px em it is parsed against and comes to 1e39px at 100px, past a float's
+            // range, which CSS reads as the largest float.
             Mount("w-[300px] h-[200px]", "text-[100px] ml-[1e37em] w-[10px] h-[10px]");
 
-            // Act
-            StyleArbitraryValueResolver.HandBack(Child, HeldSlot.MarginLeft);
-
             // Assert
-            Assert.That(Child.style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That(Child.style.marginLeft.value.value, Is.EqualTo(float.MaxValue));
         }
 
         [Test]

@@ -317,8 +317,8 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert
-            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)2.75f));
+            // Assert — the width written on the band, which layout then rounds to the panel's pixel grid.
+            Assert.That(BandFor(card).style.borderTopWidth.value, Is.EqualTo(2.75f));
         }
 
         [Test]

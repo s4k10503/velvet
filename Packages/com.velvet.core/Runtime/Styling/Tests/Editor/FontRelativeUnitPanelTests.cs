@@ -30,6 +30,12 @@ namespace Velvet.Tests
 
         private EditorPanelSimulator _sim;
         private MountedTree _mounted;
+        // Font assets are created once and never destroyed: a glyph added to one queues its atlas for the text engine's
+        // next update, and an asset destroyed while queued leaves the engine updating a destroyed texture in whichever
+        // fixture renders text next.
+        private static FontAsset s_font;
+        private static FontAsset s_otherFont;
+
         private FontAsset _font;
 
         [SetUp]
@@ -38,7 +44,7 @@ namespace Velvet.Tests
             PanelSimulator.ResetCurrentTime();
             _sim = new EditorPanelSimulator { panelSize = new Vector2(400, 300) };
             _sim.ResetTimePerSimulatedFrameToDefault();
-            _font = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            _font = s_font != null ? s_font : (s_font = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")));
             // The panel root, so the root-relative units read the same font as the elements.
             _sim.rootVisualElement.panel.visualTree.style.unityFontDefinition = FontDefinition.FromSDFFont(_font);
             s_parentClass = null;
@@ -54,7 +60,6 @@ namespace Velvet.Tests
             _sim = null;
             s_parentClass?.Dispose();
             s_parentClass = null;
-            Object.DestroyImmediate(_font);
             _font = null;
         }
 
@@ -194,13 +199,12 @@ namespace Velvet.Tests
             // Arrange
             Mount("text-[20px] w-[300px] h-[200px]", "w-[10px] h-[10px]");
             var before = StyleRelativeLengths.ChildrenReading(Parent);
-            var other = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            var other = s_otherFont != null ? s_otherFont : (s_otherFont = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")));
 
             // Act — the child's text is drawn in another font asset, its size and the child count as they were.
             Child.style.unityFontDefinition = FontDefinition.FromSDFFont(other);
             Settle();
             var after = StyleRelativeLengths.ChildrenReading(Parent);
-            Object.DestroyImmediate(other);
 
             // Assert
             Assert.That(after, Is.Not.EqualTo(before));

@@ -335,9 +335,10 @@ namespace Velvet.Tests
         {
             // Act
             StyleGradientClass.TryExtract(new[] { "bg-radial-[ellipse_calc(25%_*_2)_calc(1px_+_1px),#ff0000,#0000ff]" }, out var spec);
+            var radii = GradientBackground.RadialRadii(spec, 100f, 100f);
 
-            // Assert
-            Assert.That(spec.Radial.X == 0.5f ? spec.Radial.Y : float.NaN, Is.EqualTo(2f));
+            // Assert — 25% of the width twice, and two pixels.
+            Assert.That(radii.x == 50f ? radii.y : float.NaN, Is.EqualTo(2f));
         }
 
         [Test]

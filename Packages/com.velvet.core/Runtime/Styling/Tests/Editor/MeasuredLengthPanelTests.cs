@@ -29,6 +29,8 @@ namespace Velvet.Tests
             PanelSimulator.ResetCurrentTime();
             _sim = new EditorPanelSimulator { panelSize = new Vector2(400, 300) };
             _sim.ResetTimePerSimulatedFrameToDefault();
+            // The layout classes (flex, flex-row) and the marker a measured leading reads its font through are the sheet's.
+            VelvetStyleUtilities.AttachTo(_sim.rootVisualElement);
         }
 
         [TearDown]

@@ -117,7 +117,8 @@ namespace Velvet
                         LeadingUnit.Pixel => leading.Value,
                         LeadingUnit.Measured => ctx.LeadingLengthProbes.TryGetValue(e, out var probe)
                             && probe.TryMeasure(out var px) ? Math.Max(0f, px) : float.NaN,
-                        _ => float.NaN,
+                        LeadingUnit.Normal or LeadingUnit.Inherit => float.NaN,
+                        _ => throw new ArgumentOutOfRangeException(nameof(leading), leading.Unit, null),
                     };
                 }
             }
