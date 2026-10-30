@@ -148,6 +148,13 @@ namespace Velvet
         private bool _directionClassLeft;
         private bool _wrapClassLeft;
 
+        // The gaps as the container measures them, read at the start of each Apply.
+        private float _columnGap;
+        private float _rowGap;
+
+        // Re-applies once what a measured gap or margin reads has moved; null while the spec measures none.
+        private RelativeLengthPoll? _poll;
+
         public StyleGapManipulator(ReconcilerContext ctx, GapSpec spec)
         {
             _ctx = ctx;
@@ -158,6 +165,7 @@ namespace Velvet
         public void UpdateGap(GapSpec spec)
         {
             _spec = spec;
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply);
             // Force a re-apply: the spec changed even when the child set did not, so invalidate the cache.
             Reapply();
         }
@@ -175,11 +183,13 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply);
             Apply();
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
+            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
@@ -265,6 +275,8 @@ namespace Velvet
                 return;
             }
 
+            _columnGap = StyleRelativeLengths.MeasureOr(target, _spec.ColumnGapMeasured, _spec.ColumnGap);
+            _rowGap = StyleRelativeLengths.MeasureOr(target, _spec.RowGapMeasured, _spec.RowGap);
             var wrap = (_spec.HasColumnGap || _spec.HasRowGap) && IsWrap(container);
             var box = ClipPathLayoutBox.Of(container);
             MoveBox(box);
@@ -321,8 +333,8 @@ namespace Velvet
 
             if (wrap)
             {
-                HoldContainerAxis(box, HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap);
-                HoldContainerAxis(box, HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _spec.RowGap);
+                HoldContainerAxis(box, HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _columnGap);
+                HoldContainerAxis(box, HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _rowGap);
             }
             else if (_containerHeld)
             {
@@ -341,8 +353,8 @@ namespace Velvet
         {
             if (wrap)
             {
-                AddGapPair(HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _spec.ColumnGap / 2f);
-                AddGapPair(HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _spec.RowGap / 2f);
+                AddGapPair(HeldSlot.MarginLeft, HeldSlot.MarginRight, _spec.HasColumnGap, _columnGap / 2f);
+                AddGapPair(HeldSlot.MarginTop, HeldSlot.MarginBottom, _spec.HasRowGap, _rowGap / 2f);
                 return;
             }
             if (gapIndex == 0)
@@ -362,10 +374,10 @@ namespace Velvet
             {
                 case HeldSlot.MarginLeft:
                 case HeldSlot.MarginRight:
-                    gap = _spec.ColumnGap;
+                    gap = _columnGap;
                     return _spec.HasColumnGap;
                 default:
-                    gap = _spec.RowGap;
+                    gap = _rowGap;
                     return _spec.HasRowGap;
             }
         }
@@ -385,8 +397,11 @@ namespace Velvet
         private void SumSpace(VisualElement child)
         {
             var space = _spec.Space;
-            AddSpace(child, space.XReverse ? HeldSlot.MarginLeft : HeldSlot.MarginRight, space.X);
-            AddSpace(child, space.YReverse ? HeldSlot.MarginTop : HeldSlot.MarginBottom, space.Y);
+            // A space margin is the child's, so the child measures it.
+            AddSpace(child, space.XReverse ? HeldSlot.MarginLeft : HeldSlot.MarginRight,
+                StyleRelativeLengths.MeasureOr(child, space.XMeasured, space.X));
+            AddSpace(child, space.YReverse ? HeldSlot.MarginTop : HeldSlot.MarginBottom,
+                StyleRelativeLengths.MeasureOr(child, space.YMeasured, space.Y));
         }
 
         private void AddSpace(VisualElement child, HeldSlot slot, float value)

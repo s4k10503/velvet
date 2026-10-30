@@ -18,9 +18,10 @@ namespace Velvet
     internal readonly struct RingSpec
     {
         public readonly float Width;
-        // An outline width only the element can measure (outline-[2em]), which stands in for Width
-        // (RingOverlay.WidthOf).
+        // A width or an offset only the element can measure (outline-[2em], ring-offset-[1ch]), which stands in
+        // for Width or Offset (RingOverlay.WidthOf, RingOverlay.OffsetOf).
         public readonly StyleLengthExpression? WidthExpression;
+        public readonly StyleLengthExpression? OffsetExpression;
         // The band's colour where a class named one; unused where CurrentColor is set.
         public readonly Color Color;
         // No class named the colour, so the band takes the element's text colour, as Tailwind v4's
@@ -37,9 +38,11 @@ namespace Velvet
         public readonly bool Snaps;
 
         public RingSpec(float width, Color color, float offset, bool inset, bool currentColor = false,
-            StyleLengthExpression? widthExpression = null, bool snaps = false)
+            StyleLengthExpression? widthExpression = null, bool snaps = false,
+            StyleLengthExpression? offsetExpression = null)
         {
             Snaps = snaps;
+            OffsetExpression = offsetExpression;
             Width = width;
             WidthExpression = widthExpression;
             Color = color;
@@ -99,6 +102,7 @@ namespace Velvet
             public bool WidthSet;
             public float Width;
             public StyleLengthExpression? WidthExpression;
+            public StyleLengthExpression? OffsetExpression;
             public bool IsOutline;   // which family established intent, for the default width and the colour
             public bool OutlineDeclared; // bare `outline`, which declares its 1px width
             // Each family's colour is its own property (--tw-ring-color, outline-color), so a ring colour does
@@ -151,7 +155,8 @@ namespace Velvet
             // spread Tailwind adds to its width, which Velvet floors at zero.
             var offset = slots.IsOutline ? slots.Offset : Mathf.Max(0f, slots.Offset);
             spec = new RingSpec(effectiveWidth, color, offset, slots.Inset, currentColor: !colorSet,
-                widthExpression: slots.WidthSet ? slots.WidthExpression : null, snaps: slots.IsOutline);
+                widthExpression: slots.WidthSet ? slots.WidthExpression : null, snaps: slots.IsOutline,
+                offsetExpression: slots.OffsetExpression);
             return true;
         }
 
@@ -295,6 +300,12 @@ namespace Velvet
                 if (TryParseWidthValue(ringOffSuffix, "ring-offset", out var off))
                 {
                     slots.Offset = off;
+                    slots.OffsetExpression = null;
+                }
+                else if (TryParseMeasuredWidth(ringOffSuffix, inferred: true, floored: true, out var measured))
+                {
+                    slots.Offset = 0f;
+                    slots.OffsetExpression = measured;
                 }
                 return;
             }
@@ -305,6 +316,12 @@ namespace Velvet
                 if (TryParseOutlineOffset(outlineOffSuffix, out var off))
                 {
                     slots.Offset = negative ? -off : off;
+                    slots.OffsetExpression = null;
+                }
+                else if (TryParseMeasuredWidth(outlineOffSuffix, inferred: false, floored: false, out var measuredOffset))
+                {
+                    slots.Offset = 0f;
+                    slots.OffsetExpression = negative ? measuredOffset!.Negated() : measuredOffset;
                 }
                 return;
             }
@@ -354,6 +371,15 @@ namespace Velvet
                 slots.WidthSet = true;
                 slots.Width = w;
                 slots.WidthExpression = null;
+                return;
+            }
+            if (isRingFamily && TryParseMeasuredWidth(ringSuffix, inferred: true, floored: true, out var measuredWidth))
+            {
+                slots.HasIntent = true;
+                slots.IsOutline = false;
+                slots.WidthSet = true;
+                slots.Width = float.NaN;
+                slots.WidthExpression = measuredWidth;
                 return;
             }
 
@@ -480,6 +506,23 @@ namespace Velvet
                 return false;
             }
             return unit == LengthUnit.Pixel;
+        }
+
+        // A bracketed width or offset only the element can measure (a font-relative or viewport unit), read where
+        // TryParseWidthValue reads a length: never a percentage, which neither takes. A width or a ring offset is
+        // not below zero; an outline offset, which CSS lets be negative, is not floored.
+        private static bool TryParseMeasuredWidth(string? suffix, bool inferred, bool floored, out StyleLengthExpression? expression)
+        {
+            expression = null;
+            if (suffix == null || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
+                || (inferred && !(hint != null ? hint == "length" : TailwindDataTypes.IsLength(inner)))
+                || !StyleLengthExpression.TryParse(inner, out var parsed) || parsed!.ReadsPercentage)
+            {
+                return false;
+            }
+            expression = floored ? parsed.AtLeast(0f) : parsed;
+            return true;
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the

@@ -24,5 +24,12 @@ Packages/com.velvet.core/Changelog~/unreleased/fix-css-math-and-relative-units-p
 - A radial or conic gradient's `at_` position reads CSS's whole `<position>`: lengths (`at_20px_30px`), edge
   offsets (`at_right_10px_bottom_20px`) and a math function adding a percentage and a length, where only keywords
   and percentages were read.
+Packages/com.velvet.core/Changelog~/unreleased/fix-css-math-and-relative-units-port.md
 - An outline's width and offset are snapped to the panel's device pixels as the browser snaps a border width
   (`outline-[2.75px]` is 2.5px at two device pixels a point), where they were drawn as written.
+- A length only an element can measure — a font-relative or viewport unit, or a math function reading one — is
+  read by every utility that takes a length, where it left the class inert outside the sizing, position, spacing
+  and type utilities: border widths, `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-[…]`, `gap-*`,
+  `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`, `clip-path-[…]`, a gradient's stops,
+  radii and centre, and `leading-[…]`. A `translate-*` and an `origin-[…]` read a percentage of the element's own
+  box beside one, and a clip-path or gradient length a percentage added to a length (`calc(100%_-_10px)`).

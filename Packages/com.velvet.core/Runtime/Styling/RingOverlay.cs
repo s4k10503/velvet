@@ -20,6 +20,8 @@ namespace Velvet
         // True while the overlay is configured as the element's own first child (an inset band) rather than as
         // its following sibling; RingOverlay.SetMode is the only writer.
         public bool Inside;
+        // The offset the last geometry sync placed the band at, which the frame's sample compares against.
+        public float AppliedOffset;
 
         public RingBinding(VisualElement overlay) => Overlay = overlay;
     }
@@ -244,7 +246,10 @@ namespace Velvet
                 : 0f);
 
         // The gap between the element's edge and the band.
-        internal static float OffsetOf(VisualElement element, in RingSpec spec) => Snap(element, spec, spec.Offset);
+        internal static float OffsetOf(VisualElement element, in RingSpec spec)
+            => Snap(element, spec, spec.OffsetExpression == null ? spec.Offset
+                : StyleRelativeLengths.TryBasisOf(element, out var basis) ? spec.OffsetExpression.Evaluate(basis)
+                : 0f);
 
         // An outline's length as the browser snaps a border width to device pixels: one under a device pixel is
         // one, any other is rounded toward zero to a whole number of them (RingOverlayTests pins it).
@@ -389,7 +394,9 @@ namespace Velvet
             {
                 ApplyWidth(overlay, bandWidth);
             }
-            var grow = OffsetOf(element, spec) + bandWidth;
+            var offset = OffsetOf(element, spec);
+            binding.AppliedOffset = offset;
+            var grow = offset + bandWidth;
             overlay.style.left = originX - grow - hostBorderLeft;
             overlay.style.top = originY - grow - hostBorderTop;
             overlay.style.right = StyleKeyword.Null;
@@ -437,12 +444,14 @@ namespace Velvet
             }
             var width = WidthOf(element, binding.Spec);
             // A font change need not move the element's box, so the frame's sample carries it to the band.
-            if (binding.Spec.WidthExpression != null && width != style.borderTopWidth.value && element.parent is { } host)
+            var offset = OffsetOf(element, binding.Spec);
+            if ((binding.Spec.WidthExpression != null || binding.Spec.OffsetExpression != null)
+                && (width != style.borderTopWidth.value || offset != binding.AppliedOffset) && element.parent is { } host)
             {
                 SyncGeometry(element, binding, host);
             }
             SyncProjectedCorners(element, binding);
-            var grow = OffsetOf(element, binding.Spec) + width;
+            var grow = offset + width;
             var origin = rs.transformOrigin;
             var translate = rs.translate;
             style.transformOrigin = new TransformOrigin(origin.x + grow, origin.y + grow, origin.z);

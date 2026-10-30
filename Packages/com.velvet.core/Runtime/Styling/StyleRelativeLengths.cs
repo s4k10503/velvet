@@ -97,8 +97,9 @@ namespace Velvet
             return true;
         }
 
-        // What a length that takes no percentage is measured against on element, or false while it is on no panel.
-        public static bool TryBasisOf(VisualElement element, out RelativeLengthBasis basis)
+        // What a length is measured against on element, its percentage taken of percent, or false while the element
+        // is on no panel.
+        public static bool TryBasisOf(VisualElement element, out RelativeLengthBasis basis, float percent = 0f)
         {
             if (element.panel == null)
             {
@@ -106,8 +107,51 @@ namespace Velvet
                 return false;
             }
             var viewport = ViewportOf(element);
-            basis = new RelativeLengthBasis(UnitsOf(element), RootUnitsOf(element), 0f, viewport.width, viewport.height);
+            basis = new RelativeLengthBasis(UnitsOf(element), RootUnitsOf(element), percent, viewport.width, viewport.height);
             return true;
+        }
+
+        // What expression comes to on element, its percentage taken of percent; false while the element is on no
+        // panel, or has not been laid out where the percentage is of its own box.
+        public static bool TryMeasure(VisualElement element, StyleLengthExpression expression, float percent,
+            out float pixels)
+        {
+            pixels = 0f;
+            if (float.IsNaN(percent) || !TryBasisOf(element, out var basis, percent))
+            {
+                return false;
+            }
+            pixels = expression.Evaluate(basis);
+            return true;
+        }
+
+        // written, or what element measures expression to (no percentage), which is 0 until it can.
+        public static float MeasureOr(VisualElement element, StyleLengthExpression? expression, float written)
+            => expression == null ? written : TryMeasure(element, expression, 0f, out var px) ? px : 0f;
+
+        // Keeps a poll on element while wanted, calling onMoved whenever what a measured length reads has moved.
+        // A manipulator not yet on its element (a null element) keeps none.
+        public static void SyncPoll(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted, Action onMoved)
+        {
+            if (!wanted || element == null)
+            {
+                poll?.Stop();
+                poll = null;
+                return;
+            }
+            if (poll != null)
+            {
+                return;
+            }
+            RelativeLengthPoll? created = null;
+            created = new RelativeLengthPoll(element, _ =>
+            {
+                if (created!.Moved())
+                {
+                    onMoved();
+                }
+            });
+            poll = created;
         }
 
         // The font-relative units on element, at its computed font size and line height.
@@ -259,7 +303,8 @@ namespace Velvet
             var outer = ClipPathLayoutBox.Of(element);
             var parent = outer.hierarchy.parent;
             return new Snapshot(UnitsOf(element), outer.resolvedStyle.position,
-                parent == null ? default : Read(parent), element.panel == null ? default : ViewportOf(element).size,
+                parent == null ? default : Read(parent),
+                (element.panel == null ? default : ViewportOf(element).size, element.layout.size),
                 float.IsNaN(element.layout.width), element.panel == null ? default : RootUnitsOf(element));
         }
 
@@ -275,8 +320,9 @@ namespace Velvet
         internal readonly record struct ParentReading(FontUnitPixels Font, UnityEngine.Vector2 Size, UnityEngine.Vector4 Border,
             UnityEngine.Vector4 Padding, bool Row, (bool Width, bool Height) Definite);
 
+        // OwnBox is what a translate's and a transform-origin's percentage is taken of.
         internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ParentReading Parent,
-            UnityEngine.Vector2 Viewport, bool Unlaid, FontUnitPixels RootFont);
+            (UnityEngine.Vector2 Viewport, UnityEngine.Vector2 OwnBox) Boxes, bool Unlaid, FontUnitPixels RootFont);
     }
 
     // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has

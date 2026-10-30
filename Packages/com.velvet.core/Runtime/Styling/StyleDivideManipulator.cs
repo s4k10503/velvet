@@ -72,6 +72,9 @@ namespace Velvet
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
+        // Re-applies once what a measured width reads has moved; null while the spec measures none.
+        private RelativeLengthPoll? _poll;
+
         public StyleDivideManipulator(DivideSpec spec, ReconcilerContext ctx)
         {
             _spec = spec;
@@ -82,6 +85,7 @@ namespace Velvet
         public void UpdateSpec(DivideSpec spec)
         {
             _spec = spec;
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply);
             _hasSignature = false;
             Apply();
         }
@@ -98,11 +102,13 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply);
             Apply();
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
+            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
@@ -328,6 +334,9 @@ namespace Velvet
             return inline.value;
         }
 
+        // The divider's width on child: the border is the child's, so the child measures a measured one.
+        private float WidthOn(VisualElement child) => StyleRelativeLengths.MeasureOr(child, _spec.WidthMeasured, _spec.Width);
+
         // Whether the child's own declaration of slot beats the divide's. An ordinary divide yields to any of
         // the child's own, an important one to its important ones alone: the divide's selector has zero
         // specificity and the child's has a class, so between two important declarations the child's wins.
@@ -339,7 +348,7 @@ namespace Velvet
         // alone where the divide is important.
         private void HoldWidth(VisualElement child, DivideEdge edge)
         {
-            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(WidthOn(child)));
             StyleArbitraryValueResolver.Yield(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
         }
 

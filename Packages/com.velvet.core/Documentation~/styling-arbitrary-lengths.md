@@ -177,7 +177,7 @@ while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take no
 | `50svw`, `50lvh`, `50dvmin`, … | the same as the unprefixed unit: a panel has no browser chrome to show or hide, which is where CSS makes the small, large and dynamic viewports equal |
 | a math function mixing a percentage with a length, or reading an `em` or a viewport unit | each term against its own basis, as CSS evaluates it |
 
-These are read by the utilities that write a length-percentage inline:
+Every utility that takes a length reads them. Those that write a length-percentage inline are these:
 
 - sizing: `w-`, `h-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `size-`, `basis-`;
 - position: `inset-`, `inset-x-`, `inset-y-`, `top-`, `right-`, `bottom-`, `left-`, `start-`, `end-`;
@@ -197,6 +197,13 @@ parent's size along its flex direction; `text-[…]` of the parent's font size; 
 element's own font size. The parent's size is its content box, and its padding box for an `absolute`
 element, as CSS and UI Toolkit both take it. On an element with a `clip-path-*`, every longhand — padding included — is measured against the parent the clip wrapper
 sits in, not the wrapper.
+
+The others measure them on the element they style, and its percentages as their property takes them: a border
+width, `rounded-*`, `translate-*` and `origin-[…]` (a percentage of the element's own box), `shadow-[…]`,
+`ring-*`, `ring-offset-*`, `outline-*` and `outline-offset-*`, `clip-path-[…]`, a gradient's stops, radii and
+centre, and `leading-[…]` (a percentage of the font size of the element declaring it). A `gap-*` is measured on
+the container, and a `space-*` margin and a `divide-*` width on each child, whose margin or border it is. A border
+width, a ring, a gap, a space margin, a divide and a shadow take no percentage, as in CSS.
 
 A percentage of a parent size the parent takes from its content is not measured, since the parent's size
 would then follow the length measured from it. The parent's size on an axis is definite when the parent
@@ -227,20 +234,16 @@ these moves:
 - whether the parent's width and height are definite (above);
 - the panel's size.
 
-Unlike CSS, where the value is part of layout, the new value lands a tick after the change. A re-measure is
-written with the transitions of the element and of its clip wrapper held at zero duration and delay, and a
-filter's with no transition, so it lands at once rather than animating.
+The utilities that measure on their own element, above, are measured again on the same tick, or, for a
+ring or an outline, on the frame's sample of its element. Unlike CSS, where the value is part of layout, the
+new value lands a tick after the change. A re-measure is written with the transitions of the element and of its
+clip wrapper held at zero duration and delay, and a filter's with no transition, so it lands at once rather than
+animating.
 
-### Where they are not read
+### Where they are not interpolated
 
-- Elsewhere a length only an element can measure is declined and leaves the class inert: border widths,
-  `rounded-*`, `translate-*`, `origin-[…]`, `shadow-*`, `gap-*` / `space-*` / `divide-*` /
-  `ring-*`, `clip-path-[…]` and gradient positions among them. A math function those read has to come to
-  pixels or to a percentage. `leading-[…]` reads `em` and percentages itself ([fonts.md](fonts.md)), but no
-  viewport unit, and no math function reading `em` or mixing a percentage with a length. `outline-[…]` reads
-  one as its width, though no percentage, measured against the element and the panel and again on each frame.
-- A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
-  applies, uninterpolated, as `w-auto` does.
+A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
+applies, uninterpolated, as `w-auto` does.
 
 ## Bare spacing steps
 
