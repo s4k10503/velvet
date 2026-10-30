@@ -194,7 +194,7 @@ namespace Velvet.Tests
             Assert.That(CountInPanelRect(outside, IsRed), Is.EqualTo(0), $"a={a} poke={poke.worldBound}");
         }
 
-        // GREEN_ON_BASE(characterization): the base drew an outline as a band beside its element, inside the clip, so the clip cut it there too. Hosting it above the clip without a clip proxy reddens it.
+        // GREEN_ON_BASE(characterization): the base drew an outline as a band beside its element, inside the clip, so the clip cut it there too.
         [UnityTest]
         public IEnumerator Given_AnOutlineInsideAClipUnderLaterContent_When_Rendered_Then_TheClipCutsTheBandAboveIt()
         {
