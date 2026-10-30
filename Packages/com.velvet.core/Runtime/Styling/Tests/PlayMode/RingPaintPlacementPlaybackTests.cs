@@ -283,10 +283,42 @@ namespace Velvet.Tests
             var a = _host.Root.Q<VisualElement>("a").worldBound;
             var outside = new RectInt(Mathf.RoundToInt(a.xMin + 10f), Mathf.RoundToInt(a.yMin - BandWidth + 2f), 10, 4);
             var inside = OuterStrip(a, right: true);
+            var insideRed = CountInPanelRect(inside, IsRed);
+            var outsideRed = CountInPanelRect(outside, IsRed);
+            var nodes = OutlineNodes();
+            var steps = new System.Text.StringBuilder();
+            if (outsideRed > 0)
+            {
+                var proxy = _host.Root.Q<VisualElement>(OutlineHosting.ProxyName);
+                var overlay = _host.Root.Q<VisualElement>("velvet-outline-overlay");
+                var band = _host.Root.Q<VisualElement>("velvet-outline-band");
+                steps.Append(" proxyDisplay=").Append(proxy.resolvedStyle.display).Append('/')
+                    .Append(proxy.style.overflow.keyword).Append(" overlayStyle=").Append(overlay.style.translate.value.x)
+                    .Append(',').Append(overlay.style.scale.value.value).Append(',').Append(overlay.style.opacity.value);
+                band.MarkDirtyRepaint();
+                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+                steps.Append(" afterRepaint=").Append(CountInPanelRect(outside, IsRed));
+                proxy.style.overflow = Overflow.Visible;
+                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+                proxy.style.overflow = Overflow.Hidden;
+                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+                steps.Append(" afterOverflowToggle=").Append(CountInPanelRect(outside, IsRed));
+                overlay.style.translate = StyleKeyword.Null;
+                overlay.style.scale = StyleKeyword.Null;
+                overlay.style.rotate = StyleKeyword.Null;
+                overlay.style.transformOrigin = StyleKeyword.Null;
+                overlay.style.opacity = StyleKeyword.Null;
+                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+                steps.Append(" afterOverlayTransformCleared=").Append(CountInPanelRect(outside, IsRed));
+                proxy.ClearClassList();
+                overlay.ClearClassList();
+                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+                steps.Append(" afterClassesCleared=").Append(CountInPanelRect(outside, IsRed));
+            }
 
             // Assert — the right band, inside the clip, is the control: it reads red where the one above does not.
-            Assert.That(CountInPanelRect(inside, IsRed) > 0 && CountInPanelRect(outside, IsRed) == 0, Is.True,
-                $"a={a} inside={CountInPanelRect(inside, IsRed)} outside={CountInPanelRect(outside, IsRed)} {OutlineNodes()}");
+            Assert.That(insideRed > 0 && outsideRed == 0, Is.True,
+                $"a={a} inside={insideRed} outside={outsideRed}{steps} {nodes}");
         }
 
         [UnityTest]
