@@ -430,6 +430,7 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): a calc() of a percentage alone was folded into the radius, and still is.
         [Test]
         public void Given_AnEllipseRadiusOfAFoldedPercentage_When_Extracted_Then_ItIsHalfTheBox()
         {
