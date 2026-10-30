@@ -95,6 +95,19 @@ namespace Velvet.Tests
             Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(Mathf.Floor(2.75f * perPixel) / perPixel).Within(0.001f));
         }
 
+        // GREEN_ON_BASE(characterization): at a panel scale that is a whole number a whole-pixel width is already on the
+        // grid. Dropping the snap of a literal width in TryMeasuredValue reddens it at any other scale.
+        [Test]
+        public void Given_AWholePixelBorderWidth_When_Settled_Then_ItIsSnappedDownToDevicePixels()
+        {
+            // Act
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] border-solid border-[3px]");
+
+            // Assert
+            var perPixel = First.panel.scaledPixelsPerPoint;
+            Assert.That(First.resolvedStyle.borderTopWidth, Is.EqualTo(Mathf.Floor(3f * perPixel) / perPixel).Within(0.001f));
+        }
+
         [Test]
         public void Given_ABorderWidthUnderADevicePixel_When_Settled_Then_ItIsOneDevicePixel()
         {
@@ -146,6 +159,18 @@ namespace Velvet.Tests
             Assert.That(Mathf.Approximately(origin.x, 20f) ? origin.y : float.NaN, Is.EqualTo(40f));
         }
 
+        [TestCase("bg-radial-[circle_2em_at_center,#ff0000,#0000ff]")]
+        [TestCase("bg-radial-[ellipse_2em_3em_at_1em_50%,#ff0000,#0000ff]")]
+        [TestCase("bg-conic-[from_0deg_at_1em_50%,#ff0000,#0000ff]")]
+        public void Given_AGradientShapeInEms_When_Mounted_Then_ItPaintsOnceMeasured(string gradient)
+        {
+            // Act
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] " + gradient);
+
+            // Assert
+            Assert.That(First.style.backgroundImage.value.texture, Is.Not.Null);
+        }
+
         // GREEN_ON_BASE(characterization): a blur of an em was measured on the element before the other utilities were.
         // Dropping the measured branch of the blur parse reddens it.
         [Test]
@@ -178,6 +203,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Second.layout.x - First.layout.xMax, Is.EqualTo(10f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ASpaceMarginOfAnEm_When_TheChildsFontSizeChanges_Then_ItIsMeasuredAgain()
+        {
+            // Arrange
+            Mount("text-[20px] w-[200px] h-[100px] flex flex-row space-x-[1em]", "text-[10px] w-[10px] h-[10px]");
+
+            // Act — the container and its size are as they were; only the child's own font moves.
+            First.style.fontSize = 30f;
+            for (var i = 0; i < 4; i++)
+            {
+                _sim.FrameUpdateMs(16);
+            }
+
+            // Assert
+            Assert.That(Second.layout.x - First.layout.xMax, Is.EqualTo(30f).Within(0.01f));
         }
 
         [Test]

@@ -75,6 +75,10 @@ namespace Velvet
         // Re-applies once what a measured width reads has moved; null while the spec measures none.
         private RelativeLengthPoll? _poll;
 
+        // What the children measure, which the poll reads beside the container: a child's own font moves the length
+        // it measures without moving the container.
+        private int ChildReading() => _spec.WidthMeasured != null ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
+
         public StyleDivideManipulator(DivideSpec spec, ReconcilerContext ctx)
         {
             _spec = spec;
@@ -85,7 +89,7 @@ namespace Velvet
         public void UpdateSpec(DivideSpec spec)
         {
             _spec = spec;
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply);
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
             _hasSignature = false;
             Apply();
         }
@@ -102,7 +106,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply);
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
             Apply();
         }
 

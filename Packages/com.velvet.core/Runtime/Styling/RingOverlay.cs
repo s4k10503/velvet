@@ -247,11 +247,11 @@ namespace Velvet
 
         // The gap between the element's edge and the band.
         internal static float OffsetOf(VisualElement element, in RingSpec spec)
-            => Snap(element, spec, spec.OffsetExpression == null ? spec.Offset
+            => spec.OffsetExpression == null ? spec.Offset
                 : StyleRelativeLengths.TryBasisOf(element, out var basis) ? spec.OffsetExpression.Evaluate(basis)
-                : 0f);
+                : 0f;
 
-        // An outline's length as the browser snaps a border width to device pixels: one under a device pixel is
+        // An outline's width as the browser snaps a border width to device pixels: one under a device pixel is
         // one, any other is rounded toward zero to a whole number of them (RingOverlayTests pins it).
         private static float Snap(VisualElement element, in RingSpec spec, float length)
             => spec.Snaps ? StyleRelativeLengths.SnapAsBorderWidth(element, length) : length;
@@ -437,7 +437,7 @@ namespace Velvet
             var width = WidthOf(element, binding.Spec);
             // A font change need not move the element's box, so the frame's sample carries it to the band.
             var offset = OffsetOf(element, binding.Spec);
-            if ((binding.Spec.WidthExpression != null || binding.Spec.OffsetExpression != null)
+            if ((binding.Spec.WidthExpression != null || binding.Spec.OffsetExpression != null || binding.Spec.Snaps)
                 && (width != style.borderTopWidth.value || offset != binding.AppliedOffset) && element.parent is { } host)
             {
                 SyncGeometry(element, binding, host);
@@ -461,7 +461,7 @@ namespace Velvet
                 ProjectedCornerFace.End(binding.Overlay);
                 return;
             }
-            var grow = OffsetOf(element, binding.Spec) + WidthOf(element, binding.Spec);
+            var grow = binding.Spec.Inset ? 0f : OffsetOf(element, binding.Spec) + WidthOf(element, binding.Spec);
             var fitted = BorderBandPainter.Fitted(radii, element.layout.width, element.layout.height);
             var g = new Vector2(grow, grow);
             ProjectedCornerFace.Draw(binding.Overlay, new CornerRadii

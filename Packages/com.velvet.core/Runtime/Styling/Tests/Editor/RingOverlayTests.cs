@@ -252,9 +252,11 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert — the card's own 12px is the class taking effect.
-            Assert.That((card.resolvedStyle.fontSize, BandFor(card)?.resolvedStyle.borderTopWidth),
-                Is.EqualTo((12f, (float?)24f)));
+            // Assert — 24 is 2em only where the card's own 12px took effect, and is NaN where no band is laid out.
+            Assert.That(Mathf.Approximately(card.resolvedStyle.fontSize, 12f)
+                    ? BandFor(card)?.resolvedStyle.borderTopWidth ?? float.NaN
+                    : float.NaN,
+                Is.EqualTo(24f));
         }
 
         // The browser snaps an outline's width as a border width: down to a whole number of device pixels.
@@ -288,18 +290,19 @@ namespace Velvet.Tests
             Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)(1f / perPixel)));
         }
 
+        // GREEN_ON_BASE(characterization): an outline offset is an absolute length that CSS does not snap, and the base
+        // drew it as written. Snapping it as the width is snapped reddens it.
         [Test]
-        public void Given_AFractionalOutlineOffset_When_LaidOut_Then_TheBandSitsAtTheSnappedOffset()
+        public void Given_AFractionalOutlineOffset_When_LaidOut_Then_TheBandIsGrownByTheOffsetAsWritten()
         {
             // Arrange
             var card = MountRinged("w-[40px] h-[40px] outline-2 outline-offset-[1.75px]");
-            var perPixel = card.panel.scaledPixelsPerPoint;
 
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert
-            Assert.That(BandOffsetX(card), Is.EqualTo(-(Mathf.Floor(1.75f * perPixel) / perPixel) - 2f).Within(1e-3f));
+            // Assert — the 40px box, and the offset and the 2px width on each side.
+            Assert.That(BandFor(card).style.width.value.value, Is.EqualTo(47.5f));
         }
 
         // GREEN_ON_BASE(characterization): a ring is a box-shadow, which the browser does not snap, nor does this.

@@ -17,10 +17,11 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 | `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` and the insets; padding and the maximum sizes take none |
 | a math function ([below](#math-functions)) whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
 
-A bracketed border width (`border-[…]`, `border-t-[…]`, `divide-x-[…]`, …) is snapped as the browser snaps one,
-down to a whole number of the panel's device pixels and up to one where it is less: `border-[2.75px]` is 2.5px at
-two device pixels a point. The bundled classes' widths are whole pixels, which a whole-number scale leaves as
-they are.
+A bracketed border width (`border-[…]`, `border-t-[…]`, `divide-x-[…]`, …) is snapped as the browser snaps one
+when it is written on a panel, down to a whole number of the panel's device pixels and up to one where it is
+less: `border-[2.75px]` is 2.5px at two device pixels a point. A fractional or measured `border-*` width is
+written again when the panel's scale changes. The bundled classes' widths are whole pixels, which a
+whole-number scale leaves as they are.
 
 A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
 either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,

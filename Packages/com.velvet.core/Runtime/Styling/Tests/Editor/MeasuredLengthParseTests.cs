@@ -19,6 +19,18 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base read no shadow length in ems, so this one was declined with the rest.
+        // Flooring a measured blur at zero for a literal as well reddens it.
+        [Test]
+        public void Given_AShadowBlurOfANegativeLengthInEms_When_Extracted_Then_TheShadowIsDeclined()
+        {
+            // Act
+            var ok = StyleShadowClass.TryExtract(new[] { "shadow-[0_0_-1em_#000000]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         [Test]
         public void Given_AClipPathInsetInEms_When_Extracted_Then_TheShapeIsRead()
         {

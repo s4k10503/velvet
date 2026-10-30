@@ -138,13 +138,30 @@ namespace Velvet
             return Math.Sign(length) * (devicePixels < 1f ? 1f : (float)Math.Floor(devicePixels)) / perPixel;
         }
 
+        // A reading of everything container's children measure, for a poll over a container whose children hold a
+        // measured length (a space margin, a divide width): their font units, their sizes and the panel scale.
+        public static int ChildrenReading(VisualElement? container)
+        {
+            if (container == null)
+            {
+                return 0;
+            }
+            var reading = 17;
+            for (var i = 0; i < container.hierarchy.childCount; i++)
+            {
+                reading = unchecked((reading * 31) + Capture(container.hierarchy[i]).GetHashCode());
+            }
+            return reading;
+        }
+
         // written, or what element measures expression to (no percentage), which is 0 until it can.
         public static float MeasureOr(VisualElement element, StyleLengthExpression? expression, float written)
             => expression == null ? written : TryMeasure(element, expression, 0f, out var px) ? px : 0f;
 
         // Keeps a poll on element while wanted, calling onMoved whenever what a measured length reads has moved.
         // A manipulator not yet on its element (a null element) keeps none.
-        public static void SyncPoll(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted, Action onMoved)
+        public static void SyncPoll(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted, Action onMoved,
+            Func<int>? extraReading = null)
         {
             if (!wanted || element == null)
             {
@@ -163,7 +180,7 @@ namespace Velvet
                 {
                     onMoved();
                 }
-            });
+            }, extraReading);
             poll = created;
         }
 
@@ -318,7 +335,8 @@ namespace Velvet
             return new Snapshot(UnitsOf(element), outer.resolvedStyle.position,
                 parent == null ? default : Read(parent),
                 (element.panel == null ? default : ViewportOf(element).size, element.layout.size),
-                float.IsNaN(element.layout.width), element.panel == null ? default : RootUnitsOf(element));
+                float.IsNaN(element.layout.width), element.panel == null ? default : RootUnitsOf(element),
+                element.panel == null ? 0f : element.panel.scaledPixelsPerPoint);
         }
 
         private static ParentReading Read(VisualElement parent)
@@ -335,7 +353,7 @@ namespace Velvet
 
         // OwnBox is what a translate's and a transform-origin's percentage is taken of.
         internal readonly record struct Snapshot(FontUnitPixels OwnFont, Position Position, ParentReading Parent,
-            (UnityEngine.Vector2 Viewport, UnityEngine.Vector2 OwnBox) Boxes, bool Unlaid, FontUnitPixels RootFont);
+            (UnityEngine.Vector2 Viewport, UnityEngine.Vector2 OwnBox) Boxes, bool Unlaid, FontUnitPixels RootFont, float PixelsPerPoint);
     }
 
     // Re-resolves an element's relative lengths on the panel's scheduler tick after anything they measure has
@@ -349,10 +367,13 @@ namespace Velvet
         private readonly VisualElement _element;
         private readonly IVisualElementScheduledItem _item;
         private StyleRelativeLengths.Snapshot? _last;
+        private readonly Func<int>? _extra;
+        private int _lastExtra;
 
-        public RelativeLengthPoll(VisualElement element, Action<VisualElement> reresolve)
+        public RelativeLengthPoll(VisualElement element, Action<VisualElement> reresolve, Func<int>? extraReading = null)
         {
             _element = element;
+            _extra = extraReading;
             _item = element.schedule.Execute(() => reresolve(element)).Every(TickMs);
         }
 
@@ -360,7 +381,14 @@ namespace Velvet
         public bool Moved()
         {
             // The last capture, compared before this one replaces it.
-            return _last != (_last = StyleRelativeLengths.Capture(_element));
+            var moved = _last != (_last = StyleRelativeLengths.Capture(_element));
+            if (_extra != null)
+            {
+                var extra = _extra();
+                moved |= extra != _lastExtra;
+                _lastExtra = extra;
+            }
+            return moved;
         }
 
         public void Stop() => _item.Pause();

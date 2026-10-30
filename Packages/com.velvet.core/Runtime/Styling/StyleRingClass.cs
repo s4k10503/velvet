@@ -419,8 +419,9 @@ namespace Velvet
         }
 
         // An outline-[…] that Tailwind's type tests (or a length, number or percentage hint) take for a width, which
-        // it writes as outline-width beside outline-style: solid. A width the browser drops leaves the outline at
-        // the width the rest of the cascade gives it.
+        // it writes as outline-width beside outline-style: solid. A width the browser drops, a negative literal among
+        // them, leaves the outline at the width the rest of the cascade gives it; a math function coming below zero
+        // is raised to zero instead.
         private static bool TryParseOutlineWidth(string suffix, ref RingSlots slots)
         {
             if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
@@ -439,7 +440,8 @@ namespace Velvet
                 slots.Width = width;
                 slots.WidthExpression = null;
             }
-            else if (StyleLengthExpression.TryParse(inner, out var expression) && !expression!.ReadsPercentage)
+            else if (StyleLengthExpression.TryParse(inner, out var expression) && !expression!.ReadsPercentage
+                && (StyleLengthExpression.OpensMathFunction(inner.Trim("_ ".AsSpan())) || inner.Trim("_ ".AsSpan())[0] != '-'))
             {
                 slots.WidthSet = true;
                 slots.Width = float.NaN;

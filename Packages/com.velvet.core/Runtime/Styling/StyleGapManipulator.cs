@@ -155,6 +155,10 @@ namespace Velvet
         // Re-applies once what a measured gap or margin reads has moved; null while the spec measures none.
         private RelativeLengthPoll? _poll;
 
+        // What the children measure, which the poll reads beside the container: a child's own font moves the length
+        // it measures without moving the container.
+        private int ChildReading() => _spec.Space.IsMeasured ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
+
         public StyleGapManipulator(ReconcilerContext ctx, GapSpec spec)
         {
             _ctx = ctx;
@@ -165,7 +169,7 @@ namespace Velvet
         public void UpdateGap(GapSpec spec)
         {
             _spec = spec;
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply);
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply, ChildReading);
             // Force a re-apply: the spec changed even when the child set did not, so invalidate the cache.
             Reapply();
         }
@@ -183,7 +187,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply);
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply, ChildReading);
             Apply();
         }
 

@@ -88,6 +88,10 @@ namespace Velvet.Tests
             Settle();
         }
 
+        // The width Velvet wrote, which layout then rounds to the panel's device-pixel grid: a metric's product is
+        // almost never on it, so the layout width is no reading of the unit.
+        private float Written => Child.style.width.value.value;
+
         // A face metric of the font, in pixels at fontSize, as the text generator scales one.
         private float FacePixels(float metric, float fontSize) => metric * fontSize / _font.faceInfo.pointSize * _font.faceInfo.scale;
 
@@ -104,7 +108,8 @@ namespace Velvet.Tests
             // Assert
             var engineWidth = zeros.MeasureTextSize("0000000000", 0f, VisualElement.MeasureMode.Undefined, 0f,
                 VisualElement.MeasureMode.Undefined).x;
-            Assert.That(Child.layout.width, Is.EqualTo(engineWidth).Within(1f));
+            // The engine's width is the same quantity before it is rounded to a device pixel.
+            Assert.That(Written, Is.EqualTo(engineWidth).Within(1f / Child.panel.scaledPixelsPerPoint));
         }
 
         [Test]
@@ -114,7 +119,7 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[300px] h-[200px]", "w-[10ex] h-[10px]");
 
             // Assert
-            Assert.That(Child.layout.width, Is.EqualTo(10f * FacePixels(_font.faceInfo.meanLine, 20f)).Within(0.01f));
+            Assert.That(Written, Is.EqualTo(10f * FacePixels(_font.faceInfo.meanLine, 20f)).Within(1e-3f));
         }
 
         [Test]
@@ -124,7 +129,7 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[300px] h-[200px]", "w-[10cap] h-[10px]");
 
             // Assert
-            Assert.That(Child.layout.width, Is.EqualTo(10f * FacePixels(_font.faceInfo.capLine, 20f)).Within(0.01f));
+            Assert.That(Written, Is.EqualTo(10f * FacePixels(_font.faceInfo.capLine, 20f)).Within(1e-3f));
         }
 
         [Test]
@@ -164,7 +169,7 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[300px] h-[200px]", "w-[1lh] h-[10px]");
 
             // Assert
-            Assert.That(Child.layout.width, Is.EqualTo(FacePixels(_font.faceInfo.lineHeight, 20f)).Within(0.01f));
+            Assert.That(Written, Is.EqualTo(FacePixels(_font.faceInfo.lineHeight, 20f)).Within(1e-3f));
         }
 
         [Test]
@@ -189,7 +194,7 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[300px] h-[200px]", "w-[10rex] h-[10px]");
 
             // Assert
-            Assert.That(Child.layout.width, Is.EqualTo(10f * FacePixels(_font.faceInfo.meanLine, 16f)).Within(0.01f));
+            Assert.That(Written, Is.EqualTo(10f * FacePixels(_font.faceInfo.meanLine, 16f)).Within(1e-3f));
         }
 
         [Test]
@@ -199,7 +204,7 @@ namespace Velvet.Tests
             Mount("text-[20px] leading-[30px] w-[300px] h-[200px]", "w-[1rlh] h-[10px]");
 
             // Assert
-            Assert.That(Child.layout.width, Is.EqualTo(FacePixels(_font.faceInfo.lineHeight, 16f)).Within(0.01f));
+            Assert.That(Written, Is.EqualTo(FacePixels(_font.faceInfo.lineHeight, 16f)).Within(1e-3f));
         }
     }
 }

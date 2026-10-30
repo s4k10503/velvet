@@ -4508,6 +4508,9 @@ namespace Velvet
             value = style.Value;
             if (style.Expression == null)
             {
+                // A whole-pixel border width is snapped as a fractional one is: at a panel scale that is no whole
+                // number the browser takes the width down to the device-pixel grid.
+                value = IsBorderWidth(style.Property) ? StyleRelativeLengths.SnapAsBorderWidth(element, value) : value;
                 return true;
             }
             var measured = StyleRelativeLengths.TryMeasure(element, style.Expression, 0f, out value);

@@ -749,7 +749,13 @@ namespace Velvet
                 else if (lengthCount < 4 && StyleLengthExpression.TryParse(token.AsSpan(), out var expression)
                     && !expression!.ReadsPercentage)
                 {
-                    // A length the element measures; a blur takes none below zero, as the browser takes none.
+                    // A length the element measures; a blur takes none below zero: a literal below it rejects the shadow, as
+                    // the browser rejects it, and a math function coming below it is zero.
+                    if (lengthCount == 2 && !StyleLengthExpression.OpensMathFunction(token.AsSpan())
+                        && token.TrimStart()[0] == '-')
+                    {
+                        return false;
+                    }
                     (measured ??= new StyleLengthExpression?[4])[lengthCount] = lengthCount == 2 ? expression.AtLeast(0f) : expression;
                     lengthCount++;
                 }
