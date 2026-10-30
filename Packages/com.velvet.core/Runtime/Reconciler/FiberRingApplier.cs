@@ -2,8 +2,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The wrapper-less layer for ring-*/outline-* utilities: a native-border overlay hosted as a
-    // reconciler-invisible SIBLING of the ringed element (see RingOverlay for why a sibling rather than a
+    // The wrapper-less layer for ring-*/outline-* utilities: painted overlays hosted as
+    // reconciler-invisible SIBLINGs of the ringed element (see RingOverlay for why a sibling rather than a
     // wrapper around it or a paint inside it). Adding no wrapper is what lets a ring be attached and detached
     // from a variant re-sync — which runs outside a reconcile pass, where parent surgery on a real slot is
     // forbidden — so focus:ring-* renders instead of toggling an inert class.
@@ -20,7 +20,14 @@ namespace Velvet
         // overlay on the element's attach instead.
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
         {
-            if (!StyleRingClass.HasRingClass(classNames) || !StyleRingClass.TryExtract(classNames, out var spec))
+            if (!StyleRingClass.HasRingClass(classNames))
+            {
+                return;
+            }
+            // Before the extraction: an element naming only a colour draws nothing, and its descendants' -inherit
+            // reads what it names.
+            StyleRingClass.RecordOwnColours(element, classNames);
+            if (!StyleRingClass.TryExtract(classNames, out var spec))
             {
                 return;
             }
@@ -48,9 +55,17 @@ namespace Velvet
         {
             var bound = _ctx.RingBindings.TryGetValue(element, out var binding);
             // Fast path: no ring anywhere near this element.
-            if (!bound && !StyleRingClass.HasRingClass(classNames))
+            if (!StyleRingClass.HasRingClass(classNames))
             {
-                return;
+                BandColourInheritance.Forget(element);
+                if (!bound)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                StyleRingClass.RecordOwnColours(element, classNames);
             }
 
             var spec = default(RingSpec);

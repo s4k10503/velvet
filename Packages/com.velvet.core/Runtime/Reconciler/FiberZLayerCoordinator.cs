@@ -823,6 +823,7 @@ namespace Velvet
         private static readonly List<(VisualElement Element, int Order, int Declared, int Kind)> s_middle = new();
         private static readonly List<(VisualElement Host, VisualElement Follower)> s_followers = new();
         private static readonly List<(VisualElement Host, VisualElement Leader)> s_leaders = new();
+        private static readonly List<VisualElement> s_outlineNodes = new();
         private static readonly List<VisualElement> s_desired = new();
         private static readonly HashSet<VisualElement> s_placed = new();
         private static readonly Dictionary<VisualElement, int> s_rank = new();
@@ -1162,11 +1163,19 @@ namespace Velvet
         {
             s_followers.Clear();
             s_leaders.Clear();
+            s_outlineNodes.Clear();
             VisualElement? host = null;
             VisualElement? leader = null;
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
+                // An outline paints after everything its stacking context holds (OutlineHosting), so it follows no
+                // element and stays behind all of them.
+                if (child.ClassListContains(RingOverlay.OutlineMarkerClass))
+                {
+                    s_outlineNodes.Add(child);
+                    continue;
+                }
                 if (child.ClassListContains(RingOverlay.MarkerClass) || child.ClassListContains(FaceBorderOverlay.MarkerClass))
                 {
                     if (host != null)
@@ -1228,14 +1237,19 @@ namespace Velvet
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
-                if (s_placed.Add(child))
+                if (!s_outlineNodes.Contains(child) && s_placed.Add(child))
                 {
                     s_desired.Add(child);
                 }
             }
+            foreach (var node in s_outlineNodes)
+            {
+                s_desired.Add(node);
+            }
             s_placed.Clear();
             s_followers.Clear();
             s_leaders.Clear();
+            s_outlineNodes.Clear();
             s_back.Clear();
             s_front.Clear();
             s_middle.Clear();

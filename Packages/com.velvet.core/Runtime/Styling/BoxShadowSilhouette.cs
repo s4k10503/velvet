@@ -86,17 +86,53 @@ namespace Velvet
         // child's -inherit to take.
         private static readonly ConditionalWeakTable<VisualElement, DeclaredShadowColours> s_declaredColours = new();
 
-        // Records the colours classNames declares on element, or forgets them where it declares none.
+        // Records the colours classNames declares on element, or forgets them where it declares none, and repaints the
+        // descendants that inherit them when they changed: a child's own classes did not change, and none of it is
+        // otherwise told.
         internal static void RecordDeclaredColours(VisualElement element, string[]? classNames)
         {
+            var had = s_declaredColours.TryGetValue(element, out var before);
             if (classNames != null && StyleShadowClass.HasShadowClass(classNames))
             {
-                s_declaredColours.AddOrUpdate(element, StyleShadowClass.DeclaredColours(classNames));
+                var declared = StyleShadowClass.DeclaredColours(classNames);
+                s_declaredColours.AddOrUpdate(element, declared);
+                if (!had || !before!.SameAs(declared))
+                {
+                    RepaintInheritors(element);
+                }
             }
-            else if (s_declaredColours.TryGetValue(element, out _))
+            else if (had)
             {
                 s_declaredColours.Remove(element);
+                RepaintInheritors(element);
             }
+        }
+
+        // Every descendant painting a layer that takes its colour from its parent, through any number of inherits
+        // between.
+        private static void RepaintInheritors(VisualElement element)
+        {
+            for (var i = 0; i < element.hierarchy.childCount; i++)
+            {
+                var child = element.hierarchy[i];
+                if (s_byElement.TryGetValue(child, out var binding) && InheritsColour(binding.Layers))
+                {
+                    child.MarkDirtyRepaint();
+                }
+                RepaintInheritors(child);
+            }
+        }
+
+        private static bool InheritsColour(ShadowSpec[] layers)
+        {
+            foreach (var layer in layers)
+            {
+                if (layer.InheritFrom != ShadowColourFamily.None)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // The colour family takes on element through inherit: the parent's declared colour, the grandparent's where the

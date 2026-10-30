@@ -117,7 +117,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "ring-[length:5PX]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(5f));
+            Assert.That(ok ? spec.Ring.Width : float.NaN, Is.EqualTo(5f));
         }
 
         [Test]
@@ -127,7 +127,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "ring-2", "ring-[color:#ff0000]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(Color.red));
+            Assert.That(ok ? spec.Ring.Color : Color.clear, Is.EqualTo(Color.red));
         }
 
         [TestCase("outline-[length:2PX]", 2f)]
@@ -138,7 +138,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { utility }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(width));
+            Assert.That(ok ? spec.Outline.Width : float.NaN, Is.EqualTo(width));
         }
 
         [Test]
@@ -148,7 +148,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[length:5PX]" }, out var spec);
 
             // Assert
-            Assert.That(spec.Offset, Is.EqualTo(5f));
+            Assert.That(spec.Ring.Offset, Is.EqualTo(5f));
         }
 
         [Test]

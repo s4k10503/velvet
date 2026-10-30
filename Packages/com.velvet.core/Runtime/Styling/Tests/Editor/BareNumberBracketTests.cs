@@ -103,7 +103,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { utility }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(3f));
+            Assert.That(ok ? spec.Outline.Width : float.NaN, Is.EqualTo(3f));
         }
 
         [Test]
@@ -113,7 +113,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "outline", "outline-[2]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Width : float.NaN, Is.EqualTo(1f));
+            Assert.That(ok ? spec.Outline.Width : float.NaN, Is.EqualTo(1f));
         }
 
         [TestCase("border-[2]", 0f)]

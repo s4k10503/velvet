@@ -373,6 +373,14 @@ namespace Velvet
         SliceType,        // -unity-slice-type  (Value = the SliceType)
     }
 
+    // Where a colour reads its value from where a class names a keyword in place of one.
+    internal enum ColorReference : byte
+    {
+        None,
+        Current,
+        Inherit,
+    }
+
     // A parsed arbitrary-value result: the target Property plus its length payload
     // (Value + Unit) or its Expression, its Color, or (FilterCustom only) its Custom payload.
     internal readonly struct ArbitraryStyle

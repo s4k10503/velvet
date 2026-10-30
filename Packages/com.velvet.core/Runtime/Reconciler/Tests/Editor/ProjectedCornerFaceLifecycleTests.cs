@@ -66,8 +66,7 @@ namespace Velvet.Tests
                 .Count(callback => callback.Method.DeclaringType?.FullName?.Contains("ProjectedCornerFace") == true);
 
         // GREEN_ON_BASE(characterization): the base paints no face of its own on a moving Motion or on its ring.
-        // Dropping `ProjectedCornerFace.Forget` from MotionLayoutIdDriver.CancelForTeardown, or from RingOverlay.Detach,
-        // reddens this case.
+        // Dropping `ProjectedCornerFace.Forget` from MotionLayoutIdDriver.CancelForTeardown reddens this case.
         [Test]
         public void Given_ARingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItIsTornDown_Then_NeitherItNorItsBandKeepsAFaceCallback()
         {

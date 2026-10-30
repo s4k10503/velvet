@@ -150,7 +150,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "outline-2", "outline-[hsl(0_150%_75%)]" }, out var spec);
 
             // Assert
-            Assert.That(new[] { spec.Color.r, spec.Color.g, spec.Color.b }, Is.EqualTo(new[] { 1f, 0.5f, 0.5f }).Within(Tolerance));
+            Assert.That(new[] { spec.Outline.Color.r, spec.Outline.Color.g, spec.Outline.Color.b }, Is.EqualTo(new[] { 1f, 0.5f, 0.5f }).Within(Tolerance));
         }
 
         // GREEN_ON_BASE(characterization): the base already clamps a caret colour, a longhand, and the alpha-modifier
@@ -192,7 +192,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "ring-2", "ring-[hsl(0_150%_75%)]" }, out var spec);
 
             // Assert
-            Assert.That(new[] { spec.Color.r, spec.Color.g, spec.Color.b }, Is.EqualTo(new[] { 1f, 0.375f, 0.375f }).Within(Tolerance));
+            Assert.That(new[] { spec.Ring.Color.r, spec.Ring.Color.g, spec.Ring.Color.b }, Is.EqualTo(new[] { 1f, 0.375f, 0.375f }).Within(Tolerance));
         }
 
         // GREEN_ON_BASE(characterization): see the ring case above.

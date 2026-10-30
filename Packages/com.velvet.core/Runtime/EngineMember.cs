@@ -340,6 +340,13 @@ namespace Velvet
         internal static readonly EngineMember BorderBottomLeftRadiusPropertyId =
             Field(UIElements, StylePropertyIdType, "BorderBottomLeftRadius", StylePropertyIdShape);
 
+        // OutlineHosting: whether an element clips what it holds, and whether the panel's hierarchy changed.
+        internal static readonly EngineMember PanelHierarchyVersion =
+            ReadProperty(UIElements, "UnityEngine.UIElements.BaseVisualElementPanel", "hierarchyVersion", "System.UInt32");
+
+        internal static readonly EngineMember ElementShouldClip =
+            Method(UIElements, VisualElementType, "ShouldClip", "System.Boolean");
+
         // FiberLayoutReflow's layout computation ahead of a commit's layout reads.
         private const string UpdatePhaseType = "UnityEngine.UIElements.VisualTreeUpdatePhase";
         private const string UpdatePhaseShape = "enum:" + UpdatePhaseType;

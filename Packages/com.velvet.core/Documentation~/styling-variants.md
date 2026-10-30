@@ -314,37 +314,57 @@ up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` u
 `className="font-sans dark:font-mono"` swaps the family with the theme, and
 `className="focus:ring-2"` shows a ring while focused and none otherwise.
 
-**Where `ring-*` deviates from CSS.** UI Toolkit has neither `box-shadow` nor `outline`, so Velvet
-draws the band on its own element, positioned over the ringed element and hosted as a hidden sibling
-placed directly after it inside the same parent. The ringed element's own layout is untouched, and the
-band takes that element's own paint position, so overlapping `-space-x-*` avatars each carrying
-`ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
-bands on one parent is their elements' order rather than the order the bands happened to be attached —
-two `focus:ring-2` siblings render the same whichever was focused first. A `ring-inset` band is not a
-sibling: it is the element's own first child, stretched over its padding box, so it paints above the
-element's background and under its children, as an inset box-shadow does. The reconciler and the child
-variants skip it as they skip Velvet's other internal children.
+**How `ring-*` and `outline-*` are drawn.** UI Toolkit has neither `box-shadow` nor `outline`, so Velvet paints each
+band itself, as CSS shapes it: a rounded rect with a rounded hole. The ring is Tailwind's box-shadow and the outline is
+`outline`, which the browser draws together, so each has its own width, colour and offset: `ring-4 outline-2` is a 4px
+ring and a 2px outline, and `outline-offset-*` never moves a ring. `ring-offset-<n>` is the fill Tailwind lists over the
+ring in `--tw-ring-offset-color` (white unless `ring-offset-<colour>` names another), and the ring's spread is its width
+plus the offset. Every box-shadow Tailwind writes lists that fill, so a `shadow-*`, an `inset-ring` or an
+`inset-shadow-*` beside a `ring-offset-*` draws it as well, and a `ring-offset-*` alone draws nothing.
+
+A band takes the corner shape CSS gives it. A box-shadow's spread grows a corner radius by CSS Backgrounds 3's formula, so
+the ring of a square element is square and the ring of a rounded one grows by the spread; an outline's corner grows by its
+offset and width where the element is rounded and stays square where it is not; the ring's hole keeps the element's own
+radii.
+
+The ring is painted on an overlay hosted as a hidden sibling placed directly after the ringed element inside the same
+parent. The ringed element's own layout is untouched, and the band takes that element's own paint position, so overlapping
+`-space-x-*` avatars each carrying `ring-2 ring-white` occlude the previous one's band as they do on the web, and the
+order among several bands on one parent is their elements' order rather than the order the bands happened to be attached —
+two `focus:ring-2` siblings render the same whichever was focused first. A `ring-inset` band is not a sibling: it is the
+element's own first child, stretched over its padding box, so it paints above the element's background and under its
+children, as an inset box-shadow does, with the padding box's corners (each corner's radius less the border beside it on
+each axis). The reconciler and the child variants skip it as they skip Velvet's other internal children.
+
+An outline paints after all the content of its stacking context, over a later sibling's face, and is clipped by its own
+ancestors' overflow only. Its overlay is therefore a trailing child of the stacking context's root — the nearest ancestor
+that composites (an opacity below 1, a filter), transforms, is `hidden`, or is relocated by a `z-*` — and each ancestor
+between that clips is stood in for by a clip proxy over its padding box, carrying the shape of a `clip-path-*` wrapper.
+Outlines that share a root are kept in their elements' tree order. The placement reads the panel's hierarchy version and
+the element's own ancestors, so a style change elsewhere in the panel costs an outline nothing.
 
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`
 (1px), `outline-<n>` and `outline-[…]`. `<n>` is any whole number of pixels written without a leading zero (`ring-3`),
 as it is in `ring-offset-<n>` and `outline-offset-<n>`. `-outline-offset-<n>`, `-outline-offset-[…]` and a negative
-`outline-offset-[…]` draw the outline that far inside the element's edge. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
-colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
-family names no colour, or names `ring-current` / `outline-current`, is drawn in the element's text colour and
-follows it as it changes. Velvet still
-draws one band where CSS draws a ring and an outline together.
+`outline-offset-[…]` draw the outline that far inside the element's edge. `ring-none` is no Tailwind utility and cancels
+nothing. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
+colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A colour takes an opacity
+modifier in the forms Tailwind generates (`/50`, `/2.25`, `/[0.33]`, `/[33.3%]`); one outside 0–100% leaves an outline at
+the text colour and discards the box-shadow a ring belongs to. A band whose family names no colour, or names
+`ring-current` / `outline-current`, is drawn in the element's text colour and follows it as it changes;
+`ring-inherit`, `ring-offset-inherit` and `outline-inherit` take the parent's value of the same property.
 
-What the ringed element's own subtree would carry reaches the band as well. Its transform —
+What the ringed element's own subtree would carry reaches the bands as well. Its transform —
 `translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,
-a `layoutId` play — its opacity, its `invisible` / `visible` and its `hidden` are copied onto the band
-at layout and once per frame, and an ancestor's carry element and band together. A ring on a
+a `layoutId` play — its opacity, its `invisible` / `visible` and its `hidden` are copied onto the overlays
+at layout and once per frame, and an ancestor's carry element and bands together. A ring on a
 `V.Motion` renders like one on a `Div`.
 
-A ring inside a `V.AnimatePresence` fades with its element's enter and exit: the band is the one paint
-the scheduler samples the caster's opacity for each frame, because it is the only one hosted outside
+A ring inside a `V.AnimatePresence` fades with its element's enter and exit: the overlays are the one paint
+the scheduler samples the caster's opacity for each frame, because they are the only ones hosted outside
 the element the renderer applies that opacity to.
 
-An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
+An ancestor's `overflow-hidden` clips the ring and the outline, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
 
 `skew-<n>`, `-skew-<n>` and `skew-[…]` shear both axes by one angle. They compose with `skew-x-*` and

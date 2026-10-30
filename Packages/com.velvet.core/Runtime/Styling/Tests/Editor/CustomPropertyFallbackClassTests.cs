@@ -16,7 +16,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "ring", "ring-red-500", "ring-current" }, out var spec);
 
             // Assert
-            Assert.That(spec.CurrentColor, Is.True);
+            Assert.That(spec.Ring.CurrentColor, Is.True);
         }
 
         [Test]

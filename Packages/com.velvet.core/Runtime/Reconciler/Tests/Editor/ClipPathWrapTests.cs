@@ -523,17 +523,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_Ring2_When_Reconciled_Then_OverlayCarriesTheRingWidth()
+        public void Given_Ring2_When_Reconciled_Then_TheBindingCarriesTheRingWidth()
         {
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(RingOverlayIn(scope.Root).style.borderTopWidth.value, Is.EqualTo(2f));
+            Assert.That(scope.Reconciler.Context.RingBindings[scope.Root.Q<VisualElement>("card")].Spec.Ring.Width,
+                Is.EqualTo(2f));
         }
 
         [Test]
-        public void Given_BareRing_When_Reconciled_Then_OverlayCarriesTheOnePixelDefaultWidth()
+        public void Given_BareRing_When_Reconciled_Then_TheBindingCarriesTheOnePixelDefaultWidth()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -542,18 +543,20 @@ namespace Velvet.Tests
             Mount(scope, new VNode[] { V.Div(className: "ring", name: "card") });
 
             // Assert
-            Assert.That(RingOverlayIn(scope.Root).style.borderTopWidth.value, Is.EqualTo(1f));
+            Assert.That(scope.Reconciler.Context.RingBindings[scope.Root.Q<VisualElement>("card")].Spec.Ring.Width,
+                Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_RingWithColor_When_Reconciled_Then_OverlayUsesThatColor()
+        public void Given_RingWithColor_When_Reconciled_Then_TheRingIsPaintedInThatColor()
         {
             using var scope = new ReconcilerScope();
             VelvetPalette.TryResolveColorToken("red-500", out var red);
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2 ring-red-500", name: "card") });
 
-            Assert.That(RingOverlayIn(scope.Root).style.borderRightColor.value, Is.EqualTo(red));
+            Assert.That(scope.Reconciler.Context.RingBindings[scope.Root.Q<VisualElement>("card")].RingTint,
+                Is.EqualTo(red));
         }
 
         [Test]
