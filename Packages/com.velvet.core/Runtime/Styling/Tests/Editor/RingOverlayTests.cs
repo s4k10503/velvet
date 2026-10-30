@@ -539,6 +539,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOutlineHostedAtAMountContainerBelowAnotherElement_When_PlacedOnAnIdleTick_Then_NothingIsReHosted()
+        {
+            // Arrange — the container is not a child of the panel's root, which the idle check once required.
+            var top = new VisualElement { name = "top" };
+            var container = new VisualElement { name = "container" };
+            top.Add(container);
+            _window.rootVisualElement.Add(top);
+            _mounted = V.Mount(container, V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"));
+            ForcePanelUpdate(container.panel);
+            ForcePanelUpdate(container.panel);
+            var card = container.Q<VisualElement>("a");
+            var binding = RingOverlay.TryGet(card);
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(place);
+
+            // Assert — a re-host allocates; the canary is the instrument's own control.
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 ? blocks : -1, Is.Zero);
+        }
+
+        [Test]
         public void Given_AnOutlineInsideAZStackedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
         {
             // Arrange — a z-index other than auto makes a stacking context of what the element holds.

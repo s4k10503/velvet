@@ -1612,9 +1612,9 @@ namespace Velvet
         private static bool IsBorderColor(ArbitraryProperty property)
             => property != ArbitraryProperty.TextColor && property != ArbitraryProperty.BackgroundColor;
 
-        // Whether element's border colour at property is currentcolor: named so by its winning layer (or, through an
-        // inherit, its parent's), or left at CSS's initial value where nothing sets one. alpha is the modifier of the
-        // currentcolor layer it comes from.
+        // Whether element's border colour at property is named currentcolor by its winning layer (or, through an
+        // inherit, its parent's). alpha is the modifier of the currentcolor layer it comes from. Anything else is a
+        // colour the parent paints, which an inherit reads off its resolved style.
         private static bool BorderKeepsCurrentColor(VisualElement element, ArbitraryProperty property, out float alpha)
         {
             alpha = 1f;
@@ -1624,20 +1624,12 @@ namespace Velvet
                 if (own.Reference == ColorReference.Inherit)
                 {
                     var up = ClipPathLayoutBox.Of(element).hierarchy.parent;
-                    return up == null || BorderKeepsCurrentColor(up, property, out alpha);
+                    return up != null && BorderKeepsCurrentColor(up, property, out alpha);
                 }
                 alpha = own.Reference == ColorReference.Current ? own.Color.a : 1f;
                 return own.Reference == ColorReference.Current;
             }
-            var colours = StyleArbitraryLonghands.Of(ArbitraryProperty.BorderColor);
-            foreach (var cls in element.GetClasses())
-            {
-                if (StyleUtilityProperties.TryGet(cls, out var rule) && rule.Properties.Overlaps(colours))
-                {
-                    return false;
-                }
-            }
-            return true;
+            return false;
         }
 
         // Float-valued counterpart to PropertySetters. Border widths are

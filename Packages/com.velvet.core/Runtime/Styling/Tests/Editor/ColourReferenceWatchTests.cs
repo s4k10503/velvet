@@ -209,6 +209,133 @@ namespace Velvet.Tests
             Assert.That(child.style.backgroundColor.value, Is.EqualTo(Color.blue));
         }
 
+        private VNode TwoInheritors(string parentClass, bool second = true)
+            => V.Div(name: "parent", className: parentClass, children: second
+                ? new VNode[]
+                {
+                    V.Div(name: "c1", className: "w-[40px] h-[40px] bg-inherit", key: "c1"),
+                    V.Div(name: "c2", className: "w-[40px] h-[40px] bg-inherit", key: "c2"),
+                }
+                : new VNode[] { V.Div(name: "c1", className: "w-[40px] h-[40px] bg-inherit", key: "c1") });
+
+        [Test]
+        public void Given_TwoInheritorsOfOneParent_When_TheParentsBackgroundChanges_Then_TheFirstFollowsIt()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+
+            parent.style.backgroundColor = Color.blue;
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_TwoInheritorsOfOneParent_When_TheParentsBackgroundChanges_Then_TheSecondFollowsIt()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+
+            parent.style.backgroundColor = Color.blue;
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c2").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_TwoInheritorsOfOneParent_When_OneUnmounts_Then_TheOtherStillFollowsTheParent()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            _mounted.Render(TwoInheritors("bg-[#ff0000]", second: false));
+            ForcePanelUpdate(parent.panel);
+
+            parent.style.backgroundColor = Color.blue;
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_AWatchedElementThatIsAlsoAParentOfAnInheritor_When_ItsTextColourChanges_Then_ItsOwnBorderFollows()
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "box", className: "w-[40px] h-[40px] border-2 border-current text-[#ff0000]", children: new VNode[]
+                {
+                    V.Div(name: "g", className: "w-[10px] h-[10px] bg-inherit"),
+                }));
+            var box = _window.rootVisualElement.Q<VisualElement>("box");
+            ForcePanelUpdate(box.panel);
+
+            box.style.color = Color.blue;
+            ForcePanelUpdate(box.panel);
+
+            Assert.That(box.style.borderTopColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ADescendantsTransition_When_ItRuns_Then_TheWatchDoesNotSample()
+        {
+            // Transition events bubble, so one under the parent is heard there; only the parent's own counts.
+            var tree = Tree();
+            var sibling = new VisualElement();
+            tree.Parent.Add(sibling);
+            var watch = new ColorReferenceWatch(tree.Watched, _ => { });
+            ForcePanelUpdate(tree.Watched.panel);
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tree.Watched.panel, () => now);
+            sibling.style.backgroundColor = Color.red;
+            sibling.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { new("background-color") };
+            sibling.style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(2f, TimeUnit.Second) };
+            ForcePanelUpdate(sibling.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(sibling.panel);
+            sibling.style.backgroundColor = Color.blue;
+            ForcePanelUpdate(sibling.panel);
+            now += 0.5;
+            EditorPanelTestHelpers.DriveAnimationsOnce(sibling.panel);
+
+            var sampling = watch.Sampling;
+            watch.Stop();
+
+            Assert.That(sampling, Is.False);
+        }
+
+        private VisualElement MountBorderInheritor(string parentClass)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", className: parentClass, children: new VNode[]
+                {
+                    V.Div(name: "child", className: "w-[40px] h-[40px] border-2 border-inherit text-[#00ff00]"),
+                }));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            return parent;
+        }
+
+        [Test]
+        public void Given_BorderInherit_When_TheParentsBorderColourIsInline_Then_TheChildTakesThatColour()
+        {
+            var parent = MountBorderInheritor("w-[80px] h-[80px] border-2");
+
+            parent.style.borderTopColor = Color.red;
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_BorderInherit_When_TheParentNamesNoBorderColour_Then_TheChildTakesWhatTheParentPaints()
+        {
+            // The child's own text colour is green; what the parent paints is not.
+            var parent = MountBorderInheritor("w-[80px] h-[80px] border-2");
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value,
+                Is.EqualTo(parent.resolvedStyle.borderTopColor));
+        }
+
         [Test]
         public void Given_TextInherit_When_Mounted_Then_TheChildTakesTheParentsTextColour()
         {

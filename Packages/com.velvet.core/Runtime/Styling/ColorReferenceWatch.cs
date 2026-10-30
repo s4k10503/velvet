@@ -9,10 +9,11 @@ namespace Velvet
     // changed, on the style-resolved events of the two elements the sources live on: the element, whose text colour
     // currentcolor reads and which inherits it from its own parent, and the element it is laid out in, whose
     // text, background and border colours inherit reads. Nothing runs between those events, so an element
-    // elsewhere in the panel costs this one nothing.
+    // elsewhere in the panel costs this one nothing. An element's events reach every watch that reads it through one
+    // Hub, because UI Toolkit keeps a single entry for a callback however many arguments it is registered with.
     //
     // A colour that transitions raises no style pass after the first, so while a transition runs on the watched parent
-    // the watch is also read on a scheduler tick, and once more when the transition ends or is cancelled.
+    // itself the watch is also read on a scheduler tick, and once more when the transition ends or is cancelled.
     //
     // UI Toolkit sends CustomStyleResolvedEvent only to an element holding a custom property, and custom properties
     // do not inherit, so each watched element carries MarkerClass, whose rule in _preflight.uss declares one, as
@@ -41,6 +42,101 @@ namespace Velvet
             }
         }
 
+        // The watches reading one element, which hears the events for all of them once.
+        private sealed class Hub
+        {
+            public readonly VisualElement Element;
+            // Every watch that reads Element, its own and its children's, for the style-resolved event.
+            public readonly System.Collections.Generic.List<ColorReferenceWatch> Readers = new();
+            // The child watches, which read Element's transitions.
+            public readonly System.Collections.Generic.List<ColorReferenceWatch> Children = new();
+
+            public Hub(VisualElement element) => Element = element;
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, Hub> s_hubs = new();
+
+        private static readonly EventCallback<CustomStyleResolvedEvent, Hub> s_onResolved = (evt, hub) =>
+        {
+            for (var i = hub.Readers.Count - 1; i >= 0; i--)
+            {
+                if (i < hub.Readers.Count)
+                {
+                    hub.Readers[i].Tick();
+                }
+            }
+        };
+
+        private static readonly EventCallback<TransitionRunEvent, Hub> s_onTransitionRun = (evt, hub) =>
+        {
+            if (evt.target != hub.Element)
+            {
+                return;
+            }
+            for (var i = hub.Children.Count - 1; i >= 0; i--)
+            {
+                if (i < hub.Children.Count)
+                {
+                    hub.Children[i].TransitionRun();
+                }
+            }
+        };
+
+        private static readonly EventCallback<TransitionEndEvent, Hub> s_onTransitionEnd = (evt, hub) => EndTransition(evt, hub);
+
+        private static readonly EventCallback<TransitionCancelEvent, Hub> s_onTransitionCancel = (evt, hub) => EndTransition(evt, hub);
+
+        private static void EndTransition(EventBase evt, Hub hub)
+        {
+            if (evt.target != hub.Element)
+            {
+                return;
+            }
+            for (var i = hub.Children.Count - 1; i >= 0; i--)
+            {
+                if (i < hub.Children.Count)
+                {
+                    hub.Children[i].TransitionEnd();
+                }
+            }
+        }
+
+        private static void Subscribe(VisualElement element, ColorReferenceWatch watch, bool child)
+        {
+            var hub = s_hubs.GetValue(element, static e => new Hub(e));
+            if (hub.Readers.Count == 0)
+            {
+                element.RegisterCallback(s_onResolved, hub);
+                element.RegisterCallback(s_onTransitionRun, hub);
+                element.RegisterCallback(s_onTransitionEnd, hub);
+                element.RegisterCallback(s_onTransitionCancel, hub);
+            }
+            hub.Readers.Add(watch);
+            if (child)
+            {
+                hub.Children.Add(watch);
+            }
+        }
+
+        private static void Unsubscribe(VisualElement element, ColorReferenceWatch watch, bool child)
+        {
+            if (!s_hubs.TryGetValue(element, out var hub) || !hub.Readers.Remove(watch))
+            {
+                return;
+            }
+            if (child)
+            {
+                hub.Children.Remove(watch);
+            }
+            if (hub.Readers.Count == 0)
+            {
+                element.UnregisterCallback(s_onResolved);
+                element.UnregisterCallback(s_onTransitionRun);
+                element.UnregisterCallback(s_onTransitionEnd);
+                element.UnregisterCallback(s_onTransitionCancel);
+            }
+        }
+
         private readonly VisualElement _element;
         private readonly Action<VisualElement> _reresolve;
         private readonly Color[] _last = new Color[7];
@@ -55,26 +151,27 @@ namespace Velvet
             _element = element;
             _reresolve = reresolve;
             Mark(element);
-            element.RegisterCallback<CustomStyleResolvedEvent, ColorReferenceWatch>(OnResolved, this);
+            Subscribe(element, this, child: false);
             element.RegisterCallback<AttachToPanelEvent, ColorReferenceWatch>(OnAttached, this);
             WatchParent();
         }
 
-        private static void OnResolved(CustomStyleResolvedEvent evt, ColorReferenceWatch self) => self.Tick();
+        // Whether a transition on the watched parent has the watch reading on a tick.
+        internal bool Sampling => _sampler != null;
 
-        private static void OnTransitionRun(TransitionRunEvent evt, ColorReferenceWatch self)
+        private void TransitionRun()
         {
-            self._transitions++;
-            self._sampler ??= self._element.schedule.Execute(self.Tick).Every(StyleAnimateDriver.TickMs);
+            _transitions++;
+            _sampler ??= _element.schedule.Execute(Tick).Every(StyleAnimateDriver.TickMs);
         }
 
-        private static void OnTransitionEnd(EventBase evt, ColorReferenceWatch self)
+        private void TransitionEnd()
         {
-            self._transitions = Math.Max(0, self._transitions - 1);
-            self.Tick();
-            if (self._transitions == 0)
+            _transitions = Math.Max(0, _transitions - 1);
+            Tick();
+            if (_transitions == 0)
             {
-                self.StopSampling();
+                StopSampling();
             }
         }
 
@@ -112,10 +209,7 @@ namespace Velvet
             if (parent != null)
             {
                 Mark(parent);
-                parent.RegisterCallback<CustomStyleResolvedEvent, ColorReferenceWatch>(OnResolved, this);
-                parent.RegisterCallback<TransitionRunEvent, ColorReferenceWatch>(OnTransitionRun, this);
-                parent.RegisterCallback<TransitionEndEvent, ColorReferenceWatch>(OnTransitionEnd, this);
-                parent.RegisterCallback<TransitionCancelEvent, ColorReferenceWatch>(OnTransitionEnd, this);
+                Subscribe(parent, this, child: true);
             }
         }
 
@@ -149,10 +243,11 @@ namespace Velvet
         public void Stop()
         {
             _stopped = true;
-            _element.UnregisterCallback<CustomStyleResolvedEvent, ColorReferenceWatch>(OnResolved);
+            Unsubscribe(_element, this, child: false);
             _element.UnregisterCallback<AttachToPanelEvent, ColorReferenceWatch>(OnAttached);
             Unmark(_element);
             ReleaseParent();
+            StopSampling();
         }
 
         private void ReleaseParent()
@@ -161,10 +256,7 @@ namespace Velvet
             {
                 return;
             }
-            _watchedParent.UnregisterCallback<CustomStyleResolvedEvent, ColorReferenceWatch>(OnResolved);
-            _watchedParent.UnregisterCallback<TransitionRunEvent, ColorReferenceWatch>(OnTransitionRun);
-            _watchedParent.UnregisterCallback<TransitionEndEvent, ColorReferenceWatch>(OnTransitionEnd);
-            _watchedParent.UnregisterCallback<TransitionCancelEvent, ColorReferenceWatch>(OnTransitionEnd);
+            Unsubscribe(_watchedParent, this, child: true);
             _transitions = 0;
             StopSampling();
             Unmark(_watchedParent);

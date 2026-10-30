@@ -87,7 +87,8 @@ namespace Velvet
             if (host == null || binding.Spec.Outline.Width <= 0f || element.panel is not { } panel
                 || (mountRoot != null && host != mountRoot && !mountRoot.Contains(host))
                 || HierarchyVersionOf(panel)?.Invoke() is not { } version || version != binding.OutlineVersion
-                || !(host.parent == null || host.parent == panel.visualTree || IsStackingRoot(host, binding.Context)))
+                || !(host.parent == null || host.parent == panel.visualTree || host == mountRoot
+                    || IsStackingRoot(host, binding.Context)))
             {
                 return false;
             }
