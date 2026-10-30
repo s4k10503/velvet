@@ -27,8 +27,7 @@ namespace Velvet.Tests
             float.NaN, float.NaN, new Color(float.NaN, float.NaN, float.NaN, float.NaN), currentColor: false);
 
         private static readonly RingSpec NoRing = new(
-            hasRing: false, NoBand, hasOffsetFill: false, new Color(float.NaN, float.NaN, float.NaN, float.NaN),
-            ColorReference.None, inset: false, NoBand);
+            hasRing: false, NoBand, fill: new RingOffsetFill(false, new Color(float.NaN, float.NaN, float.NaN, float.NaN), ColorReference.None), inset: false, NoBand);
 
         private static RingSpec Extract(params string[] classNames)
             => StyleRingClass.TryExtract(classNames, out var spec) ? spec : NoRing;

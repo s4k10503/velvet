@@ -4456,6 +4456,27 @@ namespace Velvet
             return fn;
         }
 
+        // Writes a colour result, or the colour it reads off a live source, and tells the watches reading the element.
+        private static void WriteColor(VisualElement element, in ArbitraryStyle style, Action<IStyle, StyleColor>[] setters)
+        {
+            if (style.Reference != ColorReference.None)
+            {
+                WriteReferencedColor(element, style, setters);
+            }
+            else
+            {
+                var color = style.Keyword == StyleKeyword.Undefined
+                    ? new StyleColor(style.Color)
+                    : new StyleColor(style.Keyword);
+                var cs = element.style;
+                foreach (var setter in setters)
+                {
+                    setter(cs, color);
+                }
+            }
+            ColorReferenceWatch.NotifyWritten(element);
+        }
+
         // Writes a single ArbitraryStyle to the element's inline style (no layering), fanning a shorthand out to
         // every slot it owns (padding → four edges, border-color → four sides, size → width + height). A value
         // that places or sizes a clipped element goes to its clip wrapper instead (ClipPathLayoutBox.StyleFor).
@@ -4506,21 +4527,7 @@ namespace Velvet
 
             if (ColorSetters.TryGetValue(style.Property, out var colorSetters))
             {
-                if (style.Reference != ColorReference.None)
-                {
-                    WriteReferencedColor(element, style, colorSetters);
-                    ColorReferenceWatch.NotifyWritten(element);
-                    return;
-                }
-                var color = style.Keyword == StyleKeyword.Undefined
-                    ? new StyleColor(style.Color)
-                    : new StyleColor(style.Keyword);
-                var cs = element.style;
-                foreach (var setter in colorSetters)
-                {
-                    setter(cs, color);
-                }
-                ColorReferenceWatch.NotifyWritten(element);
+                WriteColor(element, style, colorSetters);
                 return;
             }
 

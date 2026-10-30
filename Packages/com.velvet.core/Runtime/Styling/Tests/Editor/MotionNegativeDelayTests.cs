@@ -374,8 +374,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var element = MountOnRealPanel();
-            var binding = RingOverlay.Attach(element, new RingSpec(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false), hasOffsetFill: false, Color.white,
-                    ColorReference.None, inset: false, outline: default), Array.Empty<string>());
+            var binding = RingOverlay.Attach(element, new RingSpec(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false), fill: default, inset: false, outline: default), Array.Empty<string>());
             binding.Overlay.style.opacity = 0.77f;
             var scheduler = _scheduler = new StyleAnimationScheduler();
             var config = new StyleTransitionConfig { Type = type, DurationSec = 0.3f, DelaySec = -30f };

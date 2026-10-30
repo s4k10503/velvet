@@ -330,7 +330,7 @@ namespace Velvet.Tests
             // Arrange
             var element = OnPanel("ringed");
             var band = RingOverlay.Attach(element, new RingSpec(hasRing: true, new RingBand(2f, 0f, UnityEngine.Color.red, currentColor: false),
-                hasOffsetFill: false, UnityEngine.Color.white, ColorReference.None, inset: false, outline: default), Array.Empty<string>()).Overlay;
+                fill: default, inset: false, outline: default), Array.Empty<string>()).Overlay;
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(delaySec: 0.2f),
                 playback: new MotionPlayback());
             Ticks(11);
@@ -1007,7 +1007,7 @@ namespace Velvet.Tests
             // Arrange
             var element = OnPanel("ringed");
             var band = RingOverlay.Attach(element, new RingSpec(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false),
-                hasOffsetFill: false, Color.white, ColorReference.None, inset: false, outline: default), Array.Empty<string>()).Overlay;
+                fill: default, inset: false, outline: default), Array.Empty<string>()).Overlay;
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(5);
@@ -1110,7 +1110,7 @@ namespace Velvet.Tests
             // Arrange
             var element = OnPanel("ringed");
             var band = RingOverlay.Attach(element, new RingSpec(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false),
-                hasOffsetFill: false, Color.white, ColorReference.None, inset: false, outline: default), Array.Empty<string>()).Overlay;
+                fill: default, inset: false, outline: default), Array.Empty<string>()).Overlay;
             var playback = new MotionPlayback();
             _scheduler.PlayVariantEnter(element, s_hidden, s_visible, Linear(), playback: playback);
             Ticks(5);

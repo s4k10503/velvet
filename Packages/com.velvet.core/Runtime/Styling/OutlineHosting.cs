@@ -83,43 +83,61 @@ namespace Velvet
         private static bool Unchanged(VisualElement element, RingBinding binding)
         {
             var host = binding.OutlineHost;
+            return host != null && HostStands(element, binding, host) && PathStands(element, binding, host);
+        }
+
+        // Whether the host still is one: in the panel and the tree's mount container, under the hierarchy the placement
+        // read, and either the top of its tree or a stacking root.
+        private static bool HostStands(VisualElement element, RingBinding binding, VisualElement host)
+        {
             var mountRoot = MountRootOf(element, binding);
-            if (host == null || binding.Spec.Outline.Width <= 0f || element.panel is not { } panel
+            if (binding.Spec.Outline.Width <= 0f || element.panel is not { } panel
                 || (mountRoot != null && host != mountRoot && !mountRoot.Contains(host))
-                || HierarchyVersionOf(panel)?.Invoke() is not { } version || version != binding.OutlineVersion
-                || !(host.parent == null || host.parent == panel.visualTree || host == mountRoot
-                    || IsStackingRoot(host, binding.Context)))
+                || HierarchyVersionOf(panel)?.Invoke() is not { } version || version != binding.OutlineVersion)
             {
                 return false;
             }
+            return host.parent == null || host.parent == panel.visualTree || host == mountRoot
+                || IsStackingRoot(host, binding.Context);
+        }
+
+        // Whether the ancestors between the element and its host are the ones the placement read: no new stacking root,
+        // the same clipping ancestors with the same boxes, and the element where it was.
+        private static bool PathStands(VisualElement element, RingBinding binding, VisualElement host)
+        {
             var clip = binding.OutlineClipOwners.Count - 1;
             var (x, y) = (0f, 0f);
             for (var a = element; a != host; a = a.parent)
             {
-                if (a == null)
+                if (a == null || (a != element && !AncestorStands(a, binding, ref clip)))
                 {
                     return false;
-                }
-                if (a != element)
-                {
-                    if (IsStackingRoot(a, binding.Context))
-                    {
-                        return false;
-                    }
-                    if (Clips(a))
-                    {
-                        if (clip < 0 || binding.OutlineClipOwners[clip] != a || binding.OutlineClipBoxes[clip] != ClipBoxOf(a))
-                        {
-                            return false;
-                        }
-                        clip--;
-                    }
                 }
                 x += a.layout.x;
                 y += a.layout.y;
             }
             return clip < 0 && new Vector2(x, y) == binding.OutlineOffset && HostBorderOf(host) == binding.OutlineHostBorder
                 && new Vector2(binding.Width, binding.Height) == binding.OutlineSize;
+        }
+
+        // An ancestor of the element below its host stands where it is no stacking root and, if it clips, is the next
+        // clip the placement read, with the box it copied.
+        private static bool AncestorStands(VisualElement a, RingBinding binding, ref int clip)
+        {
+            if (IsStackingRoot(a, binding.Context))
+            {
+                return false;
+            }
+            if (!Clips(a))
+            {
+                return true;
+            }
+            if (clip < 0 || binding.OutlineClipOwners[clip] != a || binding.OutlineClipBoxes[clip] != ClipBoxOf(a))
+            {
+                return false;
+            }
+            clip--;
+            return true;
         }
 
         private static ClipBox ClipBoxOf(VisualElement c)

@@ -30,6 +30,23 @@ namespace Velvet
         }
     }
 
+    // --tw-ring-offset-shadow: a Ring.Offset-wide spread in Color painted over the ring. Every box-shadow Tailwind
+    // writes lists it, so a shadow-* or an inset-ring draws it as well.
+    internal readonly struct RingOffsetFill
+    {
+        public readonly bool Declared;
+        public readonly Color Color;
+        // ring-offset-current and ring-offset-inherit; None where Color is the fill's colour.
+        public readonly ColorReference Source;
+
+        public RingOffsetFill(bool declared, Color color, ColorReference source)
+        {
+            Declared = declared;
+            Color = color;
+            Source = source;
+        }
+    }
+
     // What the ring-* and outline-* utilities draw on one element. The ring is Tailwind's box-shadow and the outline
     // is outline, which the browser draws together, so each is its own band with its own width, colour and offset.
     internal readonly struct RingSpec
@@ -38,28 +55,26 @@ namespace Velvet
         // adds to the ring's spread: the ring shadow covers Offset + Width under the offset fill.
         public readonly bool HasRing;
         public readonly RingBand Ring;
-        // --tw-ring-offset-shadow, a Ring.Offset-wide spread in OffsetColor painted over the ring. Every box-shadow
-        // Tailwind writes lists it, so a shadow-* or an inset-ring draws it as well.
-        public readonly bool HasOffsetFill;
-        public readonly Color OffsetColor;
-        // ring-offset-current and ring-offset-inherit; None where OffsetColor is the fill's colour.
-        public readonly ColorReference OffsetSource;
+        public readonly RingOffsetFill Fill;
         // ring-inset: the ring and its offset fill are drawn inside the element edge rather than outset around it.
         public readonly bool Inset;
         // Width 0 is no outline.
         public readonly RingBand Outline;
 
-        public RingSpec(bool hasRing, RingBand ring, bool hasOffsetFill, Color offsetColor, ColorReference offsetSource,
-            bool inset, RingBand outline)
+        public RingSpec(bool hasRing, RingBand ring, RingOffsetFill fill, bool inset, RingBand outline)
         {
             HasRing = hasRing;
             Ring = ring;
-            HasOffsetFill = hasOffsetFill;
-            OffsetColor = offsetColor;
-            OffsetSource = offsetSource;
+            Fill = fill;
             Inset = inset;
             Outline = outline;
         }
+
+        public bool HasOffsetFill => Fill.Declared;
+
+        public Color OffsetColor => Fill.Color;
+
+        public ColorReference OffsetSource => Fill.Source;
 
         // The spread the ring's own box-shadow covers, and the offset fill's.
         public float RingSpread => HasRing ? Ring.Offset + Ring.Width : 0f;
@@ -186,10 +201,11 @@ namespace Velvet
             spec = new RingSpec(
                 slots.RingDeclared,
                 ring,
-                // Every box-shadow Tailwind writes lists var(--tw-ring-offset-shadow).
-                boxShadow.Declared && !boxShadow.Discards,
-                slots.RingOffsetColorSet ? slots.RingOffsetColor : DefaultRingOffsetColor,
-                slots.RingOffsetColorSet ? ColorReference.None : slots.RingOffsetColorRef,
+                new RingOffsetFill(
+                    // Every box-shadow Tailwind writes lists var(--tw-ring-offset-shadow).
+                    boxShadow.Declared && !boxShadow.Discards,
+                    slots.RingOffsetColorSet ? slots.RingOffsetColor : DefaultRingOffsetColor,
+                    slots.RingOffsetColorSet ? ColorReference.None : slots.RingOffsetColorRef),
                 slots.Inset,
                 outline);
             if (spec.RingSpread > 0f || spec.OffsetSpread > 0f || outline.Width > 0f)

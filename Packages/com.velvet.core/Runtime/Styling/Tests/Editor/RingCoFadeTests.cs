@@ -29,8 +29,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class RingCoFadeTests
     {
-        private static readonly RingSpec Spec = new(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false), hasOffsetFill: false, Color.white,
-                ColorReference.None, inset: false, outline: default);
+        private static readonly RingSpec Spec = new(hasRing: true, new RingBand(2f, 0f, Color.red, currentColor: false), fill: default, inset: false, outline: default);
 
         private EditorPanelSimulator _sim;
         private StyleAnimationScheduler _scheduler;
