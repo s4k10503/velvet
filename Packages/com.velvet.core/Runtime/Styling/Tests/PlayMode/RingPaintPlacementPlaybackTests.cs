@@ -177,6 +177,31 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AChildPokingAboveAClip_When_Rendered_Then_TheClipCutsIt()
+        {
+            // Arrange — the panel's own clipping with no outline involved: the same clip and probe as the case below.
+            yield return MountRow("PlainClipCut", new VNode[]
+            {
+                V.Div(name: "clip", className: "w-[100px] h-[60px]", children: new VNode[]
+                {
+                    V.Div(name: "a", className: "w-[40px] h-[40px]"),
+                }),
+            });
+            var clip = _host.Root.Q<VisualElement>("clip");
+            clip.style.overflow = Overflow.Hidden;
+            var poke = new VisualElement { style = { position = Position.Absolute, left = 0f, top = -BandWidth, width = 40f, height = BandWidth, backgroundColor = Color.red } };
+            _host.Root.Q<VisualElement>("a").Add(poke);
+
+            // Act
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+            var a = _host.Root.Q<VisualElement>("a").worldBound;
+            var outside = new RectInt(Mathf.RoundToInt(a.xMin + 10f), Mathf.RoundToInt(a.yMin - BandWidth + 2f), 10, 4);
+
+            // Assert
+            Assert.That(CountInPanelRect(outside, IsRed), Is.EqualTo(0), $"a={a} poke={poke.worldBound}");
+        }
+
+        [UnityTest]
         public IEnumerator Given_AnOutlineInsideAClipUnderLaterContent_When_Rendered_Then_TheClipCutsTheBandAboveIt()
         {
             // Arrange — the same arrangement; the band above the clip's top edge is outside the clip.
