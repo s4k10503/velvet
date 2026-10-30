@@ -254,15 +254,7 @@ namespace Velvet
         // An outline's length as the browser snaps a border width to device pixels: one under a device pixel is
         // one, any other is rounded toward zero to a whole number of them (RingOverlayTests pins it).
         private static float Snap(VisualElement element, in RingSpec spec, float length)
-        {
-            if (!spec.Snaps || length == 0f || element.panel == null)
-            {
-                return length;
-            }
-            var perPixel = element.panel.scaledPixelsPerPoint;
-            var devicePixels = Math.Abs(length) * perPixel;
-            return Math.Sign(length) * (devicePixels < 1f ? 1f : (float)Math.Floor(devicePixels)) / perPixel;
-        }
+            => spec.Snaps ? StyleRelativeLengths.SnapAsBorderWidth(element, length) : length;
 
         private static void ApplyColor(VisualElement overlay, Color color)
         {

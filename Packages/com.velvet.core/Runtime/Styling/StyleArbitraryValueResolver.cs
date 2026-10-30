@@ -396,6 +396,14 @@ namespace Velvet
                 return false;
             }
 
+            // A fractional border width is measured on the element, which snaps it to its device pixels.
+            if (IsBorderWidth(property) && value != (float)Math.Floor(value)
+                && StyleLengthExpression.TryParse(valueSpan, out var snapped))
+            {
+                result = new ArbitraryStyle(property, snapped!.AtLeast(0f));
+                return true;
+            }
+
             if (negate)
             {
                 value = -value;
@@ -4498,7 +4506,15 @@ namespace Velvet
         private static bool TryMeasuredValue(VisualElement element, in ArbitraryStyle style, out float value)
         {
             value = style.Value;
-            return style.Expression == null || StyleRelativeLengths.TryMeasure(element, style.Expression, 0f, out value);
+            if (style.Expression == null)
+            {
+                return true;
+            }
+            var measured = StyleRelativeLengths.TryMeasure(element, style.Expression, 0f, out value);
+            // A border width is snapped to device pixels, as the browser snaps one. A width the parse left in
+            // pixels is whole, which a whole-number panel scale leaves as it is.
+            value = IsBorderWidth(style.Property) ? StyleRelativeLengths.SnapAsBorderWidth(element, value) : value;
+            return measured;
         }
 
         // A transform origin the element measures takes its percentages of the element's own box.
