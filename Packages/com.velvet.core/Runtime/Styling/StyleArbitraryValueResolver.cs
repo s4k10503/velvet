@@ -1571,6 +1571,35 @@ namespace Velvet
             [ArbitraryProperty.BorderBlockEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
         };
 
+        // The inline counterpart of each ColorSources reader: an inline colour is not in the resolved style until the
+        // next style pass, which a colour written inline raises none of (ColorReferenceWatch.NotifyWritten).
+        private static readonly Dictionary<ArbitraryProperty, Func<IStyle, StyleColor>[]> ColorInlineSources = new()
+        {
+            [ArbitraryProperty.TextColor] = new Func<IStyle, StyleColor>[] { s => s.color },
+            [ArbitraryProperty.BackgroundColor] = new Func<IStyle, StyleColor>[] { s => s.backgroundColor },
+            [ArbitraryProperty.BorderColor] = new Func<IStyle, StyleColor>[]
+            {
+                s => s.borderTopColor, s => s.borderRightColor, s => s.borderBottomColor, s => s.borderLeftColor,
+            },
+            [ArbitraryProperty.BorderTopColor] = new Func<IStyle, StyleColor>[] { s => s.borderTopColor },
+            [ArbitraryProperty.BorderRightColor] = new Func<IStyle, StyleColor>[] { s => s.borderRightColor },
+            [ArbitraryProperty.BorderBottomColor] = new Func<IStyle, StyleColor>[] { s => s.borderBottomColor },
+            [ArbitraryProperty.BorderLeftColor] = new Func<IStyle, StyleColor>[] { s => s.borderLeftColor },
+            [ArbitraryProperty.BorderXColor] = new Func<IStyle, StyleColor>[] { s => s.borderLeftColor, s => s.borderRightColor },
+            [ArbitraryProperty.BorderYColor] = new Func<IStyle, StyleColor>[] { s => s.borderTopColor, s => s.borderBottomColor },
+            [ArbitraryProperty.BorderInlineStartColor] = new Func<IStyle, StyleColor>[] { s => s.borderLeftColor },
+            [ArbitraryProperty.BorderInlineEndColor] = new Func<IStyle, StyleColor>[] { s => s.borderRightColor },
+            [ArbitraryProperty.BorderBlockStartColor] = new Func<IStyle, StyleColor>[] { s => s.borderTopColor },
+            [ArbitraryProperty.BorderBlockEndColor] = new Func<IStyle, StyleColor>[] { s => s.borderBottomColor },
+        };
+
+        // What parent paints for the colour a setter writes: its inline value where it holds one, else its resolved one.
+        internal static Color PaintedColor(VisualElement parent, ArbitraryProperty property, int index)
+        {
+            var inline = ColorInlineSources[property][index](parent.style);
+            return inline.keyword == StyleKeyword.Undefined ? inline.value : ColorSources[property][index](parent.resolvedStyle);
+        }
+
         // A colour read off a live source, which ColorReferenceWatch writes again as the source moves. currentcolor is
         // the element's own text colour, except on the text colour itself, where CSS reads it as the inherited one.
         // inherit is the parent's value of the same longhand; the parent is the one the element is laid out in, past
@@ -1578,7 +1607,6 @@ namespace Velvet
         private static void WriteReferencedColor(VisualElement element, in ArbitraryStyle style,
             Action<IStyle, StyleColor>[] setters)
         {
-            var sources = ColorSources[style.Property];
             var parent = ClipPathLayoutBox.Of(element).hierarchy.parent;
             var cs = element.style;
             for (var i = 0; i < setters.Length; i++)
@@ -1602,7 +1630,7 @@ namespace Velvet
                 }
                 else
                 {
-                    color = sources[i](parent.resolvedStyle);
+                    color = PaintedColor(parent, style.Property, i);
                 }
                 color.a *= style.Color.a;
                 setters[i](cs, new StyleColor(color));
@@ -3696,7 +3724,9 @@ namespace Velvet
             {
                 return;
             }
-            foreach (var property in s_relativeWinners)
+            // Written colours notify the elements reading them (ColorReferenceWatch.NotifyWritten), which re-enter here.
+            var winners = s_relativeWinners.ToArray();
+            foreach (var property in winners)
             {
                 ResolveAndApply(element, property, map);
             }
@@ -4479,6 +4509,7 @@ namespace Velvet
                 if (style.Reference != ColorReference.None)
                 {
                     WriteReferencedColor(element, style, colorSetters);
+                    ColorReferenceWatch.NotifyWritten(element);
                     return;
                 }
                 var color = style.Keyword == StyleKeyword.Undefined
@@ -4489,6 +4520,7 @@ namespace Velvet
                 {
                     setter(cs, color);
                 }
+                ColorReferenceWatch.NotifyWritten(element);
                 return;
             }
 
@@ -4607,6 +4639,7 @@ namespace Velvet
                 {
                     setter(cs, nullColor);
                 }
+                ColorReferenceWatch.NotifyWritten(element);
                 return;
             }
 

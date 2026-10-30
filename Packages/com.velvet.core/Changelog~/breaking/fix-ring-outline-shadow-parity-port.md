@@ -24,8 +24,8 @@
 - A change of a `shadow-*` colour re-paints the descendants that inherit it with `shadow-inherit`, though their own
   classes did not change.
 - `text-current`, `bg-current`, `border-current`, their `/N` modifiers and `text-inherit`, `bg-inherit` and
-  `border-inherit` read the element's text colour and the parent's value of the same property, and follow them as
-  they change, as Tailwind v4 writes `currentcolor` and `inherit`. `inherit` takes no modifier. They matched no rule.
+  `border-inherit` read the element's text colour and the parent's value of the same property, and follow them
+  through class, variant, `StyleOverrides` and transition changes, as Tailwind v4 writes `currentcolor` and `inherit`. `inherit` takes no modifier. They matched no rule.
 - A colour utility whose opacity modifier lies outside 0–100% and which Tailwind writes through a variable (a palette
   name, a bracketed `var()`) leaves its property unset, as the browser computes the invalid `color-mix()`:
   `bg-red-500/150` is transparent over an earlier `bg-blue-500` (it was declined, so the earlier colour stood),

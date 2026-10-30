@@ -12,8 +12,11 @@ namespace Velvet
     // elsewhere in the panel costs this one nothing. An element's events reach every watch that reads it through one
     // Hub, because UI Toolkit keeps a single entry for a callback however many arguments it is registered with.
     //
-    // A colour that transitions raises no style pass after the first, so while a transition runs on the watched parent
-    // itself the watch is also read on a scheduler tick, and once more when the transition ends or is cancelled.
+    // A background or border colour that transitions raises no style pass after the first, so while a transition runs on
+    // the watched parent itself the watch is also read on a scheduler tick, and once more when the transition ends or
+    // is cancelled. A colour Velvet writes inline raises none either, and the resolver tells the watches reading the
+    // element (NotifyWritten); a colour written to an element's style outside Velvet is followed only where a style
+    // pass or a transition reaches it.
     //
     // UI Toolkit sends CustomStyleResolvedEvent only to an element holding a custom property, and custom properties
     // do not inherit, so each watched element carries MarkerClass, whose rule in _preflight.uss declares one, as
@@ -101,6 +104,23 @@ namespace Velvet
             }
         }
 
+        // Reads the watches whose parent is element after Velvet wrote or cleared a colour inline on it, which raises no
+        // style pass of its own.
+        internal static void NotifyWritten(VisualElement element)
+        {
+            if (!s_hubs.TryGetValue(element, out var hub))
+            {
+                return;
+            }
+            for (var i = hub.Children.Count - 1; i >= 0; i--)
+            {
+                if (i < hub.Children.Count)
+                {
+                    hub.Children[i].Tick();
+                }
+            }
+        }
+
         private static void Subscribe(VisualElement element, ColorReferenceWatch watch, bool child)
         {
             var hub = s_hubs.GetValue(element, static e => new Hub(e));
@@ -155,9 +175,6 @@ namespace Velvet
             element.RegisterCallback<AttachToPanelEvent, ColorReferenceWatch>(OnAttached, this);
             WatchParent();
         }
-
-        // Whether a transition on the watched parent has the watch reading on a tick.
-        internal bool Sampling => _sampler != null;
 
         private void TransitionRun()
         {
@@ -217,17 +234,17 @@ namespace Velvet
         public bool Moved()
         {
             var own = _element.resolvedStyle;
-            var parent = ClipPathLayoutBox.Of(_element).hierarchy.parent?.resolvedStyle;
+            var parent = ClipPathLayoutBox.Of(_element).hierarchy.parent;
             var moved = !_sampled;
             moved |= Take(0, own.color);
             if (parent != null)
             {
-                moved |= Take(1, parent.color);
-                moved |= Take(2, parent.backgroundColor);
-                moved |= Take(3, parent.borderTopColor);
-                moved |= Take(4, parent.borderRightColor);
-                moved |= Take(5, parent.borderBottomColor);
-                moved |= Take(6, parent.borderLeftColor);
+                moved |= Take(1, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.TextColor, 0));
+                moved |= Take(2, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BackgroundColor, 0));
+                moved |= Take(3, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderTopColor, 0));
+                moved |= Take(4, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderRightColor, 0));
+                moved |= Take(5, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderBottomColor, 0));
+                moved |= Take(6, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderLeftColor, 0));
             }
             _sampled = true;
             return moved;
