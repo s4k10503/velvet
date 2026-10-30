@@ -68,10 +68,7 @@ namespace Velvet.Tests
 
         private static readonly string[] DeclinedClasses =
         {
-            "border-t-current",    // no fixed value to write inline
-            "border-x-inherit",
             "border-t-nope",       // not a color
-            "border-b-red-500/101", // past the modifier's range
             "border-l-red-550",    // not a palette step
             "border-r-nope/40",    // a modifier on a color that is not one
         };
@@ -87,6 +84,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ok, Is.False);
+        }
+
+        // Tailwind writes border-t-current as border-top-color: currentcolor and border-x-inherit as the inline colour
+        // shorthand inherit, so each is a reference the watch resolves; a palette colour past 100% computes invalid and
+        // unset, which for a border colour is currentcolor.
+        [TestCase("border-t-current", ColorReference.Current)]
+        [TestCase("border-x-inherit", ColorReference.Inherit)]
+        [TestCase("border-b-red-500/101", ColorReference.Current)]
+        public void Given_PerSideClassNamingAReference_When_Parsed_Then_ItResolvesToThatReference(
+            string className, ColorReference reference)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse(className, out var style);
+
+            // Assert — `ok` is part of the value so a regression that stops recognising the class goes red.
+            Assert.That(ok ? style.Reference : (ColorReference)255, Is.EqualTo(reference));
+        }
+
+        [TestCase("border-t-current")]
+        [TestCase("border-x-inherit")]
+        [TestCase("border-b-red-500/101")]
+        public void Given_PerSideClassNamingAReference_When_AskedWhetherInlineResolved_Then_ItIs(string className)
+        {
+            Assert.That(StyleArbitraryValueResolver.IsInlineResolved(className), Is.True);
         }
 
         // GREEN_ON_BASE(characterization): the base already reads a per-side bracket length as a width. What
@@ -126,7 +147,6 @@ namespace Velvet.Tests
         [TestCase("border-t-2")]
         [TestCase("border-x-4")]
         [TestCase("border-b")]
-        [TestCase("border-t-current")]
         public void Given_AClassTheStylesheetResolves_When_AskedWhetherInlineResolved_Then_ItIsNot(
             string className)
         {

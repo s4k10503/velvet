@@ -459,6 +459,13 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(shaped.panel);
             ForcePanelUpdate(shaped.panel);
+            // The wrapper bakes its mask after the card is placed, so the next tick, which compares the mask the proxy
+            // copied, is what hands it over.
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(shaped.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(shaped.panel);
+            ForcePanelUpdate(shaped.panel);
             var proxy = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("card")).OutlineOverlay.parent;
             var mask = shaped.parent.style.backgroundImage.value.vectorImage;
 

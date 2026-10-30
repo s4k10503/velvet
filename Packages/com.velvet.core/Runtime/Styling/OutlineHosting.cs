@@ -302,11 +302,11 @@ namespace Velvet
                 || (context != null && context.StackingFacts.TryGetValue(e, out var facts) && facts.Z != null);
         }
 
-        // Whether e clips its children, as UI Toolkit decides it; an inline overflow: hidden where the engine member
-        // does not resolve.
+        // Whether e clips its children: as UI Toolkit decides it, or by an inline overflow: hidden, which its computed
+        // style takes at the next style pass.
         internal static bool Clips(VisualElement e)
-            => s_shouldClip?.Invoke(e)
-                ?? (e.style.overflow.keyword == StyleKeyword.Undefined && e.style.overflow.value == Overflow.Hidden);
+            => (s_shouldClip?.Invoke(e) ?? false)
+                || (e.style.overflow.keyword == StyleKeyword.Undefined && e.style.overflow.value == Overflow.Hidden);
 
         // top after every child of host that is not an outline node, and among the outline nodes after those whose
         // elements come before element in tree order and before those whose elements come after it.

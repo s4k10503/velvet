@@ -43,12 +43,14 @@ namespace Velvet
             public Own Offset;
             public Own Outline;
 
+#pragma warning disable CS8524 // no discard arm: a new family has to say whose colour it reads
             public Own Of(Family family) => family switch
             {
                 Family.Ring => Ring,
                 Family.Offset => Offset,
-                _ => Outline,
+                Family.Outline => Outline,
             };
+#pragma warning restore CS8524
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Owned> s_owned = new();

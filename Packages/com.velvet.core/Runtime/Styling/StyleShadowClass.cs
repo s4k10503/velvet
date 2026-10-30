@@ -347,6 +347,12 @@ namespace Velvet
                 }
                 return true;
             }
+            // A color hint makes the bracket the family's colour whether or not it holds one: a hinted value that is no
+            // colour sets nothing here (BoxShadowSlot reads it as a rejected colour), and is never a size.
+            if (StyleArbitraryValueResolver.TypeHintOf(cls) == "color")
+            {
+                return true;
+            }
             if (!TryReadSize(suffix, presets, alpha, out var layers))
             {
                 return false;

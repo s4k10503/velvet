@@ -1603,6 +1603,19 @@ namespace Velvet
             return ColorSources[property][index](parent.resolvedStyle);
         }
 
+        // The colour slot of a projected face an edge is: the background (null), then top, right, bottom and left.
+        private static int SlotOf(DivideEdge? edge) => edge is { } border ? BorderSlotOf(border) : 0;
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to say which colour slot it is
+        private static int BorderSlotOf(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Top => 1,
+            DivideEdge.Right => 2,
+            DivideEdge.Bottom => 3,
+            DivideEdge.Left => 4,
+        };
+#pragma warning restore CS8524
+
         // The colour a silhouette face, a dashed divider's mask or a projected corner face shows on element's background
         // (edge null) or border edge in place of the sentinel it writes to the slot; false where none holds it.
         private static bool HeldFaceColor(VisualElement element, DivideEdge? edge, out Color color)
@@ -1617,14 +1630,7 @@ namespace Velvet
             {
                 return true;
             }
-            var slot = edge switch
-            {
-                null => 0,
-                DivideEdge.Top => 1,
-                DivideEdge.Right => 2,
-                DivideEdge.Bottom => 3,
-                _ => 4,
-            };
+            var slot = SlotOf(edge);
             if (ProjectedCornerFace.Drawn(element, slot) is { } drawn)
             {
                 color = drawn;
@@ -3106,13 +3112,11 @@ namespace Velvet
         }
 
         // The single-edge border colour property a held colour slot writes.
-        private static ArbitraryProperty PropertyOf(HeldSlot slot) => slot switch
-        {
-            HeldSlot.BorderTopColor => ArbitraryProperty.BorderTopColor,
-            HeldSlot.BorderRightColor => ArbitraryProperty.BorderRightColor,
-            HeldSlot.BorderBottomColor => ArbitraryProperty.BorderBottomColor,
-            _ => ArbitraryProperty.BorderLeftColor,
-        };
+        private static ArbitraryProperty PropertyOf(HeldSlot slot)
+            => slot == HeldSlot.BorderTopColor ? ArbitraryProperty.BorderTopColor
+                : slot == HeldSlot.BorderRightColor ? ArbitraryProperty.BorderRightColor
+                : slot == HeldSlot.BorderBottomColor ? ArbitraryProperty.BorderBottomColor
+                : ArbitraryProperty.BorderLeftColor;
 
         private static RelativeLengthAxis AxisOf(HeldSlot slot)
             => slot is HeldSlot.Height or HeldSlot.MinHeight or HeldSlot.MaxHeight

@@ -304,12 +304,10 @@ namespace Velvet
             {
                 return false;
             }
-            result = property switch
-            {
-                ArbitraryProperty.BackgroundColor => new ArbitraryStyle(property, Color.clear),
-                ArbitraryProperty.TextColor => new ArbitraryStyle(property, factor, ColorReference.Inherit),
-                _ => new ArbitraryStyle(property, factor, ColorReference.Current),
-            };
+            result = property == ArbitraryProperty.BackgroundColor
+                ? new ArbitraryStyle(property, Color.clear)
+                : new ArbitraryStyle(property, factor,
+                    property == ArbitraryProperty.TextColor ? ColorReference.Inherit : ColorReference.Current);
             return true;
         }
 

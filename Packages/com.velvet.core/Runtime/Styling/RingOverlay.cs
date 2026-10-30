@@ -337,16 +337,20 @@ namespace Velvet
             var text = element.resolvedStyle.color;
             var ring = TintOf(element, spec.Ring, BandColourInheritance.Family.Ring, text);
             var outline = TintOf(element, spec.Outline, BandColourInheritance.Family.Outline, text);
-            var offset = spec.OffsetSource switch
-            {
-                ColorReference.Current => text,
-                ColorReference.Inherit => BandColourInheritance.Resolve(element, BandColourInheritance.Family.Offset),
-                _ => spec.OffsetColor,
-            };
+            var offset = OffsetTint(element, spec, text);
             var changed = ring != binding.RingTint || outline != binding.OutlineTint || offset != binding.OffsetTint;
             (binding.RingTint, binding.OutlineTint, binding.OffsetTint) = (ring, outline, offset);
             return changed;
         }
+
+#pragma warning disable CS8524 // no discard arm: a new reference has to say where the fill's colour comes from
+        private static Color OffsetTint(VisualElement element, in RingSpec spec, Color text) => spec.OffsetSource switch
+        {
+            ColorReference.None => spec.OffsetColor,
+            ColorReference.Current => text,
+            ColorReference.Inherit => BandColourInheritance.Resolve(element, BandColourInheritance.Family.Offset),
+        };
+#pragma warning restore CS8524
 
         private static Color TintOf(VisualElement element, in RingBand band, BandColourInheritance.Family family, Color text)
             => band.InheritColor ? BandColourInheritance.Resolve(element, family) : band.CurrentColor ? text : band.Color;
