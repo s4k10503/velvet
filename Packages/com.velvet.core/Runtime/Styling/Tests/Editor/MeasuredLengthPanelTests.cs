@@ -325,7 +325,7 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That(_sim.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=22px>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_sim.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=22px>hi</line-height>"));
         }
     }
 }

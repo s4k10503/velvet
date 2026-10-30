@@ -630,9 +630,11 @@ namespace Velvet.Tests
             // Act — 1e37em is finite at the 1px em it is parsed against and comes to 1e39px at 100px, past a float's
             // range, which CSS reads as the largest float.
             Mount("w-[300px] h-[200px]", "text-[100px] ml-[1e37em] w-[10px] h-[10px]");
+            var largest = new VisualElement();
+            largest.style.marginLeft = float.MaxValue;
 
             // Assert
-            Assert.That(Child.style.marginLeft.value.value, Is.EqualTo(float.MaxValue));
+            Assert.That(Child.style.marginLeft.value.value, Is.EqualTo(largest.style.marginLeft.value.value));
         }
 
         [Test]
