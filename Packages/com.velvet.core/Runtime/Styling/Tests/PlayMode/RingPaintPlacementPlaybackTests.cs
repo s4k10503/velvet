@@ -82,7 +82,7 @@ namespace Velvet.Tests
             var parts = new System.Text.StringBuilder();
             _host.Root.Query<VisualElement>(className: RingOverlay.OutlineMarkerClass).ForEach(n => parts
                 .Append(n.name).Append(" under ").Append(n.parent?.name).Append(' ').Append(n.worldBound)
-                .Append(" overflow=").Append(n.resolvedStyle.overflow).Append("; "));
+                .Append(" overflow=").Append(n.style.overflow.value).Append("; "));
             parts.Append("clip clips=").Append(OutlineHosting.Clips(_host.Root.Q<VisualElement>("clip")));
             return parts.ToString();
         }
