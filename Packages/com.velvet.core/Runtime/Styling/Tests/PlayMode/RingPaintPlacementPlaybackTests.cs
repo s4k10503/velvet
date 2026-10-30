@@ -202,6 +202,69 @@ namespace Velvet.Tests
             Assert.That(CountInPanelRect(outside, IsRed), Is.EqualTo(0), $"a={a} poke={poke.worldBound}");
         }
 
+        // An absolute clip at the top of the panel, as an outline's clip proxy is, over (30,70) 100x60, holding a
+        // child that paints a red square 8px above it either as a background or through generateVisualContent.
+        private IEnumerator MountProbeClip(string name, bool painted, bool sizeLater)
+        {
+            NewPanel(name);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+            var clip = new VisualElement { name = "probe-clip", style = { position = Position.Absolute, overflow = Overflow.Hidden } };
+            var child = new VisualElement { style = { position = Position.Absolute, left = 0f, top = -BandWidth, width = 40f, height = 40f } };
+            if (painted)
+            {
+                child.generateVisualContent += mgc =>
+                {
+                    var p = mgc.painter2D;
+                    p.fillColor = Color.red;
+                    p.BeginPath();
+                    p.MoveTo(Vector2.zero);
+                    p.LineTo(new Vector2(40f, 0f));
+                    p.LineTo(new Vector2(40f, 40f));
+                    p.LineTo(new Vector2(0f, 40f));
+                    p.ClosePath();
+                    p.Fill();
+                };
+            }
+            else
+            {
+                child.style.backgroundColor = Color.red;
+            }
+            clip.Add(child);
+            _host.Root.Add(clip);
+            if (sizeLater)
+            {
+                yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
+            }
+            clip.style.left = 30f;
+            clip.style.top = 70f;
+            clip.style.width = 100f;
+            clip.style.height = 60f;
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+        }
+
+        private int RedAboveProbeClip() => CountInPanelRect(new RectInt(40, 64, 10, 4), IsRed);
+
+        [UnityTest]
+        public IEnumerator Given_AnAbsoluteClipAtTheTopHoldingABackground_When_Rendered_Then_TheClipCutsIt()
+        {
+            yield return MountProbeClip("ProbeBackground", painted: false, sizeLater: false);
+            Assert.That(RedAboveProbeClip(), Is.EqualTo(0));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnAbsoluteClipAtTheTopHoldingAPainting_When_Rendered_Then_TheClipCutsIt()
+        {
+            yield return MountProbeClip("ProbePainted", painted: true, sizeLater: false);
+            Assert.That(RedAboveProbeClip(), Is.EqualTo(0));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnAbsoluteClipSizedAfterItsFirstFrameHoldingAPainting_When_Rendered_Then_TheClipCutsIt()
+        {
+            yield return MountProbeClip("ProbePaintedLate", painted: true, sizeLater: true);
+            Assert.That(RedAboveProbeClip(), Is.EqualTo(0));
+        }
+
         [UnityTest]
         public IEnumerator Given_AnOutlineInsideAClipUnderLaterContent_When_Rendered_Then_TheClipCutsTheBandAboveIt()
         {
