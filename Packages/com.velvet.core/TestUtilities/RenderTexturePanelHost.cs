@@ -28,6 +28,10 @@ namespace Velvet.TestUtilities
             _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             _settings.targetTexture = TargetTexture;
+            // Without a clear, a pixel nothing draws keeps whatever the texture held before: a red band of an earlier
+            // fixture's panel was measured to read back in a later one that drew nothing there.
+            _settings.clearColor = true;
+            _settings.colorClearValue = Color.clear;
             _document.panelSettings = _settings;
         }
 

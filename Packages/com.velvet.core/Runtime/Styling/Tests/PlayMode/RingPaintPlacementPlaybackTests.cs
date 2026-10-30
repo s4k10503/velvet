@@ -76,18 +76,6 @@ namespace Velvet.Tests
             return n;
         }
 
-        // Where every outline node and clip proxy sits, for a failure message.
-        private string OutlineNodes()
-        {
-            var parts = new System.Text.StringBuilder();
-            _host.Root.Query<VisualElement>().ForEach(n => parts
-                .Append(n.name).Append('[').Append(string.Join(" ", n.GetClasses())).Append("] under ")
-                .Append(n.parent?.name).Append(' ').Append(n.worldBound)
-                .Append(" overflow=").Append(n.style.overflow.value).Append("; "));
-            parts.Append("clip clips=").Append(OutlineHosting.Clips(_host.Root.Q<VisualElement>("clip")));
-            return parts.ToString();
-        }
-
         private static bool IsRed(Color32 p) => p.r > 140 && p.g < 90 && p.b < 90;
         private static bool IsGreen(Color32 p) => p.g > 140 && p.r < 90 && p.b < 90;
 
@@ -202,69 +190,6 @@ namespace Velvet.Tests
             Assert.That(CountInPanelRect(outside, IsRed), Is.EqualTo(0), $"a={a} poke={poke.worldBound}");
         }
 
-        // An absolute clip at the top of the panel, as an outline's clip proxy is, over (30,70) 100x60, holding a
-        // child that paints a red square 8px above it either as a background or through generateVisualContent.
-        private IEnumerator MountProbeClip(string name, bool painted, bool sizeLater)
-        {
-            NewPanel(name);
-            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
-            var clip = new VisualElement { name = "probe-clip", style = { position = Position.Absolute, overflow = Overflow.Hidden } };
-            var child = new VisualElement { style = { position = Position.Absolute, left = 0f, top = -BandWidth, width = 40f, height = 40f } };
-            if (painted)
-            {
-                child.generateVisualContent += mgc =>
-                {
-                    var p = mgc.painter2D;
-                    p.fillColor = Color.red;
-                    p.BeginPath();
-                    p.MoveTo(Vector2.zero);
-                    p.LineTo(new Vector2(40f, 0f));
-                    p.LineTo(new Vector2(40f, 40f));
-                    p.LineTo(new Vector2(0f, 40f));
-                    p.ClosePath();
-                    p.Fill();
-                };
-            }
-            else
-            {
-                child.style.backgroundColor = Color.red;
-            }
-            clip.Add(child);
-            _host.Root.Add(clip);
-            if (sizeLater)
-            {
-                yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
-            }
-            clip.style.left = 30f;
-            clip.style.top = 70f;
-            clip.style.width = 100f;
-            clip.style.height = 60f;
-            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
-        }
-
-        private int RedAboveProbeClip() => CountInPanelRect(new RectInt(40, 64, 10, 4), IsRed);
-
-        [UnityTest]
-        public IEnumerator Given_AnAbsoluteClipAtTheTopHoldingABackground_When_Rendered_Then_TheClipCutsIt()
-        {
-            yield return MountProbeClip("ProbeBackground", painted: false, sizeLater: false);
-            Assert.That(RedAboveProbeClip(), Is.EqualTo(0));
-        }
-
-        [UnityTest]
-        public IEnumerator Given_AnAbsoluteClipAtTheTopHoldingAPainting_When_Rendered_Then_TheClipCutsIt()
-        {
-            yield return MountProbeClip("ProbePainted", painted: true, sizeLater: false);
-            Assert.That(RedAboveProbeClip(), Is.EqualTo(0));
-        }
-
-        [UnityTest]
-        public IEnumerator Given_AnAbsoluteClipSizedAfterItsFirstFrameHoldingAPainting_When_Rendered_Then_TheClipCutsIt()
-        {
-            yield return MountProbeClip("ProbePaintedLate", painted: true, sizeLater: true);
-            Assert.That(RedAboveProbeClip(), Is.EqualTo(0));
-        }
-
         [UnityTest]
         public IEnumerator Given_AnOutlineInsideAClipUnderLaterContent_When_Rendered_Then_TheClipCutsTheBandAboveIt()
         {
@@ -283,54 +208,9 @@ namespace Velvet.Tests
             var a = _host.Root.Q<VisualElement>("a").worldBound;
             var outside = new RectInt(Mathf.RoundToInt(a.xMin + 10f), Mathf.RoundToInt(a.yMin - BandWidth + 2f), 10, 4);
             var inside = OuterStrip(a, right: true);
-            var insideRed = CountInPanelRect(inside, IsRed);
-            var outsideRed = CountInPanelRect(outside, IsRed);
-            var nodes = OutlineNodes();
-            var steps = new System.Text.StringBuilder();
-            if (outsideRed > 0)
-            {
-                var proxy = _host.Root.Q<VisualElement>(OutlineHosting.ProxyName);
-                var overlay = _host.Root.Q<VisualElement>("velvet-outline-overlay");
-                var band = _host.Root.Q<VisualElement>("velvet-outline-band");
-                steps.Append(" proxyDisplay=").Append(proxy.resolvedStyle.display).Append('/')
-                    .Append(proxy.style.overflow.keyword).Append(" overlayStyle=").Append(overlay.style.translate.value.x)
-                    .Append(',').Append(overlay.style.scale.value.value).Append(',').Append(overlay.style.opacity.value);
-                band.MarkDirtyRepaint();
-                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-                steps.Append(" afterRepaint=").Append(CountInPanelRect(outside, IsRed));
-                proxy.style.overflow = Overflow.Visible;
-                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-                proxy.style.overflow = Overflow.Hidden;
-                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-                steps.Append(" afterOverflowToggle=").Append(CountInPanelRect(outside, IsRed));
-                overlay.style.translate = StyleKeyword.Null;
-                overlay.style.scale = StyleKeyword.Null;
-                overlay.style.rotate = StyleKeyword.Null;
-                overlay.style.transformOrigin = StyleKeyword.Null;
-                overlay.style.opacity = StyleKeyword.Null;
-                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-                steps.Append(" afterOverlayTransformCleared=").Append(CountInPanelRect(outside, IsRed));
-                proxy.ClearClassList();
-                overlay.ClearClassList();
-                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-                steps.Append(" afterClassesCleared=").Append(CountInPanelRect(outside, IsRed));
-                band.RemoveFromHierarchy();
-                yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-                steps.Append(" afterBandRemoved=").Append(CountInPanelRect(outside, IsRed));
-                steps.Append(" panelTree=");
-                _host.Root.panel.visualTree.Query<VisualElement>().ForEach(n =>
-                {
-                    if (!_host.Root.Contains(n) && n != _host.Root)
-                    {
-                        steps.Append(n.name).Append('[').Append(string.Join(" ", n.GetClasses())).Append("] ")
-                            .Append(n.worldBound).Append("; ");
-                    }
-                });
-            }
 
             // Assert — the right band, inside the clip, is the control: it reads red where the one above does not.
-            Assert.That(insideRed > 0 && outsideRed == 0, Is.True,
-                $"a={a} inside={insideRed} outside={outsideRed}{steps} {nodes}");
+            Assert.That(CountInPanelRect(inside, IsRed) > 0 && CountInPanelRect(outside, IsRed) == 0, Is.True, $"a={a}");
         }
 
         [UnityTest]
