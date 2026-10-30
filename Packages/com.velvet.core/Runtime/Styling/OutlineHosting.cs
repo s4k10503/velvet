@@ -424,23 +424,16 @@ namespace Velvet
         }
 
         // The clip's corners: the clipping ancestor's padding-box radii, its outer radius less the wider border at
-        // the corner, which is what UI Toolkit's style can hold of an elliptical inner corner. Never below
-        // MinimumRadius: an element with any radius is clipped by a stencil mask drawn from its own shape
-        // (UIRUtility.IsRoundRect, DefaultElementBuilder.RequiresStencilMask), where a square one is clipped through
-        // clip data written into the vertices of what is drawn inside it, which an outline drawn into a clip of its
-        // own was measured to escape.
+        // the corner, which is what UI Toolkit's style can hold of an elliptical inner corner.
         private static void SetRadii(VisualElement proxy, VisualElement c)
         {
             var rs = c.resolvedStyle;
             var (l, t, r, b) = (Sane(rs.borderLeftWidth), Sane(rs.borderTopWidth), Sane(rs.borderRightWidth), Sane(rs.borderBottomWidth));
-            proxy.style.borderTopLeftRadius = Mathf.Max(MinimumRadius, Sane(rs.borderTopLeftRadius) - Mathf.Max(l, t));
-            proxy.style.borderTopRightRadius = Mathf.Max(MinimumRadius, Sane(rs.borderTopRightRadius) - Mathf.Max(r, t));
-            proxy.style.borderBottomRightRadius = Mathf.Max(MinimumRadius, Sane(rs.borderBottomRightRadius) - Mathf.Max(r, b));
-            proxy.style.borderBottomLeftRadius = Mathf.Max(MinimumRadius, Sane(rs.borderBottomLeftRadius) - Mathf.Max(l, b));
+            proxy.style.borderTopLeftRadius = Mathf.Max(0f, Sane(rs.borderTopLeftRadius) - Mathf.Max(l, t));
+            proxy.style.borderTopRightRadius = Mathf.Max(0f, Sane(rs.borderTopRightRadius) - Mathf.Max(r, t));
+            proxy.style.borderBottomRightRadius = Mathf.Max(0f, Sane(rs.borderBottomRightRadius) - Mathf.Max(r, b));
+            proxy.style.borderBottomLeftRadius = Mathf.Max(0f, Sane(rs.borderBottomLeftRadius) - Mathf.Max(l, b));
         }
-
-        // Far below a pixel, so the clip's corners are square to the eye.
-        private const float MinimumRadius = 0.01f;
 
         private static float Sane(float v) => float.IsNaN(v) ? 0f : v;
     }
