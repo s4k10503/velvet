@@ -186,7 +186,6 @@ namespace Velvet
             state.Scale = scale ?? Vector2.one;
             if (state.Clips) SyncClip(element, state);
             element.MarkDirtyRepaint();
-            ColorReferenceWatch.NotifyWritten(element);
             return true;
         }
 

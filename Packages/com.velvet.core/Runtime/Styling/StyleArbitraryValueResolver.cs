@@ -1640,34 +1640,44 @@ namespace Velvet
         private static void WriteReferencedColor(VisualElement element, in ArbitraryStyle style,
             Action<IStyle, StyleColor>[] setters)
         {
-            var parent = ClipPathLayoutBox.Of(element).hierarchy.parent;
             var cs = element.style;
             for (var i = 0; i < setters.Length; i++)
             {
-                var fromParent = style.Reference == ColorReference.Inherit || style.Property == ArbitraryProperty.TextColor;
-                Color color;
-                if (!fromParent)
+                if (TryReferencedColor(element, style, i, out var color))
                 {
-                    color = element.resolvedStyle.color;
+                    setters[i](cs, new StyleColor(color));
                 }
-                else if (parent == null)
-                {
-                    continue; // no parent yet: the watch writes it once there is one
-                }
-                else if (style.Reference == ColorReference.Inherit && IsBorderColor(style.Property)
-                    && BorderKeepsCurrentColor(parent, style.Property, out var parentAlpha))
-                {
-                    // currentcolor inherits as the keyword, so it reads against this element's own text colour.
-                    color = element.resolvedStyle.color;
-                    color.a *= parentAlpha;
-                }
-                else
-                {
-                    color = ParentColor(parent, style.Property, i);
-                }
-                color.a *= style.Color.a;
-                setters[i](cs, new StyleColor(color));
             }
+        }
+
+        // The colour the reference at the index-th setter of style's property comes to now; false while it has no
+        // source yet, a parent the element is not laid out in.
+        private static bool TryReferencedColor(VisualElement element, in ArbitraryStyle style, int index, out Color color)
+        {
+            var fromParent = style.Reference == ColorReference.Inherit || style.Property == ArbitraryProperty.TextColor;
+            var parent = ClipPathLayoutBox.Of(element).hierarchy.parent;
+            if (!fromParent)
+            {
+                color = element.resolvedStyle.color;
+            }
+            else if (parent == null)
+            {
+                color = default;
+                return false;
+            }
+            else if (style.Reference == ColorReference.Inherit && IsBorderColor(style.Property)
+                && BorderKeepsCurrentColor(parent, style.Property, out var parentAlpha))
+            {
+                // currentcolor inherits as the keyword, so it reads against this element's own text colour.
+                color = element.resolvedStyle.color;
+                color.a *= parentAlpha;
+            }
+            else
+            {
+                color = ParentColor(parent, style.Property, index);
+            }
+            color.a *= style.Color.a;
+            return true;
         }
 
         private static bool IsBorderColor(ArbitraryProperty property)
@@ -2513,7 +2523,6 @@ namespace Velvet
             holds.Set(slot, new StyleColor(SilhouetteFace.SuppressedColor));
             holds.SetMask(slot);
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
-            ColorReferenceWatch.NotifyWritten(element);
         }
 
         // A per-frame driver's write, which owns what it writes until ReleaseDriven: inline, so every hold and every
@@ -3076,8 +3085,18 @@ namespace Velvet
         // A held length slot takes a percentage of the parent's size on its axis (AxisOf) and stands in for an
         // indefinite one as PropertySetters' setter for its longhand does. A length that cannot be measured yet
         // leaves the slot as it is, as ApplyInline does.
-        private static void WriteLayered(VisualElement element, HeldSlot slot, in ArbitraryStyle winner)
+        private static void WriteLayered(VisualElement element, HeldSlot slot, in ArbitraryStyle layer)
         {
+            // A colour read off a live source carries only its alpha factor as a payload, so it is resolved here.
+            var winner = layer;
+            if (layer.Reference != ColorReference.None)
+            {
+                if (!TryReferencedColor(element, new ArbitraryStyle(PropertyOf(slot), layer.Color, layer.Reference), 0, out var referenced))
+                {
+                    return;
+                }
+                winner = new ArbitraryStyle(layer.Property, referenced);
+            }
             var length = winner.ToStyleLength();
             if (winner.Expression == null || StyleRelativeLengths.TryResolve(element, winner.Expression,
                     AxisOf(slot), IndefiniteOf(slot), out length))
@@ -3085,6 +3104,15 @@ namespace Velvet
                 StyleHeldSlots.WriteLayered(element.style, slot, length, winner);
             }
         }
+
+        // The single-edge border colour property a held colour slot writes.
+        private static ArbitraryProperty PropertyOf(HeldSlot slot) => slot switch
+        {
+            HeldSlot.BorderTopColor => ArbitraryProperty.BorderTopColor,
+            HeldSlot.BorderRightColor => ArbitraryProperty.BorderRightColor,
+            HeldSlot.BorderBottomColor => ArbitraryProperty.BorderBottomColor,
+            _ => ArbitraryProperty.BorderLeftColor,
+        };
 
         private static RelativeLengthAxis AxisOf(HeldSlot slot)
             => slot is HeldSlot.Height or HeldSlot.MinHeight or HeldSlot.MaxHeight

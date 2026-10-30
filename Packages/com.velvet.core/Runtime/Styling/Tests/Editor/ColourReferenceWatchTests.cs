@@ -7,9 +7,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies when a colour read off a live source (<c>border-current</c>, <c>text-inherit</c>, …) is written
-    /// again: on the style-resolved events of the elements its sources live on, when a transition on its parent ends or
-    /// is cancelled, when Velvet writes a colour inline on the element it reads, and on a tick that finds a colour it reads
-    /// has moved.
+    /// again: on a tick that finds a colour it reads has moved, and at once on the style-resolved events of the elements its
+    /// sources live on, when a transition on its parent ends or is cancelled, and on a notification.
     /// </summary>
     internal sealed class ColourReferenceWatchTests : PanelTestBase
     {
@@ -622,49 +621,67 @@ namespace Velvet.Tests
         [Test]
         public void Given_BorderInherit_When_TheParentIsADashedDividerRow_Then_TheChildTakesTheDividersColour()
         {
+            // divide-y divides the bottom edge of every row but the last.
             VelvetPalette.TryResolveColorToken("red-500", out var red);
-            _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "list", className: "divide-y-2 divide-dashed divide-red-500", children: new VNode[]
-                {
-                    V.Div(name: "first", className: "h-[20px]", key: "a"),
-                    V.Div(name: "row", className: "h-[40px]", key: "b", children: new VNode[]
-                    {
-                        V.Div(name: "child", className: "w-[10px] h-[10px] border-2 border-inherit"),
-                    }),
-                }));
+            _mounted = V.Mount(_window.rootVisualElement, DividedList("divide-red-500", string.Empty));
             var list = _window.rootVisualElement.Q<VisualElement>("list");
 
             ForcePanelUpdate(list.panel);
             ForcePanelUpdate(list.panel);
 
-            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(red));
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderBottomColor.value, Is.EqualTo(red));
         }
 
         [Test]
         public void Given_ADividedEdgeOfAFacedRow_When_TheDividersColourChanges_Then_AnInheritorFollowsTheDivider()
         {
             // The row's shadow face leaves the divided edge to the divider, so its own capture of that edge goes stale.
+            // No scheduler tick runs, so only the divider's own notification can carry the new colour.
             VelvetPalette.TryResolveColorToken("blue-500", out var blue);
-            _mounted = V.Mount(_window.rootVisualElement, DividedList("divide-red-500"));
+            _mounted = V.Mount(_window.rootVisualElement, DividedList("divide-red-500", "shadow-md"));
             var list = _window.rootVisualElement.Q<VisualElement>("list");
             ForcePanelUpdate(list.panel);
             ForcePanelUpdate(list.panel);
 
-            _mounted.Render(DividedList("divide-blue-500"));
+            _mounted.Render(DividedList("divide-blue-500", "shadow-md"));
             ForcePanelUpdate(list.panel);
 
-            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(blue));
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderBottomColor.value, Is.EqualTo(blue));
         }
 
-        private static VNode DividedList(string dividerColour)
+        private static VNode DividedList(string dividerColour, string rowClass)
             => V.Div(name: "list", className: "divide-y-2 divide-dashed " + dividerColour, children: new VNode[]
             {
                 V.Div(name: "first", className: "h-[20px]", key: "a"),
-                V.Div(name: "row", className: "h-[40px] shadow-md", key: "b", children: new VNode[]
+                V.Div(name: "row", className: "h-[40px] " + rowClass, key: "b", children: new VNode[]
                 {
                     V.Div(name: "child", className: "w-[10px] h-[10px] border-2 border-inherit"),
                 }),
+                V.Div(name: "last", className: "h-[20px]", key: "c"),
             });
+
+        [Test]
+        public void Given_ADividedRowWithBorderCurrent_When_ItBecomesTheLastRow_Then_ItsBorderStaysTheTextColour()
+        {
+            // The divider hands the edge back to the row's own layer, which reads the text colour.
+            _mounted = V.Mount(_window.rootVisualElement, CurrentRowList(true));
+            var list = _window.rootVisualElement.Q<VisualElement>("list");
+            ForcePanelUpdate(list.panel);
+
+            _mounted.Render(CurrentRowList(false));
+            ForcePanelUpdate(list.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("row").style.borderBottomColor.value, Is.EqualTo(Color.red));
+        }
+
+        private static VNode CurrentRowList(bool withLast)
+            => V.Div(name: "list", className: "divide-y-2 divide-blue-500", children: withLast
+                ? new VNode[]
+                {
+                    V.Div(name: "row", className: "h-[20px] border-current text-[#ff0000]", key: "a"),
+                    V.Div(name: "last", className: "h-[20px]", key: "b"),
+                }
+                : new VNode[] { V.Div(name: "row", className: "h-[20px] border-current text-[#ff0000]", key: "a") });
 
         [Test]
         public void Given_AShadowedInheritor_When_TheParentsBackgroundBecomesTransparent_Then_ItsFaceIsTransparent()
