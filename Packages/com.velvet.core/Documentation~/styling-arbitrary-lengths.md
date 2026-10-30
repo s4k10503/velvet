@@ -205,10 +205,10 @@ sits in, not the wrapper.
 
 These utilities read them too, each measuring them on the element it styles, its percentages as its property takes them: a border
 width, `rounded-*`, `translate-*` and `origin-[…]` (a percentage of the element's own box), `shadow-[…]`,
-`ring-*`, `ring-offset-*`, `outline-*` and `outline-offset-*`, `clip-path-[…]`, a gradient's stops, radii and
-centre, and `leading-[…]` (a percentage of the font size of the element declaring it). A `gap-*` is measured on
-the container, and a `space-*` margin and a `divide-*` width on each child, whose margin or border it is. A border
-width, a ring, a gap, a space margin, a divide and a shadow take no percentage, as in CSS.
+`ring-*`, `ring-offset-*`, `outline-*` and `outline-offset-*`, `clip-path-[…]`, and a gradient's stops, radii and
+centre. A `gap-*` is measured on the container, and a `space-*` margin and a `divide-*` width on each child, whose
+margin or border it is. A border width, a ring, a divide width and a shadow take no percentage,
+as in CSS.
 
 A percentage of a parent size the parent takes from its content is not measured, since the parent's size
 would then follow the length measured from it. The parent's size on an axis is definite when the parent

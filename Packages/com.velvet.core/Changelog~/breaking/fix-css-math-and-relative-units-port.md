@@ -10,6 +10,3 @@
 - A math function of a type the browser does not take in a family Tailwind composes through one declaration
   discards that declaration, as a rejected literal does: `translate-x-4 translate-y-[calc(45deg)]` translates
   nowhere, where the x translation used to apply.
-- A math function of a type the browser does not take in a family Tailwind composes through one declaration
-  discards that declaration, as a rejected literal does: `translate-x-4 translate-y-[calc(45deg)]` translates
-  nowhere, where the x translation used to apply.

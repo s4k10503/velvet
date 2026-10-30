@@ -229,7 +229,7 @@ namespace Velvet
             {
                 return false;
             }
-            parts.Measured = measured;
+            parts.Measured = measured!;
             return true;
         }
 

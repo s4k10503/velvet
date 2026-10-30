@@ -20,18 +20,15 @@
   inert.
 - A colour function reads a math function in a channel, a hue or the alpha, as CSS does:
   `bg-[rgb(calc(255/2)_0_0)]`, `text-[hsl(calc(60deg*2)_100%_50%)]`, where it left the class inert.
-Packages/com.velvet.core/Changelog~/unreleased/fix-css-math-and-relative-units-port.md
 - A radial or conic gradient's `at_` position reads CSS's whole `<position>`: lengths (`at_20px_30px`), edge
   offsets (`at_right_10px_bottom_20px`) and a math function adding a percentage and a length, where only keywords
   and percentages were read.
-Packages/com.velvet.core/Changelog~/unreleased/fix-css-math-and-relative-units-port.md
 - An outline's width and offset are snapped to the panel's device pixels as the browser snaps a border width
   (`outline-[2.75px]` is 2.5px at two device pixels a point), where they were drawn as written.
 - A length only an element can measure — a font-relative or viewport unit, or a math function reading one — is
   read by these utilities too, where it left the class inert: border widths, `rounded-*`, `translate-*`,
-  `origin-[…]`, `shadow-[…]`, `gap-*`,
-  `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`, `clip-path-[…]`, a gradient's stops,
-  radii and centre, and `leading-[…]`. A `translate-*` and an `origin-[…]` read a percentage of the element's own
+  `origin-[…]`, `shadow-[…]`, `gap-*`, `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`,
+  `clip-path-[…]`, and a gradient's stops, radii and centre. A `translate-*` and an `origin-[…]` read a percentage of the element's own
   box beside one, and a clip-path or gradient length a percentage under a math function (`calc(100%_-_10px)`,
   `max(10%,30px)`), against the box it is drawn in.
 - A bracketed border width or `divide-*` width is snapped to the panel's device pixels as the browser snaps a border
