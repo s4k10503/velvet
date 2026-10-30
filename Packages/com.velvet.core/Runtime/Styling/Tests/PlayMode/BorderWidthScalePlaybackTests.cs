@@ -115,7 +115,7 @@ namespace Velvet.Tests
             yield return Frames(10);
 
             // Assert
-            Assert.That(_host.Root.Q<VisualElement>("b").style.borderLeftWidth.value, Is.EqualTo(SnappedThree).Within(1e-4f));
+            Assert.That(_host.Root.Q<VisualElement>("a").style.borderRightWidth.value, Is.EqualTo(SnappedThree).Within(1e-4f));
         }
     }
 }
