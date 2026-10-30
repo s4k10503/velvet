@@ -3618,13 +3618,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OpacityArbitraryAboveOne_When_Parsed_Then_DeclinesToParse()
+        public void Given_OpacityArbitraryAboveOne_When_Parsed_Then_ItIsClampedToOne()
         {
-            // Act — opacity is 0..1; UITK does not clamp, so an out-of-range value is not a utility.
-            var ok = StyleArbitraryValueResolver.TryParse("opacity-[2]", out _);
+            // Act — CSS takes any number for opacity and clamps it, which UI Toolkit does not do itself.
+            var ok = StyleArbitraryValueResolver.TryParse("opacity-[2]", out var s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That((ok, s.Value), Is.EqualTo((true, 1f)));
         }
 
         [Test]

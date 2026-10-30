@@ -13,3 +13,5 @@
   the font the element's text is drawn in and the line height Velvet gives it, in the sizing, position,
   spacing, `text-[…]` and `tracking-[…]` utilities that measure an `em` on the element, where they left the
   class inert. `outline-[2em]` draws a 2em outline, where it fell back to 3px.
+- A literal past a float's range is the largest float of its sign, as Chromium reads it, where it left the class
+  inert: `w-[1e39px]`, `blur-[1e39px]`, `rotate-[1e39deg]`, `duration-[1e39s]`, `scale-[1e39]`.
