@@ -649,13 +649,14 @@ namespace Velvet
         {
             if (_includeBackground)
             {
-                CaptureFace(element.style.backgroundColor.value, element.resolvedStyle.backgroundColor,
+                CaptureFace(element.style.backgroundColor, element.resolvedStyle.backgroundColor,
                     ref BgColor, ref BgFromInline);
             }
             var anyInline = false;
             foreach (var side in s_sides)
             {
-                var inline = SilhouetteFace.InlineBorderColor(element, side).value;
+                var inlineStyle = SilhouetteFace.InlineBorderColor(element, side);
+                var inline = inlineStyle.value;
                 var fromInline = false;
                 // A dashed divider's mask is not this stash's suppression, so a first capture under it takes the
                 // color the divider paints there rather than keeping a stash it never had.
@@ -668,7 +669,7 @@ namespace Velvet
                 }
                 else
                 {
-                    CaptureFace(inline, SilhouetteFace.ResolvedBorderColor(element.resolvedStyle, side),
+                    CaptureFace(inlineStyle, SilhouetteFace.ResolvedBorderColor(element.resolvedStyle, side),
                         ref BorderColors[(int)side], ref fromInline);
                 }
                 _sideKept[(int)side] = fromInline || underDash;
@@ -693,9 +694,12 @@ namespace Velvet
         //   it with the sentinel — this is what lets a border-only re-capture not wipe a USS-driven fill;
         // - unset → a USS-driven color: read it from resolvedStyle, unless the last style pass still saw the
         //   sentinel there (an inline value just cleared), which keeps the previous capture.
-        private static void CaptureFace(Color inline, Color resolved, ref Color stash, ref bool fromInline)
+        private static void CaptureFace(StyleColor inlineStyle, Color resolved, ref Color stash, ref bool fromInline)
         {
-            if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
+            // Set is decided on the keyword: a transparent colour written inline is a value, where a slot nothing wrote
+            // reads the same (0, 0, 0, 0) and has none.
+            var inline = inlineStyle.value;
+            if (inlineStyle.keyword == StyleKeyword.Undefined && !SilhouetteFace.IsSentinel(inline))
             {
                 stash = inline;
                 fromInline = true;

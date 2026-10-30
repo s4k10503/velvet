@@ -11,7 +11,8 @@ namespace Velvet
     // reads. A read follows the style-resolved events of those two elements; a background or border colour that
     // transitions, or that is written to an element's style directly, raises no style pass, so each watch also compares
     // the seven colours once per tick (Differs), and reads at once when a transition on the watched parent ends or is
-    // cancelled and when the resolver or a face writes a colour inline on the element it reads (NotifyWritten).
+    // cancelled and when the resolver, a divider's mask, a silhouette face or a projected corner face writes a colour
+    // inline on the element it reads (NotifyWritten).
     //
     // UI Toolkit sends CustomStyleResolvedEvent only to an element holding a custom property, and custom properties
     // do not inherit, so each watched element carries MarkerClass, whose rule in _preflight.uss declares one, as

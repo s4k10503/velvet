@@ -1607,13 +1607,14 @@ namespace Velvet
         // (edge null) or border edge in place of the sentinel it writes to the slot; false where none holds it.
         private static bool HeldFaceColor(VisualElement element, DivideEdge? edge, out Color color)
         {
-            if (SilhouetteFaceStash.TryReadFace(element, edge, out color, out _))
-            {
-                return true;
-            }
+            // A face leaves an edge a divider masks to the divider, so the divider's colour is asked first.
             if (edge is { } masked && DivideDashPainter.ColorUnderMask(element, masked) is { } under)
             {
                 color = under;
+                return true;
+            }
+            if (SilhouetteFaceStash.TryReadFace(element, edge, out color, out _))
+            {
                 return true;
             }
             var slot = edge switch
@@ -2512,6 +2513,7 @@ namespace Velvet
             holds.Set(slot, new StyleColor(SilhouetteFace.SuppressedColor));
             holds.SetMask(slot);
             holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+            ColorReferenceWatch.NotifyWritten(element);
         }
 
         // A per-frame driver's write, which owns what it writes until ReleaseDriven: inline, so every hold and every

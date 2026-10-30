@@ -286,8 +286,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADescendantsTransition_When_ItRuns_Then_NothingIsReResolved()
         {
-            // Transition events bubble, so one under the parent is heard there; it moves no colour the watch reads, so the
-            // tick's comparison finds nothing to re-resolve.
+            // Transition events bubble, so the End of one under the parent is heard there. It is not the parent's own,
+            // so it reads nothing; the transition ends inside the measured window, and the poll finds no colour moved.
             var tree = Tree();
             var sibling = new VisualElement();
             tree.Parent.Add(sibling);
@@ -311,7 +311,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(sibling.panel);
             ticks.Count = 0;
 
-            clock[0] += 0.5;
+            clock[0] += 3.0;
             EditorPanelTestHelpers.DriveAnimationsOnce(sibling.panel);
             EditorPanelTestHelpers.DriveSchedulerOnce(sibling.panel);
             watch.Stop();
@@ -638,6 +638,47 @@ namespace Velvet.Tests
             ForcePanelUpdate(list.panel);
 
             Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_ADividedEdgeOfAFacedRow_When_TheDividersColourChanges_Then_AnInheritorFollowsTheDivider()
+        {
+            // The row's shadow face leaves the divided edge to the divider, so its own capture of that edge goes stale.
+            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
+            _mounted = V.Mount(_window.rootVisualElement, DividedList("divide-red-500"));
+            var list = _window.rootVisualElement.Q<VisualElement>("list");
+            ForcePanelUpdate(list.panel);
+            ForcePanelUpdate(list.panel);
+
+            _mounted.Render(DividedList("divide-blue-500"));
+            ForcePanelUpdate(list.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(blue));
+        }
+
+        private static VNode DividedList(string dividerColour)
+            => V.Div(name: "list", className: "divide-y-2 divide-dashed " + dividerColour, children: new VNode[]
+            {
+                V.Div(name: "first", className: "h-[20px]", key: "a"),
+                V.Div(name: "row", className: "h-[40px] shadow-md", key: "b", children: new VNode[]
+                {
+                    V.Div(name: "child", className: "w-[10px] h-[10px] border-2 border-inherit"),
+                }),
+            });
+
+        [Test]
+        public void Given_AShadowedInheritor_When_TheParentsBackgroundBecomesTransparent_Then_ItsFaceIsTransparent()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, ShadowedInheritorTree("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            _mounted.Render(ShadowedInheritorTree("bg-transparent"));
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(SilhouetteFaceStash.TryReadFace(_window.rootVisualElement.Q<VisualElement>("child"), null, out var shown, out _)
+                ? shown.a : 1f, Is.EqualTo(0f));
         }
 
         [Test]
