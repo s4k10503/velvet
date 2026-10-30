@@ -39,7 +39,12 @@ namespace Velvet.Tests
         {
             var tree = Tree();
             var ticks = new Counter();
-            var watch = new ColorReferenceWatch(tree.Watched, _ => ticks.Count++);
+            ColorReferenceWatch watch = null;
+            watch = new ColorReferenceWatch(tree.Watched, _ =>
+            {
+                ticks.Count++;
+                watch.Moved();
+            });
             ForcePanelUpdate(tree.Watched.panel);
             ForcePanelUpdate(tree.Watched.panel);
             ticks.Count = 0;
@@ -284,7 +289,13 @@ namespace Velvet.Tests
             var sibling = new VisualElement();
             tree.Parent.Add(sibling);
             var ticks = new Counter();
-            var watch = new ColorReferenceWatch(tree.Watched, _ => ticks.Count++);
+            ColorReferenceWatch watch = null;
+            watch = new ColorReferenceWatch(tree.Watched, _ =>
+            {
+                ticks.Count++;
+                watch.Moved();
+            });
+            watch.Moved();
             ForcePanelUpdate(tree.Watched.panel);
             var clock = new double[] { 100.0 };
             EditorPanelTestHelpers.SetPanelTimeFunction(tree.Watched.panel, () => clock[0]);
@@ -402,7 +413,7 @@ namespace Velvet.Tests
         // Two inheritors under a parent whose background transitions: the transition events once kept one entry per
         // parent, so only the last inheritor sampled and unmounting it stopped the other.
         [Test]
-        public void Given_TwoInheritorsUnderATransitioningParent_When_ItEnds_Then_BothReachTheEndColour()
+        public void Given_TwoInheritorsUnderATransitioningParent_When_ItEnds_Then_TheFirstReachesTheEndColour()
         {
             _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("bg-[#ff0000]"));
             var parent = _window.rootVisualElement.Q<VisualElement>("parent");
@@ -423,9 +434,121 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
             ForcePanelUpdate(parent.panel);
 
-            var first = _window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value;
-            var second = _window.rootVisualElement.Q<VisualElement>("c2").style.backgroundColor.value;
-            Assert.That(first == Color.blue && second == Color.blue, Is.True, $"c1={first} c2={second}");
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_TwoInheritorsUnderATransitioningParent_When_ItEnds_Then_TheSecondReachesTheEndColour()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            var now = 100.0;
+            var clock = new double[] { now };
+            EditorPanelTestHelpers.SetPanelTimeFunction(parent.panel, () => clock[0]);
+            parent.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { new("background-color") };
+            parent.style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(2f, TimeUnit.Second) };
+            parent.style.transitionTimingFunction = new System.Collections.Generic.List<EasingFunction> { new(EasingMode.Linear) };
+            ForcePanelUpdate(parent.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+
+            parent.style.backgroundColor = Color.blue;
+            ForcePanelUpdate(parent.panel);
+            clock[0] += 3.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c2").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        // The parent's background fades red to blue over two seconds, the panel's clock set by the case.
+        private VisualElement MountFadingParent(double[] clock, string parentClass)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors(parentClass));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            EditorPanelTestHelpers.SetPanelTimeFunction(parent.panel, () => clock[0]);
+            parent.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { new("background-color") };
+            parent.style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(2f, TimeUnit.Second) };
+            parent.style.transitionTimingFunction = new System.Collections.Generic.List<EasingFunction> { new(EasingMode.Linear) };
+            ForcePanelUpdate(parent.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            return parent;
+        }
+
+        [Test]
+        public void Given_AnInheritorUnderATransitioningParent_When_TheTransitionIsHalfway_Then_ItIsWhatTheParentShows()
+        {
+            var clock = new double[] { 100.0 };
+            var parent = MountFadingParent(clock, "bg-[#ff0000]");
+            _mounted.Render(TwoInheritors("bg-[#0000ff]"));
+            ForcePanelUpdate(parent.panel);
+
+            clock[0] += 1.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value,
+                Is.EqualTo(parent.resolvedStyle.backgroundColor));
+        }
+
+        [Test]
+        public void Given_AnInheritorUnderATransitioningParent_When_TheTransitionIsHalfway_Then_ItIsNotYetTheEndColour()
+        {
+            // The control for the case above: halfway is neither end of the fade.
+            var clock = new double[] { 100.0 };
+            var parent = MountFadingParent(clock, "bg-[#ff0000]");
+            _mounted.Render(TwoInheritors("bg-[#0000ff]"));
+            ForcePanelUpdate(parent.panel);
+
+            clock[0] += 1.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.Not.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_AnInheritor_When_TheParentsBackgroundIsWrittenDirectlyToItsStyle_Then_ItFollowsOnTheNextTick()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("bg-[#ff0000]"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            ForcePanelUpdate(parent.panel);
+            var clock = new double[] { 100.0 };
+            EditorPanelTestHelpers.SetPanelTimeFunction(parent.panel, () => clock[0]);
+
+            parent.style.backgroundColor = Color.blue;
+            clock[0] += 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_BackgroundInherit_When_TheParentHasAShadow_Then_TheChildTakesTheParentsBackground()
+        {
+            // The shadow's face suppresses the parent's own background with a sentinel and paints it itself.
+            _mounted = V.Mount(_window.rootVisualElement, TwoInheritors("w-[80px] h-[80px] shadow-md bg-white"));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+
+            ForcePanelUpdate(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("c1").style.backgroundColor.value, Is.EqualTo(Color.white));
+        }
+
+        [Test]
+        public void Given_BorderInherit_When_TheParentIsDashed_Then_TheChildTakesTheParentsBorderColour()
+        {
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+            var parent = MountBorderInheritor("w-[80px] h-[80px] border-dashed border-2 border-red-500");
+
+            ForcePanelUpdate(parent.panel);
+
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("child").style.borderTopColor.value, Is.EqualTo(red));
         }
 
         [Test]

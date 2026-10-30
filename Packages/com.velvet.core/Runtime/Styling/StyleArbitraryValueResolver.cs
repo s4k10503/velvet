@@ -1571,33 +1571,37 @@ namespace Velvet
             [ArbitraryProperty.BorderBlockEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
         };
 
-        // The inline counterpart of each ColorSources reader: an inline colour is not in the resolved style until the
-        // next style pass, which a colour written inline raises none of (ColorReferenceWatch.NotifyWritten).
-        private static readonly Dictionary<ArbitraryProperty, Func<IStyle, StyleColor>[]> ColorInlineSources = new()
+        // The border edge each of ColorSources' readers reads, null for a reader of the text or background colour.
+        private static readonly Dictionary<ArbitraryProperty, DivideEdge?[]> ColorEdges = new()
         {
-            [ArbitraryProperty.TextColor] = new Func<IStyle, StyleColor>[] { s => s.color },
-            [ArbitraryProperty.BackgroundColor] = new Func<IStyle, StyleColor>[] { s => s.backgroundColor },
-            [ArbitraryProperty.BorderColor] = new Func<IStyle, StyleColor>[]
-            {
-                s => s.borderTopColor, s => s.borderRightColor, s => s.borderBottomColor, s => s.borderLeftColor,
-            },
-            [ArbitraryProperty.BorderTopColor] = new Func<IStyle, StyleColor>[] { s => s.borderTopColor },
-            [ArbitraryProperty.BorderRightColor] = new Func<IStyle, StyleColor>[] { s => s.borderRightColor },
-            [ArbitraryProperty.BorderBottomColor] = new Func<IStyle, StyleColor>[] { s => s.borderBottomColor },
-            [ArbitraryProperty.BorderLeftColor] = new Func<IStyle, StyleColor>[] { s => s.borderLeftColor },
-            [ArbitraryProperty.BorderXColor] = new Func<IStyle, StyleColor>[] { s => s.borderLeftColor, s => s.borderRightColor },
-            [ArbitraryProperty.BorderYColor] = new Func<IStyle, StyleColor>[] { s => s.borderTopColor, s => s.borderBottomColor },
-            [ArbitraryProperty.BorderInlineStartColor] = new Func<IStyle, StyleColor>[] { s => s.borderLeftColor },
-            [ArbitraryProperty.BorderInlineEndColor] = new Func<IStyle, StyleColor>[] { s => s.borderRightColor },
-            [ArbitraryProperty.BorderBlockStartColor] = new Func<IStyle, StyleColor>[] { s => s.borderTopColor },
-            [ArbitraryProperty.BorderBlockEndColor] = new Func<IStyle, StyleColor>[] { s => s.borderBottomColor },
+            [ArbitraryProperty.BorderColor] = new DivideEdge?[] { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left },
+            [ArbitraryProperty.BorderTopColor] = new DivideEdge?[] { DivideEdge.Top },
+            [ArbitraryProperty.BorderRightColor] = new DivideEdge?[] { DivideEdge.Right },
+            [ArbitraryProperty.BorderBottomColor] = new DivideEdge?[] { DivideEdge.Bottom },
+            [ArbitraryProperty.BorderLeftColor] = new DivideEdge?[] { DivideEdge.Left },
+            [ArbitraryProperty.BorderXColor] = new DivideEdge?[] { DivideEdge.Left, DivideEdge.Right },
+            [ArbitraryProperty.BorderYColor] = new DivideEdge?[] { DivideEdge.Top, DivideEdge.Bottom },
+            [ArbitraryProperty.BorderInlineStartColor] = new DivideEdge?[] { DivideEdge.Left },
+            [ArbitraryProperty.BorderInlineEndColor] = new DivideEdge?[] { DivideEdge.Right },
+            [ArbitraryProperty.BorderBlockStartColor] = new DivideEdge?[] { DivideEdge.Top },
+            [ArbitraryProperty.BorderBlockEndColor] = new DivideEdge?[] { DivideEdge.Bottom },
         };
 
-        // What parent paints for the colour a setter writes: its inline value where it holds one, else its resolved one.
-        internal static Color PaintedColor(VisualElement parent, ArbitraryProperty property, int index)
+        // What parent paints for the colour a setter writes: its resolved colour, or the colour a silhouette face shows
+        // where the face holds the slot under its suppression sentinel (SilhouetteFaceStash.TryReadFace).
+        internal static Color ParentColor(VisualElement parent, ArbitraryProperty property, int index)
         {
-            var inline = ColorInlineSources[property][index](parent.style);
-            return inline.keyword == StyleKeyword.Undefined ? inline.value : ColorSources[property][index](parent.resolvedStyle);
+            var resolved = ColorSources[property][index](parent.resolvedStyle);
+            if (!SilhouetteFace.IsSentinel(resolved))
+            {
+                return resolved;
+            }
+            DivideEdge? edge = ColorEdges.TryGetValue(property, out var edges) ? edges[index] : null;
+            if (property != ArbitraryProperty.TextColor && SilhouetteFaceStash.TryReadFace(parent, edge, out var shown, out _))
+            {
+                return shown;
+            }
+            return resolved;
         }
 
         // A colour read off a live source, which ColorReferenceWatch writes again as the source moves. currentcolor is
@@ -1630,7 +1634,7 @@ namespace Velvet
                 }
                 else
                 {
-                    color = PaintedColor(parent, style.Property, i);
+                    color = ParentColor(parent, style.Property, i);
                 }
                 color.a *= style.Color.a;
                 setters[i](cs, new StyleColor(color));

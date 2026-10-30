@@ -717,6 +717,7 @@ namespace Velvet
             s_owners.AddOrUpdate(element, this);
             Watch(element);
             element.MarkDirtyRepaint();
+            ColorReferenceWatch.NotifyWritten(element);
         }
 
         private void WriteSentinels(VisualElement element)
@@ -751,6 +752,7 @@ namespace Velvet
             SuppressionApplied = false;
             HasStash = false;
             Abandon(element);
+            ColorReferenceWatch.NotifyWritten(element);
         }
 
 #pragma warning disable CS8524 // no discard arm: a new edge has to name the slot it writes

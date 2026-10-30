@@ -12,11 +12,10 @@ namespace Velvet
     // elsewhere in the panel costs this one nothing. An element's events reach every watch that reads it through one
     // Hub, because UI Toolkit keeps a single entry for a callback however many arguments it is registered with.
     //
-    // A background or border colour that transitions raises no style pass after the first, so while a transition runs on
-    // the watched parent itself the watch is also read on a scheduler tick, and once more when the transition ends or
-    // is cancelled. A colour Velvet writes inline raises none either, and the resolver tells the watches reading the
-    // element (NotifyWritten); a colour written to an element's style outside Velvet is followed only where a style
-    // pass or a transition reaches it.
+    // A background or border colour that transitions, or that is written to an element's style directly, raises no style
+    // pass, so each watch also compares the six colours it reads once per tick (Differs), and reads at once when a
+    // transition on the watched parent ends or is cancelled and when the resolver writes a colour inline on the element
+    // it reads (NotifyWritten).
     //
     // UI Toolkit sends CustomStyleResolvedEvent only to an element holding a custom property, and custom properties
     // do not inherit, so each watched element carries MarkerClass, whose rule in _preflight.uss declares one, as
@@ -70,21 +69,6 @@ namespace Velvet
             }
         };
 
-        private static readonly EventCallback<TransitionRunEvent, Hub> s_onTransitionRun = (evt, hub) =>
-        {
-            if (evt.target != hub.Element)
-            {
-                return;
-            }
-            for (var i = hub.Children.Count - 1; i >= 0; i--)
-            {
-                if (i < hub.Children.Count)
-                {
-                    hub.Children[i].TransitionRun();
-                }
-            }
-        };
-
         private static readonly EventCallback<TransitionEndEvent, Hub> s_onTransitionEnd = (evt, hub) => EndTransition(evt, hub);
 
         private static readonly EventCallback<TransitionCancelEvent, Hub> s_onTransitionCancel = (evt, hub) => EndTransition(evt, hub);
@@ -99,7 +83,7 @@ namespace Velvet
             {
                 if (i < hub.Children.Count)
                 {
-                    hub.Children[i].TransitionEnd();
+                    hub.Children[i].Tick();
                 }
             }
         }
@@ -127,7 +111,6 @@ namespace Velvet
             if (hub.Readers.Count == 0)
             {
                 element.RegisterCallback(s_onResolved, hub);
-                element.RegisterCallback(s_onTransitionRun, hub);
                 element.RegisterCallback(s_onTransitionEnd, hub);
                 element.RegisterCallback(s_onTransitionCancel, hub);
             }
@@ -151,7 +134,6 @@ namespace Velvet
             if (hub.Readers.Count == 0)
             {
                 element.UnregisterCallback(s_onResolved);
-                element.UnregisterCallback(s_onTransitionRun);
                 element.UnregisterCallback(s_onTransitionEnd);
                 element.UnregisterCallback(s_onTransitionCancel);
             }
@@ -163,8 +145,7 @@ namespace Velvet
         private VisualElement? _watchedParent;
         private bool _sampled;
         private bool _stopped;
-        private int _transitions;
-        private IVisualElementScheduledItem? _sampler;
+        private readonly IVisualElementScheduledItem _poll;
 
         public ColorReferenceWatch(VisualElement element, Action<VisualElement> reresolve)
         {
@@ -174,28 +155,16 @@ namespace Velvet
             Subscribe(element, this, child: false);
             element.RegisterCallback<AttachToPanelEvent, ColorReferenceWatch>(OnAttached, this);
             WatchParent();
+            _poll = element.schedule.Execute(Poll).Every(StyleAnimateDriver.TickMs);
         }
 
-        private void TransitionRun()
+        // Once per tick, a read only when a colour the watch reads has moved.
+        private void Poll()
         {
-            _transitions++;
-            _sampler ??= _element.schedule.Execute(Tick).Every(StyleAnimateDriver.TickMs);
-        }
-
-        private void TransitionEnd()
-        {
-            _transitions = Math.Max(0, _transitions - 1);
-            Tick();
-            if (_transitions == 0)
+            if (!_stopped && Differs())
             {
-                StopSampling();
+                Tick();
             }
-        }
-
-        private void StopSampling()
-        {
-            _sampler?.Pause();
-            _sampler = null;
         }
 
         private static void OnAttached(AttachToPanelEvent evt, ColorReferenceWatch self)
@@ -231,29 +200,37 @@ namespace Velvet
         }
 
         // Whether a colour the element's references read has changed since the last call; true on the first.
-        public bool Moved()
+        public bool Moved() => Read(record: true);
+
+        // Moved, without taking the colours as read.
+        private bool Differs() => Read(record: false);
+
+        private bool Read(bool record)
         {
             var own = _element.resolvedStyle;
             var parent = ClipPathLayoutBox.Of(_element).hierarchy.parent;
             var moved = !_sampled;
-            moved |= Take(0, own.color);
+            moved |= Take(0, own.color, record);
             if (parent != null)
             {
-                moved |= Take(1, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.TextColor, 0));
-                moved |= Take(2, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BackgroundColor, 0));
-                moved |= Take(3, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderTopColor, 0));
-                moved |= Take(4, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderRightColor, 0));
-                moved |= Take(5, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderBottomColor, 0));
-                moved |= Take(6, StyleArbitraryValueResolver.PaintedColor(parent, ArbitraryProperty.BorderLeftColor, 0));
+                moved |= Take(1, StyleArbitraryValueResolver.ParentColor(parent, ArbitraryProperty.TextColor, 0), record);
+                moved |= Take(2, StyleArbitraryValueResolver.ParentColor(parent, ArbitraryProperty.BackgroundColor, 0), record);
+                moved |= Take(3, StyleArbitraryValueResolver.ParentColor(parent, ArbitraryProperty.BorderTopColor, 0), record);
+                moved |= Take(4, StyleArbitraryValueResolver.ParentColor(parent, ArbitraryProperty.BorderRightColor, 0), record);
+                moved |= Take(5, StyleArbitraryValueResolver.ParentColor(parent, ArbitraryProperty.BorderBottomColor, 0), record);
+                moved |= Take(6, StyleArbitraryValueResolver.ParentColor(parent, ArbitraryProperty.BorderLeftColor, 0), record);
             }
-            _sampled = true;
+            _sampled |= record;
             return moved;
         }
 
-        private bool Take(int slot, Color value)
+        private bool Take(int slot, Color value, bool record)
         {
             var changed = _last[slot] != value;
-            _last[slot] = value;
+            if (record)
+            {
+                _last[slot] = value;
+            }
             return changed;
         }
 
@@ -264,7 +241,7 @@ namespace Velvet
             _element.UnregisterCallback<AttachToPanelEvent, ColorReferenceWatch>(OnAttached);
             Unmark(_element);
             ReleaseParent();
-            StopSampling();
+            _poll.Pause();
         }
 
         private void ReleaseParent()
@@ -274,8 +251,6 @@ namespace Velvet
                 return;
             }
             Unsubscribe(_watchedParent, this, child: true);
-            _transitions = 0;
-            StopSampling();
             Unmark(_watchedParent);
             _watchedParent = null;
         }
