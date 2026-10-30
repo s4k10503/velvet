@@ -36,6 +36,15 @@ namespace Velvet.Tests
             }
         }
 
+        private static IEnumerator Seconds(double seconds)
+        {
+            var deadline = UnityEngine.Time.realtimeSinceStartupAsDouble + seconds;
+            while (UnityEngine.Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return null;
+            }
+        }
+
         private VisualElement Mount(string className)
         {
             _mounted = V.Mount(_host.Root, V.Div(name: "box", className: className));
@@ -68,7 +77,7 @@ namespace Velvet.Tests
 
             // Act
             _host.Scale = 1.5f;
-            yield return Frames(10);
+            yield return Seconds(0.2);
 
             // Assert
             Assert.That(box.style.borderTopWidth.value, Is.EqualTo(SnappedThree).Within(1e-4f));
@@ -84,13 +93,13 @@ namespace Velvet.Tests
             yield return Frames(5);
             box.RemoveFromHierarchy();
             _host.Scale = 1.5f;
-            yield return Frames(10);
+            yield return Seconds(0.2);
             _host.Root.Add(box);
             yield return Frames(5);
 
             // Act
             _host.Scale = 1.25f;
-            yield return Frames(10);
+            yield return Seconds(0.2);
 
             // Assert — 3px is three and three quarters of a device pixel, taken down to three: 2.4px.
             Assert.That(box.style.borderTopWidth.value, Is.EqualTo(2.4f).Within(1e-4f));
@@ -112,7 +121,7 @@ namespace Velvet.Tests
 
             // Act
             _host.Scale = 1.5f;
-            yield return Frames(10);
+            yield return Seconds(0.2);
 
             // Assert
             Assert.That(_host.Root.Q<VisualElement>("a").style.borderRightWidth.value, Is.EqualTo(SnappedThree).Within(1e-4f));
