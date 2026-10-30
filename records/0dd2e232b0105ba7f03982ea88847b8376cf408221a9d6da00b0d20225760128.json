@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 27 case(s) that ran the site: Given_APortalWhoseHostChildrenAreHalfMountedWhenOneSuspends_When_TheMountingPassEnds_Then_TheTargetHoldsNoneOfThem, Given_APortalWhoseHostChildrenMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce",
+ "file": "868c4ca8e2691709f5dac73f91c4c81a42c41874d4fec50acdead0910a998d64",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseHostChildrenAreHalfMountedWhenOneSuspends_When_TheMountingPassEnds_Then_TheTargetHoldsNoneOfThem",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseHostChildrenMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41000200949",
+ "mutant": {
+  "after": ";",
+  "before": "RemoveRowsFrom(resolvedTarget, slotStart);",
+  "column": 20,
+  "line": 503,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "868c4ca8e2691709f5dac73f91c4c81a42c41874d4fec50acdead0910a998d64",
+ "killers": [],
+ "measured_by": "41000200949",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.ComponentRegistry.CommitChildOrderToRows(state.Parent!, state.NewElements!, placements: null);",
+  "column": 16,
+  "line": 1724,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "survived"
+}

@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 9 case(s) that ran the site: Given_AComponentInAPortalMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_ItsLayoutEffectRunsOnlyThen, Given_APortalThatIsADirectChildOfTheBoundaryMountedWhileItsPrimaryIsHidden_When_ItsComponentsStateChangesAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen",
+ "file": "868c4ca8e2691709f5dac73f91c4c81a42c41874d4fec50acdead0910a998d64",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_AComponentInAPortalMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_ItsLayoutEffectRunsOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "e0fc16d99cdd17f46a86ca2dc415e7a156c3a13f082250bb69da4d77f26d5af0",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseHiddenPortalRefTests.Given_APortalThatIsADirectChildOfTheBoundaryMountedWhileItsPrimaryIsHidden_When_ItsComponentsStateChangesAndTheBoundaryReveals_Then_TheNewestRefAttachesOnlyThen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseHiddenPortalRefTests.cs": "e0fc16d99cdd17f46a86ca2dc415e7a156c3a13f082250bb69da4d77f26d5af0",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41000200949",
+ "mutant": {
+  "after": ";",
+  "before": "_general.HideFibersMountedUnder(placeholder, declaringFiber);",
+  "column": 12,
+  "line": 552,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}

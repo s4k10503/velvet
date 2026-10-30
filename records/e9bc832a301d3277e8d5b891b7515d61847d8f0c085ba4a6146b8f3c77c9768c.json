@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue",
+ "file": "868c4ca8e2691709f5dac73f91c4c81a42c41874d4fec50acdead0910a998d64",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseDeferredValueTests.Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseDeferredValueTests.cs": "ad9028f5a38a46e03ae98eade6364debbc3bf94b140daef50fb0fb59aef70f19",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41000200949",
+ "mutant": {
+  "after": ";",
+  "before": "_pendingIndexedState = value;",
+  "column": 16,
+  "line": 53,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ChildReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "verdict": "killed"
+}
