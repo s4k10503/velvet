@@ -97,5 +97,38 @@ namespace Velvet.Tests
 
             Assert.That(binding.RingElement.style.display.value, Is.EqualTo(DisplayStyle.None));
         }
+
+        [Test]
+        public void Given_AnElementThatNamedARingColour_When_ItIsUnmounted_Then_ItHandsNoColourToAnInheritingDescendant()
+        {
+            // Arrange — a pooled element is reused by the next mount, whose descendants must not read the last one's.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Div(className: "ring-red-500", name: "card") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+            var card = scope.Root.Q<VisualElement>("card");
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, Array.Empty<VNode>());
+            var child = new VisualElement();
+            card.Add(child);
+
+            // Assert
+            Assert.That(BandColourInheritance.Resolve(child, BandColourInheritance.Family.Ring), Is.Not.EqualTo(red));
+        }
+
+        [Test]
+        public void Given_AnElementNamingARingColour_When_Mounted_Then_ItHandsThatColourToAnInheritingDescendant()
+        {
+            // The control for the case above: while mounted, the colour is the descendant's to inherit.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: "ring-red-500", name: "card") });
+            var child = new VisualElement();
+            scope.Root.Q<VisualElement>("card").Add(child);
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+
+            Assert.That(BandColourInheritance.Resolve(child, BandColourInheritance.Family.Ring), Is.EqualTo(red));
+        }
     }
 }

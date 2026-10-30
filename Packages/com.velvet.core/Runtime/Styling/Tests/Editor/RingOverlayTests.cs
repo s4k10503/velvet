@@ -467,6 +467,85 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOutlineInsideARoundedClip_When_TheClipsRadiusChangesAlone_Then_TheProxyFollowsOnTheNextTick()
+        {
+            // Arrange — the clip's rect stays put, so only the radius it is read for moves.
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            clip.style.borderTopLeftRadius = 20f;
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var binding = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"));
+
+            // Act
+            clip.style.borderTopLeftRadius = 0f;
+            ForcePanelUpdate(clip.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(clip.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(clip.panel);
+            ForcePanelUpdate(clip.panel);
+
+            // Assert
+            Assert.That(binding.OutlineOverlay.parent.resolvedStyle.borderTopLeftRadius, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AnOutlineInATreeMountedBelowAnotherElement_When_LaidOut_Then_TheMountContainerHostsIt()
+        {
+            // Arrange — the container belongs to the application, and may be taken out of the panel with the tree in it.
+            var top = new VisualElement { name = "top" };
+            var container = new VisualElement { name = "container" };
+            top.Add(container);
+            _window.rootVisualElement.Add(top);
+            _mounted = V.Mount(container, V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"));
+
+            // Act
+            ForcePanelUpdate(container.panel);
+            ForcePanelUpdate(container.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(container.Q<VisualElement>("a")).OutlineOverlay.parent, Is.SameAs(container));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAZStackedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
+        {
+            // Arrange — a z-index other than auto makes a stacking context of what the element holds.
+            var outline = MountOutlineUnder("w-[100px] h-[60px] relative z-10");
+
+            // Assert
+            Assert.That(outline.parent.name, Is.EqualTo("holder"));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAFlexOrderedAncestor_When_LaidOut_Then_ThatAncestorDoesNotHostIt()
+        {
+            // Arrange — order-* moves an item in flex order and makes no stacking context.
+            var outline = MountOutlineUnder("w-[100px] h-[60px] order-1");
+
+            // Assert
+            Assert.That(outline.parent.name, Is.Not.EqualTo("holder"));
+        }
+
+        private VisualElement MountOutlineUnder(string holderClass)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "flex w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "holder", className: holderClass, children: new VNode[]
+                    {
+                        V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                    V.Div(name: "after", className: "w-[40px] h-[40px]"),
+                }));
+            var holder = _window.rootVisualElement.Q<VisualElement>("holder");
+            ForcePanelUpdate(holder.panel);
+            ForcePanelUpdate(holder.panel);
+            return RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a")).OutlineOverlay;
+        }
+
+        [Test]
         public void Given_AnOutlineInsideAFadedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
         {
             // Arrange — an opacity below 1 composites what it holds, so the outline stays inside it to fade with it.

@@ -83,7 +83,9 @@ namespace Velvet
         private static bool Unchanged(VisualElement element, RingBinding binding)
         {
             var host = binding.OutlineHost;
+            var mountRoot = binding.Context?.MainPanelRoot;
             if (host == null || binding.Spec.Outline.Width <= 0f || element.panel is not { } panel
+                || (mountRoot != null && host != mountRoot && !mountRoot.Contains(host))
                 || HierarchyVersionOf(panel)?.Invoke() is not { } version || version != binding.OutlineVersion
                 || !(host.parent == null || host.parent == panel.visualTree || IsStackingRoot(host)))
             {
@@ -115,14 +117,20 @@ namespace Velvet
                 x += a.layout.x;
                 y += a.layout.y;
             }
-            return clip < 0 && new Vector2(x, y) == binding.OutlineOffset
+            return clip < 0 && new Vector2(x, y) == binding.OutlineOffset && HostBorderOf(host) == binding.OutlineHostBorder
                 && new Vector2(binding.Width, binding.Height) == binding.OutlineSize;
         }
 
-        // What a clip proxy copies off a clipping ancestor, which a placement compares to know the proxy still stands
-        // for it: its box in its parent, its size and its mask.
-        private static (Rect Layout, object? Mask) ClipBoxOf(VisualElement c)
-            => (c.layout, c.style.backgroundImage.value.vectorImage);
+        private static ClipBox ClipBoxOf(VisualElement c)
+        {
+            var rs = c.resolvedStyle;
+            return new ClipBox(c.layout, c.style.backgroundImage.value.vectorImage,
+                new Vector4(rs.borderLeftWidth, rs.borderTopWidth, rs.borderRightWidth, rs.borderBottomWidth),
+                new Vector4(rs.borderTopLeftRadius, rs.borderTopRightRadius, rs.borderBottomRightRadius, rs.borderBottomLeftRadius));
+        }
+
+        private static Vector2 HostBorderOf(VisualElement host)
+            => new(Sane(host.resolvedStyle.borderLeftWidth), Sane(host.resolvedStyle.borderTopWidth));
 
         internal static void Remove(RingBinding binding)
         {
@@ -136,7 +144,7 @@ namespace Velvet
 
         private static void Rehost(VisualElement element, RingBinding binding)
         {
-            var host = binding.Spec.Outline.Width > 0f && element.parent != null ? Host(element) : null;
+            var host = binding.Spec.Outline.Width > 0f && element.parent != null ? Host(element, binding.Context?.MainPanelRoot) : null;
             binding.OutlineHost = host;
             if (host == null)
             {
@@ -182,7 +190,8 @@ namespace Velvet
                 binding.OutlineHost = null; // not yet laid out: the next tick places it
                 return;
             }
-            binding.OutlineOffset = new Vector2(ex + Sane(host.resolvedStyle.borderLeftWidth), ey + Sane(host.resolvedStyle.borderTopWidth));
+            binding.OutlineHostBorder = HostBorderOf(host);
+            binding.OutlineOffset = new Vector2(ex + binding.OutlineHostBorder.x, ey + binding.OutlineHostBorder.y);
             binding.OutlineSize = new Vector2(binding.Width, binding.Height);
             float px = 0f, py = 0f;
             for (var i = 0; i < clips.Count; i++)
@@ -241,14 +250,15 @@ namespace Velvet
         }
 
         // The stacking context's root: the nearest ancestor that composites, transforms, hides or z-stacks what it
-        // holds; failing one, the topmost ancestor under the panel's root.
-        internal static VisualElement? Host(VisualElement element)
+        // holds; failing one, the topmost ancestor under the panel's root, or the mount container where the tree
+        // has one, whose overlays go with it when the tree is taken out of the panel.
+        internal static VisualElement? Host(VisualElement element, VisualElement? mountRoot = null)
         {
             var candidate = element.parent;
             while (candidate != null)
             {
                 var up = candidate.parent;
-                if (up == null || up == candidate.panel?.visualTree || IsStackingRoot(candidate))
+                if (up == null || up == candidate.panel?.visualTree || candidate == mountRoot || IsStackingRoot(candidate))
                 {
                     return candidate;
                 }
@@ -265,7 +275,7 @@ namespace Velvet
             return rs.display == DisplayStyle.None || rs.opacity < 1f || rs.translate != Vector3.zero
                 || rs.scale.value != Vector3.one || rs.rotate.angle.value != 0f
                 || (filter.keyword == StyleKeyword.Undefined && filter.value is { Count: > 0 })
-                || FiberZLayerCoordinator.IsRelocatedReal(e);
+                || FiberZLayerCoordinator.CreatesStackingContext(e);
         }
 
         // Whether e clips its children, as UI Toolkit decides it; an inline overflow: hidden where the engine member

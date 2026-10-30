@@ -1,0 +1,2 @@
+/* A rule of an application's own that names a border colour, which preflight's currentcolor gives way to. */
+.preflight-test-card { border-color: rgb(51, 102, 153); }

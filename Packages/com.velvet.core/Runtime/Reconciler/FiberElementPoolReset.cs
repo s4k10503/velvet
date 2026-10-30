@@ -98,6 +98,7 @@ namespace Velvet
         {
             element.ClearClassList();
             StyleArbitraryValueResolver.ClearAll(element);
+            BandColourInheritance.Forget(element);
         }
 
         private static void AddClassIfNotEmpty(VisualElement element, string ussClass)

@@ -499,10 +499,10 @@ namespace Velvet
                     (slots.OutlineColorSet, slots.OutlineColor, slots.OutlineColorRef) = (true, color, ColorReference.None);
                 }
             }
-            else if (!isRingFamily && StyleColorValueParser.VerdictOfColourValue(suffix, 0) == StyleColorValueParser.ColourVerdict.Rejected)
+            else if (!isRingFamily && StyleColorValueParser.RejectedAtComputedTime(suffix, 0))
             {
                 // outline-red-500/150: an outline-color the browser rejects once computed, which leaves it at its initial
-                // currentcolor. A rejected ring colour discards the box-shadow instead (ReadBoxShadow).
+                // currentcolor (outline-[#f00]/150 is dropped at parse time instead). A rejected ring colour discards the box-shadow instead (ReadBoxShadow).
                 (slots.OutlineColorSet, slots.OutlineColorRef) = (false, ColorReference.Current);
             }
         }

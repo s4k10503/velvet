@@ -22,6 +22,7 @@ namespace Velvet
         {
             if (!StyleRingClass.HasRingClass(classNames))
             {
+                BandColourInheritance.Forget(element);
                 return;
             }
             // Before the extraction: an element naming only a colour draws nothing, and its descendants' -inherit
@@ -41,7 +42,7 @@ namespace Velvet
             {
                 return;
             }
-            _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames);
+            _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames, _ctx);
             // The element is not in the hierarchy yet, so the overlay has no host to sit beside; the drain at
             // the reconcile boundary places it once the caller has inserted the element.
             RingOverlay.RequestPlacement(_ctx, element);
@@ -77,7 +78,7 @@ namespace Velvet
             }
             else if (want)
             {
-                _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames);
+                _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames, _ctx);
                 // A patch-time attach usually has its parent already, and Attach places the overlay itself;
                 // queue a retry anyway for the one case that does not — an element created earlier in this
                 // same pass whose ring arrived through a variant payload before the caller inserted it.

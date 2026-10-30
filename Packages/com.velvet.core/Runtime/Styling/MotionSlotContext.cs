@@ -130,6 +130,8 @@ namespace Velvet
             if (_drivenByRunningPlay(slot)) return false;
             var longhands = StyleArbitraryLonghands.Of(slot);
             var owner = Owner(slot);
+            // Preflight's currentcolor is written inline, but is no declaration of the element's own.
+            if (slot == ArbitraryProperty.BorderColor && StyleArbitraryValueResolver.PreflightWins(owner, slot)) return false;
             var style = owner.style;
             // A projected face's hidden slot holds none of the element's own (ProjectedCornerFace.InlineOf).
             var hasInline = slot == ArbitraryProperty.BorderColor

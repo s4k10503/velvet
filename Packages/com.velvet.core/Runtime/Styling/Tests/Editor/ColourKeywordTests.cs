@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -69,6 +70,33 @@ namespace Velvet.Tests
             Assert.That(Parse("bg-red-500/150").Color, Is.EqualTo(Color.clear));
         }
 
+        [TestCase("bg-[#ff0000]/150")]
+        [TestCase("text-[#ff0000]/150")]
+        [TestCase("border-[#ff0000]/150")]
+        public void Given_ABracketedColourModifierPast100_When_Parsed_Then_TheClassIsDeclined(string cls)
+        {
+            // Tailwind writes no var() there, so the out-of-range percentage is a parse error that drops the declaration
+            // and leaves an earlier class standing.
+            Assert.That(StyleArbitraryValueResolver.TryParse(cls, out _), Is.False);
+        }
+
+        [Test]
+        public void Given_ABackgroundCurrentModifierPast100_When_Parsed_Then_TheBackgroundIsPlainCurrentColour()
+        {
+            var parsed = Parse("bg-current/150");
+
+            Assert.That(parsed.Reference == ColorReference.Current ? parsed.Color.a : float.NaN, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_AnOutlineBracketedColourPast100_When_Extracted_Then_TheOutlineKeepsAnEarlierColour()
+        {
+            // The control is the palette colour, which computes invalid and so to the text colour.
+            StyleRingClass.TryExtract(new[] { "outline-2", "outline-blue-500", "outline-[#ff0000]/150" }, out var spec);
+
+            Assert.That(spec.Outline.CurrentColor, Is.False);
+        }
+
         [Test]
         public void Given_ATextColourModifierWithin100_When_Parsed_Then_TheColourIsWritten()
         {
@@ -119,6 +147,61 @@ namespace Velvet.Tests
 
             Assert.That(StyleArbitraryValueResolver.HasLayerAt(element, ArbitraryProperty.BorderColor, StyleLayerPriority.Preflight),
                 Is.True);
+        }
+    }
+
+    /// <summary>
+    /// Specifies that preflight's currentcolor border gives way to a rule of the application's own and to a control's
+    /// theme, which it would otherwise beat as an inline value.
+    /// </summary>
+    internal sealed class PreflightBorderRulePanelTests : PanelTestBase
+    {
+        private const string Sheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/PreflightBorderRule.uss";
+
+        protected override void LoadStyleSheets()
+        {
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(Sheet));
+        }
+
+        private VisualElement Mount(string className)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "card", className: className));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            // The first pass reads the probe of the application's class and the second restyles the element.
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+            return card;
+        }
+
+        [Test]
+        public void Given_ABorderedElementWithARuleOfItsOwnNamingABorderColour_When_Mounted_Then_TheRulesColourStands()
+        {
+            var card = Mount("w-[40px] h-[40px] border-2 text-[#ff0000] preflight-test-card");
+
+            Assert.That(card.resolvedStyle.borderTopColor, Is.EqualTo(new Color(0.2f, 0.4f, 0.6f)).Using(ColorComparer));
+        }
+
+        [Test]
+        public void Given_ABorderedElementWithNoRuleOfItsOwn_When_Mounted_Then_TheBorderIsTheTextColour()
+        {
+            // The control for the case above: the same element without the application's class.
+            var card = Mount("w-[40px] h-[40px] border-2 text-[#ff0000]");
+
+            Assert.That(card.resolvedStyle.borderTopColor, Is.EqualTo(Color.red).Using(ColorComparer));
+        }
+
+        private static readonly System.Collections.IComparer ColorComparer = new NearColour();
+
+        private sealed class NearColour : System.Collections.IComparer
+        {
+            public int Compare(object x, object y)
+            {
+                var a = (Color)x;
+                var b = (Color)y;
+                return Mathf.Abs(a.r - b.r) < 0.01f && Mathf.Abs(a.g - b.g) < 0.01f && Mathf.Abs(a.b - b.b) < 0.01f ? 0 : 1;
+            }
         }
     }
 }

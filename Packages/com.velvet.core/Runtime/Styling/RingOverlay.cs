@@ -10,6 +10,10 @@ namespace Velvet
     // element itself. Holds the overlays that paint the bands, the callbacks that keep them tracking the element
     // (so they can be unregistered on detach), the latest class list (the geometry sync re-resolves the corner
     // radius from it) and the resolved spec.
+    // What a clip proxy copies off the clipping ancestor it stands for, which a placement compares to know the proxy
+    // still stands for it: the ancestor's box in its parent, its mask, its borders and its corner radii.
+    internal readonly record struct ClipBox(Rect Layout, object? Mask, Vector4 Borders, Vector4 Radii);
+
     internal sealed class RingBinding
     {
         // Each overlay covers the element's box and carries its transform, opacity, visibility and display; the
@@ -23,6 +27,8 @@ namespace Velvet
         public readonly VisualElement OutlineElement;
         public string[] ClassNames = null!;
         public RingSpec Spec;
+        // The tree the element belongs to, whose mount container the outline is hosted inside of (OutlineHosting.Host).
+        public ReconcilerContext? Context;
         // True while the overlay is configured as the element's own first child (an inset band) rather than as
         // its following sibling; RingOverlay.SetMode is the only writer.
         public bool Inside;
@@ -41,9 +47,10 @@ namespace Velvet
         // the element's offset in the host and its size, and the panel's hierarchy version.
         public readonly List<VisualElement> OutlineClips = new();
         public readonly List<VisualElement> OutlineClipOwners = new();
-        public readonly List<(Rect Layout, object? Mask)> OutlineClipBoxes = new();
+        public readonly List<ClipBox> OutlineClipBoxes = new();
         public VisualElement? OutlineHost;
         public Vector2 OutlineOffset;
+        public Vector2 OutlineHostBorder;
         public Vector2 OutlineSize;
         public uint? OutlineVersion;
         public EventCallback<GeometryChangedEvent>? OnGeometry;
@@ -161,7 +168,8 @@ namespace Velvet
             return band;
         }
 
-        public static RingBinding Attach(VisualElement element, RingSpec spec, string[] classNames)
+        public static RingBinding Attach(VisualElement element, RingSpec spec, string[] classNames,
+            ReconcilerContext? context = null)
         {
             var overlay = NewOverlay(OverlayName);
             var outlineOverlay = NewOverlay(OutlineOverlayName);
@@ -175,6 +183,7 @@ namespace Velvet
             {
                 ClassNames = classNames,
                 Spec = spec,
+                Context = context,
             };
             SetMode(binding);
             ApplySpec(binding, element);

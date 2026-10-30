@@ -388,11 +388,14 @@ namespace Velvet
                 }
                 _ctx.ClipPathBindings.Remove(element);
             }
+            // The colours a ring class named, whether or not a band was drawn: a reused element would hand them to
+            // a descendant's -inherit.
+            BandColourInheritance.Forget(element);
             if (_ctx.RingBindings.TryGetValue(element, out var ringBinding))
             {
-                // The overlay is a plain native-border VisualElement (no GPU resource), but it lives in the
-                // element's PARENT rather than in its subtree, so it does not leave with the element being
-                // removed — Detach is what takes it out of the hierarchy as well as unregistering the
+                // The overlays hold no resource of their own, but they live in the element's PARENT and in the
+                // outline's host rather than in its subtree, so they do not leave with the element being
+                // removed — Detach is what takes them out of the hierarchy as well as unregistering the
                 // callbacks, and skipping it would strand a live band beside an unmounted element.
                 RingOverlay.Detach(element, ringBinding);
                 _ctx.RingBindings.Remove(element);

@@ -338,9 +338,9 @@ each axis). The reconciler and the child variants skip it as they skip Velvet's 
 
 An outline paints after all the content of its stacking context, over a later sibling's face, and is clipped by its own
 ancestors' overflow only. Its overlay is therefore a trailing child of the stacking context's root — the nearest ancestor
-that composites (an opacity below 1, a filter), transforms, is `hidden`, or is relocated by a `z-*` — and each ancestor
+that composites (an opacity below 1, a filter), transforms, is `hidden`, or has a `z-*` other than `z-auto` — and each ancestor
 between that clips is stood in for by a clip proxy over its padding box, carrying the shape of a `clip-path-*` wrapper.
-Outlines that share a root are kept in their elements' tree order. The placement reads the panel's hierarchy version and
+Failing a stacking root the overlay goes in the container the tree is mounted in, and leaves with it. Outlines that share a root are kept in their elements' tree order. The placement reads the panel's hierarchy version and
 the element's own ancestors, so a style change elsewhere in the panel costs an outline nothing.
 
 A band is drawn by a class that names one, as in Tailwind v4: `ring` (1px), `ring-<n>`, `ring-[…]`, `outline`

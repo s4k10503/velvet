@@ -3249,6 +3249,11 @@ namespace Velvet
 
         // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it
         // writes directly rather than through Apply — no manipulator registers a layer.
+        // Whether the layer winning property on element is preflight's own, which holds nothing of the element's.
+        internal static bool PreflightWins(VisualElement element, ArbitraryProperty property)
+            => s_layers.TryGetValue(element, out var map) && TryWinningKey(map, property, out _, out var key)
+                && key == StyleLayerPriority.Preflight;
+
         internal static bool HasLayerAt(VisualElement element, ArbitraryProperty property, long priority)
             => s_layers.TryGetValue(element, out var map)
                 && map.TryGetValue(property, out var layers)

@@ -1278,6 +1278,27 @@ namespace Velvet.Tests
             Assert.That(plan.Lengths, Is.Null);
         }
 
+        [Test]
+        public void Given_ABorderedElementWithPreflightBorderColour_When_ABorderColorSwapIsResolved_Then_TheColourIsDriven()
+        {
+            // Arrange — border-2 gives the element preflight's currentcolor layer, which holds nothing a swap has to
+            // outrank.
+            var element = MountInFixedParent();
+            PreflightBorderColor.Sync(element, new[] { "border-2" });
+
+            // Act
+            var plan = Resolve(element, new[] { "border-[#ff0000]" }, new[] { "border-[#0000ff]" });
+
+            // Assert
+            Assert.That(plan.Colors?.Find(c => c.Property == ArbitraryProperty.BorderTopColor), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_APreflightLayerKey_When_AskedWhetherItIsUnderAVariant_Then_ItIsNot()
+        {
+            Assert.That(StyleLayerPriority.UnderVariant(StyleLayerPriority.Preflight), Is.False);
+        }
+
         private MotionSpringClassParser.SpringPlan ResolveBorderColorSwapUnderAnImportantTop()
         {
             var element = MountInFixedParent();

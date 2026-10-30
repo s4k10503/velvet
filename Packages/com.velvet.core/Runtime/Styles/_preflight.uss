@@ -16,3 +16,7 @@
 
 /* A Button keeps the theme's spacing; only its white-space is taken from the parent, as a label's is. */
 .velvet-button { white-space: unset; }
+
+/* Gives an element whose colour is read off a live source (border-current, text-inherit, ...) the custom property
+   that makes UI Toolkit send it CustomStyleResolvedEvent; see ColorReferenceWatch. */
+.velvet-color-reference { --velvet-color-reference: 1; }

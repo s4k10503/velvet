@@ -295,8 +295,12 @@ namespace Velvet
                     result = new ArbitraryStyle(property, factor, ColorReference.Current);
                     return true;
                 }
+                // Tailwind writes currentcolor first and the color-mix() behind a feature query, whose percentage
+                // outside 0..100% is a parse error there, so the property is plain currentcolor.
+                result = new ArbitraryStyle(property, factor, ColorReference.Current);
+                return true;
             }
-            else if (VerdictOfColourValue(token, start) != ColourVerdict.Rejected)
+            else if (!RejectedAtComputedTime(token, start))
             {
                 return false;
             }
@@ -345,6 +349,13 @@ namespace Velvet
             Valid,
             Rejected,
         }
+
+        // Whether the colour utility at start has an opacity modifier outside 0..100% on a palette name. Tailwind
+        // writes a palette colour through var(--color-*), which makes the color-mix() invalid only once computed, so
+        // the property is unset; a bracketed colour carries no var(), and its out-of-range percentage is a parse error
+        // that drops the declaration, leaving an earlier class standing.
+        internal static bool RejectedAtComputedTime(string token, int start)
+            => start < token.Length && token[start] != '[' && VerdictOfColourValue(token, start) == ColourVerdict.Rejected;
 
         // A colour utility's value from start: a palette name or a bracketed colour, with or without an opacity
         // modifier. Rejected where the modifier's percentage lies outside 0..100, which leaves the color-mix()

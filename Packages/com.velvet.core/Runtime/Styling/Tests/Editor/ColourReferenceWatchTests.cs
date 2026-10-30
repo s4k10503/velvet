@@ -13,11 +13,12 @@ namespace Velvet.Tests
     {
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
-        private static void Resolve(VisualElement target)
+        // Restyles target through the panel's own style pass, which is what sends the event: an event sent by hand
+        // would pass without the custom property UI Toolkit requires of its target.
+        private void Restyle(VisualElement target)
         {
-            using var evt = CustomStyleResolvedEvent.GetPooled();
-            evt.target = target;
-            target.SendEvent(evt);
+            target.style.color = target.style.color.value == Color.blue ? Color.green : Color.blue;
+            ForcePanelUpdate(target.panel);
         }
 
         private (VisualElement Parent, VisualElement Watched, VisualElement Unrelated) Tree()
@@ -33,55 +34,88 @@ namespace Velvet.Tests
             return (parent, watched, unrelated);
         }
 
+        // A watch over the tree's watched element, settled so that the marking's own restyle is not counted.
+        private (ColorReferenceWatch Watch, Counter Ticks, VisualElement Parent, VisualElement Watched, VisualElement Unrelated) Watching()
+        {
+            var tree = Tree();
+            var ticks = new Counter();
+            var watch = new ColorReferenceWatch(tree.Watched, _ => ticks.Count++);
+            ForcePanelUpdate(tree.Watched.panel);
+            ForcePanelUpdate(tree.Watched.panel);
+            ticks.Count = 0;
+            return (watch, ticks, tree.Parent, tree.Watched, tree.Unrelated);
+        }
+
+        private sealed class Counter
+        {
+            public int Count;
+        }
+
         [Test]
         public void Given_AWatchedElement_When_ItsStylesResolve_Then_ItIsReResolved()
         {
-            var tree = Tree();
-            var ticks = 0;
-            var watch = new ColorReferenceWatch(tree.Watched, _ => ticks++);
+            var w = Watching();
 
-            Resolve(tree.Watched);
+            Restyle(w.Watched);
 
-            watch.Stop();
-            Assert.That(ticks, Is.EqualTo(1));
+            w.Watch.Stop();
+            Assert.That(w.Ticks.Count, Is.GreaterThan(0));
         }
 
         [Test]
         public void Given_AWatchedElement_When_ItsParentsStylesResolve_Then_ItIsReResolved()
         {
-            var tree = Tree();
-            var ticks = 0;
-            var watch = new ColorReferenceWatch(tree.Watched, _ => ticks++);
+            var w = Watching();
 
-            Resolve(tree.Parent);
+            Restyle(w.Parent);
 
-            watch.Stop();
-            Assert.That(ticks, Is.EqualTo(1));
+            w.Watch.Stop();
+            Assert.That(w.Ticks.Count, Is.GreaterThan(0));
         }
 
         [Test]
         public void Given_AWatchedElement_When_AnUnrelatedElementsStylesResolve_Then_NothingRuns()
         {
-            var tree = Tree();
-            var ticks = 0;
-            var watch = new ColorReferenceWatch(tree.Watched, _ => ticks++);
+            var w = Watching();
 
-            Resolve(tree.Unrelated);
+            Restyle(w.Unrelated);
 
-            watch.Stop();
-            Assert.That(ticks, Is.EqualTo(0));
+            w.Watch.Stop();
+            Assert.That(w.Ticks.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void Given_AStoppedWatch_When_ItsElementResolves_Then_NothingRuns()
         {
-            var tree = Tree();
-            var ticks = 0;
-            new ColorReferenceWatch(tree.Watched, _ => ticks++).Stop();
+            var w = Watching();
+            w.Watch.Stop();
 
-            Resolve(tree.Watched);
+            Restyle(w.Watched);
 
-            Assert.That(ticks, Is.EqualTo(0));
+            Assert.That(w.Ticks.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AWatchedElement_When_TheWatchStops_Then_TheMarkerLeavesBothElements()
+        {
+            var w = Watching();
+
+            w.Watch.Stop();
+
+            Assert.That(w.Watched.ClassListContains(ColorReferenceWatch.MarkerClass)
+                || w.Parent.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_AWatchedElement_When_ItIsWatched_Then_TheMarkerGivesItsStyleACustomProperty()
+        {
+            var w = Watching();
+
+            var marked = w.Watched.ClassListContains(ColorReferenceWatch.MarkerClass)
+                && w.Parent.ClassListContains(ColorReferenceWatch.MarkerClass);
+
+            w.Watch.Stop();
+            Assert.That(marked, Is.True);
         }
 
         [Test]
