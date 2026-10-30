@@ -23,6 +23,7 @@ namespace Velvet.Tests
         [TestCase("10px_top", "10.00 0.00")]
         [TestCase("calc(50%_+_30px)_40%", "20.00 40.00")]
         [TestCase("left_25%_bottom_5px", "25.00 5.00")]
+        [TestCase("max(25%,30px)_50%", "30.00 50.00")]
         public void Given_APositionWithALength_When_Extracted_Then_TheCentreIsThere(string position, string expected)
         {
             // Act

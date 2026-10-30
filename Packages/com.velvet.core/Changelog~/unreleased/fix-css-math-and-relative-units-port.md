@@ -32,6 +32,7 @@ Packages/com.velvet.core/Changelog~/unreleased/fix-css-math-and-relative-units-p
   and type utilities: border widths, `rounded-*`, `translate-*`, `origin-[…]`, `blur-*`, `shadow-[…]`, `gap-*`,
   `space-*`, `divide-*`, `ring-*`, `ring-offset-*`, `outline-offset-*`, `clip-path-[…]`, a gradient's stops,
   radii and centre, and `leading-[…]`. A `translate-*` and an `origin-[…]` read a percentage of the element's own
-  box beside one, and a clip-path or gradient length a percentage added to a length (`calc(100%_-_10px)`).
+  box beside one, and a clip-path or gradient length a percentage under a math function (`calc(100%_-_10px)`,
+  `max(10%,30px)`), against the box it is drawn in.
 - A bracketed border width or `divide-*` width is snapped to the panel's device pixels as the browser snaps a border
   width (`border-[2.75px]` is 2.5px at two device pixels a point, `border-[0.25px]` one device pixel).
