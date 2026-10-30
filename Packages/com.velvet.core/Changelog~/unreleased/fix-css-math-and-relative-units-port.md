@@ -20,3 +20,6 @@
   inert.
 - A colour function reads a math function in a channel, a hue or the alpha, as CSS does:
   `bg-[rgb(calc(255/2)_0_0)]`, `text-[hsl(calc(60deg*2)_100%_50%)]`, where it left the class inert.
+- A radial or conic gradient's `at_` position reads CSS's whole `<position>`: lengths (`at_20px_30px`), edge
+  offsets (`at_right_10px_bottom_20px`) and a math function adding a percentage and a length, where only keywords
+  and percentages were read.

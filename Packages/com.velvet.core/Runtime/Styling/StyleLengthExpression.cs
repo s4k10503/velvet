@@ -118,10 +118,33 @@ namespace Velvet
         private readonly int _reads;
         private readonly CalcType _type;
 
+        // Whether this is a + b * the percentage basis for constants a and b, which TrySplitPercentage reads. A term
+        // reading no percentage is one trivially; the constructions below that keep a percentage affine say so.
+        private bool _affine;
+
         private StyleLengthExpression(int reads, CalcType type)
         {
             _reads = reads;
             _type = type;
+            _affine = (reads & ReadsPercent) == 0;
+        }
+
+        private StyleLengthExpression Affine(bool affine)
+        {
+            _affine |= affine;
+            return this;
+        }
+
+        private bool ReadsNoPercentage => (_reads & ReadsPercent) == 0;
+
+        // A length reading pixels and percentages alone, and affine in the percentage, as the pixels it adds to a
+        // fraction of its percentage basis: calc(100% - 10px) is 1 and -10.
+        public bool TrySplitPercentage(out float fraction, out float pixels)
+        {
+            var split = _affine && (_reads & ~(ReadsPixels | ReadsPercent)) == 0;
+            pixels = split ? Evaluate(new RelativeLengthBasis(0f, 0f, 0f, 0f)) : 0f;
+            fraction = split ? (Evaluate(new RelativeLengthBasis(0f, 100f, 0f, 0f)) - pixels) / 100f : 0f;
+            return split;
         }
 
         // The value before CSS's top-level rules: a NaN or an infinity a term produced is carried as it is.
@@ -131,7 +154,7 @@ namespace Velvet
         // infinite or out-of-range result as the largest float of its sign, the range a UI Toolkit length holds.
         public float Evaluate(in RelativeLengthBasis basis) => Censor(Raw(basis));
 
-        public StyleLengthExpression Negated() => new Unary(this, _type, x => -x);
+        public StyleLengthExpression Negated() => new Unary(this, _type, x => -x).Affine(_affine);
 
         // This, raised to min where it measures below it; a NaN stays NaN for Evaluate to take as zero.
         public StyleLengthExpression AtLeast(float min)
@@ -279,7 +302,7 @@ namespace Velvet
         {
             if (s_units.TryGetValue(unit, out var leaf))
             {
-                return new Unary(new Leaf(leaf.PerUnit, leaf.Reads, leaf.Type), leaf.Type, x => number * x);
+                return new Unary(new Leaf(leaf.PerUnit, leaf.Reads, leaf.Type), leaf.Type, x => number * x).Affine(true);
             }
             return StyleArbitraryValueResolver.TryGetAbsoluteUnitPixels(unit.AsSpan(), out var pixels)
                 ? new Constant(number * pixels, ReadsPixels, CalcType.Length)
@@ -416,13 +439,20 @@ namespace Velvet
         private static class Op
         {
             public static StyleLengthExpression? Add(StyleLengthExpression? a, StyleLengthExpression? b, double sign)
-                => a != null && b != null && a._type.Equals(b._type) ? Fold2(a, b, a._type, (x, y) => x + (sign * y)) : null;
+                => a != null && b != null && a._type.Equals(b._type)
+                    ? Fold2(a, b, a._type, (x, y) => x + (sign * y)).Affine(a._affine && b._affine)
+                    : null;
 
             public static StyleLengthExpression? Multiply(StyleLengthExpression? a, StyleLengthExpression? b)
-                => a != null && b != null ? Fold2(a, b, a._type.Times(b._type, 1), (x, y) => x * y) : null;
+                => a != null && b != null
+                    ? Fold2(a, b, a._type.Times(b._type, 1), (x, y) => x * y)
+                        .Affine((a.ReadsNoPercentage && b._affine) || (b.ReadsNoPercentage && a._affine))
+                    : null;
 
             public static StyleLengthExpression? Divide(StyleLengthExpression? a, StyleLengthExpression? b)
-                => a != null && b != null ? Fold2(a, b, a._type.Times(b._type, -1), (x, y) => x / y) : null;
+                => a != null && b != null
+                    ? Fold2(a, b, a._type.Times(b._type, -1), (x, y) => x / y).Affine(a._affine && b.ReadsNoPercentage)
+                    : null;
 
             // Two arguments of one type, giving a result of type, or of theirs where type is null.
             public static StyleLengthExpression? Same(List<StyleLengthExpression?> args, CalcType? type,

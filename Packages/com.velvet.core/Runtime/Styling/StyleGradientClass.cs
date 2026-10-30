@@ -121,6 +121,9 @@ namespace Velvet
         public RadialSizing Radial { get; init; }
         public float CenterX { get; init; }
         public float CenterY { get; init; }
+        // Pixels the centre sits from where CenterX and CenterY fall (at_right_10px is 1 and -10).
+        public float CenterXPx { get; init; }
+        public float CenterYPx { get; init; }
         public GradientInterp Interp { get; init; }
         public HueMethod Hue { get; init; }
         public GradientStop[] Stops { get; init; }
@@ -165,7 +168,8 @@ namespace Velvet
                 return false;
             }
             if (Type != GradientType.Linear
-                && (PosKey(CenterX) != PosKey(other.CenterX) || PosKey(CenterY) != PosKey(other.CenterY)))
+                && (PosKey(CenterX) != PosKey(other.CenterX) || PosKey(CenterY) != PosKey(other.CenterY)
+                    || PosKey(CenterXPx) != PosKey(other.CenterXPx) || PosKey(CenterYPx) != PosKey(other.CenterYPx)))
             {
                 return false;
             }
@@ -187,6 +191,13 @@ namespace Velvet
             }
             return same;
         }
+
+        // The centre as fractions of a width x height box.
+        public Vector2 CentreIn(float width, float height)
+            => new(CenterX + (width > 0f ? CenterXPx / width : 0f), CenterY + (height > 0f ? CenterYPx / height : 0f));
+
+        // True when the centre is placed in pixels, so its place in the box depends on the box's size.
+        public bool HasCentreLength => Type != GradientType.Linear && (CenterXPx != 0f || CenterYPx != 0f);
 
         // True when a stop or hint is written in pixels, so the stops cannot be placed before the box is known.
         public bool HasLengths
@@ -219,6 +230,8 @@ namespace Velvet
                 h = h * 31 + (Type == GradientType.Radial ? Radial.GetHashCode() : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterX) : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterY) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterXPx) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterYPx) : 0);
                 foreach (var stop in Stops ?? Array.Empty<GradientStop>())
                 {
                     h = HashCode.Combine(h, ColorKey(stop.Color), PosKey(stop.Position), PosKey(stop.PositionPx), PosKey(stop.Hint));
@@ -274,6 +287,8 @@ namespace Velvet
             public RadialSizing Radial;
             public float CenterX;
             public float CenterY;
+            public float CenterXPx;
+            public float CenterYPx;
             public GradientInterp Interp;
             public HueMethod Hue;
             public GradientStop[]? Stops;
@@ -459,6 +474,8 @@ namespace Velvet
                 Radial = shape.Radial,
                 CenterX = shape.CenterX,
                 CenterY = shape.CenterY,
+                CenterXPx = shape.CenterXPx,
+                CenterYPx = shape.CenterYPx,
                 Interp = shape.Interp,
                 Hue = shape.Hue,
                 Stops = stops,
@@ -1051,7 +1068,7 @@ namespace Velvet
                 }
                 rest = string.Join("_", parts.Skip(2));
             }
-            return TryParseListPosition(rest, out shape.CenterX, out shape.CenterY);
+            return TryParseListPosition(rest, ref shape);
         }
 
         // The head of radial-gradient(): an optional shape and size, then an optional at_{position}, in any
@@ -1060,8 +1077,8 @@ namespace Velvet
         {
             var tokens = SplitTopLevel(line, '_').ToArray();
             var at = Array.IndexOf(tokens, "at");
-            float centerX = shape.CenterX, centerY = shape.CenterY;
-            if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), out centerX, out centerY))
+            var centre = shape;
+            if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), ref centre))
             {
                 return false;
             }
@@ -1071,8 +1088,8 @@ namespace Velvet
                 return false;
             }
             shape.Radial = sizing;
-            shape.CenterX = centerX;
-            shape.CenterY = centerY;
+            (shape.CenterX, shape.CenterXPx, shape.CenterY, shape.CenterYPx) =
+                (centre.CenterX, centre.CenterXPx, centre.CenterY, centre.CenterYPx);
             return true;
         }
 
@@ -1188,34 +1205,126 @@ namespace Velvet
             ("deg", 1f), ("grad", 0.9f), ("rad", 180f / Mathf.PI), ("turn", 360f),
         };
 
-        // An at_{position} the list reads: one or two of left, right, top, bottom, center and percentages,
-        // after the at. A token it does not know rejects the list, as it does in CSS.
-        private static bool TryParseListPosition(string arg, out float centerX, out float centerY)
+        // An at_{position} the list reads, as CSS's <position> writes one after the at: one value, two (x then y,
+        // or two keywords in either order), or two keywords each followed by its offset from that edge. A length
+        // places the centre in pixels from the box's left or top, so it is a fraction of the box plus pixels.
+        private static bool TryParseListPosition(string arg, ref Shape shape)
         {
-            centerX = 0.5f;
-            centerY = 0.5f;
             if (!arg.StartsWith("at_", StringComparison.Ordinal))
             {
                 return false;
             }
             var tokens = SplitTopLevel(arg.Substring(3), '_');
-            if (tokens.Count > 2)
+            var x = new Offset(0.5f, 0f);
+            var y = new Offset(0.5f, 0f);
+            var read = tokens.Count switch
+            {
+                1 => TryOneValue(tokens[0], ref x, ref y),
+                2 => TryTwoValues(tokens[0], tokens[1], ref x, ref y),
+                4 => TryEdgeOffset(tokens[0], tokens[1], ref x, ref y) && TryEdgeOffset(tokens[2], tokens[3], ref x, ref y)
+                    && IsHorizontal(tokens[0]) != IsHorizontal(tokens[2]),
+                _ => false,
+            };
+            if (read)
+            {
+                (shape.CenterX, shape.CenterXPx, shape.CenterY, shape.CenterYPx) = (x.Fraction, x.Pixels, y.Fraction, y.Pixels);
+            }
+            return read;
+        }
+
+        // A place along one axis: a fraction of the box's side, and pixels from where that fraction falls.
+        private readonly struct Offset
+        {
+            public readonly float Fraction;
+            public readonly float Pixels;
+
+            public Offset(float fraction, float pixels)
+            {
+                Fraction = fraction;
+                Pixels = pixels;
+            }
+        }
+
+        private static bool TryOneValue(string token, ref Offset x, ref Offset y)
+        {
+            switch (token)
+            {
+                case "center": return true;
+                case "left": x = new Offset(0f, 0f); return true;
+                case "right": x = new Offset(1f, 0f); return true;
+                case "top": y = new Offset(0f, 0f); return true;
+                case "bottom": y = new Offset(1f, 0f); return true;
+                default: return TryLengthPercentage(token, out x);
+            }
+        }
+
+        // x then y, either a keyword of its own axis, center, or a length-percentage; or two keywords, which may come
+        // y first.
+        private static bool TryTwoValues(string first, string second, ref Offset x, ref Offset y)
+        {
+            if (IsVertical(first) || (first == "center" && IsHorizontal(second)))
+            {
+                return IsKeyword(second) && !IsVertical(second) && TryOneValue(first, ref x, ref y)
+                    && TryOneValue(second, ref x, ref y);
+            }
+            return TryAxisValue(first, horizontal: true, out x) && TryAxisValue(second, horizontal: false, out y);
+        }
+
+        private static bool TryAxisValue(string token, bool horizontal, out Offset offset)
+        {
+            offset = new Offset(0.5f, 0f);
+            switch (token)
+            {
+                case "center": return true;
+                case "left" when horizontal: offset = new Offset(0f, 0f); return true;
+                case "right" when horizontal: offset = new Offset(1f, 0f); return true;
+                case "top" when !horizontal: offset = new Offset(0f, 0f); return true;
+                case "bottom" when !horizontal: offset = new Offset(1f, 0f); return true;
+                default: return !IsKeyword(token) && TryLengthPercentage(token, out offset);
+            }
+        }
+
+        // An edge keyword and its offset into the box from that edge.
+        private static bool TryEdgeOffset(string edge, string length, ref Offset x, ref Offset y)
+        {
+            if (!TryLengthPercentage(length, out var offset))
             {
                 return false;
             }
-            foreach (var token in tokens)
+            var fromFar = new Offset(1f - offset.Fraction, -offset.Pixels);
+            switch (edge)
             {
-                if (!IsPositionToken(token))
-                {
-                    return false;
-                }
+                case "left": x = offset; return true;
+                case "right": x = fromFar; return true;
+                case "top": y = offset; return true;
+                case "bottom": y = fromFar; return true;
+                default: return false;
             }
-            ParseRadialPosition(arg, ref centerX, ref centerY);
-            return true;
         }
 
-        private static bool IsPositionToken(string token)
-            => token is "left" or "right" or "top" or "bottom" or "center" || TryParseCentrePercent(token, out _);
+        private static bool IsHorizontal(string token) => token is "left" or "right";
+
+        private static bool IsVertical(string token) => token is "top" or "bottom";
+
+        private static bool IsKeyword(string token) => token is "left" or "right" or "top" or "bottom" or "center";
+
+        // A length, a percentage, or a math function coming to pixels and a percentage added together.
+        private static bool TryLengthPercentage(string token, out Offset offset)
+        {
+            offset = default;
+            if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var value, out var unit))
+            {
+                offset = unit == LengthUnit.Percent ? new Offset(value / 100f, 0f) : new Offset(0f, value);
+                return true;
+            }
+            if (StyleLengthExpression.TryParse(token.AsSpan(), out var expression)
+                && expression!.TrySplitPercentage(out var fraction, out var pixels))
+            {
+                offset = new Offset(fraction, pixels);
+                return true;
+            }
+            return false;
+        }
 
         // The stops as the spec keeps them: fixed up when every position is known, and as written when one is
         // in pixels, which GradientBackground.ResolveStops places once it knows the box.
@@ -1305,52 +1414,6 @@ namespace Velvet
             }
             deg = 0f;
             return s.Length > 0 && s[0] != '[' && TryParseAngleValue(s, negative: false, out deg);
-        }
-
-        // Reads the position tokens of an at_ position into a UV centre, which may lie outside the box.
-        // Keywords (top/bottom/left/right/center) pin their own axis; a {N}% value fills the next axis not
-        // already pinned by a keyword (CSS position order: x then y). Tracking which axes are set with
-        // explicit flags (not a value sentinel on centerX) is what lets `at_50%_75%` and `at_left_50%`
-        // resolve correctly. Callers have already checked every token with IsPositionToken.
-        private static void ParseRadialPosition(string content, ref float centerX, ref float centerY)
-        {
-            bool xSet = false, ySet = false;
-            foreach (var tok in SplitTopLevel(content, '_'))
-            {
-                switch (tok)
-                {
-                    case "at":
-                    case "center": break;
-                    case "left": centerX = 0f; xSet = true; break;
-                    case "right": centerX = 1f; xSet = true; break;
-                    case "top": centerY = 0f; ySet = true; break;
-                    case "bottom": centerY = 1f; ySet = true; break;
-                    default:
-                        if (TryParseCentrePercent(tok, out var frac))
-                        {
-                            if (!xSet) { centerX = frac; xSet = true; }
-                            else if (!ySet) { centerY = frac; ySet = true; }
-                        }
-                        break;
-                }
-            }
-        }
-
-        private static bool TryParseCentrePercent(string token, out float frac)
-        {
-            if (token.EndsWith(")", StringComparison.Ordinal))
-            {
-                return TryParsePercent(token, out frac);
-            }
-            frac = 0f;
-            if (token.Length < 2 || token[token.Length - 1] != '%'
-                || !float.TryParse(token.Substring(0, token.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
-                || float.IsNaN(pct) || float.IsInfinity(pct))
-            {
-                return false;
-            }
-            frac = pct / 100f;
-            return true;
         }
 
         // "10%" or "[12.5%]" → 0.10 / 0.125, beyond 0..1 as written. False when not a percentage. Delegates to
