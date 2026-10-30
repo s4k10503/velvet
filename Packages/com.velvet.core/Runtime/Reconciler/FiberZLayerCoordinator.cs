@@ -59,24 +59,6 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, Held> s_held = new();
 
-        // The elements whose resolved z is not auto: each makes a stacking context of what it holds, as a z-index does,
-        // whether or not it has to be relocated to paint at that z.
-        private static readonly ConditionalWeakTable<VisualElement, object> s_zStacked = new();
-
-        internal static bool CreatesStackingContext(VisualElement element) => s_zStacked.TryGetValue(element, out _);
-
-        private static void NoteZStacking(VisualElement real, bool stacks)
-        {
-            if (stacks)
-            {
-                s_zStacked.AddOrUpdate(real, s_candidate);
-            }
-            else
-            {
-                s_zStacked.Remove(real);
-            }
-        }
-
         // A relocated real element: painted outside its declared slot, which its placeholder holds.
         internal static bool IsRelocatedReal(VisualElement child)
             => child != null && s_held.TryGetValue(child, out var held)
@@ -264,12 +246,10 @@ namespace Velvet
                 {
                     ctx.ZLayerCandidates.Remove(classElement);
                 }
-                NoteZStacking(real, false);
                 return null;
             }
             var classified = TryClassify(resolved, out var z);
             int? stackedZ = Stacks(ctx, classElement, classified, ref z) ? z : null;
-            NoteZStacking(real, stackedZ != null);
             var order = 0;
             if (StyleOrderClass.HasOrderClass(resolved) && StyleOrderClass.TryExtract(resolved, out var declaredOrder, out _))
             {

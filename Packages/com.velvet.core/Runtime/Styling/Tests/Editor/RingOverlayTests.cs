@@ -509,6 +509,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOutlineInsideAPortal_When_PlacedOnAnIdleTick_Then_NothingIsReHosted()
+        {
+            // Arrange — the portal's content is outside the tree's mount container, whose check must not apply to it.
+            RuntimeStateProbe.ClearPortalRegistry();
+            var target = new VisualElement { name = "target" };
+            _window.rootVisualElement.Add(target);
+            FiberPortalRegistry.Register("outline-portal-target", target);
+            var container = new VisualElement { name = "container" };
+            _window.rootVisualElement.Add(container);
+            _mounted = V.Mount(container, V.Portal("outline-portal-target", children: new VNode[]
+            {
+                V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+            }));
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(container.panel);
+            ForcePanelUpdate(container.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("a");
+            var binding = RingOverlay.TryGet(card);
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(place);
+
+            // Assert — a re-host allocates; the canary is the instrument's own control.
+            RuntimeStateProbe.ClearPortalRegistry();
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 && binding != null ? blocks : -1, Is.Zero);
+        }
+
+        [Test]
         public void Given_AnOutlineInsideAZStackedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
         {
             // Arrange — a z-index other than auto makes a stacking context of what the element holds.

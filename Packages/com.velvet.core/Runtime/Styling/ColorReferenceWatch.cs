@@ -11,6 +11,9 @@ namespace Velvet
     // text, background and border colours inherit reads. Nothing runs between those events, so an element
     // elsewhere in the panel costs this one nothing.
     //
+    // A colour that transitions raises no style pass after the first, so while a transition runs on the watched parent
+    // the watch is also read on a scheduler tick, and once more when the transition ends or is cancelled.
+    //
     // UI Toolkit sends CustomStyleResolvedEvent only to an element holding a custom property, and custom properties
     // do not inherit, so each watched element carries MarkerClass, whose rule in _preflight.uss declares one, as
     // LeadingLengthProbe's does. Marking the element restyles it, which is also what reads its colours the first time.
@@ -44,6 +47,8 @@ namespace Velvet
         private VisualElement? _watchedParent;
         private bool _sampled;
         private bool _stopped;
+        private int _transitions;
+        private IVisualElementScheduledItem? _sampler;
 
         public ColorReferenceWatch(VisualElement element, Action<VisualElement> reresolve)
         {
@@ -56,6 +61,28 @@ namespace Velvet
         }
 
         private static void OnResolved(CustomStyleResolvedEvent evt, ColorReferenceWatch self) => self.Tick();
+
+        private static void OnTransitionRun(TransitionRunEvent evt, ColorReferenceWatch self)
+        {
+            self._transitions++;
+            self._sampler ??= self._element.schedule.Execute(self.Tick).Every(StyleAnimateDriver.TickMs);
+        }
+
+        private static void OnTransitionEnd(EventBase evt, ColorReferenceWatch self)
+        {
+            self._transitions = Math.Max(0, self._transitions - 1);
+            self.Tick();
+            if (self._transitions == 0)
+            {
+                self.StopSampling();
+            }
+        }
+
+        private void StopSampling()
+        {
+            _sampler?.Pause();
+            _sampler = null;
+        }
 
         private static void OnAttached(AttachToPanelEvent evt, ColorReferenceWatch self)
         {
@@ -86,6 +113,9 @@ namespace Velvet
             {
                 Mark(parent);
                 parent.RegisterCallback<CustomStyleResolvedEvent, ColorReferenceWatch>(OnResolved, this);
+                parent.RegisterCallback<TransitionRunEvent, ColorReferenceWatch>(OnTransitionRun, this);
+                parent.RegisterCallback<TransitionEndEvent, ColorReferenceWatch>(OnTransitionEnd, this);
+                parent.RegisterCallback<TransitionCancelEvent, ColorReferenceWatch>(OnTransitionEnd, this);
             }
         }
 
@@ -132,6 +162,11 @@ namespace Velvet
                 return;
             }
             _watchedParent.UnregisterCallback<CustomStyleResolvedEvent, ColorReferenceWatch>(OnResolved);
+            _watchedParent.UnregisterCallback<TransitionRunEvent, ColorReferenceWatch>(OnTransitionRun);
+            _watchedParent.UnregisterCallback<TransitionEndEvent, ColorReferenceWatch>(OnTransitionEnd);
+            _watchedParent.UnregisterCallback<TransitionCancelEvent, ColorReferenceWatch>(OnTransitionEnd);
+            _transitions = 0;
+            StopSampling();
             Unmark(_watchedParent);
             _watchedParent = null;
         }

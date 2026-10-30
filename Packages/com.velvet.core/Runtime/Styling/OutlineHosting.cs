@@ -83,11 +83,11 @@ namespace Velvet
         private static bool Unchanged(VisualElement element, RingBinding binding)
         {
             var host = binding.OutlineHost;
-            var mountRoot = binding.Context?.MainPanelRoot;
+            var mountRoot = MountRootOf(element, binding);
             if (host == null || binding.Spec.Outline.Width <= 0f || element.panel is not { } panel
                 || (mountRoot != null && host != mountRoot && !mountRoot.Contains(host))
                 || HierarchyVersionOf(panel)?.Invoke() is not { } version || version != binding.OutlineVersion
-                || !(host.parent == null || host.parent == panel.visualTree || IsStackingRoot(host)))
+                || !(host.parent == null || host.parent == panel.visualTree || IsStackingRoot(host, binding.Context)))
             {
                 return false;
             }
@@ -101,7 +101,7 @@ namespace Velvet
                 }
                 if (a != element)
                 {
-                    if (IsStackingRoot(a))
+                    if (IsStackingRoot(a, binding.Context))
                     {
                         return false;
                     }
@@ -144,7 +144,7 @@ namespace Velvet
 
         private static void Rehost(VisualElement element, RingBinding binding)
         {
-            var host = binding.Spec.Outline.Width > 0f && element.parent != null ? Host(element, binding.Context?.MainPanelRoot) : null;
+            var host = binding.Spec.Outline.Width > 0f && element.parent != null ? Host(element, binding.Context, MountRootOf(element, binding)) : null;
             binding.OutlineHost = host;
             if (host == null)
             {
@@ -249,16 +249,21 @@ namespace Velvet
             }
         }
 
+        // The container the tree was mounted in, where the element is inside it; null for content rendered elsewhere,
+        // as a V.Portal does, whose own root is the top it is hosted under.
+        private static VisualElement? MountRootOf(VisualElement element, RingBinding binding)
+            => binding.Context?.MainPanelRoot is { } root && root.Contains(element) ? root : null;
+
         // The stacking context's root: the nearest ancestor that composites, transforms, hides or z-stacks what it
         // holds; failing one, the topmost ancestor under the panel's root, or the mount container where the tree
         // has one, whose overlays go with it when the tree is taken out of the panel.
-        internal static VisualElement? Host(VisualElement element, VisualElement? mountRoot = null)
+        internal static VisualElement? Host(VisualElement element, ReconcilerContext? context, VisualElement? mountRoot = null)
         {
             var candidate = element.parent;
             while (candidate != null)
             {
                 var up = candidate.parent;
-                if (up == null || up == candidate.panel?.visualTree || candidate == mountRoot || IsStackingRoot(candidate))
+                if (up == null || up == candidate.panel?.visualTree || candidate == mountRoot || IsStackingRoot(candidate, context))
                 {
                     return candidate;
                 }
@@ -267,7 +272,7 @@ namespace Velvet
             return null;
         }
 
-        private static bool IsStackingRoot(VisualElement e)
+        private static bool IsStackingRoot(VisualElement e, ReconcilerContext? context)
         {
             var rs = e.resolvedStyle;
             // Velvet writes filters inline and its sheets declare none, so the inline list is the one read.
@@ -275,7 +280,7 @@ namespace Velvet
             return rs.display == DisplayStyle.None || rs.opacity < 1f || rs.translate != Vector3.zero
                 || rs.scale.value != Vector3.one || rs.rotate.angle.value != 0f
                 || (filter.keyword == StyleKeyword.Undefined && filter.value is { Count: > 0 })
-                || FiberZLayerCoordinator.CreatesStackingContext(e);
+                || (context != null && context.StackingFacts.TryGetValue(e, out var facts) && facts.Z != null);
         }
 
         // Whether e clips its children, as UI Toolkit decides it; an inline overflow: hidden where the engine member

@@ -177,6 +177,39 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BackgroundInherit_When_TheParentsBackgroundTransitionsAndEnds_Then_TheChildTakesTheEndColour()
+        {
+            // Arrange — a transitioning background bumps no style pass after the first, so only the transition's own
+            // events and ticks reach the watch.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", className: "bg-[#ff0000]", children: new VNode[]
+                {
+                    V.Div(name: "child", className: "w-[40px] h-[40px] bg-inherit"),
+                }));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            var child = _window.rootVisualElement.Q<VisualElement>("child");
+            ForcePanelUpdate(parent.panel);
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(parent.panel, () => now);
+            parent.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName> { new("background-color") };
+            parent.style.transitionDuration = new System.Collections.Generic.List<TimeValue> { new(2f, TimeUnit.Second) };
+            parent.style.transitionTimingFunction = new System.Collections.Generic.List<EasingFunction> { new(EasingMode.Linear) };
+            ForcePanelUpdate(parent.panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+
+            // Act
+            parent.style.backgroundColor = Color.blue;
+            ForcePanelUpdate(parent.panel);
+            now += 3.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(parent.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(parent.panel);
+            ForcePanelUpdate(parent.panel);
+
+            // Assert
+            Assert.That(child.style.backgroundColor.value, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
         public void Given_TextInherit_When_Mounted_Then_TheChildTakesTheParentsTextColour()
         {
             _mounted = V.Mount(_window.rootVisualElement,

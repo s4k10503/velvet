@@ -65,18 +65,17 @@ The functions follow CSS Color 4:
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
   quarter. The modifier is written the forms Tailwind generates: a number in steps of 0.25 as a number prints it (`/50`,
   `/2.25`, not `/05`, `/.5` or `/50.0`), a bracketed number, which is a fraction (`/[0.33]`), or a bracketed percentage
-  (`/[33.3%]`). One outside 0–100% on a palette colour leaves the `color-mix()` invalid once computed, since Tailwind
-  writes the palette through a variable, so the property takes its unset value: `bg-red-500/150` is transparent,
+  (`/[33.3%]`). One outside 0–100% on a colour Tailwind writes through a variable (a palette name, a bracketed `var()`) leaves the
+  `color-mix()` invalid once computed, so the property takes its unset value: `bg-red-500/150` is transparent,
   `text-red-500/150` the inherited text colour and `border-red-500/150` `currentcolor` (`outline-red-500/150` is the text
-  colour, and a ring, `shadow-*` or inset colour discards the element's box-shadow). On a bracketed colour
-  (`bg-[#f00]/150`) Tailwind writes no variable and the browser drops the declaration, so an earlier class stands; on
-  `current` (`bg-current/150`) the property is plain `currentcolor`.
+  colour, and a ring, `shadow-*` or inset colour discards the element's box-shadow). On any other colour
+  (`bg-[#f00]/150`, `bg-transparent/150`) Tailwind writes no variable and the browser drops the declaration, so an
+  earlier class stands; on `current` (`bg-current/150`) the property is plain `currentcolor`.
 - **`current` and `inherit`** (`text-current`, `bg-inherit`, `border-current`, `ring-current`, `ring-inherit`,
   `outline-inherit`, …) read their value off a live source: `current` is the element's own text colour (the inherited one
   on `text-current` itself), `current/50` scales its alpha, and `inherit` is the parent's value of the same property, which
   an `inherit` there passes on. Both follow their source as it changes: an element reading one, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
-  cannot hold. An element that sets a border width and names no border colour has a `currentcolor` border, as Tailwind's
-  preflight gives every element, and any border colour utility outranks it, as does a class of your own naming a border colour (not one behind a pseudo-class); a UI Toolkit control keeps its theme's border.
+  cannot hold.
 
 ## Where Velvet differs from CSS
 

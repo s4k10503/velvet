@@ -350,12 +350,24 @@ namespace Velvet
             Rejected,
         }
 
-        // Whether the colour utility at start has an opacity modifier outside 0..100% on a palette name. Tailwind
-        // writes a palette colour through var(--color-*), which makes the color-mix() invalid only once computed, so
-        // the property is unset; a bracketed colour carries no var(), and its out-of-range percentage is a parse error
-        // that drops the declaration, leaving an earlier class standing.
+        // Whether the colour utility at start has an opacity modifier outside 0..100% on a colour Tailwind writes
+        // through var(): a palette name other than transparent, which Tailwind writes as the keyword, and a bracket
+        // holding a var(). Such a color-mix() is invalid only once computed, so the property is unset. Any other
+        // colour's out-of-range percentage is a parse error that drops the declaration, leaving an earlier class
+        // standing.
         internal static bool RejectedAtComputedTime(string token, int start)
-            => start < token.Length && token[start] != '[' && VerdictOfColourValue(token, start) == ColourVerdict.Rejected;
+        {
+            var slash = ColorModifierSlashIndex(token, start);
+            if (start >= token.Length || slash < 0 || !TryParseModifierPercent(token.AsSpan(slash + 1), out var percent)
+                || (percent >= 0f && percent <= 100f))
+            {
+                return false;
+            }
+            var colour = token.Substring(start, slash - start);
+            return colour[0] == '['
+                ? colour.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
+                : colour != "transparent" && VelvetPalette.TryResolveColorToken(colour, out _);
+        }
 
         // A colour utility's value from start: a palette name or a bracketed colour, with or without an opacity
         // modifier. Rejected where the modifier's percentage lies outside 0..100, which leaves the color-mix()

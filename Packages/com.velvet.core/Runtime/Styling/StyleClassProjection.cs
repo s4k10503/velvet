@@ -273,9 +273,6 @@ namespace Velvet
                 return (learned, (int)StyleUtilityGate.None);
             }
 
-            // Sends out the probes for the classes of the application's own on the element that are not yet read.
-            internal void AskForUserClasses(VisualElement element) => AskForTheRest(element);
-
             // Reads the other classes of the application's own on the element, which a payload of one that sets
             // something is ranked against.
             private void AskForTheRest(VisualElement element)

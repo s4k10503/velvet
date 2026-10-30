@@ -28,10 +28,6 @@ namespace Velvet
 
         public const long Base = 0;
 
-        // Below every utility and every class: preflight's own declarations (PreflightBorderColor). Not MinValue,
-        // which the winner searches start from. It is base-ranked, not under a variant (UnderVariant).
-        public const long Preflight = long.MinValue + 1;
-
         #region One selector the utility carries alone: a media or feature query adds nothing
         // supports-[…]: is STATIC in UI Toolkit (always-applied when well-formed; see StyleSupportsVariantClass),
         // so this layer never toggles off at runtime; the priority only orders it against other layers.
@@ -105,9 +101,8 @@ namespace Velvet
         // The rank a layer's key carries, without the rule's place.
         public static long RankOf(long key) => key & ~RuleMask;
 
-        // Whether key's rank carries a variant, its important flag aside. Preflight's key is below every other and is
-        // no variant's.
-        public static bool UnderVariant(long key) => key != Preflight && (RankOf(key) & ~Important) != Base;
+        // Whether key's rank carries a variant, its important flag aside.
+        public static bool UnderVariant(long key) => (RankOf(key) & ~Important) != Base;
 
         // priority, placed after every rule a className declares at that rank.
         public static long AfterEveryRule(long priority) => priority | RuleMask;
