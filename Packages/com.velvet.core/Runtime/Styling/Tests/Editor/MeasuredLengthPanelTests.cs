@@ -1,3 +1,4 @@
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor.UIElements.TestFramework;
 using UnityEngine;
@@ -72,6 +73,38 @@ namespace Velvet.Tests
             var host = element.parent;
             var next = host.IndexOf(element) + 1;
             return next < host.childCount && host[next].ClassListContains(RingOverlay.MarkerClass) ? host[next] : null;
+        }
+
+        [Test]
+        public void Given_AnElementTrackedAndReleasedRepeatedly_When_TrackedOnceMore_Then_ThePanelWatchHoldsOneReference()
+        {
+            // Arrange
+            var element = new VisualElement();
+            _sim.rootVisualElement.Add(element);
+            var owner = new object();
+            for (var i = 0; i < 5; i++)
+            {
+                PanelScaleWatch.Track(element, owner, _ => { });
+                PanelScaleWatch.Untrack(element, owner);
+            }
+
+            // Act
+            PanelScaleWatch.Track(element, owner, _ => { });
+
+            // Assert
+            Assert.That(WatchedOn(element.panel), Is.EqualTo(1));
+        }
+
+        // The references the panel's watch holds, read from the private table.
+        private static int WatchedOn(IPanel panel)
+        {
+            var table = typeof(PanelScaleWatch).GetField("s_watches", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            var args = new object[] { panel, null };
+            if (!(bool)table.GetType().GetMethod("TryGetValue")!.Invoke(table, args)!)
+            {
+                return -1;
+            }
+            return ((System.Collections.IList)args[1]!.GetType().GetField("Elements")!.GetValue(args[1])!).Count;
         }
 
         [Test]

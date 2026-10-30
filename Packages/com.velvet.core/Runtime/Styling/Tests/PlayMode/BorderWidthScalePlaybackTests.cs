@@ -73,5 +73,49 @@ namespace Velvet.Tests
             // Assert
             Assert.That(box.style.borderTopWidth.value, Is.EqualTo(SnappedThree).Within(1e-4f));
         }
+
+        [UnityTest]
+        public IEnumerator Given_AWholePixelBorderWidthDetachedAcrossAScaleChange_When_ItIsAttachedAgain_Then_LaterScaleChangesSnapItAgain()
+        {
+            // Arrange — detached while the scale moves, so the watch lets go of it.
+            _host = new RenderTexturePanelHost("BorderScale", 200, 200) { Scale = 1f };
+            yield return Frames(3);
+            var box = Mount("w-[50px] h-[50px] border-solid border-[3px]");
+            yield return Frames(5);
+            box.RemoveFromHierarchy();
+            _host.Scale = 1.5f;
+            yield return Frames(10);
+            _host.Root.Add(box);
+            yield return Frames(5);
+
+            // Act
+            _host.Scale = 1.25f;
+            yield return Frames(10);
+
+            // Assert — 3px is three and three quarters of a device pixel, taken down to three: 2.4px.
+            Assert.That(box.style.borderTopWidth.value, Is.EqualTo(2.4f).Within(1e-4f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AWholePixelDivideWidth_When_ThePanelScaleBecomesOneAndAHalf_Then_TheDividerIsSnappedDown()
+        {
+            // Arrange
+            _host = new RenderTexturePanelHost("BorderScale", 200, 200) { Scale = 1f };
+            yield return Frames(3);
+            _mounted = V.Mount(_host.Root, V.Div(name: "row", className: "flex flex-row w-[100px] h-[50px] divide-x-[3px]",
+                children: new VNode[]
+                {
+                    V.Div(name: "a", className: "w-[10px] h-[10px]"),
+                    V.Div(name: "b", className: "w-[10px] h-[10px]"),
+                }));
+            yield return Frames(5);
+
+            // Act
+            _host.Scale = 1.5f;
+            yield return Frames(10);
+
+            // Assert
+            Assert.That(_host.Root.Q<VisualElement>("b").style.borderLeftWidth.value, Is.EqualTo(SnappedThree).Within(1e-4f));
+        }
     }
 }

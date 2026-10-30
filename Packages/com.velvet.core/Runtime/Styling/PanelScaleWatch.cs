@@ -18,10 +18,14 @@ namespace Velvet
             public readonly Dictionary<object, Action<VisualElement>> Resnaps = new();
             public EventCallback<AttachToPanelEvent> OnAttach = null!;
             public IPanel? Watched;
+            public readonly WeakReference<VisualElement> Reference;
+
+            public Entry(VisualElement element) => Reference = new WeakReference<VisualElement>(element);
         }
 
         private sealed class Watch
         {
+            // One reference per tracked element: Join adds it once per panel and Untrack and Tick take it out.
             public readonly List<WeakReference<VisualElement>> Elements = new();
             public IVisualElementScheduledItem Item = null!;
             public float Scale;
@@ -36,7 +40,7 @@ namespace Velvet
         {
             if (!s_entries.TryGetValue(element, out var entry))
             {
-                entry = new Entry();
+                entry = new Entry(element);
                 var tracked = entry;
                 entry.OnAttach = _ =>
                 {
@@ -57,6 +61,11 @@ namespace Velvet
             {
                 element.UnregisterCallback(entry.OnAttach);
                 s_entries.Remove(element);
+                if (entry.Watched != null && s_watches.TryGetValue(entry.Watched, out var watch))
+                {
+                    watch.Elements.Remove(entry.Reference);
+                }
+                entry.Watched = null;
             }
         }
 
@@ -75,6 +84,10 @@ namespace Velvet
             {
                 return;
             }
+            if (entry.Watched != null && s_watches.TryGetValue(entry.Watched, out var previous))
+            {
+                previous.Elements.Remove(entry.Reference);
+            }
             entry.Watched = panel;
             if (!s_watches.TryGetValue(panel, out var watch))
             {
@@ -83,7 +96,7 @@ namespace Velvet
                 created.Item = panel.visualTree.schedule.Execute(() => Tick(panel, created)).Every(TickMs);
                 s_watches.Add(panel, watch);
             }
-            watch.Elements.Add(new WeakReference<VisualElement>(element));
+            watch.Elements.Add(entry.Reference);
         }
 
         private static void Tick(IPanel panel, Watch watch)
@@ -96,10 +109,16 @@ namespace Velvet
             watch.Scale = scale;
             for (var i = watch.Elements.Count - 1; i >= 0; i--)
             {
-                if (!watch.Elements[i].TryGetTarget(out var element) || !s_entries.TryGetValue(element, out var entry)
-                    || !ReferenceEquals(element.panel, panel))
+                if (!watch.Elements[i].TryGetTarget(out var element) || !s_entries.TryGetValue(element, out var entry))
                 {
                     watch.Elements.RemoveAt(i);
+                    continue;
+                }
+                if (!ReferenceEquals(element.panel, panel))
+                {
+                    // Off this panel: it joins again on the attach that brings it back, here or on another.
+                    watch.Elements.RemoveAt(i);
+                    entry.Watched = ReferenceEquals(entry.Watched, panel) ? null : entry.Watched;
                     continue;
                 }
                 Run(element, entry);
