@@ -41,6 +41,9 @@ namespace Velvet
 
         private static readonly Dictionary<string, string?> s_probes = new(StringComparer.Ordinal);
 
+        // The utility a theme class last bound as, which it leaves as once its token is gone.
+        private static readonly Dictionary<string, string> s_themeUtilities = new(StringComparer.Ordinal);
+
         private sealed class Consumers
         {
             public readonly List<Consumer> Entries = new();
@@ -144,17 +147,16 @@ namespace Velvet
                 return;
             }
             var utility = StyleCustomPropertyClass.Consumer(core);
-            if (utility == null)
+            if (utility != null && on)
             {
-                return;
-            }
-            if (on)
-            {
+                s_themeUtilities[core] = utility;
                 Bind(target, new Consumer(utility, priority, declaration, order, context));
             }
-            else
+            else if (!on && (utility ?? (s_themeUtilities.TryGetValue(core, out var last) ? last : null)) is { } leaving)
             {
-                Unbind(target, utility, priority, declaration);
+                // A theme class whose token a sheet stopped declaring no longer reads as a consumer, and leaves as the
+                // utility it was bound as.
+                Unbind(target, leaving, priority, declaration);
             }
         }
 

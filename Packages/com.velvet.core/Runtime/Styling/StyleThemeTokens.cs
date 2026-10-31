@@ -15,8 +15,6 @@ namespace Velvet
     // is attached, removed or changes.
     internal static class StyleThemeTokens
     {
-        private const string InitialMarker = "--velvet-initial-";
-
         private static readonly PropertyInfo? s_rules = EngineMember.StyleSheetRules.ResolveProperty();
         private static readonly PropertyInfo? s_properties = EngineMember.StyleRuleProperties.ResolveProperty();
         private static readonly PropertyInfo? s_name = EngineMember.StylePropertyName.ResolveProperty();
@@ -26,50 +24,107 @@ namespace Velvet
         {
             public readonly HashSet<string> Project = new(StringComparer.Ordinal);
             public readonly HashSet<string> Bundled = new(StringComparer.Ordinal);
-            // The classes StyleThemeClass has read against these names, dropped with them.
-            // Namespaces a sheet set to initial through a `--velvet-initial-<namespace>` marker, `all` for every one.
+            // Namespaces a project sheet sets to initial (`--color-*: initial`, as "color-"; `--*: initial` as "all-").
             public readonly HashSet<string> Cleared = new(StringComparer.Ordinal);
+            // The classes StyleThemeClass has read against these names, dropped with them.
             public readonly Dictionary<string, string?> Classes = new(StringComparer.Ordinal);
             public int Signature = int.MinValue;
-            // Moves whenever a rebuild finds the sheets changed, which readers of a declared value compare to know
-            // theirs is stale.
+            // Moves whenever a rebuild finds the sheets changed.
             public int Version;
-            public long CheckedAt = long.MinValue;
+            public bool Polling;
 
-            // The last value a project sheet declares for each --breakpoint-*, --container-* and --animate-* name, as CSS text.
+            // The last value a project sheet declares for each --breakpoint-*, --container-* and --animate-* name,
+            // as CSS text: what a reader holding no element falls back to.
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
 
-            // A length a project sheet declared for the variable, in px, where it reads as one.
+            // A length the variable holds: the one the cascade gives the element being read for (Use), else the last a
+            // project sheet declared.
             public bool TryGetPx(string property, out float px)
             {
                 px = 0f;
-                return Values.TryGetValue(property, out var text)
-                    && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
+                string? text = null;
+                if (s_element != null)
+                {
+                    StyleCustomProperties.TryStylesheetValue(s_element, property, out text);
+                }
+                if (text == null && !Values.TryGetValue(property, out text))
+                {
+                    return false;
+                }
+                return StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
             }
 
-            // Whether name in the namespace (such as "color-") is a bundled token its namespace's initial removes: not
-            // one the project declares itself.
+            public bool ClearsNamespace(string ns) => Cleared.Contains(ns) || Cleared.Contains("all-");
+
+            // Whether name in the namespace (such as "color-") is a token of the bundled sheets that its namespace's
+            // initial removes: not one the project declares itself.
             public bool ClearsBundled(string ns, string name)
-                => (Cleared.Contains(ns) || Cleared.Contains("all-")) && !Project.Contains("--" + ns + name)
-                    && (Bundled.Contains("--" + ns + name) || (ns == "color-" && name is "white" or "black"));
+                => ClearsNamespace(ns) && !Project.Contains("--" + ns + name)
+                    && (Bundled.Contains("--" + ns + name) || (ns == "color-" && name is "white" or "black")
+                        || StyleThemeClass.IsBuiltInName(ns, name));
         }
 
         private sealed class Read
         {
             public int ContentHash;
             public string[] Names = Array.Empty<string>();
+            public readonly List<string> Cleared = new();
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
         }
 
         private static readonly ConditionalWeakTable<StyleSheet, Read> s_reads = new();
         private static readonly ConditionalWeakTable<ReconcilerContext, Scope> s_scopes = new();
         private static Scope? s_current;
+        private static VisualElement? s_element;
+
+        // Raised after a rebuild finds the sheets a mount reads changed; readers re-evaluate what they took from them.
+        internal static event Action<ReconcilerContext>? ScopeChanged;
+
+        private const long PollMs = 100;
+
+        private sealed class Themed
+        {
+            public readonly List<WeakReference<VisualElement>> Elements = new();
+            public readonly ConditionalWeakTable<VisualElement, string[]> Classes = new();
+        }
+
+        private static readonly ConditionalWeakTable<ReconcilerContext, Themed> s_themed = new();
+
+        // Remembers an element whose class list holds a class a theme variable could make, so it is configured again
+        // when the sheets change what the variables declare.
+        internal static void Track(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            var themed = s_themed.GetValue(ctx, static _ => new Themed());
+            if (!themed.Classes.TryGetValue(element, out _))
+            {
+                themed.Elements.Add(new WeakReference<VisualElement>(element));
+            }
+            themed.Classes.Remove(element);
+            themed.Classes.Add(element, classNames);
+        }
+
+        private static void Reapply(ReconcilerContext ctx)
+        {
+            if (!s_themed.TryGetValue(ctx, out var themed))
+            {
+                return;
+            }
+            var patcher = new FiberNodePatcher(ctx);
+            themed.Elements.RemoveAll(static reference => !reference.TryGetTarget(out _));
+            foreach (var reference in themed.Elements.ToArray())
+            {
+                if (reference.TryGetTarget(out var element) && themed.Classes.TryGetValue(element, out var classes))
+                {
+                    using (Use(ctx, element))
+                    {
+                        patcher.ApplyVariantManipulators(element, classes);
+                    }
+                }
+            }
+        }
 
         // The mount each element a mount was made on belongs to, so a reader holding only an element finds its scope.
         private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_mounts = new();
-
-        // A scope is reread at most this often outside a pass (Changed); a pass rereads every time.
-        private const long RereadIntervalMs = 100;
 
         internal static void RegisterMount(VisualElement mountPoint, ReconcilerContext ctx)
         {
@@ -90,28 +145,6 @@ namespace Velvet
             return null;
         }
 
-        // Whether the sheets ctx's scope reads changed since seen, which Changed moves to the scope's current version.
-        internal static bool Changed(ReconcilerContext? ctx, ref int seen)
-        {
-            if (ctx?.ThemeRoot == null)
-            {
-                return false;
-            }
-            var scope = s_scopes.GetValue(ctx, static _ => new Scope());
-            var now = System.Diagnostics.Stopwatch.GetTimestamp() * 1000L / System.Diagnostics.Stopwatch.Frequency;
-            if (now - scope.CheckedAt >= RereadIntervalMs || scope.Signature == int.MinValue)
-            {
-                Refresh(ctx);
-                scope.CheckedAt = now;
-            }
-            if (scope.Version == seen)
-            {
-                return false;
-            }
-            seen = scope.Version;
-            return true;
-        }
-
         // The scope the reading in progress asks, null outside a pass of a mount and outside Use.
         internal static Scope? Current => s_current;
 
@@ -120,8 +153,14 @@ namespace Velvet
         // pass read.
         internal static Restore Use(ReconcilerContext? ctx) => Enter(ctx, false);
 
-        // As Use, for a reader that holds an element and may hold no context: the element's own mount decides.
-        internal static Restore Use(ReconcilerContext? ctx, VisualElement? element) => Enter(ctx ?? ContextOf(element), false);
+        // As Use, for a reader that holds an element and may hold no context: the element's own mount decides, and the
+        // values a sheet declares are read as the cascade gives them to that element.
+        internal static Restore Use(ReconcilerContext? ctx, VisualElement? element)
+        {
+            var restore = Enter(ctx ?? ContextOf(element), false);
+            s_element = element;
+            return restore;
+        }
 
         // As Use, reading the sheets again first: a pass of the mount does, so a sheet attached since the last one
         // declares its tokens to it.
@@ -129,21 +168,35 @@ namespace Velvet
 
         private static Restore Enter(ReconcilerContext? ctx, bool reread)
         {
-            var previous = s_current;
+            var restore = new Restore(s_current, s_element);
+            s_element = null;
             if (ctx != null)
             {
-                s_current = reread || !s_scopes.TryGetValue(ctx, out var held) ? Refresh(ctx) : held;
+                // A pass nested in a pass of the same mount reads what the outer one did.
+                var held = s_scopes.TryGetValue(ctx, out var known) ? known : null;
+                s_current = held == null || (reread && !ReferenceEquals(held, restore.Scope)) ? Refresh(ctx) : held;
             }
-            return new Restore(previous);
+            return restore;
         }
 
         internal readonly struct Restore : IDisposable
         {
             private readonly Scope? _previous;
+            private readonly VisualElement? _element;
 
-            public Restore(Scope? previous) => _previous = previous;
+            public Restore(Scope? previous, VisualElement? element)
+            {
+                _previous = previous;
+                _element = element;
+            }
 
-            public void Dispose() => s_current = _previous;
+            public Scope? Scope => _previous;
+
+            public void Dispose()
+            {
+                s_current = _previous;
+                s_element = _element;
+            }
         }
 
         // Rebuilds ctx's names when a sheet at or above its theme root was attached, removed or edited since the last
@@ -155,9 +208,15 @@ namespace Velvet
                 return null;
             }
             var scope = s_scopes.GetValue(ctx, static _ => new Scope());
+            if (!scope.Polling)
+            {
+                scope.Polling = true;
+                ctx.ThemeRoot.schedule.Execute(() => Refresh(ctx)).Every(PollMs);
+            }
             var signature = SignatureAbove(ctx.ThemeRoot);
             if (signature != scope.Signature)
             {
+                var first = scope.Signature == int.MinValue;
                 scope.Signature = signature;
                 scope.Version++;
                 scope.Project.Clear();
@@ -171,6 +230,11 @@ namespace Velvet
                     {
                         Observe(scope, element.styleSheets[i], false);
                     }
+                }
+                if (!first)
+                {
+                    ScopeChanged?.Invoke(ctx);
+                    ctx.ThemeRoot.schedule.Execute(() => Reapply(ctx));
                 }
             }
             return scope;
@@ -209,9 +273,12 @@ namespace Velvet
             foreach (var name in read.Names)
             {
                 into.Add(name);
-                if (name.StartsWith(InitialMarker, StringComparison.Ordinal))
+            }
+            if (into == scope.Project)
+            {
+                foreach (var ns in read.Cleared)
                 {
-                    scope.Cleared.Add(name.Substring(InitialMarker.Length) + "-");
+                    scope.Cleared.Add(ns);
                 }
             }
             foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
@@ -227,12 +294,25 @@ namespace Velvet
                 return;
             }
             names.Add(name);
-            if ((name.StartsWith("--breakpoint-", StringComparison.Ordinal)
-                    || name.StartsWith("--container-", StringComparison.Ordinal)
-                    || name.StartsWith("--animate-", StringComparison.Ordinal))
-                && s_values?.GetValue(property) is Array handles && StyleCustomProperties.Spell(sheet, handles) is { } text)
+            var wildcard = name.EndsWith("*", StringComparison.Ordinal);
+            if (!wildcard && !name.StartsWith("--breakpoint-", StringComparison.Ordinal)
+                && !name.StartsWith("--container-", StringComparison.Ordinal)
+                && !name.StartsWith("--animate-", StringComparison.Ordinal))
+            {
+                return;
+            }
+            if (s_values?.GetValue(property) is not Array handles || StyleCustomProperties.Spell(sheet, handles) is not { } text)
+            {
+                return;
+            }
+            if (!wildcard)
             {
                 read.Values[name] = text;
+            }
+            else if (text.Trim() == "initial")
+            {
+                // `--color-*: initial` clears the namespace, `--*: initial` every one.
+                read.Cleared.Add(name == "--*" ? "all-" : name.Substring(2, name.Length - 3));
             }
         }
 

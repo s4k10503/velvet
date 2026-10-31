@@ -2789,12 +2789,28 @@ namespace Velvet
         private static string[] ToPayloadArray(List<string> payloads)
             => payloads?.ToArray() ?? Array.Empty<string>();
 
+        // Remembers the element when a class of its list has the shape of one a theme variable makes, which
+        // StyleThemeTokens configures again once the sheets declare other variables.
+        private void TrackThemed(VisualElement element, string[] classNames)
+        {
+            foreach (var className in classNames ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBecomeThemeClass(
+                    StyleArbitraryValueResolver.StripImportant(className, out _)))
+                {
+                    StyleThemeTokens.Track(_ctx, element, classNames!);
+                    return;
+                }
+            }
+        }
+
         // Applies the className-driven variant manipulators (pseudo-class hover:/focus:/
         // active:, conditional dark:/sm:…, container @md:…, relational group-/peer-) in one
         // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
             using var themeScope = StyleThemeTokens.Use(_ctx);
+            TrackThemed(element, classNames);
             RecordVariantGateSource(element, classNames);
             if (!MayDeclareVariantState(classNames) && !HoldsVariantState(element))
             {

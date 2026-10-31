@@ -62,7 +62,27 @@ namespace Velvet
         public bool Matches(float width) => IsMax ? width < Px : width >= Px;
 
         // A ceiling ranks below a floor, so where both are on the floor's declaration wins.
-        public long Rank => IsMax ? StyleLayerPriority.ContainerMax : StyleLayerPriority.ContainerMin;
+        public long Rank => Name == ViewportName ? ViewportRank() : IsMax ? StyleLayerPriority.ContainerMax : StyleLayerPriority.ContainerMin;
+
+        // Tailwind registers the max group, then one min group holding every breakpoint by value, then the container
+        // queries: a ceiling ranks below every floor, and a floor ranks as the largest default breakpoint at or under
+        // its threshold (below the first, ViewportMin), ordering after it by value (OrderKey).
+        private long ViewportRank()
+        {
+            if (IsMax)
+            {
+                return StyleLayerPriority.ViewportMax;
+            }
+            var rank = StyleLayerPriority.ViewportMin;
+            foreach (var kind in s_breakpointKinds)
+            {
+                if (StyleVariantClass.BreakpointPx(kind) <= Px)
+                {
+                    rank = StyleLayerPriority.ForVariant(kind);
+                }
+            }
+            return rank;
+        }
 
         // Where a query sits among the others of its rank, as a string that compares ordinally: by unit name, then a
         // floor ascending and a ceiling descending, then a named container ahead of the unnamed one and names
@@ -73,6 +93,10 @@ namespace Velvet
             {
                 var scaled = (long)Math.Round(Math.Min(Px, OrderCapPx) * 100d);
                 var ordered = IsMax ? OrderCeiling - scaled : scaled;
+                if (Name == ViewportName)
+                {
+                    return ordered.ToString("D16", CultureInfo.InvariantCulture);
+                }
                 var nameKey = Name.Length == 0 ? "~" : "!" + Name;
                 return _unit + "|" + ordered.ToString("D16", CultureInfo.InvariantCulture) + "|" + nameKey;
             }
@@ -138,7 +162,11 @@ namespace Velvet
 
             if (name == ViewportName)
             {
-                if (!TryBreakpointPx(rest, out var breakpoint))
+                var arbitrary = rest.Length > 0 && rest[0] == '[';
+                float breakpoint = 0f;
+                if (arbitrary
+                    ? !StyleArbitraryValueResolver.TryParseArbitraryPixels(rest.AsSpan(), out breakpoint) || IsUnitless(rest)
+                    : !TryBreakpointPx(rest, out breakpoint))
                 {
                     return false;
                 }
@@ -152,7 +180,7 @@ namespace Velvet
                 return true;
             }
 
-            if (s_scaleRem.TryGetValue(rest, out var rem))
+            if (s_scaleRem.TryGetValue(rest, out var rem) && StyleThemeTokens.Current?.ClearsBundled("container-", rest) != true)
             {
                 query = new StyleContainerQuery(rem * PxPerRem, isMax, name, "rem");
                 return true;
@@ -173,7 +201,8 @@ namespace Velvet
             px = 0f;
             foreach (var kind in s_breakpointKinds)
             {
-                if (StyleVariantClass.NameOfBreakpoint(kind) == name)
+                if (StyleVariantClass.NameOfBreakpoint(kind) == name
+                    && StyleThemeTokens.Current?.ClearsBundled("breakpoint-", name) != true)
                 {
                     px = StyleVariantClass.BreakpointPx(kind);
                     return true;

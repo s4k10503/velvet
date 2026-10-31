@@ -77,7 +77,14 @@ namespace Velvet.Tests
         [TestCase("p-guttertest", "p-[length:var(--spacing-guttertest)]")]
         [TestCase("p-4", "p-[length:calc(var(--spacing)*4)]")]
         [TestCase("w-1.5", "w-[length:calc(var(--spacing)*1.5)]")]
-        [TestCase("-mt-2", "-mt-[length:calc(var(--spacing)*-2)]")]
+        [TestCase("-mt-2", "-mt-[length:calc(var(--spacing)*2)]")]
+        [TestCase("p-7", "p-[length:var(--spacing-7)]")]
+        [TestCase("-mt-guttertest", "-mt-[length:var(--spacing-guttertest)]")]
+        [TestCase("max-h-4", "max-h-[length:calc(var(--spacing)*4)]")]
+        [TestCase("max-w-guttertest", "max-w-[length:var(--spacing-guttertest)]")]
+        [TestCase("translate-x-2", "translate-x-[length:calc(var(--spacing)*2)]")]
+        [TestCase("w-widetest", "w-[length:var(--container-widetest)]")]
+        [TestCase("text-sizetest/7", "text-[length:var(--text-sizetest)]/7")]
         [TestCase("max-w-widetest", "max-w-[length:var(--container-widetest)]")]
         [TestCase("inset-shadow-glowtest", "inset-shadow-[var(--inset-shadow-glowtest)]")]
         public void Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(
@@ -217,8 +224,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATokenDeclaredOnOneMountsRoot_When_AnotherMountsPassReadsIt_Then_TheClassIsNotAThemeClass()
         {
-            // Arrange
+            // Arrange — the window's mount reads the sheet; the other mount's root is outside it.
             AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+            }
             var otherMount = V.Mount(new VisualElement(), V.Div());
 
             // Act
@@ -565,23 +576,180 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASheetAttachedAfterAReaderLastLooked_When_AMountPassRereadsIt_Then_TheReaderIsToldItChanged()
+        public void Given_ABreakpointASheetNames_When_ItsRankIsRead_Then_ItIsBelowEveryDefaultBreakpoint()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            long rank;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                rank = StyleContainerQuery.RankOf("@min-xstest/*viewport");
+            }
+
+            // Assert
+            Assert.That(rank, Is.LessThan(StyleLayerPriority.ResponsiveSm));
+        }
+
+        [Test]
+        public void Given_ACeilingOnABreakpoint_When_ItsRankIsRead_Then_ItIsBelowEveryFloor()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            long rank;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                rank = StyleContainerQuery.RankOf("@max-md/*viewport");
+            }
+
+            // Assert
+            Assert.That(rank, Is.LessThan(StyleLayerPriority.ViewportMin));
+        }
+
+        [Test]
+        public void Given_AFloorBetweenTwoDefaultBreakpoints_When_ItsRankIsRead_Then_ItIsTheLowerOnes()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            long rank;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                rank = StyleContainerQuery.RankOf("@min-[1100px]/*viewport");
+            }
+
+            // Assert
+            Assert.That(rank, Is.EqualTo(StyleLayerPriority.ResponsiveLg));
+        }
+
+        [Test]
+        public void Given_ABreakpointAboveTheLargestDefault_When_ItsRankIsRead_Then_ItIsBelowEveryContainerQuery()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            long rank;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                rank = StyleContainerQuery.RankOf("@min-3xltest/*viewport");
+            }
+
+            // Assert
+            Assert.That(rank, Is.LessThan(StyleLayerPriority.ContainerMax));
+        }
+
+        [Test]
+        public void Given_TwoCeilings_When_TheirOrderKeysAreCompared_Then_TheLargerComesFirst()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            int order;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                order = string.CompareOrdinal(StyleContainerQuery.OrderKeyOf("@max-lg/*viewport"),
+                    StyleContainerQuery.OrderKeyOf("@max-md/*viewport"));
+            }
+
+            // Assert
+            Assert.That(order, Is.LessThan(0));
+        }
+
+        [TestCase("shadow-md")]
+        [TestCase("font-bold")]
+        [TestCase("tracking-wide")]
+        [TestCase("leading-tight")]
+        [TestCase("blur-md")]
+        [TestCase("drop-shadow-lg")]
+        [TestCase("p-4")]
+        public void Given_EveryNamespaceSetToInitialAndNoSpacing_When_ABuiltInScaleUtilityIsRead_Then_ItIsRemoved(string className)
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            Attach(AllClearedSheet);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            bool cleared;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                cleared = StyleThemeClass.IsClearedBundled(className);
+            }
+
+            // Assert
+            Assert.That(cleared, Is.True);
+        }
+
+        [Test]
+        public void Given_EveryNamespaceSetToInitial_When_ADefaultBreakpointTokenIsParsed_Then_ItIsNotAVariant()
+        {
+            // Arrange
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            Attach(AllClearedSheet);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            bool parsed;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                parsed = StyleVariantClass.TryParse("md:p-2", out _, out _, out _);
+            }
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
+        [Test]
+        public void Given_AColourDeclaredAfterTheColorNamespaceWasSetToInitial_When_ABundledOpacityFormIsMounted_Then_NoColourIsApplied()
+        {
+            // Arrange
+            AttachSheets(true);
+            Attach(ClearedSheet);
+
+            // Act
+            var leaf = Mount("bg-primary/50");
+
+            // Assert
+            Assert.That(leaf.style.backgroundColor.value, Is.EqualTo(new Color(0f, 0f, 0f, 0f)));
+        }
+
+        [Test]
+        public void Given_ASheetAttachedAfterAMount_When_TheScopesPollRuns_Then_TheMountIsToldItsSheetsChanged()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Div());
             var context = _mounted.Root.Reconciler.Context;
-            var seen = 0;
-            StyleThemeTokens.Changed(context, ref seen);
-            Attach(TokenSheet);
             using (StyleThemeTokens.Pass(context))
             {
             }
+            var told = false;
+            System.Action<ReconcilerContext> listener = changed => told |= ReferenceEquals(changed, context);
+            StyleThemeTokens.ScopeChanged += listener;
+            try
+            {
+                Attach(TokenSheet);
 
-            // Act
-            var changed = StyleThemeTokens.Changed(context, ref seen);
+                // Act
+                EditorPanelTestHelpers.DriveSchedulerOnce(_window.rootVisualElement.panel);
+            }
+            finally
+            {
+                StyleThemeTokens.ScopeChanged -= listener;
+            }
 
             // Assert
-            Assert.That(changed, Is.True);
+            Assert.That(told, Is.True);
         }
     }
 }

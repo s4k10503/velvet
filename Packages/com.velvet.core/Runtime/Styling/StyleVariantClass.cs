@@ -182,6 +182,11 @@ namespace Velvet
                 return TryParseContainer(token, out kind, out name, out payload);
             }
 
+            if (TryParseArbitraryBreakpoint(token, out kind, out name, out payload))
+            {
+                return true;
+            }
+
             var colon = token.IndexOf(':');
             if (colon <= 0 || colon == token.Length - 1)
             {
@@ -227,6 +232,13 @@ namespace Velvet
                 return false;
             }
 
+            // A default breakpoint a project sheet set to initial (`--breakpoint-*: initial`) is no variant.
+            if (IsResponsive(kind) && StyleThemeTokens.Current?.ClearsBundled("breakpoint-", prefix) == true)
+            {
+                name = null;
+                return false;
+            }
+
             // A name is only meaningful for the relational kinds; reject it on any other variant.
             if (name != null && !IsRelational(kind))
             {
@@ -240,6 +252,32 @@ namespace Velvet
                 name = null;
                 return false;
             }
+            return true;
+        }
+
+        // `max-[600px]:p-2` and `min-[600px]:p-2`: a query on the viewport's width at a written length.
+        private static bool TryParseArbitraryBreakpoint(string token, out StyleVariantKind kind, out string? name,
+            out string? payload)
+        {
+            kind = default;
+            name = payload = null;
+            if (!token.StartsWith("max-[", StringComparison.Ordinal) && !token.StartsWith("min-[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var close = token.IndexOf("]:", StringComparison.Ordinal);
+            if (close < 0 || close + 2 >= token.Length)
+            {
+                return false;
+            }
+            var spelling = "@" + token.Substring(0, close + 1) + "/" + StyleContainerQuery.ViewportName;
+            if (!StyleContainerQuery.TryParse(spelling, out _))
+            {
+                return false;
+            }
+            kind = StyleVariantKind.Container;
+            name = spelling;
+            payload = token.Substring(close + 2);
             return true;
         }
 

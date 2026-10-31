@@ -51,14 +51,8 @@ namespace Velvet
         }
 
         // Whether any name's source no longer points at the container that name now resolves to.
-        private int _themeVersion;
-
         private bool ScopeIsStale()
         {
-            if (StyleThemeTokens.Changed(_ctx, ref _themeVersion))
-            {
-                return true;
-            }
             foreach (var binding in _bindings)
             {
                 var name = binding.Query.Name;
@@ -91,6 +85,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+            StyleThemeTokens.ScopeChanged += OnThemeChanged;
             _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
             _watch.Start();
 
@@ -107,6 +102,7 @@ namespace Velvet
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+            StyleThemeTokens.ScopeChanged -= OnThemeChanged;
             _watch?.Stop();
             UnhookSources();
             foreach (var owner in _owners.Values)
@@ -125,6 +121,14 @@ namespace Velvet
         {
             ResetApplied();
             UnhookSources();
+        }
+
+        private void OnThemeChanged(ReconcilerContext ctx)
+        {
+            if (ReferenceEquals(ctx, _ctx))
+            {
+                target?.schedule.Execute(Evaluate);
+            }
         }
 
         private void OnScopesChanged()

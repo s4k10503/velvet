@@ -158,11 +158,11 @@ namespace Velvet
             // registered with VelvetKeyframes: USS has no @keyframes.
             if (overrideSec == null && StyleThemeTokens.Current is { } scope
                 && scope.Values.TryGetValue("--animate-" + rest, out var declared)
-                && TryParseArbitrary("[" + declared.Trim().Replace(' ', '_') + "]", out spec))
+                && TryParseThemed(declared, out spec))
             {
                 return true;
             }
-            if (TryParseBuiltIn(rest, overrideSec, out spec))
+            if (StyleThemeTokens.Current?.ClearsBundled("animate-", rest) != true && TryParseBuiltIn(rest, overrideSec, out spec))
             {
                 return true;
             }
@@ -172,6 +172,26 @@ namespace Velvet
             }
             spec = new AnimateSpec(AnimateMode.Custom, overrideSec ?? keyframes.DefaultDurationSec, keyframes, keyframes.DefaultTiming);
             return true;
+        }
+
+        // `kf 1s linear infinite` over registered keyframes, or a built-in's name with a loop time
+        // (`--animate-spin: spin 2s linear infinite`).
+        private static bool TryParseThemed(string declared, out AnimateSpec spec)
+        {
+            var text = declared.Trim();
+            if (TryParseArbitrary("[" + text.Replace(' ', '_') + "]", out spec))
+            {
+                return true;
+            }
+            var tokens = text.Split(' ');
+            foreach (var token in tokens)
+            {
+                if (TryParseTime(token, out var seconds) && Array.IndexOf(tokens, "infinite") >= 0)
+                {
+                    return TryParseBuiltIn(tokens[0], seconds, out spec);
+                }
+            }
+            return false;
         }
 
         private static bool TryParseBuiltIn(string name, float? overrideSec, out AnimateSpec spec)

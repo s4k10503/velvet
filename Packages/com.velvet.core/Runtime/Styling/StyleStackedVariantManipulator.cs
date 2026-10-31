@@ -32,7 +32,7 @@ namespace Velvet
         private readonly (bool IsPeer, StyleVariantClass.RelationalState State)? _relational;
         private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
         // The condition of a Container inner, read from its spelling (_innerName); meaningful for that kind alone.
-        private readonly StyleContainerQuery _query;
+        private StyleContainerQuery _query;
         private readonly string[] _leaf;
         private readonly long _priority;
         // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
@@ -182,6 +182,7 @@ namespace Velvet
                 if (TracksWidth)
                 {
                     StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+                    StyleThemeTokens.ScopeChanged += OnThemeChanged;
                 }
                 if (_source == StackedInnerSource.Container)
                 {
@@ -225,6 +226,7 @@ namespace Velvet
                 target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
                 target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
                 StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+                StyleThemeTokens.ScopeChanged -= OnThemeChanged;
                 _watch?.Stop();
                 _widthSource?.Unhook();
                 UnhookRelational();
@@ -304,24 +306,34 @@ namespace Velvet
 
         private void EvaluateResponsive()
         {
+            using var themeScope = StyleThemeTokens.Use(_ctx, target);
             if (_source == StackedInnerSource.Container)
             {
+                // A threshold a sheet declares may have moved since the class was parsed.
+                if (StyleContainerQuery.TryParse(_innerName, out var current))
+                {
+                    _query = current;
+                }
                 SetInner(_widthSource?.Satisfies(_query) == true);
                 return;
             }
 
-            using var themeScope = StyleThemeTokens.Use(_ctx);
             var width = _widthSource?.Width ?? 0f;
             SetInner(width >= StyleVariantClass.BreakpointPx(_innerKind));
         }
 
         private StyleResponsiveScope.ScopeWatch? _watch;
 
-        private int _themeVersion;
-
         private bool ScopeIsStale()
-            => StyleThemeTokens.Changed(_ctx, ref _themeVersion)
-                || !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
+            => !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
+
+        private void OnThemeChanged(ReconcilerContext ctx)
+        {
+            if (ReferenceEquals(ctx, _ctx))
+            {
+                target?.schedule.Execute(EvaluateResponsive);
+            }
+        }
 
         private void OnScopesChanged()
         {

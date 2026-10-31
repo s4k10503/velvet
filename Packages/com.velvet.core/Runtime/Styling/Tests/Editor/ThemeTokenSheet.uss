@@ -4,6 +4,9 @@
     --radius-pilltest: 40px;
     --spacing: 3px;
     --spacing-guttertest: 10px;
+    --spacing-7: 10px;
+    --text-sizetest: 20px;
+    --breakpoint-xstest: 30rem;
     --container-widetest: 100rem;
     --breakpoint-sm: 50rem;
     --breakpoint-3xltest: 120rem;

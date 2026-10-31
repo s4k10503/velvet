@@ -29,6 +29,15 @@ namespace Velvet
         private static readonly ConditionalWeakTable<object, Dictionary<string, (string? Text, object Identity)>>.CreateValueCallback
             s_readContext = ReadContext;
 
+        // The text of the custom property name as a stylesheet gives it to element, inherited declarations included,
+        // by the cascade the engine resolved for it. False where none declares it or its value cannot be spelled.
+        internal static bool TryStylesheetValue(VisualElement element, string name, out string? value)
+        {
+            value = null;
+            return TryReadContext(element, out var context) && context.TryGetValue(name, out var found)
+                && (value = found.Text) != null;
+        }
+
         // A custom property a stylesheet declares on element itself rather than one it inherits: element's
         // variable context holds it and its parent's does not hold the same declaration. A value Velvet cannot
         // spell (an asset reference) is read as null.

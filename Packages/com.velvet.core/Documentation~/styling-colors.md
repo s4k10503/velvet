@@ -106,31 +106,22 @@ A project token with the name of a built-in overrides it in the forms the palett
 `--color-red-500` redeclared, `border-b-red-500`, `ring-red-500`, `bg-red-500/50` and the shadow and gradient forms
 read the variable.
 
-The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner and logical forms), `--text-*`,
-`--font-*`, `--font-weight-*`, `--tracking-*`, `--leading-*`, `--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`,
-`--blur-*`, `--aspect-*` and `--spacing-*` (`p-gutter`, `w-gutter`, `gap-gutter`, …, written as lengths); a name is a
-token of the namespace only where a sheet declares it. A sheet that declares `--spacing` makes a number the multiple
-of it, as Tailwind does: with `--spacing: 3px`, `p-4` is `calc(var(--spacing)*4)` and `-mt-2` is `-6px`; without
-one, the bundled `--space-N` scale gives the number.
+The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner and logical forms), `--text-*`
+(`text-display`, and `text-display/7` with a line height), `--font-*`, `--font-weight-*`, `--tracking-*`, `--leading-*`,
+`--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`, `--blur-*`, `--aspect-*`, `--spacing-*` and `--spacing`
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and `--breakpoint-*`,
+`--container-*` and `--animate-*` ([styling-variants.md](styling-variants.md#theme-breakpoints-container-sizes-and-animations)). A
+name is a token of its namespace only where a sheet declares it.
 
-`--container-*` declares container sizes: `@widetest:` and `max-w-widetest` read `--container-widetest`, and a size the
-default scale names (`--container-md`) moves it. `--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` …
-`2xl:`. A breakpoint a sheet names (`--breakpoint-3xl: 120rem`) makes `3xl:` and `max-3xl:`, and `max-` and `min-` read any
-breakpoint (`max-md:`). A declared breakpoint or container size that changes, or a sheet attached or removed, moves
-the thresholds within a tick. A stacked variant on a themed breakpoint (`3xl:dark:`) reads the value it was parsed
-with. `--animate-name`
-(`--animate-wiggle: wiggle 1s ease-in-out infinite`) makes `animate-wiggle` the bracketed form it spells, over a built-in of
-the same name when its keyframes are registered; the keyframes are registered with `VelvetKeyframes`, since USS has no
-`@keyframes`.
-
-A namespace is set to initial by a marker property in a sheet, `--velvet-initial-color: 1;` (`--velvet-initial-all`
-for every namespace), since USS has no wildcard property name. The bundled utilities of that namespace
-(`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`) then do nothing, and the tokens the
-project declares itself still generate theirs.
+A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled
+utilities of that namespace (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`,
+`shadow-md`, `font-bold`, `sm:`, `@md:`, `animate-spin`, …) then do nothing, and the tokens the project declares itself
+still generate theirs.
 
 Each mount reads the sheets attached to its mount target or one of its ancestors, and the sheets they `@import`, at
-the start of every render pass of the mount. A sheet attached or removed later is read by the next pass; a class list
-that no pass re-applies keeps what it resolved to. A reader outside a pass finds the scope of the mount its element sits in.
+the start of every render pass of the mount and every tenth of a second. A sheet attached, edited or removed moves
+what the mount's classes resolve to: the elements whose class lists name a theme class are configured again. A reader
+outside a pass finds the scope of the mount its element sits in.
 
 ## Where Velvet differs from CSS
 

@@ -1,4 +1,4 @@
-/* The marker that sets every namespace to initial. */
+/* Every namespace set to initial. */
 .theme-token-host {
-    --velvet-initial-all: 1;
+    --*: initial;
 }
