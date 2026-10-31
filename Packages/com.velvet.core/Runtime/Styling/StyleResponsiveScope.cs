@@ -46,6 +46,10 @@ namespace Velvet
         // when there is none, in which case the query matches nothing.
         internal static VisualElement? ResolveContainer(VisualElement target, string name)
         {
+            if (name == StyleContainerQuery.ViewportName)
+            {
+                return ResolveWidthSource(target, target.panel?.visualTree);
+            }
             if (name.Length > 0)
             {
                 return StyleRelationalVariantManipulator.FindAncestorWithClass(target, NamedClass(name));

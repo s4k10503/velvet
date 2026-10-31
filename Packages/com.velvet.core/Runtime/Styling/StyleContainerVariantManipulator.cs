@@ -17,7 +17,7 @@ namespace Velvet
 
         // The prefix as written. Two spellings of one threshold (`@md`, `@min-md`) are two bindings.
         public string Spelling { get; }
-        public StyleContainerQuery Query { get; }
+        public StyleContainerQuery Query { get; set; }
         public string[] Payloads { get; }
         public int[] Declarations { get; }
     }
@@ -51,8 +51,14 @@ namespace Velvet
         }
 
         // Whether any name's source no longer points at the container that name now resolves to.
+        private int _themeVersion;
+
         private bool ScopeIsStale()
         {
+            if (StyleThemeTokens.Changed(_ctx, ref _themeVersion))
+            {
+                return true;
+            }
             foreach (var binding in _bindings)
             {
                 var name = binding.Query.Name;
@@ -163,9 +169,15 @@ namespace Velvet
                 return;
             }
 
+            using var themeScope = StyleThemeTokens.Use(_ctx, target);
             for (var i = 0; i < _bindings.Length; i++)
             {
                 var query = _bindings[i].Query;
+                if (StyleContainerQuery.TryParse(_bindings[i].Spelling, out var current) && current.Px != query.Px)
+                {
+                    // A threshold a sheet declares moved: the binding answers for the value it reads now.
+                    query = _bindings[i].Query = current;
+                }
                 var on = _sources.TryGetValue(query.Name, out var source) && source.Satisfies(query);
                 if (on != _on[i])
                 {

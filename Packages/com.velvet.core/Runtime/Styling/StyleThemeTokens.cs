@@ -31,6 +31,10 @@ namespace Velvet
             public readonly HashSet<string> Cleared = new(StringComparer.Ordinal);
             public readonly Dictionary<string, string?> Classes = new(StringComparer.Ordinal);
             public int Signature = int.MinValue;
+            // Moves whenever a rebuild finds the sheets changed, which readers of a declared value compare to know
+            // theirs is stale.
+            public int Version;
+            public long CheckedAt = long.MinValue;
 
             // The last value a project sheet declares for each --breakpoint-*, --container-* and --animate-* name, as CSS text.
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
@@ -61,6 +65,53 @@ namespace Velvet
         private static readonly ConditionalWeakTable<ReconcilerContext, Scope> s_scopes = new();
         private static Scope? s_current;
 
+        // The mount each element a mount was made on belongs to, so a reader holding only an element finds its scope.
+        private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_mounts = new();
+
+        // A scope is reread at most this often outside a pass (Changed); a pass rereads every time.
+        private const long RereadIntervalMs = 100;
+
+        internal static void RegisterMount(VisualElement mountPoint, ReconcilerContext ctx)
+        {
+            s_mounts.Remove(mountPoint);
+            s_mounts.Add(mountPoint, ctx);
+        }
+
+        // The context of the nearest mount point at or above element, null for an element outside every mount.
+        internal static ReconcilerContext? ContextOf(VisualElement? element)
+        {
+            for (; element != null; element = element.hierarchy.parent)
+            {
+                if (s_mounts.TryGetValue(element, out var ctx))
+                {
+                    return ctx;
+                }
+            }
+            return null;
+        }
+
+        // Whether the sheets ctx's scope reads changed since seen, which Changed moves to the scope's current version.
+        internal static bool Changed(ReconcilerContext? ctx, ref int seen)
+        {
+            if (ctx?.ThemeRoot == null)
+            {
+                return false;
+            }
+            var scope = s_scopes.GetValue(ctx, static _ => new Scope());
+            var now = System.Diagnostics.Stopwatch.GetTimestamp() * 1000L / System.Diagnostics.Stopwatch.Frequency;
+            if (now - scope.CheckedAt >= RereadIntervalMs || scope.Signature == int.MinValue)
+            {
+                Refresh(ctx);
+                scope.CheckedAt = now;
+            }
+            if (scope.Version == seen)
+            {
+                return false;
+            }
+            seen = scope.Version;
+            return true;
+        }
+
         // The scope the reading in progress asks, null outside a pass of a mount and outside Use.
         internal static Scope? Current => s_current;
 
@@ -68,6 +119,9 @@ namespace Velvet
         // pass (a variant turning on, a custom property resolving again) sets it for itself, with the names the last
         // pass read.
         internal static Restore Use(ReconcilerContext? ctx) => Enter(ctx, false);
+
+        // As Use, for a reader that holds an element and may hold no context: the element's own mount decides.
+        internal static Restore Use(ReconcilerContext? ctx, VisualElement? element) => Enter(ctx ?? ContextOf(element), false);
 
         // As Use, reading the sheets again first: a pass of the mount does, so a sheet attached since the last one
         // declares its tokens to it.
@@ -105,6 +159,7 @@ namespace Velvet
             if (signature != scope.Signature)
             {
                 scope.Signature = signature;
+                scope.Version++;
                 scope.Project.Clear();
                 scope.Bundled.Clear();
                 scope.Classes.Clear();

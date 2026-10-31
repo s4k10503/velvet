@@ -115,7 +115,10 @@ one, the bundled `--space-N` scale gives the number.
 
 `--container-*` declares container sizes: `@widetest:` and `max-w-widetest` read `--container-widetest`, and a size the
 default scale names (`--container-md`) moves it. `--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` …
-`2xl:`, read when the viewport's width changes. A breakpoint with a name of its own (`3xl:`) is not read. `--animate-name`
+`2xl:`. A breakpoint a sheet names (`--breakpoint-3xl: 120rem`) makes `3xl:` and `max-3xl:`, and `max-` and `min-` read any
+breakpoint (`max-md:`). A declared breakpoint or container size that changes, or a sheet attached or removed, moves
+the thresholds within a tick. A stacked variant on a themed breakpoint (`3xl:dark:`) reads the value it was parsed
+with. `--animate-name`
 (`--animate-wiggle: wiggle 1s ease-in-out infinite`) makes `animate-wiggle` the bracketed form it spells, over a built-in of
 the same name when its keyframes are registered; the keyframes are registered with `VelvetKeyframes`, since USS has no
 `@keyframes`.
@@ -127,7 +130,7 @@ project declares itself still generate theirs.
 
 Each mount reads the sheets attached to its mount target or one of its ancestors, and the sheets they `@import`, at
 the start of every render pass of the mount. A sheet attached or removed later is read by the next pass; a class list
-that no pass re-applies keeps what it resolved to.
+that no pass re-applies keeps what it resolved to. A reader outside a pass finds the scope of the mount its element sits in.
 
 ## Where Velvet differs from CSS
 

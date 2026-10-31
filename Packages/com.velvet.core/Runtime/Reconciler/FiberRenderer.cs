@@ -238,7 +238,11 @@ namespace Velvet
                 ? new Reconciler(parentCtx)
                 : new Reconciler();
             fiber.IsMounted = true;
-            fiber.Reconciler.Context.ThemeRoot ??= mountPoint;
+            if (fiber.Reconciler.Context.ThemeRoot == null)
+            {
+                fiber.Reconciler.Context.ThemeRoot = mountPoint;
+                StyleThemeTokens.RegisterMount(mountPoint, fiber.Reconciler.Context);
+            }
 
             // The batch scheduler registers its single drain callback on a tree-stable anchor: the
             // root mount element. A descendant's MountPoint may detach from the panel (route change /

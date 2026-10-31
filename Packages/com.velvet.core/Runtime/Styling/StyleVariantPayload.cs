@@ -215,7 +215,7 @@ namespace Velvet
             VisualElement target, string payload, bool on, long effectivePriority,
             ReconcilerContext? ctx, int declaration)
         {
-            using var themeScope = StyleThemeTokens.Use(ctx);
+            using var themeScope = StyleThemeTokens.Use(ctx, target);
             var core = StyleArbitraryValueResolver.StripImportant(payload, out var important);
             // Resolved on the element into a payload of its own, which comes back through Apply.
             if (StyleCustomPropertyClass.IsCustomPropertyToken(core))

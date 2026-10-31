@@ -214,6 +214,15 @@ namespace Velvet
 
             if (!s_kinds.TryGetValue(prefix, out kind))
             {
+                // A breakpoint a sheet declares (`3xl:`), or a ceiling or floor on any breakpoint (`max-md:`,
+                // `min-3xl:`), is a query on the viewport's width.
+                if (name == null && TryBreakpointQuery(prefix, out var spelling))
+                {
+                    kind = StyleVariantKind.Container;
+                    name = spelling;
+                    payload = token.Substring(colon + 1);
+                    return payload.Length > 0;
+                }
                 name = null;
                 return false;
             }
@@ -233,6 +242,25 @@ namespace Velvet
             }
             return true;
         }
+
+        private static bool TryBreakpointQuery(string prefix, out string spelling)
+        {
+            spelling = string.Empty;
+            var bound = prefix.StartsWith("max-", StringComparison.Ordinal) ? "max-"
+                : prefix.StartsWith("min-", StringComparison.Ordinal) ? "min-" : string.Empty;
+            var bp = prefix.Substring(bound.Length);
+            var custom = bound.Length > 0 || !s_kinds.ContainsKey(bp);
+            var candidate = "@" + (bound.Length == 0 ? "min-" : bound) + bp + "/" + StyleContainerQuery.ViewportName;
+            if (bp.Length == 0 || !custom || !StyleContainerQuery.TryParse(candidate, out _))
+            {
+                return false;
+            }
+            spelling = candidate;
+            return true;
+        }
+
+        /// <summary>The name a default breakpoint is written with: <c>sm</c>, <c>md</c>, <c>lg</c>, <c>xl</c>, <c>2xl</c>.</summary>
+        internal static string? NameOfBreakpoint(StyleVariantKind kind) => s_themeNames.TryGetValue(kind, out var name) ? name : null;
 
         // `@md:p-2`, `@max-lg/main:p-2`, `@min-[475px]:p-2`: the prefix runs to the first ':'. The prefix, `@`
         // included, is returned as the name, which is how a stacked variant tells one container query from another.

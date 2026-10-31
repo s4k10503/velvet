@@ -441,5 +441,147 @@ namespace Velvet.Tests
                 VelvetKeyframes.Unregister("kf-theme");
             }
         }
+
+        [TestCase(StyleVariantKind.Sm, 640f)]
+        [TestCase(StyleVariantKind.Md, 768f)]
+        [TestCase(StyleVariantKind.Lg, 1024f)]
+        [TestCase(StyleVariantKind.Xl, 1280f)]
+        [TestCase(StyleVariantKind.Xxl, 1536f)]
+        public void Given_NoThemeScope_When_ADefaultBreakpointIsRead_Then_ItIsTheTailwindThreshold(StyleVariantKind kind, float px)
+        {
+            // Act
+            var read = StyleVariantClass.BreakpointPx(kind);
+
+            // Assert
+            Assert.That(read, Is.EqualTo(px));
+        }
+
+        [TestCase("sm:p-2", StyleVariantKind.Sm)]
+        [TestCase("md:p-2", StyleVariantKind.Md)]
+        [TestCase("lg:p-2", StyleVariantKind.Lg)]
+        [TestCase("xl:p-2", StyleVariantKind.Xl)]
+        [TestCase("2xl:p-2", StyleVariantKind.Xxl)]
+        public void Given_ADefaultBreakpointToken_When_Parsed_Then_ItIsThatKind(string token, StyleVariantKind expected)
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            StyleVariantKind kind;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                StyleVariantClass.TryParse(token, out kind, out _, out _);
+            }
+
+            // Assert
+            Assert.That(kind, Is.EqualTo(expected));
+        }
+
+        [TestCase("3xltest:p-2", "@min-3xltest/*viewport")]
+        [TestCase("max-3xltest:p-2", "@max-3xltest/*viewport")]
+        [TestCase("max-md:p-2", "@max-md/*viewport")]
+        [TestCase("min-lg:p-2", "@min-lg/*viewport")]
+        public void Given_ABreakpointASheetDeclaresOrAFloorOrCeilingOnOne_When_Parsed_Then_ItIsAQueryOnTheViewport(string token, string expected)
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            string name;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                StyleVariantClass.TryParse(token, out _, out name, out _);
+            }
+
+            // Assert
+            Assert.That(name, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABreakpointASheetDeclares_When_ItsQueryIsRead_Then_TheThresholdIsTheDeclaredLength()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                StyleContainerQuery.TryParse("@min-3xltest/*viewport", out var query);
+                px = query.Px;
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(1920f));
+        }
+
+        [Test]
+        public void Given_ABreakpointNoSheetDeclares_When_ItsTokenIsParsed_Then_ItIsNotAVariant()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            bool parsed;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                parsed = StyleVariantClass.TryParse("3xlnever:p-2", out _, out _, out _);
+            }
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
+        [Test]
+        public void Given_ACustomBreakpointToken_When_ParsedOutsideEveryScope_Then_ItIsNotAVariant()
+        {
+            // Act
+            var parsed = StyleVariantClass.TryParse("3xltest:p-2", out _, out _, out _);
+
+            // Assert
+            Assert.That(parsed, Is.False);
+        }
+
+        [Test]
+        public void Given_AReaderHoldingOnlyAnElement_When_ItAsksOutsideAPass_Then_ItReadsTheElementsMountScope()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("flex");
+
+            // Act
+            string normalized;
+            using (StyleThemeTokens.Use(null, leaf))
+            {
+                normalized = StyleThemeClass.Normalize("bg-brandtest");
+            }
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo("bg-[color:var(--color-brandtest)]"));
+        }
+
+        [Test]
+        public void Given_ASheetAttachedAfterAReaderLastLooked_When_AMountPassRereadsIt_Then_TheReaderIsToldItChanged()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+            var context = _mounted.Root.Reconciler.Context;
+            var seen = 0;
+            StyleThemeTokens.Changed(context, ref seen);
+            Attach(TokenSheet);
+            using (StyleThemeTokens.Pass(context))
+            {
+            }
+
+            // Act
+            var changed = StyleThemeTokens.Changed(context, ref seen);
+
+            // Assert
+            Assert.That(changed, Is.True);
+        }
     }
 }

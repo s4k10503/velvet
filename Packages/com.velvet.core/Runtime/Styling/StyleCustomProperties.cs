@@ -466,7 +466,7 @@ namespace Velvet
 
         private static void Reresolve(VisualElement target, Consumer consumer)
         {
-            using var themeScope = StyleThemeTokens.Use(consumer.Context);
+            using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
             var resolved = TryBuild(target, consumer, s_built);
             if (consumer.Resolved && (resolved ? consumer.Source != null && Matches(s_built, consumer.Source) : consumer.Source == null))

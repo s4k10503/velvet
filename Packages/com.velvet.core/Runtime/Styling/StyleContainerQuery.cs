@@ -15,6 +15,10 @@ namespace Velvet
         // value grammar (StyleArbitraryValueResolver.TryParseValue).
         private const float PxPerRem = 16f;
 
+        // The container name of a query that asks for the viewport's width: the thresholds of a breakpoint named in a
+        // sheet (`3xl:`, `max-md:`), which StyleVariantClass spells as `@min-3xl/*viewport`. No class can carry it.
+        internal const string ViewportName = "*viewport";
+
         private static readonly Dictionary<string, float> s_scaleRem = new(StringComparer.Ordinal)
         {
             ["3xs"] = 16f,
@@ -132,6 +136,16 @@ namespace Velvet
             var isMax = body.StartsWith("max-", StringComparison.Ordinal);
             var rest = isMax || body.StartsWith("min-", StringComparison.Ordinal) ? body.Substring(4) : body;
 
+            if (name == ViewportName)
+            {
+                if (!TryBreakpointPx(rest, out var breakpoint))
+                {
+                    return false;
+                }
+                query = new StyleContainerQuery(breakpoint, isMax, name, "px");
+                return true;
+            }
+
             if (StyleThemeTokens.Current is { } scope && scope.TryGetPx("--container-" + rest, out var themed))
             {
                 query = new StyleContainerQuery(themed, isMax, name, "rem");
@@ -151,6 +165,27 @@ namespace Velvet
             query = new StyleContainerQuery(px, isMax, name, UnitOf(rest));
             return true;
         }
+
+        // The threshold of the breakpoint named name: a default one (sm to 2xl, as a sheet may have moved it) or one a
+        // sheet declares.
+        internal static bool TryBreakpointPx(string name, out float px)
+        {
+            px = 0f;
+            foreach (var kind in s_breakpointKinds)
+            {
+                if (StyleVariantClass.NameOfBreakpoint(kind) == name)
+                {
+                    px = StyleVariantClass.BreakpointPx(kind);
+                    return true;
+                }
+            }
+            return StyleThemeTokens.Current is { } scope && scope.TryGetPx("--breakpoint-" + name, out px);
+        }
+
+        private static readonly StyleVariantKind[] s_breakpointKinds =
+        {
+            StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg, StyleVariantKind.Xl, StyleVariantKind.Xxl,
+        };
 
         // The shared length grammar reads a bare 0 as a length; a container threshold is declined without a unit, 0
         // included.

@@ -317,8 +317,11 @@ namespace Velvet
 
         private StyleResponsiveScope.ScopeWatch? _watch;
 
+        private int _themeVersion;
+
         private bool ScopeIsStale()
-            => !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
+            => StyleThemeTokens.Changed(_ctx, ref _themeVersion)
+                || !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
 
         private void OnScopesChanged()
         {
