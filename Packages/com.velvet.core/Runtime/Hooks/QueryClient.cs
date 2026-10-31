@@ -66,6 +66,19 @@ namespace Velvet
         public Func<QueryInfo, QueryRefetchMode>? RefetchOnReconnectFn { get; init; }
 
         /// <summary>
+        /// Whether a request pauses while the device reads as offline, for every query that does not set its own:
+        /// TanStack Query's <c>networkMode</c>, whose default is <see cref="Velvet.NetworkMode.Online"/>.
+        /// </summary>
+        public NetworkMode NetworkMode { get; init; } = NetworkMode.Online;
+
+        /// <summary>
+        /// Turns a key into the string that names its entry, for every query that does not set its own: TanStack
+        /// Query's <c>queryKeyHashFn</c>. Two keys the function maps to one string name one entry. When null, keys
+        /// are told apart as <see cref="Velvet.QueryKey"/> describes, TanStack Query's <c>hashKey</c>.
+        /// </summary>
+        public Func<QueryKey, string>? QueryKeyHashFn { get; init; }
+
+        /// <summary>
         /// A monotonic clock the client reads instead of its own stopwatch, for a host that measures time
         /// differently — game time that pauses, or a clock a test advances by hand.
         /// </summary>
@@ -108,6 +121,7 @@ namespace Velvet
     /// </remarks>
     public sealed class QueryClient
     {
+        // Keyed by QueryEntry.Id: the key itself, or a key standing for the string a QueryKeyHashFn made of it.
         private readonly Dictionary<QueryKey, QueryEntry> _entries = new();
         private readonly List<QueryEntry> _inactive = new();
         private static readonly Func<int, Exception, TimeSpan> s_exponentialBackoff
@@ -131,6 +145,8 @@ namespace Velvet
             DefaultGcTime = RequireNonNegative(options.GcTime, nameof(QueryClientOptions.GcTime));
             DefaultRetry = options.Retry;
             DefaultRetryDelay = options.RetryDelay ?? s_exponentialBackoff;
+            DefaultNetworkMode = options.NetworkMode;
+            DefaultQueryKeyHashFn = options.QueryKeyHashFn;
             DefaultRefetchOnWindowFocus = options.RefetchOnWindowFocus;
             DefaultRefetchOnReconnect = options.RefetchOnReconnect;
             DefaultRefetchOnWindowFocusFn = options.RefetchOnWindowFocusFn;
@@ -157,6 +173,13 @@ namespace Velvet
 
         /// <summary>The retry delay a query that sets none of its own uses.</summary>
         public Func<int, Exception, TimeSpan> DefaultRetryDelay { get; }
+
+        /// <summary>The network mode a query that sets none of its own uses.</summary>
+        public NetworkMode DefaultNetworkMode { get; }
+
+        /// <summary>The key hash function a query that sets none of its own uses; null when keys are told apart
+        /// as <see cref="QueryKey"/> describes.</summary>
+        public Func<QueryKey, string>? DefaultQueryKeyHashFn { get; }
 
         /// <summary>Whether a query that sets none of its own fetches again when the application becomes
         /// visible.</summary>
@@ -257,7 +280,7 @@ namespace Velvet
         {
             foreach (var entry in SelectEntries(filters))
             {
-                _entries.Remove(entry.Key);
+                _entries.Remove(entry.Id);
                 _inactive.Remove(entry);
                 entry.Remove();
             }
@@ -337,7 +360,7 @@ namespace Velvet
         public QueryState<T>? GetQueryState<T>(QueryKey queryKey)
         {
             if (queryKey == null) throw new ArgumentNullException(nameof(queryKey));
-            if (!_entries.TryGetValue(queryKey, out var found) || IsExpired(found, Now)) return null;
+            if (!_entries.TryGetValue(Identify(queryKey, DefaultQueryKeyHashFn), out var found) || IsExpired(found, Now)) return null;
             var entry = Typed<T>(found);
             return new QueryState<T>
             {
@@ -346,7 +369,7 @@ namespace Velvet
                 Data = entry.HasData ? entry.Data : default,
                 Error = entry.Error,
                 IsInvalidated = entry.IsInvalidated,
-                IsFetching = entry.IsFetching,
+                FetchStatus = entry.FetchStatus,
                 DataUpdatedAt = entry.HasData ? entry.DataUpdatedAt : TimeSpan.Zero,
                 FailureCount = entry.FailureCount,
                 FailureReason = entry.FailureReason,
@@ -398,7 +421,9 @@ namespace Velvet
         public T? GetQueryData<T>(QueryKey queryKey)
         {
             if (queryKey == null) throw new ArgumentNullException(nameof(queryKey));
-            var entry = _entries.TryGetValue(queryKey, out var found) && !IsExpired(found, Now) ? Typed<T>(found) : null;
+            var entry = _entries.TryGetValue(Identify(queryKey, DefaultQueryKeyHashFn), out var found) && !IsExpired(found, Now)
+                ? Typed<T>(found)
+                : null;
             return entry != null ? entry.Data : default;
         }
 
@@ -468,17 +493,14 @@ namespace Velvet
         {
             if (filters == null) return true;
             if (filters.QueryKey != null
-                && !(filters.Exact ? entry.Key.Equals(filters.QueryKey) : entry.Key.Matches(filters.QueryKey)))
+                && !(filters.Exact ? entry.Id.Equals(Identify(filters.QueryKey, entry.KeyHashFn)) : entry.Key.Matches(filters.QueryKey)))
             {
                 return false;
             }
             if (filters.Type == QueryTypeFilter.Active && !entry.IsActive) return false;
             if (filters.Type == QueryTypeFilter.Inactive && entry.IsActive) return false;
             if (filters.Stale.HasValue && entry.IsStaleForFilter != filters.Stale.Value) return false;
-            if (filters.FetchStatus.HasValue && (filters.FetchStatus.Value == QueryFetchStatus.Fetching) != entry.IsFetching)
-            {
-                return false;
-            }
+            if (filters.FetchStatus.HasValue && filters.FetchStatus.Value != entry.FetchStatus) return false;
             return filters.Predicate == null || filters.Predicate(entry.Describe());
         }
 
@@ -515,7 +537,31 @@ namespace Velvet
             var gcTime = RequireNonNegative(options.GcTime ?? DefaultGcTime, nameof(QueryOptions<T, T>.GcTime));
             fetchOptions = new QueryFetchOptions<T>().Assign(options, this);
             fetchOptions.SetRetries(options.Retry ?? 0);
-            return Ensure<T>(options.QueryKey, gcTime);
+            return Ensure<T>(options.QueryKey, options.QueryKeyHashFn ?? DefaultQueryKeyHashFn, gcTime);
+        }
+
+        // What names an entry in the cache: the key as it is, or, under a hash function, a key of the string the
+        // function made of it, which no key an application builds equals.
+        internal static QueryKey Identify(QueryKey key, Func<QueryKey, string>? hashFn)
+        {
+            if (hashFn == null) return key;
+            var hash = hashFn(key) ?? throw new InvalidOperationException($"The QueryKeyHashFn returned null for {key}.");
+            return new QueryKey(new HashedKeyIdentity(hash));
+        }
+
+        private sealed class HashedKeyIdentity : IEquatable<HashedKeyIdentity>
+        {
+            private readonly string _hash;
+
+            internal HashedKeyIdentity(string hash) => _hash = hash;
+
+            public bool Equals(HashedKeyIdentity? other) => other != null && string.Equals(_hash, other._hash, StringComparison.Ordinal);
+
+            public override bool Equals(object? obj) => Equals(obj as HashedKeyIdentity);
+
+            public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(_hash);
+
+            public override string ToString() => _hash;
         }
 
         // The client watches the application's visibility and connection while a query observes it, which is
@@ -539,47 +585,52 @@ namespace Velvet
             }
         }
 
+        internal QueryEntry<T>? Peek<T>(QueryKey key) => PeekById<T>(Identify(key, DefaultQueryKeyHashFn));
+
         // An expired entry reads as absent before a sweep removes it, so a render never shows an entry that had
         // already expired and that a sibling's subscription in the same commit would sweep.
-        internal QueryEntry<T>? Peek<T>(QueryKey key)
+        internal QueryEntry<T>? PeekById<T>(QueryKey id)
         {
             _readEpoch++;
-            return _entries.TryGetValue(key, out var entry) && !IsExpired(entry, Now) ? Typed<T>(entry) : null;
+            return _entries.TryGetValue(id, out var entry) && !IsExpired(entry, Now) ? Typed<T>(entry) : null;
         }
 
-        internal QueryEntry<T> Build<T>(QueryKey key, TimeSpan gcTime)
+        internal QueryEntry<T> Build<T>(QueryKey key, QueryKey id, Func<QueryKey, string>? hashFn, TimeSpan gcTime)
         {
             // A reader leaving in this commit's effects hands its entry to the reader arriving in them — a
             // keyed remount, two readers swapped — however short its gcTime, as v5's addObserver clears the
             // removal timeout. Taken back before the sweep, which otherwise replaces an expired entry rather
             // than handing it back.
-            if (_entries.TryGetValue(key, out var existing) && existing.InactiveEpoch == _readEpoch)
+            if (_entries.TryGetValue(id, out var existing) && existing.InactiveEpoch == _readEpoch)
             {
                 MarkActive(existing);
             }
             CollectGarbage();
-            if (_entries.TryGetValue(key, out existing))
+            if (_entries.TryGetValue(id, out existing))
             {
                 var typed = Typed<T>(existing);
                 typed.RaiseGcTime(gcTime);
                 return typed;
             }
 
-            var entry = new QueryEntry<T>(this, key, gcTime);
-            _entries.Add(key, entry);
+            var entry = new QueryEntry<T>(this, key, id, hashFn, gcTime);
+            _entries.Add(id, entry);
             return entry;
         }
 
         // TanStack's queryCache.build outside a subscription: an entry made here has no reader yet, so it is
         // collected after its gcTime unless one subscribes, as v5 schedules a new query's removal at once.
-        internal QueryEntry<T> Ensure<T>(QueryKey key, TimeSpan gcTime)
+        internal QueryEntry<T> Ensure<T>(QueryKey key, TimeSpan gcTime) => Ensure<T>(key, DefaultQueryKeyHashFn, gcTime);
+
+        internal QueryEntry<T> Ensure<T>(QueryKey key, Func<QueryKey, string>? hashFn, TimeSpan gcTime)
         {
+            var id = Identify(key, hashFn);
             CollectGarbage();
             // An entry that exists is returned as it is, gcTime included, as v5's build returns the query it finds.
-            if (_entries.TryGetValue(key, out var existing)) return Typed<T>(existing);
+            if (_entries.TryGetValue(id, out var existing)) return Typed<T>(existing);
 
-            var entry = new QueryEntry<T>(this, key, gcTime);
-            _entries.Add(key, entry);
+            var entry = new QueryEntry<T>(this, key, id, hashFn, gcTime);
+            _entries.Add(id, entry);
             MarkInactive(entry);
             return entry;
         }
@@ -634,15 +685,16 @@ namespace Velvet
                 if (IsExpired(entry, now))
                 {
                     _inactive.RemoveAt(i);
-                    _entries.Remove(entry.Key);
+                    _entries.Remove(entry.Id);
                     entry.Remove();
                     continue;
                 }
                 if (!CanExpire(entry)) continue;
                 if (entry.InactiveSince is not { } since) continue;
                 canExpire = true;
-                // A fetching entry has no deadline until its request settles, which lowers _nextWalk.
-                if (!entry.IsFetching)
+                // An entry with a request in flight, paused or not, has no deadline until the request settles, which
+                // lowers _nextWalk.
+                if (entry.FetchStatus == QueryFetchStatus.Idle)
                 {
                     var deadline = Deadline(entry, since);
                     // MUTANT_SURVIVES(equivalent, boundary): at equal deadlines the assignment writes the value already held.
@@ -692,12 +744,13 @@ namespace Velvet
 
         private static bool CanExpire(QueryEntry entry) => entry.GcTime != TimeSpan.MaxValue;
 
-        // An entry fetching is not expired whatever its age, as v5's optionalRemove keeps a query whose fetch is
-        // not idle; QueryEntry.RescheduleCollection moves its deadline once the request settles.
+        // An entry with a request in flight is not expired whatever its age, a paused one included, as v5's
+        // optionalRemove keeps a query whose fetch is not idle; QueryEntry.RescheduleCollection moves its deadline
+        // once the request settles.
         private static bool IsExpired(QueryEntry entry, TimeSpan now)
         {
             var since = entry.InactiveSince;
-            return since != null && !entry.IsFetching && now - since.Value >= entry.GcTime;
+            return since != null && entry.FetchStatus == QueryFetchStatus.Idle && now - since.Value >= entry.GcTime;
         }
 
         // v5's isValidTimeout and its zero check: anything else sets no interval.
@@ -728,20 +781,29 @@ namespace Velvet
 
     internal abstract class QueryEntry
     {
-        protected QueryEntry(QueryClient client, QueryKey key, TimeSpan gcTime)
+        protected QueryEntry(QueryClient client, QueryKey key, QueryKey id, Func<QueryKey, string>? keyHashFn, TimeSpan gcTime)
         {
             Client = client;
             Key = key;
+            Id = id;
+            _createdKeyHashFn = keyHashFn;
             GcTime = gcTime;
         }
 
         internal QueryClient Client { get; }
         internal QueryKey Key { get; }
+        // What the client's cache holds the entry under: Key, or the hash a QueryKeyHashFn made of it.
+        internal QueryKey Id { get; }
+        // The function of the options the entry was last handed, as v5 reads query.options; the one it was created with
+        // until then.
+        internal virtual Func<QueryKey, string>? KeyHashFn => _createdKeyHashFn;
+        private readonly Func<QueryKey, string>? _createdKeyHashFn;
         internal TimeSpan GcTime { get; private set; }
         internal TimeSpan? InactiveSince { get; set; }
         internal int InactiveEpoch { get; set; }
         internal abstract Type DataType { get; }
-        internal abstract bool IsFetching { get; }
+        internal abstract QueryFetchStatus FetchStatus { get; }
+        internal bool IsFetching => FetchStatus == QueryFetchStatus.Fetching;
 
         // v5's fetch calls scheduleGc as it settles, which starts the removal timer over, so an entry nothing reads
         // goes a whole gcTime after its request settled. An entry something reads has no removal to start over.
@@ -777,6 +839,7 @@ namespace Velvet
         private readonly List<QueryEntryObserver<T>> _observers = new();
         private CancellationTokenSource? _inFlight;
         private bool _retriesStopped;
+        private bool _paused;
         private TimeSpan _dataUpdatedAt;
         // TanStack's query.options: what the last query to commit over the entry, or to start a request for it,
         // handed it. An invalidation's refetch runs with them, whichever observer they came from.
@@ -813,10 +876,12 @@ namespace Velvet
             internal TimeSpan DataUpdatedAt { get; }
         }
 
-        internal QueryEntry(QueryClient client, QueryKey key, TimeSpan gcTime) : base(client, key, gcTime)
+        internal QueryEntry(QueryClient client, QueryKey key, QueryKey id, Func<QueryKey, string>? keyHashFn, TimeSpan gcTime)
+            : base(client, key, id, keyHashFn, gcTime)
         {
         }
 
+        internal override Func<QueryKey, string>? KeyHashFn => _options?.KeyHashFn ?? base.KeyHashFn;
         internal override Type DataType => typeof(T);
         internal QueryStatus Status { get; private set; } = QueryStatus.Pending;
         internal bool HasData { get; private set; }
@@ -826,7 +891,10 @@ namespace Velvet
         internal Exception? FailureReason { get; private set; }
         internal bool IsInvalidated { get; private set; }
         internal bool IsRemoved { get; private set; }
-        internal override bool IsFetching => _inFlight != null;
+        // TanStack's fetchStatus: a request in flight is paused while it waits for the connection or the
+        // application's visibility, and fetching otherwise.
+        internal override QueryFetchStatus FetchStatus
+            => _inFlight == null ? QueryFetchStatus.Idle : _paused ? QueryFetchStatus.Paused : QueryFetchStatus.Fetching;
 
         internal TimeSpan DataUpdatedAt => _dataUpdatedAt;
 
@@ -848,8 +916,8 @@ namespace Velvet
 
         // With the last observer gone, a request whose query function takes the token is cancelled and the entry
         // put back as it stood before the request, as TanStack's removeObserver cancels with revert a request whose
-        // function read its signal. Any other request finishes but is not retried, where removeObserver calls
-        // cancelRetry.
+        // function read its signal, and one that is paused with no data. Any other request finishes but is not
+        // retried, where removeObserver calls cancelRetry.
         internal void Unsubscribe(QueryEntryObserver<T> observer)
         {
             // The options this observer handed are rewritten in place at its next commit, where v5's query keeps
@@ -858,7 +926,7 @@ namespace Velvet
             if (!_observers.Remove(observer)) return;
             Client.ObserverRemoved();
             if (_observers.Count > 0 || IsRemoved) return;
-            if (_inFlight != null && _requestTakesToken)
+            if (_inFlight != null && (_requestTakesToken || (_paused && Status == QueryStatus.Pending)))
             {
                 CancelInFlight();
                 Revert();
@@ -933,10 +1001,12 @@ namespace Velvet
 
             // Taken after a request started over is cancelled, as v5 stores the state at that point.
             _revertState = new EntryState(this);
-            _requestTakesToken = options.TakesToken;
+            _requestTakesToken = false;
             var request = new CancellationTokenSource();
             _inFlight = request;
             _retriesStopped = false;
+            // TanStack's fetchState: a request that cannot start yet is paused from the first notification.
+            _paused = !QueryClientSignals.CanFetch(options.NetworkMode);
             FailureCount = 0;
             FailureReason = null;
             if (!HasData)
@@ -963,11 +1033,19 @@ namespace Velvet
             var maxRetries = options.MaxRetries;
             var retryDelay = options.RetryDelay;
             var sharing = options.StructuralSharing;
+            var networkMode = options.NetworkMode;
+            if (_paused)
+            {
+                await PauseAsync(request, networkMode, start: true);
+                if (request.IsCancellationRequested) return;
+            }
             for (var failures = 0; ; failures++)
             {
                 T data = default!;
                 Exception? failure = null;
                 var token = request.Token;
+                // The function has read the token only once it has started, which a request paused at the outset has not.
+                if (ReferenceEquals(_inFlight, request)) _requestTakesToken = options.TakesToken;
                 var task = Start(queryFn, token);
                 try
                 {
@@ -1018,6 +1096,11 @@ namespace Velvet
                 RecordFailure(request, failures + 1, failure);
                 await WaitFor(delay, request);
                 if (request.IsCancellationRequested) return;
+                if (!QueryClientSignals.CanContinue(networkMode))
+                {
+                    await PauseAsync(request, networkMode, start: false);
+                    if (request.IsCancellationRequested) return;
+                }
                 if (_retriesStopped)
                 {
                     Fail(request, failure, failures);
@@ -1038,6 +1121,28 @@ namespace Velvet
             {
                 return VelvetTask.FromException<T>(ex);
             }
+        }
+
+        // TanStack's retryer pause: the request waits, polled once a frame like a retry's wait, until the
+        // reading its network mode asks for allows it, which for the first request is the connection alone and for
+        // a retry the application's visibility as well.
+        private async VelvetTask PauseAsync(CancellationTokenSource request, NetworkMode networkMode, bool start)
+        {
+            SetPaused(request, true);
+            do
+            {
+                await VelvetTask.Yield();
+            }
+            while (!request.IsCancellationRequested
+                && !(start ? QueryClientSignals.CanFetch(networkMode) : QueryClientSignals.CanContinue(networkMode)));
+            if (!request.IsCancellationRequested) SetPaused(request, false);
+        }
+
+        private void SetPaused(CancellationTokenSource request, bool paused)
+        {
+            if (!ReferenceEquals(_inFlight, request) || _paused == paused) return;
+            _paused = paused;
+            Notify();
         }
 
         // At least one frame, as v5 sleeps through a timer even for a zero delay. With the retries stopped the
@@ -1141,6 +1246,7 @@ namespace Velvet
         private void End(CancellationTokenSource request)
         {
             _inFlight = null;
+            _paused = false;
             RescheduleCollection(Client.Now);
             // MUTANT_SURVIVES(equivalent, line removed): nothing cancels a settled request again, so its source only waits for collection.
             request.Dispose();
@@ -1254,7 +1360,7 @@ namespace Velvet
         }
 
         internal override QueryInfo Describe()
-            => new(Key, Status, HasData ? (object?)Data : null, Error, IsFetching);
+            => new(Key, Status, HasData ? (object?)Data : null, Error, FetchStatus);
 
         private void Revert()
         {
@@ -1274,6 +1380,7 @@ namespace Velvet
             var cts = _inFlight;
             if (cts == null) return;
             _inFlight = null;
+            _paused = false;
             // Contained on FiberAsyncResource.Dispose's terms: the token went to the query function, so a
             // callback firing here can be the application's.
             try
@@ -1350,6 +1457,16 @@ namespace Velvet
             s_polling = true;
             Poll().Forget();
         }
+
+        // TanStack's canFetch: only Online waits for the connection. A reading that fails is taken as online, as
+        // Watch takes it.
+        internal static bool CanFetch(NetworkMode mode)
+            => mode != NetworkMode.Online || (TryRead(s_readOnline, ref s_onlineFailureLogged) ?? true);
+
+        // The retryer's canContinue: a retry waits for the application to be visible, and for the connection
+        // unless the mode is Always.
+        internal static bool CanContinue(NetworkMode mode)
+            => IsVisible() && (mode == NetworkMode.Always || (TryRead(s_readOnline, ref s_onlineFailureLogged) ?? true));
 
         // TanStack's focusManager.isFocused(), a visibility reading, which a refetch interval asks at each tick.
         internal static bool IsVisible() => TryRead(s_readVisible, ref s_visibleFailureLogged) ?? true;

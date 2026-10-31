@@ -278,9 +278,11 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `queryFn: ({ signal }) => ...` | `new QueryOptions<T>(key, token => ...)`; a function taking no token is the one that never reads the signal |
 | `focusManager` / `onlineManager` | `NetworkSignals.IsVisible` / `IsOnline` |
 | `retry` / `retryDelay` as a number and a function | `new QueryOptions<T>(...) { Retry = ..., RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
+| `networkMode: 'online' \| 'always' \| 'offlineFirst'` | `new QueryOptions<T>(...) { NetworkMode = NetworkMode.Online \| Always \| OfflineFirst }`, or `QueryClientOptions.NetworkMode` for every query; `Online` is the default |
+| `queryKeyHashFn: (queryKey) => string` | `new QueryOptions<T>(...) { QueryKeyHashFn = key => ... }`, or `QueryClientOptions.QueryKeyHashFn` for every query |
 | `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }`, over `object` values as v5's is over `unknown` |
 | `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
-| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `isFetching` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `IsFetching` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `fetchStatus` / `isFetching` / `isPaused` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `FetchStatus` / `IsFetching` / `IsPaused` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` |
 | `refetch()` | `result.Refetch()` |
 | `queryClient.getQueryData(queryKey)` / `setQueryData(queryKey, updater)` | `client.GetQueryData<T>(key)` / `client.SetQueryData(key, data)` or `SetQueryData<T>(key, held => ...)` |
 | `queryClient.invalidateQueries({ queryKey })` / `invalidateQueries(filters, options)` | `client.InvalidateQueries(new QueryKey(...))` / `client.InvalidateQueries(filters, new RefetchOptions { ... })`; both return a task that completes once the refetches settle |
@@ -294,20 +296,43 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `queryClient.clear()` | `client.Clear()` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
-under `object.Equals`, so a key rebuilt every render names the same entry, and a string, a boxed number,
-or a record or tuple of such values compares by content. A part that is a collection whose type keeps
+under `object.Equals`, so a key rebuilt every render names the same entry, and a string or a boxed
+number compares by content. A part that is a collection whose type keeps
 `object`'s own `Equals` compares by what it holds: an array or a list element by element, in order, as
 v5's structural hash compares an array; a dictionary by key and value whatever order its entries were
 added in, as v5 sorts an object's keys before hashing it; a set by element, in any order. A collection
-type that defines its own equality keeps it. A record or a tuple compares by its members' own `Equals`, so
-a collection held inside one compares by reference and names a new entry every time it is rebuilt — a
-fetch on every render. Give the collection a key part of its own. A collection part is enumerated on
-every comparison, so pass a materialised collection. The Editor warns when a query's key changes on two
-commits running while printing the same.
+type that defines its own equality keeps it. A tuple, a record and an anonymous type are the objects of this
+port: each compares by its members, each compared as a part is, so a filter record holding a list names the
+same entry whenever it is rebuilt with the same elements, and two record types holding the same members are
+two parts. A record that declares its own `Equals` keeps it, and a class that declares none compares by
+reference, whatever it holds, so it names a new entry whenever it is rebuilt — a fetch on every render. Make
+it a record, or build the key from its fields. A collection part is enumerated on every comparison, so pass a
+materialised collection. The Editor warns when a query's key changes on two commits running while printing the
+same.
+
+`QueryKeyHashFn`, on one query or on `QueryClientOptions`, is v5's `queryKeyHashFn`: the entry is named by
+the string it returns for the key, so two keys it maps to one string are one entry, whatever the rules above
+say of them. A query's function replaces the client's. The client's own commands (`GetQueryData`,
+`SetQueryData`, `GetQueryState`) use the client's function; a filter with `Exact` compares its key's hash
+with the entry's under the function of the options the entry was last handed, as v5 reads `query.options`, and a filter without
+it matching the entry's key by prefix as before. An entry named by a function is not the entry the key itself
+names, so a query that sets a function and one that sets none read two entries.
 Components reading one key share one entry and one request: the first to mount starts it and
 the rest join it. A component unmounting takes nothing from the others — the request belongs to the
 entry and runs on for them. The entry keeps its result after its last reader unmounts, so navigating
 back renders that result on the first render instead of the pending state.
+
+**Network mode.** A query follows v5's `networkMode`, `Online` by default, on the readings of
+`NetworkSignals`. Under `Online` a request does not start while the device reads as offline: the query
+function is not called, `FetchStatus` is `Paused`, `IsPaused` is true and `IsFetching` false, and the request
+starts once the device is online, with the refetch `RefetchOnReconnect` asks for joining it rather than
+starting another. `OfflineFirst` makes the first request whatever the connection and pauses only before a retry;
+`Always` never pauses for the connection. Every retry that comes due waits until the application is
+visible, in every mode, and outside `Always` a connection. A paused entry is a request in flight: it
+is selected by `FetchStatus = Paused`, `GetQueryState` reports it, and its entry is not collected while it
+waits. The last reader leaving ends it as v5 does: a request whose function takes the token, or one with no data to show, is cancelled and the entry put back as it was, while a paused refetch over data whose function takes no token stays in flight. A query's
+`NetworkMode` replaces the client's, which replaces the default. Mutations take the same readings through
+[`RetryPolicy`](#1-2a-async-mutations--hooksusemutation).
 
 **Freshness.** `StaleTime` defaults to zero, as in v5: a component mounting over a cached result
 renders it and fetches again in the background, with `IsFetching` true and `Status` still `Success`. A
@@ -481,8 +506,9 @@ var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
 to match. `QueryKey` leads the entry's key, or equals it under `Exact`. `Type` is `Active` for an entry an
 enabled query reads and `Inactive` for the rest. `Stale` is the staleness of the query reading the entry (any
 one reading it stale), and for an entry nothing reads, whether it has no data or was invalidated.
-`FetchStatus` is `Fetching` while a request is in flight; v5's `paused` has no counterpart, since a query
-does not pause. `Predicate` is handed the entry's `QueryInfo`.
+`FetchStatus` is `Fetching` while a request is in flight and running, `Paused` while it waits for the
+connection or the application's visibility (below), and `Idle` otherwise. `Predicate` is handed the entry's
+`QueryInfo`.
 
 **Commands on the cache.** `RefetchQueries` fetches the entries a filter selects that a query reads and
 is enabled for, and those nothing reads that were fetched before, with the options of that fetch; an entry
@@ -519,8 +545,7 @@ another type, since a filter selects across keys.
 - The functions v5 hands its `Query`, the placeholder function's `previousQuery` among them, are handed a
   `QueryInfo` instead, a read-only view of the entry's key, status, data, error and fetch state; the rest
   of the query object is not available.
-- Not yet available: `retry` as a function or `true`, retries that pause while the application is
-  unfocused or offline (`networkMode`).
+- Not yet available: `retry` as a function or `true`.
 
 ### 1-3. State Management (React + Zustand)
 

@@ -8,25 +8,34 @@ namespace Velvet
     /// Identifies an entry in a <see cref="QueryClient"/>'s cache: TanStack Query's <c>queryKey</c> array.
     /// Two keys are equal when they hold the same number of parts and each pair of parts is equal under
     /// <see cref="object.Equals(object, object)"/>, so a key rebuilt every render with equal parts names the
-    /// same entry, and a string, a boxed number or a record or tuple of such values compares by content. A
-    /// part that is itself a <see cref="QueryKey"/> compares the same way. A part that is a collection whose
-    /// type keeps <see cref="object"/>'s own <c>Equals</c> compares by what it holds: an array or a list
-    /// element by element, in order, as v5's structural hash compares an array; a dictionary by key and
-    /// value whatever order the entries were added in, as v5 sorts an object's keys before hashing it; a set
-    /// by element, in any order. A collection type that defines its own equality keeps it.
+    /// same entry, and a string or a boxed number compares by content. A part that is itself a
+    /// <see cref="QueryKey"/> compares the same way. A part that is a collection whose type keeps
+    /// <see cref="object"/>'s own <c>Equals</c> compares by what it holds: an array or a list element by
+    /// element, in order, as v5's structural hash compares an array; a dictionary by key and value whatever
+    /// order the entries were added in, as v5 sorts an object's keys before hashing it; a set by element, in any
+    /// order. A collection type that defines its own equality keeps it.
+    /// <para/>
+    /// A tuple, a record and an anonymous type are the objects of this port, and compare by their members, each
+    /// compared as a part is: a collection held inside one compares by what it holds, so a key rebuilt every
+    /// render with an equal filter record names the same entry. A record that declares its own <c>Equals</c> keeps
+    /// it, and a class that declares none compares by reference, whatever it holds, and names a new entry
+    /// whenever it is rebuilt.
     /// </summary>
     /// <remarks>
     /// The parts are copied when the key is built, so editing the array passed in afterwards does not move
     /// the key. A part whose equality or hash code changes after the key is built — a mutable collection,
-    /// for instance — is outside that guarantee. A record or a tuple compares by its members' own
-    /// <c>Equals</c>, so a collection held inside one compares by reference and names a new entry whenever it
-    /// is rebuilt: give the collection a key part of its own. A collection part is enumerated when the key is
-    /// built and again on every comparison, so pass a materialised collection rather than a lazy query.
+    /// for instance — is outside that guarantee. A collection part is enumerated when the key is built and
+    /// again on every comparison, so pass a materialised collection rather than a lazy query.
     /// <para/>
     /// <see cref="QueryClient.InvalidateQueries(QueryKey)"/> reads its key as a filter, v5's <c>partialMatchKey</c>: the
     /// filter's parts lead the key's, and a filter part that is an array or a list matches an array or a list
     /// that starts with it, one that is a dictionary matches a dictionary holding at least its entries, each
-    /// value matched the same way.
+    /// value matched the same way, and one that is a record or a tuple of the key part's type matches it member by
+    /// member, each matched the same way.
+    /// <para/>
+    /// <see cref="QueryOptions{TQueryFnData, TData}.QueryKeyHashFn"/> replaces how a query that sets it names its
+    /// entry: the string the function returns names it, and a filter without <see cref="QueryFilters.Exact"/>
+    /// still matches the entry's key as above.
     /// </remarks>
     public sealed class QueryKey : IEquatable<QueryKey>
     {
