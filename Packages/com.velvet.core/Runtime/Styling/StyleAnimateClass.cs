@@ -153,6 +153,15 @@ namespace Velvet
                 rest = rest.Substring(0, br);
             }
 
+            // A theme variable (`--animate-wiggle: wiggle 1s ease-in-out infinite`) is read as the bracketed form it
+            // spells, over a built-in of the same name when its keyframes are registered. The keyframes themselves are
+            // registered with VelvetKeyframes: USS has no @keyframes.
+            if (overrideSec == null && StyleThemeTokens.Current is { } scope
+                && scope.Values.TryGetValue("--animate-" + rest, out var declared)
+                && TryParseArbitrary("[" + declared.Trim().Replace(' ', '_') + "]", out spec))
+            {
+                return true;
+            }
             if (TryParseBuiltIn(rest, overrideSec, out spec))
             {
                 return true;

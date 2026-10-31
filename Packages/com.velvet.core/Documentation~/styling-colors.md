@@ -113,6 +113,13 @@ token of the namespace only where a sheet declares it. A sheet that declares `--
 of it, as Tailwind does: with `--spacing: 3px`, `p-4` is `calc(var(--spacing)*4)` and `-mt-2` is `-6px`; without
 one, the bundled `--space-N` scale gives the number.
 
+`--container-*` declares container sizes: `@widetest:` and `max-w-widetest` read `--container-widetest`, and a size the
+default scale names (`--container-md`) moves it. `--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` …
+`2xl:`, read when the viewport's width changes. A breakpoint with a name of its own (`3xl:`) is not read. `--animate-name`
+(`--animate-wiggle: wiggle 1s ease-in-out infinite`) makes `animate-wiggle` the bracketed form it spells, over a built-in of
+the same name when its keyframes are registered; the keyframes are registered with `VelvetKeyframes`, since USS has no
+`@keyframes`.
+
 A namespace is set to initial by a marker property in a sheet, `--velvet-initial-color: 1;` (`--velvet-initial-all`
 for every namespace), since USS has no wildcard property name. The bundled utilities of that namespace
 (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`) then do nothing, and the tokens the

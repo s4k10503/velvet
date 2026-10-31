@@ -310,6 +310,7 @@ namespace Velvet
                 return;
             }
 
+            using var themeScope = StyleThemeTokens.Use(_ctx);
             var width = _widthSource?.Width ?? 0f;
             SetInner(width >= StyleVariantClass.BreakpointPx(_innerKind));
         }

@@ -52,6 +52,9 @@ namespace Velvet
             list.Add(new Family("inset-shadow-", "inset-shadow-", null));
             list.Add(new Family("drop-shadow-", "drop-shadow-", null));
             list.Add(new Family("aspect-", "aspect-", null));
+            list.Add(new Family("max-w-", "container-", "length"));
+            list.Add(new Family("min-w-", "container-", "length"));
+            list.Add(new Family("w-", "container-", "length"));
             foreach (var prefix in new[]
             {
                 "rounded-tl-", "rounded-tr-", "rounded-br-", "rounded-bl-", "rounded-ss-", "rounded-se-", "rounded-ee-",

@@ -132,6 +132,12 @@ namespace Velvet
             var isMax = body.StartsWith("max-", StringComparison.Ordinal);
             var rest = isMax || body.StartsWith("min-", StringComparison.Ordinal) ? body.Substring(4) : body;
 
+            if (StyleThemeTokens.Current is { } scope && scope.TryGetPx("--container-" + rest, out var themed))
+            {
+                query = new StyleContainerQuery(themed, isMax, name, "rem");
+                return true;
+            }
+
             if (s_scaleRem.TryGetValue(rest, out var rem))
             {
                 query = new StyleContainerQuery(rem * PxPerRem, isMax, name, "rem");

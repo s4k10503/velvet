@@ -13,6 +13,7 @@ namespace Velvet.Tests
     internal sealed class ThemeTokenClassTests : PanelTestBase
     {
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
+        private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
 
         private void Attach(string path)
@@ -77,6 +78,7 @@ namespace Velvet.Tests
         [TestCase("p-4", "p-[length:calc(var(--spacing)*4)]")]
         [TestCase("w-1.5", "w-[length:calc(var(--spacing)*1.5)]")]
         [TestCase("-mt-2", "-mt-[length:calc(var(--spacing)*-2)]")]
+        [TestCase("max-w-widetest", "max-w-[length:var(--container-widetest)]")]
         [TestCase("inset-shadow-glowtest", "inset-shadow-[var(--inset-shadow-glowtest)]")]
         public void Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(
             string className, string expected)
@@ -322,6 +324,122 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { leaf.style.paddingLeft.value.value, leaf.style.paddingTop.value.value },
                 Is.EqualTo(new[] { 12f, 10f }));
+        }
+
+        [TestCase("bg-red-500")]
+        [TestCase("rounded-lg")]
+        [TestCase("bg-primary/50")]
+        public void Given_EveryNamespaceSetToInitial_When_ABundledUtilityIsRead_Then_ItIsRemoved(string className)
+        {
+            // Arrange
+            AttachSheets(true);
+            Attach(AllClearedSheet);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            bool cleared;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                cleared = StyleThemeClass.IsClearedBundled(className);
+            }
+
+            // Assert
+            Assert.That(cleared, Is.True);
+        }
+
+        [Test]
+        public void Given_EveryNamespaceSetToInitial_When_AProjectColourIsRead_Then_ItStillGeneratesUtilities()
+        {
+            // Arrange
+            AttachSheets(true);
+            Attach(AllClearedSheet);
+
+            // Act
+            var normalized = Normalize("bg-brandtest");
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo("bg-[color:var(--color-brandtest)]"));
+        }
+
+        [Test]
+        public void Given_AContainerSizeDeclared_When_ItsQueryIsRead_Then_TheThresholdIsTheDeclaredLength()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                StyleContainerQuery.TryParse("@widetest", out var query);
+                px = query.Px;
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(1600f));
+        }
+
+        [Test]
+        public void Given_ABreakpointRedeclared_When_ItsThresholdIsRead_Then_ItIsTheDeclaredLength()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                px = StyleVariantClass.BreakpointPx(StyleVariantKind.Sm);
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(800f));
+        }
+
+        [Test]
+        public void Given_ABreakpointNoSheetRedeclares_When_ItsThresholdIsRead_Then_ItIsTheDefault()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                px = StyleVariantClass.BreakpointPx(StyleVariantKind.Md);
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(768f));
+        }
+
+        [Test]
+        public void Given_AnAnimationDeclaredAsAThemeVariable_When_TheClassIsRead_Then_ItIsALoopOfTheDeclaredDuration()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+            VelvetKeyframes.Register("kf-theme", new[] { new KeyframeStop(0.5f) { RotateDeg = 10f } });
+            try
+            {
+                // Act
+                float seconds;
+                using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+                {
+                    StyleAnimateClass.TryExtract(new[] { "animate-wiggletest" }, out var spec);
+                    seconds = spec.DurationSec;
+                }
+
+                // Assert
+                Assert.That(seconds, Is.EqualTo(2f));
+            }
+            finally
+            {
+                VelvetKeyframes.Unregister("kf-theme");
+            }
         }
     }
 }

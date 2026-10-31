@@ -108,7 +108,7 @@ namespace Velvet
         // A declaration's value handles as CSS text: numbers, dimensions, colours, keywords, names and strings,
         // commas, resource() paths and functions with their arguments. A var() with a fallback is stored with the
         // fallback as the rest of the declaration, so its parenthesis closes at the end.
-        private static string? Spell(object? sheet, Array handles)
+        internal static string? Spell(object? sheet, Array handles)
         {
             if (sheet == null || s_handleKind == null || s_readAsString == null || s_readColor == null || s_readFloat == null)
             {

@@ -111,6 +111,7 @@ namespace Velvet
                 return;
             }
 
+            using var themeScope = StyleThemeTokens.Use(_ctx);
             var width = _widthSource.Width;
             for (var i = 0; i < Breakpoints.Length; i++)
             {

@@ -20,6 +20,7 @@ namespace Velvet
         private static readonly PropertyInfo? s_rules = EngineMember.StyleSheetRules.ResolveProperty();
         private static readonly PropertyInfo? s_properties = EngineMember.StyleRuleProperties.ResolveProperty();
         private static readonly PropertyInfo? s_name = EngineMember.StylePropertyName.ResolveProperty();
+        private static readonly PropertyInfo? s_values = EngineMember.StylePropertyValues.ResolveProperty();
 
         internal sealed class Scope
         {
@@ -30,6 +31,17 @@ namespace Velvet
             public readonly HashSet<string> Cleared = new(StringComparer.Ordinal);
             public readonly Dictionary<string, string?> Classes = new(StringComparer.Ordinal);
             public int Signature = int.MinValue;
+
+            // The last value a project sheet declares for each --breakpoint-*, --container-* and --animate-* name, as CSS text.
+            public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
+
+            // A length a project sheet declared for the variable, in px, where it reads as one.
+            public bool TryGetPx(string property, out float px)
+            {
+                px = 0f;
+                return Values.TryGetValue(property, out var text)
+                    && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
+            }
 
             // Whether name in the namespace (such as "color-") is a bundled token its namespace's initial removes: not
             // one the project declares itself.
@@ -42,6 +54,7 @@ namespace Velvet
         {
             public int ContentHash;
             public string[] Names = Array.Empty<string>();
+            public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
         }
 
         private static readonly ConditionalWeakTable<StyleSheet, Read> s_reads = new();
@@ -96,6 +109,7 @@ namespace Velvet
                 scope.Bundled.Clear();
                 scope.Classes.Clear();
                 scope.Cleared.Clear();
+                scope.Values.Clear();
                 for (var element = ctx.ThemeRoot; element != null; element = element.hierarchy.parent)
                 {
                     for (var i = 0; i < element.styleSheets.count; i++)
@@ -129,7 +143,15 @@ namespace Velvet
                 return;
             }
             var into = bundled || VelvetStyleUtilities.IsUtilities(sheet) ? scope.Bundled : scope.Project;
-            foreach (var name in ReadOf(sheet).Names)
+            var read = ReadOf(sheet);
+            if (into == scope.Project)
+            {
+                foreach (var value in read.Values)
+                {
+                    scope.Values[value.Key] = value.Value;
+                }
+            }
+            foreach (var name in read.Names)
             {
                 into.Add(name);
                 if (name.StartsWith(InitialMarker, StringComparison.Ordinal))
@@ -140,6 +162,22 @@ namespace Velvet
             foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
             {
                 Observe(scope, imported, into == scope.Bundled);
+            }
+        }
+
+        private static void ReadDeclaration(StyleSheet sheet, object property, List<string> names, Read read)
+        {
+            if (s_name?.GetValue(property) is not string name || !name.StartsWith("--", StringComparison.Ordinal))
+            {
+                return;
+            }
+            names.Add(name);
+            if ((name.StartsWith("--breakpoint-", StringComparison.Ordinal)
+                    || name.StartsWith("--container-", StringComparison.Ordinal)
+                    || name.StartsWith("--animate-", StringComparison.Ordinal))
+                && s_values?.GetValue(property) is Array handles && StyleCustomProperties.Spell(sheet, handles) is { } text)
+            {
+                read.Values[name] = text;
             }
         }
 
@@ -158,10 +196,7 @@ namespace Velvet
                 {
                     foreach (var property in (Array?)s_properties.GetValue(rule) ?? Array.Empty<object>())
                     {
-                        if (s_name.GetValue(property) is string name && name.StartsWith("--", StringComparison.Ordinal))
-                        {
-                            names.Add(name);
-                        }
+                        ReadDeclaration(sheet, property, names, read);
                     }
                 }
             }

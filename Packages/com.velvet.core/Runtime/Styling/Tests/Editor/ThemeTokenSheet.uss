@@ -4,6 +4,9 @@
     --radius-pilltest: 40px;
     --spacing: 3px;
     --spacing-guttertest: 10px;
+    --container-widetest: 100rem;
+    --breakpoint-sm: 50rem;
+    --animate-wiggletest: kf-theme 2s linear infinite;
     --inset-shadow-glowtest: 0 0 4px rgb(255, 0, 0);
 }
 

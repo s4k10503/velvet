@@ -333,11 +333,23 @@ namespace Velvet
 
         /// <summary>
         /// Min-width (px) at which a responsive variant activates. The default breakpoints:
-        /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536. Returns 0 for every other named kind, and throws
+        /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536, or the value a project sheet declares as
+        /// <c>--breakpoint-sm</c> and the like. Returns 0 for every other named kind, and throws
         /// for a value that names no kind — a cast outside the enum's range is a caller error, and a
         /// silent 0 is how one survives to produce a wrong layout instead of a stack trace.
         /// </summary>
-        public static float BreakpointPx(StyleVariantKind kind) => s_breakpointPx[kind];
+        public static float BreakpointPx(StyleVariantKind kind)
+            => StyleThemeTokens.Current is { } scope && s_themeNames.TryGetValue(kind, out var name)
+                && scope.TryGetPx("--breakpoint-" + name, out var themed)
+                    ? themed
+                    : s_breakpointPx[kind];
+
+        // The --breakpoint-* names a project sheet may redeclare to move a default breakpoint.
+        private static readonly Dictionary<StyleVariantKind, string> s_themeNames = new()
+        {
+            [StyleVariantKind.Sm] = "sm", [StyleVariantKind.Md] = "md", [StyleVariantKind.Lg] = "lg",
+            [StyleVariantKind.Xl] = "xl", [StyleVariantKind.Xxl] = "2xl",
+        };
 
         private static readonly VariantKindTable<float> s_breakpointPx = new(
             (StyleVariantKind.Sm, 640f),
