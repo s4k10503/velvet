@@ -211,6 +211,7 @@ namespace Velvet
             // element's own generateVisualContent; only the border color is suppressed). Attaches after
             // skew / shadow so it can defer to whichever owns the face.
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
+            BorderPreflight.OnClassesResolved(element, paintClasses, classesChanged: true);
             // ring-* / outline-*: the band is a native-border overlay hosted as a reconciler-invisible
             // SIBLING of this element (RingOverlay), so nothing is added to the element's own slot and it
             // composes with every layer above and with a user wrapElement. The element has no parent yet at
@@ -357,6 +358,7 @@ namespace Velvet
             var clipActive = !ReferenceEquals(motionOuter, element);
             _patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive);
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, motionPaintClasses);
+            BorderPreflight.OnClassesResolved(element, motionPaintClasses, classesChanged: true);
             _patcher.Appliers.ApplyRingOnPatch(element, motionPaintClasses, clipActive);
             WarnInertMotionExit(motionNode);
             _patcher.Appliers.ApplyBackdropOnPatch(element, motionPaintClasses);

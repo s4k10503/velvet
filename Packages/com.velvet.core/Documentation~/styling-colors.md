@@ -80,6 +80,15 @@ The functions follow CSS Color 4:
   on `text-current` itself), `current/50` scales its alpha, and `inherit` is the parent's value of the same property, which
   an `inherit` there passes on. Both follow their source as it changes, through a transition included: an element reading one through `text-`, `bg-` or `border-`, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
   cannot hold.
+- **A border width draws in the text colour** unless a rule says otherwise, as Tailwind v4's preflight
+  `border-color: currentcolor` does: `border`, `border-2`, `border-t-4`, `border-[3px]` (under any variant) on an
+  element, a `Label` among them, draw a border in its text colour and follow it. Any rule of a stylesheet that is not a
+  control theme's that sets a side's border colour takes that side from it, whatever its selector or state:
+  `border-red-500`, `border-transparent`, a variant such as `hover:border-blue-500`, and your own USS class, id, type,
+  descendant or `:hover` rule. A control theme's rule does not, as preflight outranks a browser's default styles. The
+  colour is written to the element inline below every other Velvet layer, and is read again when its classes, its
+  pseudo-state or the stylesheets reaching it change. A border width that comes from a stylesheet of your own, or a
+  `divide-*` width, has no preflight colour.
 
 ## Where Velvet differs from CSS
 

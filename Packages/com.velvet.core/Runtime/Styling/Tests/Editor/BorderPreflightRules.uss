@@ -1,0 +1,11 @@
+/* Rules BorderPreflightTests reads: each sets a border colour the way an author's stylesheet does, under a selector of
+   one form, so that preflight's currentcolor has to give way to every one of them. */
+.pf-transparent { border-color: transparent; }
+
+#pf-id { border-color: rgb(0, 0, 255); }
+
+.pf-hover:hover { border-color: rgb(0, 255, 0); }
+
+.pf-top { border-top-color: rgb(255, 0, 0); }
+
+.pf-ancestor .pf-descendant { border-color: rgb(255, 255, 0); }

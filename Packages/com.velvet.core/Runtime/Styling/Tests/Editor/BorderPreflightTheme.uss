@@ -1,0 +1,2 @@
+/* The rule BorderPreflightTests flags as a default stylesheet's, as a control theme's are. */
+.pf-theme { border-color: rgb(255, 0, 255); }

@@ -68,6 +68,8 @@ namespace Velvet
             }
         }
 
+        internal static StyleSheet? TryGetSheet() => TryResolve();
+
         private static StyleSheet? TryResolve()
         {
             // The `== null` re-check is Unity's overloaded operator, not a reference test: it also catches a
@@ -111,6 +113,7 @@ namespace Velvet
             // already holds — measured, it neither adds a duplicate entry nor moves the existing one to the
             // end of the cascade — so a guard here would only mirror the engine.
             root.styleSheets.Add(Sheet);
+            SnappedBorderSheets.Follow(root);
             BindThemeTo(root);
         }
 
@@ -225,6 +228,7 @@ namespace Velvet
             foreach (var sheet in carry.Carried) hostRoot.styleSheets.Remove(sheet);
             foreach (var sheet in sheets) hostRoot.styleSheets.Add(sheet);
             carry.Carried = sheets;
+            SnappedBorderSheets.Follow(hostRoot);
         }
 
         // The html and the body of the document the tree sits in: the panel's root, and the chain element directly
@@ -304,7 +308,8 @@ namespace Velvet
                 for (var j = 0; j < chain[i].styleSheets.count; j++)
                 {
                     var sheet = chain[i].styleSheets[j];
-                    if (ReachesAbove(carry.HostRoot, sheet)) continue;
+                    // The host's panel has a scale of its own, which the host root's sheet follows.
+                    if (SnappedBorderSheets.IsSnapped(sheet) || ReachesAbove(carry.HostRoot, sheet)) continue;
                     sheets.Remove(sheet);
                     sheets.Add(sheet);
                 }

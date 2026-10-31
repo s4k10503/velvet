@@ -28,6 +28,10 @@ namespace Velvet
 
         public const long Base = 0;
 
+        // The layer Tailwind's preflight is: below every ordinary layer, and carrying none of the rank bits a variant,
+        // an important flag or a gesture sets, so it is not read as one of them.
+        public const long Preflight = long.MinValue;
+
         #region One selector the utility carries alone: a media or feature query adds nothing
         // supports-[…]: is STATIC in UI Toolkit (always-applied when well-formed; see StyleSupportsVariantClass),
         // so this layer never toggles off at runtime; the priority only orders it against other layers.
@@ -102,7 +106,7 @@ namespace Velvet
         public static long RankOf(long key) => key & ~RuleMask;
 
         // Whether key's rank carries a variant, its important flag aside.
-        public static bool UnderVariant(long key) => (RankOf(key) & ~Important) != Base;
+        public static bool UnderVariant(long key) => key != Preflight && (RankOf(key) & ~Important) != Base;
 
         // priority, placed after every rule a className declares at that rank.
         public static long AfterEveryRule(long priority) => priority | RuleMask;

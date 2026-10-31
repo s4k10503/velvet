@@ -454,6 +454,76 @@ namespace Velvet
         internal static readonly EngineMember StyleSheetReadFloat =
             Method(UIElements, StyleSheetType, "ReadFloat", "System.Single", StyleValueHandleType);
 
+        // BorderPreflight's read of the rules that match an element: the matcher the UI Builder's inspector drives,
+        // and the records it leaves.
+        private const string MatchedRulesExtractorType = "UnityEngine.UIElements.MatchedRulesExtractor";
+        private const string SelectorMatchRecordType = "UnityEngine.UIElements.StyleSheets.SelectorMatchRecord";
+
+        internal static readonly EngineMember MatchedRulesExtractorFind =
+            Method(UIElements, MatchedRulesExtractorType, "FindMatchingRules", "System.Void", VisualElementType);
+
+        internal static readonly EngineMember MatchedRulesExtractorClear =
+            Method(UIElements, MatchedRulesExtractorType, "Clear", "System.Void");
+
+        internal static readonly EngineMember MatchedRulesExtractorRecords = Field(UIElements, MatchedRulesExtractorType,
+            "matchRecords", "System.Collections.Generic.List`1[" + SelectorMatchRecordType + "]");
+
+        internal static readonly EngineMember SelectorMatchRecordSheet =
+            Field(UIElements, SelectorMatchRecordType, "sheet", StyleSheetType);
+
+        internal static readonly EngineMember SelectorMatchRecordSelector = Field(UIElements, SelectorMatchRecordType,
+            "complexSelector", "UnityEngine.UIElements.StyleComplexSelector");
+
+        internal static readonly EngineMember StyleComplexSelectorRule = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleComplexSelector", "rule", "UnityEngine.UIElements.StyleRule");
+
+        // The flag that ranks a sheet's rules below those of every sheet without it; a control theme carries it.
+        internal static readonly EngineMember StyleSheetIsDefault =
+            WrittenProperty(UIElements, StyleSheetType, "isDefaultStyleSheet", "System.Boolean");
+
+        // SnappedBorderSheets' build of a stylesheet at run time: the builder the importer drives, with the selector
+        // part and the dimension it takes.
+        private const string StyleSheetBuilderType = "UnityEngine.UIElements.StyleSheets.StyleSheetBuilder";
+        private const string StyleSelectorPartTypeName = "UnityEngine.UIElements.StyleSelectorPart";
+        private const string DimensionType = "UnityEngine.UIElements.StyleSheets.Dimension";
+
+        internal static readonly EngineMember StyleSheetBuilderConstruct =
+            ConstructedType(UIElements, StyleSheetBuilderType, "System.Object");
+
+        internal static readonly EngineMember StyleSheetBuilderBeginRule = Method(UIElements, StyleSheetBuilderType,
+            "BeginRule", "UnityEngine.UIElements.StyleRule", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderBeginComplexSelector = Method(UIElements,
+            StyleSheetBuilderType, "BeginComplexSelector", StyleSheetBuilderType + "+ComplexSelectorScope", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderAddSimpleSelector = Method(UIElements,
+            StyleSheetBuilderType, "AddSimpleSelector", "System.Void", StyleSelectorPartTypeName + "[]",
+            "enum:UnityEngine.UIElements.StyleSelectorRelationship");
+
+        internal static readonly EngineMember StyleSheetBuilderEndComplexSelector =
+            Method(UIElements, StyleSheetBuilderType, "EndComplexSelector", "System.Void");
+
+        internal static readonly EngineMember StyleSheetBuilderBeginProperty = Method(UIElements, StyleSheetBuilderType,
+            "BeginProperty", "UnityEngine.UIElements.StyleProperty", "System.String", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderAddDimension =
+            Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", DimensionType);
+
+        internal static readonly EngineMember StyleSheetBuilderEndProperty =
+            Method(UIElements, StyleSheetBuilderType, "EndProperty", "System.Void");
+
+        internal static readonly EngineMember StyleSheetBuilderEndRule =
+            Method(UIElements, StyleSheetBuilderType, "EndRule", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderBuildTo =
+            Method(UIElements, StyleSheetBuilderType, "BuildTo", "System.Void", StyleSheetType);
+
+        internal static readonly EngineMember StyleSelectorPartCreateClass = Method(UIElements, StyleSelectorPartTypeName,
+            "CreateClass", StyleSelectorPartTypeName, "System.String");
+
+        internal static readonly EngineMember DimensionUnitPixel =
+            Field(UIElements, DimensionType + "+Unit", "Pixel", "enum:" + DimensionType + "+Unit");
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

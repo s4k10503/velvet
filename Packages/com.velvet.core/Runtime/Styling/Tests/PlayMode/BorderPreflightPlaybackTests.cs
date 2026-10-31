@@ -1,0 +1,112 @@
+using System;
+using System.Collections;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// What a border-width utility draws with no border colour of its own, read back from the GPU: a band in the
+    /// element's text colour, as Tailwind's preflight gives it.
+    /// </summary>
+    /// <remarks>
+    /// The panel carries no stylesheet, so the width and the colour are bracket values Velvet resolves itself.
+    /// Every sample is cut from the measured <see cref="VisualElement.worldBound"/>, and the box's interior and
+    /// an element without a width are the controls that show the strip landed.
+    /// </remarks>
+    [Timeout(600000)]
+    internal sealed class BorderPreflightPlaybackTests
+    {
+        private const int Size = 160;
+        private const float BandWidth = 8f;
+
+        private RenderTexturePanelHost _host;
+        private MountedTree _mounted;
+
+        [UnityTearDown]
+        public IEnumerator UnityTearDown()
+        {
+            _mounted?.Dispose();
+            _mounted = null;
+            _host?.Dispose();
+            _host = null;
+            yield return null;
+        }
+
+        // Cleared, so that a band read back as red is one this panel drew.
+        private IEnumerator MountBoxes()
+        {
+            _host = new RenderTexturePanelHost("BorderPreflight", Size, Size, clear: true);
+            _mounted = V.Mount(_host.Root, V.Div(name: "row", className: "flex-row", children: new VNode[]
+            {
+                V.Div(name: "bordered", className: "ml-[10px] mt-[10px] w-[60px] h-[60px] border-[8px] text-[#ff0000]"),
+                V.Div(name: "plain", className: "ml-[10px] mt-[10px] w-[60px] h-[60px] text-[#ff0000]"),
+            }));
+            _host.Root.Q<VisualElement>("row").style.flexDirection = FlexDirection.Row;
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+        }
+
+        private int CountRed(Rect panelRect)
+        {
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Size, Size));
+            var count = 0;
+            for (var y = Mathf.RoundToInt(panelRect.yMin); y < Mathf.RoundToInt(panelRect.yMax); y++)
+            {
+                for (var x = Mathf.RoundToInt(panelRect.xMin); x < Mathf.RoundToInt(panelRect.xMax); x++)
+                {
+                    // The texture is read bottom-up and panel y grows downward.
+                    count += RenderTexturePixelReader.IsRedPixel(pixels[((Size - 1 - y) * Size) + x]) ? 1 : 0;
+                }
+            }
+            return count;
+        }
+
+        // The middle third of the left band, two pixels in from each edge of it.
+        private static Rect LeftBand(Rect box)
+            => new(box.xMin + 2f, box.yMin + (box.height / 3f), BandWidth - 4f, box.height / 3f);
+
+        [UnityTest]
+        public IEnumerator Given_ABorderWidthAndATextColour_When_Rendered_Then_TheBandIsInTheTextColour()
+        {
+            // Arrange
+            yield return MountBoxes();
+
+            // Act
+            var box = _host.Root.Q<VisualElement>("bordered").worldBound;
+
+            // Assert — the strip lies on the 8px band, which the box's interior beside it does not share.
+            Assert.That(box.width == 60f && CountRed(LeftBand(box)) > 0, Is.True, $"box={box}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABorderWidthAndATextColour_When_Rendered_Then_TheInteriorIsNotInTheTextColour()
+        {
+            // Arrange
+            yield return MountBoxes();
+
+            // Act
+            var box = _host.Root.Q<VisualElement>("bordered").worldBound;
+            var interior = new Rect(box.xMin + 20f, box.yMin + 20f, 20f, 20f);
+
+            // Assert — the control: the strip above is a band, not a filled box.
+            Assert.That(box.width == 60f ? CountRed(interior) : -1, Is.Zero, $"box={box}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ATextColourWithoutABorderWidth_When_Rendered_Then_NoBandIsDrawn()
+        {
+            // Arrange
+            yield return MountBoxes();
+
+            // Act
+            var box = _host.Root.Q<VisualElement>("plain").worldBound;
+
+            // Assert
+            Assert.That(box.width == 60f ? CountRed(LeftBand(box)) : -1, Is.Zero, $"box={box}");
+        }
+    }
+}

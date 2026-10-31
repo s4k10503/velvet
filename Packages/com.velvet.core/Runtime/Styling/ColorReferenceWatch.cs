@@ -24,7 +24,7 @@ namespace Velvet
         // How many watches rely on an element's marker: a parent is watched by each child and may be watched itself.
         private static readonly ConditionalWeakTable<VisualElement, int[]> s_marks = new();
 
-        private static void Mark(VisualElement element)
+        internal static void Mark(VisualElement element)
         {
             var count = s_marks.GetValue(element, static _ => new int[1]);
             if (count[0]++ == 0)
@@ -33,7 +33,7 @@ namespace Velvet
             }
         }
 
-        private static void Unmark(VisualElement element)
+        internal static void Unmark(VisualElement element)
         {
             if (s_marks.TryGetValue(element, out var count) && count[0] > 0 && --count[0] == 0)
             {
