@@ -24,8 +24,8 @@ namespace Velvet.Tests
     /// <item>A mode on the query replaces the client's, which replaces the default.</item>
     /// <item>A request the client starts itself, as <c>FetchQuery</c> does, pauses the same way.</item>
     /// <item>A paused entry is a request in flight: a filter reads it as paused, a state reads it as paused, the
-    /// entry is not collected, and the last reader leaving ends it as it ends any request whose function takes
-    /// the token.</item>
+    /// entry is not collected while a paused refetch over data is kept, and the last reader leaving ends a paused
+    /// request that has no data, or whose function takes the token.</item>
     /// <item>A change from paused to running re-renders a query that reads only <c>IsPaused</c>.</item>
     /// </list>
     /// </summary>
@@ -471,14 +471,17 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_APausedEntryNothingReads_When_ItsGarbageCollectionTimeHasPassed_Then_TheEntryIsKept()
+        public IEnumerator Given_APausedRefetchOverDataOfAFunctionTakingNoToken_When_TheLastReaderLeavesAndTheGarbageCollectionTimeHasPassed_Then_TheEntryIsKept()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            s_online = false;
             s_takesToken = false;
             s_client = NewClient(Second);
             using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            await Frames();
+            s_online = false;
+            Last().Refetch();
             Hide(mounted);
 
             // Act
@@ -486,8 +489,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_client.GetQueryState<int>(new QueryKey("todos")), Is.Not.Null,
-                "v5 removes a query only while its fetch status is idle, and a paused one is not");
+                "v5 keeps a paused fetch over data in flight, and removes a query only while its fetch status is idle");
         });
+
+        [Test]
+        public void Given_APausedFirstRequestOfAFunctionTakingNoToken_When_TheLastReaderLeaves_Then_TheEntryIsIdle()
+        {
+            // Arrange
+            s_online = false;
+            s_takesToken = false;
+            using var mounted = Mount();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            Assert.That(s_client.GetQueryState<int>(new QueryKey("todos"))?.FetchStatus, Is.EqualTo(QueryFetchStatus.Idle),
+                "v5's removeObserver cancels a paused fetch that has no data, whatever its function reads");
+        }
 
         [UnityTest]
         public IEnumerator Given_ARetryPausedForTheConnection_When_TheLastReaderLeaves_Then_TheTokenIsCancelled()

@@ -31,7 +31,7 @@ namespace Velvet
     /// filter's parts lead the key's, and a filter part that is an array or a list matches an array or a list
     /// that starts with it, one that is a dictionary matches a dictionary holding at least its entries, each
     /// value matched the same way, and one that is a record or a tuple of the key part's type matches it member by
-    /// member, each matched the same way, a member the filter record leaves null being one it does not name.
+    /// member, each matched the same way.
     /// <para/>
     /// <see cref="QueryOptions{TQueryFnData, TData}.QueryKeyHashFn"/> replaces how a query that sets it names its
     /// entry: the string the function returns names it, and a filter without <see cref="QueryFilters.Exact"/>

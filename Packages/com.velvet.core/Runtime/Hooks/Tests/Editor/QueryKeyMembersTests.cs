@@ -42,6 +42,8 @@ namespace Velvet.Tests
             public override int GetHashCode() => Id;
         }
 
+        private sealed record Cyclic(List<object> Items);
+
         private sealed class Holder
         {
             internal Holder(int[] values) => Values = values;
@@ -253,34 +255,19 @@ namespace Velvet.Tests
             Assert.That(matches, Is.True, "A filter's list leads the key's, as partialMatchKey reads an array in an object");
         }
 
+        // GREEN_ON_BASE(characterization): the base compares a record whole, so a null member does not match a set one.
         [Test]
-        public void Given_AFilterRecordLeavingAMemberNull_When_ItIsMatchedAgainstAKey_Then_TheMemberIsNotNamed()
+        public void Given_AFilterRecordWithANullMember_When_ItIsMatchedAgainstAKeyWhoseMemberIsSet_Then_TheKeyDoesNotMatch()
         {
             // Arrange
-            var key = new QueryKey("todos", new Filter("open", new List<int> { 1, 2 }));
+            var key = new QueryKey("todos", new Filter("open", new List<int> { 1 }));
             var filter = new QueryKey("todos", new Filter(null!, new List<int> { 1 }));
 
             // Act
             var matches = key.Matches(filter);
 
             // Assert
-            Assert.That(matches, Is.True, "partialMatchKey visits only the properties a filter has, so a null member names nothing");
-        }
-
-        // GREEN_ON_BASE(characterization): the base compares a record whole, so a null member never matches a set one.
-        [Test]
-        public void Given_TwoKeysHoldingRecordsWhereOneMemberIsNull_When_Compared_Then_TheyAreNotEqual()
-        {
-            // Arrange
-            var shared = new List<int> { 1 };
-            var first = new QueryKey(new Filter("open", shared));
-            var second = new QueryKey(new Filter(null!, shared));
-
-            // Act
-            var equal = first.Equals(second);
-
-            // Assert
-            Assert.That(equal, Is.False, "Only a filter may leave a member out; key equality compares them all");
+            Assert.That(matches, Is.False, "A null member is compared, as partialMatchKey compares a property set to null");
         }
 
         // GREEN_ON_BASE(characterization): a filter list that does not lead the key's list matches nothing on the base either.
@@ -307,6 +294,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(printed, Is.EqualTo("[Filter(open, [1, 2])]"),
                 "A part compared by its members prints them, so keys differing in them print differently");
+        }
+
+        [Test]
+        public void Given_ARecordHoldingAListThatHoldsTheRecord_When_AKeyIsBuilt_Then_ItIsRefused()
+        {
+            // Arrange
+            var ids = new List<object>();
+            var cyclic = new Cyclic(ids);
+            ids.Add(cyclic);
+
+            // Act
+            TestDelegate build = () => new QueryKey(cyclic);
+
+            // Assert
+            Assert.Throws<System.InvalidOperationException>(build, "A part that holds itself is refused, as JSON.stringify refuses a cycle");
         }
 
         // GREEN_ON_BASE(characterization): the base prints a tuple through its own ToString, which is the same text.

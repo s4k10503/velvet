@@ -916,8 +916,8 @@ namespace Velvet
 
         // With the last observer gone, a request whose query function takes the token is cancelled and the entry
         // put back as it stood before the request, as TanStack's removeObserver cancels with revert a request whose
-        // function read its signal. Any other request finishes but is not retried, where removeObserver calls
-        // cancelRetry.
+        // function read its signal, and one that is paused with no data. Any other request finishes but is not
+        // retried, where removeObserver calls cancelRetry.
         internal void Unsubscribe(QueryEntryObserver<T> observer)
         {
             // The options this observer handed are rewritten in place at its next commit, where v5's query keeps
@@ -926,7 +926,7 @@ namespace Velvet
             if (!_observers.Remove(observer)) return;
             Client.ObserverRemoved();
             if (_observers.Count > 0 || IsRemoved) return;
-            if (_inFlight != null && _requestTakesToken)
+            if (_inFlight != null && (_requestTakesToken || (_paused && Status == QueryStatus.Pending)))
             {
                 CancelInFlight();
                 Revert();

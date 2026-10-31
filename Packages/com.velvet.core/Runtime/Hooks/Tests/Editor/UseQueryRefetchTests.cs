@@ -597,11 +597,11 @@ namespace Velvet.Tests
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var throws = true;
+            // The render's own read comes first and the client's first reading on starting to watch second.
+            var reads = 0;
             NetworkSignals.IsOnline = () =>
             {
-                if (!throws) return s_online;
-                throws = false;
+                if (++reads != 2) return s_online;
                 throw new InvalidOperationException("online-failed");
             };
             ContainedFailureLog.Expect<InvalidOperationException>(nameof(NetworkSignals), "online-failed");

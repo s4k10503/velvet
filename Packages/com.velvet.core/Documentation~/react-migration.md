@@ -313,9 +313,9 @@ same.
 `QueryKeyHashFn`, on one query or on `QueryClientOptions`, is v5's `queryKeyHashFn`: the entry is named by
 the string it returns for the key, so two keys it maps to one string are one entry, whatever the rules above
 say of them. A query's function replaces the client's. The client's own commands (`GetQueryData`,
-`SetQueryData`, `GetQueryState`, and a filter's `Exact`) use the client's function, a filter with `Exact`
-comparing its key's hash with the entry's under the function of the options the entry was last handed, as v5 reads `query.options`, and a filter without
-it matching the entry's key by prefix as before. In a filter, a record member left null is not named, as `partialMatchKey` visits only the properties a filter has; key equality compares every member. An entry named by a function is not the entry the key itself
+`SetQueryData`, `GetQueryState`) use the client's function; a filter with `Exact` compares its key's hash
+with the entry's under the function of the options the entry was last handed, as v5 reads `query.options`, and a filter without
+it matching the entry's key by prefix as before. An entry named by a function is not the entry the key itself
 names, so a query that sets a function and one that sets none read two entries.
 Components reading one key share one entry and one request: the first to mount starts it and
 the rest join it. A component unmounting takes nothing from the others — the request belongs to the
@@ -330,7 +330,7 @@ starting another. `OfflineFirst` makes the first request whatever the connection
 `Always` never pauses for the connection. Every retry that comes due waits until the application is
 visible, in every mode, and outside `Always` a connection. A paused entry is a request in flight: it
 is selected by `FetchStatus = Paused`, `GetQueryState` reports it, and its entry is not collected while it
-waits. The last reader leaving ends it as it ends any request whose function takes the token. A query's
+waits. The last reader leaving ends it as v5 does: a request whose function takes the token, or one with no data to show, is cancelled and the entry put back as it was, while a paused refetch over data whose function takes no token stays in flight. A query's
 `NetworkMode` replaces the client's, which replaces the default. Mutations take the same readings through
 [`RetryPolicy`](#1-2a-async-mutations--hooksusemutation).
 

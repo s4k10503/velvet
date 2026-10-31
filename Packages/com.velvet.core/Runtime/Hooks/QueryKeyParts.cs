@@ -98,41 +98,50 @@ namespace Velvet
         }
 
         // The members of a Members part, in the order they are declared: a tuple's items, or the fields above.
-        private static object?[] MembersOf(object part)
-        {
-            if (part is ITuple tuple)
-            {
-                var items = new object?[tuple.Length];
-                for (var i = 0; i < items.Length; i++)
-                {
-                    items[i] = tuple[i];
-                }
-                return items;
-            }
+        private static int MemberCount(object part)
+            => part is ITuple tuple ? tuple.Length : MemberFieldsOf(part.GetType())!.Length;
 
-            var fields = MemberFieldsOf(part.GetType())!;
-            var members = new object?[fields.Length];
-            for (var i = 0; i < members.Length; i++)
+        private static object? MemberAt(object part, int index)
+            => part is ITuple tuple ? tuple[index] : MemberFieldsOf(part.GetType())![index].GetValue(part);
+
+        // A part that holds itself, or nests past this depth, is refused as v5's JSON.stringify refuses a cycle,
+        // rather than recursing until the stack overflows.
+        private const int MaxDepth = 128;
+        [ThreadStatic]
+        private static int s_depth;
+
+        private static void Enter()
+        {
+            if (s_depth >= MaxDepth)
             {
-                members[i] = fields[i].GetValue(part);
+                throw new InvalidOperationException(
+                    $"A query key part holds itself or nests deeper than {MaxDepth} levels.");
             }
-            return members;
+            s_depth++;
         }
 
         internal static int HashOf(object? part)
         {
-            switch (KindOf(part))
+            var kind = KindOf(part);
+            if (kind == QueryKeyPartKind.Value) return part?.GetHashCode() ?? 0;
+            Enter();
+            try
             {
-                case QueryKeyPartKind.Members:
-                    return MembersHash(part!);
-                case QueryKeyPartKind.Sequence:
-                    return SequenceHash((IEnumerable)part!);
-                case QueryKeyPartKind.Dictionary:
-                    return DictionaryHash((IDictionary)part!);
-                case QueryKeyPartKind.Set:
-                    return SetHash((IEnumerable)part!);
-                default:
-                    return part?.GetHashCode() ?? 0;
+                switch (kind)
+                {
+                    case QueryKeyPartKind.Members:
+                        return MembersHash(part!);
+                    case QueryKeyPartKind.Sequence:
+                        return SequenceHash((IEnumerable)part!);
+                    case QueryKeyPartKind.Dictionary:
+                        return DictionaryHash((IDictionary)part!);
+                    default:
+                        return SetHash((IEnumerable)part!);
+                }
+            }
+            finally
+            {
+                s_depth--;
             }
         }
 
@@ -141,9 +150,10 @@ namespace Velvet
         private static int MembersHash(object part)
         {
             var hash = part.GetType().GetHashCode();
-            foreach (var member in MembersOf(part))
+            var count = MemberCount(part);
+            for (var i = 0; i < count; i++)
             {
-                hash = unchecked(hash * 31 + HashOf(member));
+                hash = unchecked(hash * 31 + HashOf(MemberAt(part, i)));
             }
             return hash;
         }
@@ -188,16 +198,24 @@ namespace Velvet
         {
             var kind = KindOf(part);
             if (kind == QueryKeyPartKind.Value || kind != KindOf(filter)) return object.Equals(part, filter);
-            switch (kind)
+            Enter();
+            try
             {
-                case QueryKeyPartKind.Members:
-                    return MembersMatch(part!, filter!, partial);
-                case QueryKeyPartKind.Sequence:
-                    return SequenceMatches((IEnumerable)part!, (IEnumerable)filter!, partial);
-                case QueryKeyPartKind.Dictionary:
-                    return DictionaryMatches((IDictionary)part!, (IDictionary)filter!, partial);
-                default:
-                    return SetEquals((IEnumerable)part!, (IEnumerable)filter!);
+                switch (kind)
+                {
+                    case QueryKeyPartKind.Members:
+                        return MembersMatch(part!, filter!, partial);
+                    case QueryKeyPartKind.Sequence:
+                        return SequenceMatches((IEnumerable)part!, (IEnumerable)filter!, partial);
+                    case QueryKeyPartKind.Dictionary:
+                        return DictionaryMatches((IDictionary)part!, (IDictionary)filter!, partial);
+                    default:
+                        return SetEquals((IEnumerable)part!, (IEnumerable)filter!);
+                }
+            }
+            finally
+            {
+                s_depth--;
             }
         }
 
@@ -206,14 +224,10 @@ namespace Velvet
         private static bool MembersMatch(object part, object filter, bool partial)
         {
             if (part.GetType() != filter.GetType()) return false;
-            var partMembers = MembersOf(part);
-            var filterMembers = MembersOf(filter);
-            for (var i = 0; i < filterMembers.Length; i++)
+            var count = MemberCount(filter);
+            for (var i = 0; i < count; i++)
             {
-                // A member a filter leaves null is one it does not name, as partialMatchKey visits only the
-                // properties of the filter.
-                if (partial && filterMembers[i] == null) continue;
-                if (!Matches(partMembers[i], filterMembers[i], partial)) return false;
+                if (!Matches(MemberAt(part, i), MemberAt(filter, i), partial)) return false;
             }
             return true;
         }
@@ -276,7 +290,7 @@ namespace Velvet
             {
                 case QueryKeyPartKind.Members:
                     if (!IsTuple(part!.GetType())) builder.Append(part.GetType().Name);
-                    AppendItems(builder, '(', MembersOf(part), ')');
+                    AppendMembers(builder, part);
                     break;
                 case QueryKeyPartKind.Sequence:
                     AppendItems(builder, '[', (IEnumerable)part!, ']');
@@ -291,6 +305,18 @@ namespace Velvet
                     builder.Append(part?.ToString() ?? "null");
                     break;
             }
+        }
+
+        private static void AppendMembers(StringBuilder builder, object part)
+        {
+            builder.Append('(');
+            var count = MemberCount(part);
+            for (var i = 0; i < count; i++)
+            {
+                if (i > 0) builder.Append(", ");
+                Append(builder, MemberAt(part, i));
+            }
+            builder.Append(')');
         }
 
         private static void AppendItems(StringBuilder builder, char open, IEnumerable items, char close)
