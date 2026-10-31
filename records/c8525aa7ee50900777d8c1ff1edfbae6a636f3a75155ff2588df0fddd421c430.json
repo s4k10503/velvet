@@ -1,29 +1,20 @@
 {
- "detail": "EditMode survived; PlayMode: 2 failed: Given_ABlueParticleUnderAMultiplyMaterialOverAYellowElement_When_Drawn_Then_TheProductIsBlack, Given_ARedParticleUnderAnAdditiveMaterialOverAGreenElement_When_Drawn_Then_TheRedAddsToTheGreen",
+ "detail": "EditMode: 1 failed: Given_AMountedVisualEffect_When_Attached_Then_ItsLayerDrawsWithThePremultipliedBlendMaterial",
  "file": "c194d9fa2d9cb2f7466a208425a42c9f7c3dbc832827e3f1cf16f9c976cfb48b",
  "killers": [
   {
-   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_ABlueParticleUnderAMultiplyMaterialOverAYellowElement_When_Drawn_Then_TheProductIsBlack",
+   "case": "Velvet.Tests.ParticlesEffectViewTests.Given_AMountedVisualEffect_When_Attached_Then_ItsLayerDrawsWithThePremultipliedBlendMaterial",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "adb1fa1183edfeac5be94a6075b58576bb96abb01386a6182bcf1ab44361cc34",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
-    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
-   }
-  },
-  {
-   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_ARedParticleUnderAnAdditiveMaterialOverAGreenElement_When_Drawn_Then_TheRedAddsToTheGreen",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "adb1fa1183edfeac5be94a6075b58576bb96abb01386a6182bcf1ab44361cc34",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
-    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
-    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
-    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParticlesEffectViewTests.cs": "ec4cbb0a207e0d3b800adf3055da4fa0180690c97e27628ef9f34feb9d61569f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
    }
   }
  ],
- "measured_by": "39988504763",
+ "measured_by": "41152684727",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -34,9 +25,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2eb9d21aaaa0d3b395f56bd0c08c6a30e6ffb76d7265a78d020aa5eda0e5ed27",
+ "tests": "1e738e2ea90cce2f7b87f9770f870ecda2c64ffffd955767fd719ae0b6981286",
  "verdict": "killed"
 }

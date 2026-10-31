@@ -1,8 +1,8 @@
 {
- "detail": "EditMode: the editor was killed at 625s, 1.5 times the baseline's 413s plus 5s, with no readable result",
+ "detail": "EditMode: the editor was killed at 1122s, 1.5 times the baseline's 744s plus 5s, with no readable result",
  "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
  "killers": [],
- "measured_by": "40942382711",
+ "measured_by": "41152684727",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "tests": "1e738e2ea90cce2f7b87f9770f870ecda2c64ffffd955767fd719ae0b6981286",
  "verdict": "killed (timed out)"
 }
