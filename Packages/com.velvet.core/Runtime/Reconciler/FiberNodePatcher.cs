@@ -2794,6 +2794,7 @@ namespace Velvet
         // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
+            using var themeScope = StyleThemeTokens.Use(_ctx);
             RecordVariantGateSource(element, classNames);
             if (!MayDeclareVariantState(classNames) && !HoldsVariantState(element))
             {
@@ -2812,8 +2813,8 @@ namespace Velvet
         }
 
         // Every token the passes of ApplyVariantManipulators read is a variant (its prefix ends in ':') or a
-        // custom-property token (StyleCustomPropertyClass.IsCustomPropertyToken: leading '[', or a '(' or '_'),
-        // so a list with none of those characters configures nothing. The '[' covers the arbitrary-property form.
+        // custom-property token (StyleCustomPropertyClass.IsCustomPropertyToken: leading '[', or a '(' or '_') or a theme class
+        // (StyleThemeClass), so a list with none of those characters and no theme class configures nothing. The '[' covers the arbitrary-property form.
         private static bool MayDeclareVariantState(string[] classNames)
         {
             if (classNames == null)
@@ -2822,7 +2823,8 @@ namespace Velvet
             }
             foreach (var className in classNames)
             {
-                if (className != null && className.IndexOfAny(s_variantStateChars) >= 0)
+                if (className != null && (className.IndexOfAny(s_variantStateChars) >= 0
+                    || StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null))
                 {
                     return true;
                 }

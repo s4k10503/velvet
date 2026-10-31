@@ -1,0 +1,173 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // The custom properties the stylesheets at or above a mount's theme root declare, which StyleThemeClass reads as
+    // Tailwind v4 reads the variables of an @theme block: a declared `--color-brand` makes bg-brand, text-brand and
+    // the other colour utilities, whatever rule or theme class declares it. Only the names are held: the value is
+    // read from the element when the utility resolves (StyleCustomProperties), so a theme class that redeclares a
+    // token changes what the utility draws. Each mount holds its own set, rebuilt when a sheet at or above its root
+    // is attached, removed or changes.
+    internal static class StyleThemeTokens
+    {
+        private const string InitialMarker = "--velvet-initial-";
+
+        private static readonly PropertyInfo? s_rules = EngineMember.StyleSheetRules.ResolveProperty();
+        private static readonly PropertyInfo? s_properties = EngineMember.StyleRuleProperties.ResolveProperty();
+        private static readonly PropertyInfo? s_name = EngineMember.StylePropertyName.ResolveProperty();
+
+        internal sealed class Scope
+        {
+            public readonly HashSet<string> Project = new(StringComparer.Ordinal);
+            public readonly HashSet<string> Bundled = new(StringComparer.Ordinal);
+            // The classes StyleThemeClass has read against these names, dropped with them.
+            // Namespaces a sheet set to initial through a `--velvet-initial-<namespace>` marker, `all` for every one.
+            public readonly HashSet<string> Cleared = new(StringComparer.Ordinal);
+            public readonly Dictionary<string, string?> Classes = new(StringComparer.Ordinal);
+            public int Signature = int.MinValue;
+
+            // Whether name in the namespace (such as "color-") is a bundled token its namespace's initial removes: not
+            // one the project declares itself.
+            public bool ClearsBundled(string ns, string name)
+                => (Cleared.Contains(ns) || Cleared.Contains("all-")) && !Project.Contains("--" + ns + name)
+                    && (Bundled.Contains("--" + ns + name) || (ns == "color-" && name is "white" or "black"));
+        }
+
+        private sealed class Read
+        {
+            public int ContentHash;
+            public string[] Names = Array.Empty<string>();
+        }
+
+        private static readonly ConditionalWeakTable<StyleSheet, Read> s_reads = new();
+        private static readonly ConditionalWeakTable<ReconcilerContext, Scope> s_scopes = new();
+        private static Scope? s_current;
+
+        // The scope the reading in progress asks, null outside a pass of a mount and outside Use.
+        internal static Scope? Current => s_current;
+
+        // Makes ctx's scope the one asked until the returned handle is disposed. A reader that runs outside a render
+        // pass (a variant turning on, a custom property resolving again) sets it for itself, with the names the last
+        // pass read.
+        internal static Restore Use(ReconcilerContext? ctx) => Enter(ctx, false);
+
+        // As Use, reading the sheets again first: a pass of the mount does, so a sheet attached since the last one
+        // declares its tokens to it.
+        internal static Restore Pass(ReconcilerContext? ctx) => Enter(ctx, true);
+
+        private static Restore Enter(ReconcilerContext? ctx, bool reread)
+        {
+            var previous = s_current;
+            if (ctx != null)
+            {
+                s_current = reread || !s_scopes.TryGetValue(ctx, out var held) ? Refresh(ctx) : held;
+            }
+            return new Restore(previous);
+        }
+
+        internal readonly struct Restore : IDisposable
+        {
+            private readonly Scope? _previous;
+
+            public Restore(Scope? previous) => _previous = previous;
+
+            public void Dispose() => s_current = _previous;
+        }
+
+        // Rebuilds ctx's names when a sheet at or above its theme root was attached, removed or edited since the last
+        // reading, and returns the scope.
+        internal static Scope? Refresh(ReconcilerContext? ctx)
+        {
+            if (ctx?.ThemeRoot == null)
+            {
+                return null;
+            }
+            var scope = s_scopes.GetValue(ctx, static _ => new Scope());
+            var signature = SignatureAbove(ctx.ThemeRoot);
+            if (signature != scope.Signature)
+            {
+                scope.Signature = signature;
+                scope.Project.Clear();
+                scope.Bundled.Clear();
+                scope.Classes.Clear();
+                scope.Cleared.Clear();
+                for (var element = ctx.ThemeRoot; element != null; element = element.hierarchy.parent)
+                {
+                    for (var i = 0; i < element.styleSheets.count; i++)
+                    {
+                        Observe(scope, element.styleSheets[i], false);
+                    }
+                }
+            }
+            return scope;
+        }
+
+        private static int SignatureAbove(VisualElement root)
+        {
+            var hash = 17;
+            for (var element = root; element != null; element = element.hierarchy.parent)
+            {
+                for (var i = 0; i < element.styleSheets.count; i++)
+                {
+                    var sheet = element.styleSheets[i];
+                    hash = unchecked(hash * 31 + (sheet == null ? 0 : sheet.GetInstanceID()) * 7 + (sheet == null ? 0 : sheet.contentHash));
+                }
+            }
+            return hash;
+        }
+
+        // A sheet that reaches the bundled utilities through its imports contributes those as bundled.
+        private static void Observe(Scope scope, StyleSheet? sheet, bool bundled)
+        {
+            if (sheet == null)
+            {
+                return;
+            }
+            var into = bundled || VelvetStyleUtilities.IsUtilities(sheet) ? scope.Bundled : scope.Project;
+            foreach (var name in ReadOf(sheet).Names)
+            {
+                into.Add(name);
+                if (name.StartsWith(InitialMarker, StringComparison.Ordinal))
+                {
+                    scope.Cleared.Add(name.Substring(InitialMarker.Length) + "-");
+                }
+            }
+            foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
+            {
+                Observe(scope, imported, into == scope.Bundled);
+            }
+        }
+
+        private static Read ReadOf(StyleSheet sheet)
+        {
+            if (s_reads.TryGetValue(sheet, out var read) && read.ContentHash == sheet.contentHash)
+            {
+                return read;
+            }
+            s_reads.Remove(sheet);
+            read = new Read { ContentHash = sheet.contentHash };
+            var names = new List<string>();
+            if (s_rules != null && s_properties != null && s_name != null)
+            {
+                foreach (var rule in (Array?)s_rules.GetValue(sheet) ?? Array.Empty<object>())
+                {
+                    foreach (var property in (Array?)s_properties.GetValue(rule) ?? Array.Empty<object>())
+                    {
+                        if (s_name.GetValue(property) is string name && name.StartsWith("--", StringComparison.Ordinal))
+                        {
+                            names.Add(name);
+                        }
+                    }
+                }
+            }
+            read.Names = names.ToArray();
+            s_reads.Add(sheet, read);
+            return read;
+        }
+    }
+}

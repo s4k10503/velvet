@@ -8,7 +8,8 @@ namespace Velvet
     // an arbitrary property (`[width:var(--w)]`), a utility reading a custom property, through var() in a bracket
     // (`w-[calc(var(--w)*2)]`, `bg-red-500/[var(--a)]`) or through Tailwind v4's parenthesised shorthand
     // (`bg-(--brand)`, `text-(length:--size)`, `bg-red-500/(--a)`), and a shorthand utility holding more than one
-    // value (`p-[1px_2px]`), which only the element can split into its sides.
+    // value (`p-[1px_2px]`), which only the element can split into its sides, and a theme class (`bg-brand`), which
+    // StyleThemeClass reads as the bracketed utility reading the theme variable.
     internal static class StyleCustomPropertyClass
     {
         // Tailwind's arbitrary properties written as the utility that writes the same property, with the type
@@ -53,8 +54,10 @@ namespace Velvet
         // A token StyleCustomProperties owns rather than the class list or the arbitrary-value layers. The caller
         // has stripped the important bang and ruled out a variant.
         public static bool IsCustomPropertyToken(string core)
-            => !string.IsNullOrEmpty(core) && (core[0] == '[' || core.IndexOf('(') >= 0 || core.IndexOf('_') >= 0)
-                && (IsArbitraryProperty(core, out _, out _) || Consumer(core) != null);
+            => !string.IsNullOrEmpty(core)
+                && (((core[0] == '[' || core.IndexOf('(') >= 0 || core.IndexOf('_') >= 0)
+                    && (IsArbitraryProperty(core, out _, out _) || Consumer(core) != null))
+                || StyleThemeClass.Normalize(core) != null || StyleThemeClass.IsClearedBundled(core));
 
         // `[--name:value]`: the name as written and the value as Tailwind writes it into the declaration, with `_`
         // read as a space outside a var() name and a url().
@@ -76,9 +79,13 @@ namespace Velvet
         // for an arbitrary property Velvet has no utility for.
         public static string? Consumer(string core)
         {
-            if (string.IsNullOrEmpty(core) || (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0))
+            if (string.IsNullOrEmpty(core))
             {
                 return null;
+            }
+            if (core[0] != '[' && core.IndexOf('(') < 0 && core.IndexOf('_') < 0)
+            {
+                return StyleThemeClass.Normalize(core);
             }
             if (s_normalized.TryGetValue(core, out var cached))
             {

@@ -81,6 +81,47 @@ The functions follow CSS Color 4:
   an `inherit` there passes on. Both follow their source as it changes, through a transition included: an element reading one through `text-`, `bg-` or `border-`, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
   cannot hold.
 
+## Theme tokens
+
+A custom property a stylesheet declares in one of Tailwind v4's theme namespaces
+([the namespace table](https://tailwindcss.com/docs/theme#theme-variable-namespaces)) generates the utilities of that
+namespace, as a variable in an `@theme` block does. The declaration is a USS rule; its selector may be `:root`, a
+theme class or any other:
+
+```css
+:root { --color-brand: #ff0066; --radius-pill: 999px; }
+.dark { --color-brand: #ff6699; }
+```
+
+`bg-brand`, `text-brand`, `border-brand`, `border-b-brand` (and the other per-side `border-t-` … `border-be-`),
+`ring-brand`, `ring-offset-brand`, `outline-brand`, `divide-brand`, `shadow-brand`, `drop-shadow-brand`,
+`from-brand` / `via-brand` / `to-brand` and `caret-brand` then resolve, with the opacity modifier (`bg-brand/50`) and
+every variant. A class is the bracketed utility reading the variable (`bg-[color:var(--color-brand)]`), so the value
+is the one the element computes: the `.dark` rule above changes what `bg-brand` draws, and the bundled semantic
+colours (`primary`, `surface`, `text-subtle`, …), which are declared the same way in the bundled sheet, take the
+families the palette names do (`border-b-primary`, `ring-primary`, `bg-primary/50`). Utilities rank among the
+element's classes as the bracketed form does ([styling-variants.md](styling-variants.md)).
+
+A project token with the name of a built-in overrides it in the forms the palette resolves from its own table: with
+`--color-red-500` redeclared, `border-b-red-500`, `ring-red-500`, `bg-red-500/50` and the shadow and gradient forms
+read the variable.
+
+The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner and logical forms), `--text-*`,
+`--font-*`, `--font-weight-*`, `--tracking-*`, `--leading-*`, `--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`,
+`--blur-*`, `--aspect-*` and `--spacing-*` (`p-gutter`, `w-gutter`, `gap-gutter`, …, written as lengths); a name is a
+token of the namespace only where a sheet declares it. A sheet that declares `--spacing` makes a number the multiple
+of it, as Tailwind does: with `--spacing: 3px`, `p-4` is `calc(var(--spacing)*4)` and `-mt-2` is `-6px`; without
+one, the bundled `--space-N` scale gives the number.
+
+A namespace is set to initial by a marker property in a sheet, `--velvet-initial-color: 1;` (`--velvet-initial-all`
+for every namespace), since USS has no wildcard property name. The bundled utilities of that namespace
+(`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`) then do nothing, and the tokens the
+project declares itself still generate theirs.
+
+Each mount reads the sheets attached to its mount target or one of its ancestors, and the sheets they `@import`, at
+the start of every render pass of the mount. A sheet attached or removed later is read by the next pass; a class list
+that no pass re-applies keeps what it resolved to.
+
 ## Where Velvet differs from CSS
 
 - **Named colours** are the ones `ColorUtility.TryParseHtmlString` reads, not the full CSS list.

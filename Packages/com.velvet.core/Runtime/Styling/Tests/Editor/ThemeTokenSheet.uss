@@ -1,0 +1,12 @@
+/* Variables ThemeTokenClassTests reads: tokens a project sheet declares, and a theme class redeclaring one. */
+.theme-token-host {
+    --color-brandtest: rgb(255, 0, 102);
+    --radius-pilltest: 40px;
+    --spacing: 3px;
+    --spacing-guttertest: 10px;
+    --inset-shadow-glowtest: 0 0 4px rgb(255, 0, 0);
+}
+
+.theme-token-host.theme-token-alt {
+    --color-brandtest: rgb(0, 255, 0);
+}

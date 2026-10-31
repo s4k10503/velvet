@@ -1,0 +1,5 @@
+/* The marker that sets the color namespace to initial, and one token declared after it. */
+.theme-token-host {
+    --velvet-initial-color: 1;
+    --color-keeptest: rgb(0, 0, 255);
+}

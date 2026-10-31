@@ -46,6 +46,11 @@ namespace Velvet
                 color = new Color(0f, 0f, 0f, 0f);
                 return true;
             }
+            if (StyleThemeTokens.Current?.ClearsBundled("color-", name) == true)
+            {
+                color = default;
+                return false;
+            }
             return Parsed.TryGetValue(name, out color);
         }
 
