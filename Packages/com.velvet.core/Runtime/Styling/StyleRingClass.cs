@@ -12,6 +12,8 @@ namespace Velvet
     {
         public readonly float Width;
         public readonly float Offset;
+        // A width or an offset only the element can measure, and whether the browser snaps the width.
+        public readonly RingMeasure Measure;
         // The band's colour where a class named one; unused where CurrentColor or InheritColor is set.
         public readonly Color Color;
         // No class named the colour, so the band takes the element's text colour, as Tailwind v4's
@@ -20,14 +22,39 @@ namespace Velvet
         // `-inherit`: the parent's value of the family's colour property (BandColourInheritance).
         public readonly bool InheritColor;
 
-        public RingBand(float width, float offset, Color color, bool currentColor, bool inheritColor = false)
+        public RingBand(float width, float offset, Color color, bool currentColor, bool inheritColor = false,
+            RingMeasure measure = default)
         {
             Width = width;
             Offset = offset;
+            Measure = measure;
             Color = color;
             CurrentColor = currentColor;
             InheritColor = inheritColor;
         }
+
+        // The band with its width and offset replaced by what RingOverlay.Measure read for them.
+        public RingBand Resolved(float width, float offset)
+            => new(width, offset, Color, CurrentColor, InheritColor);
+    }
+
+    // What a band's width and offset need the element for: a length in a font-relative or viewport unit
+    // (outline-[2em], ring-offset-[1ch]), which stands in for Width or Offset, and the device-pixel snap an outline's
+    // width takes (a ring is a box-shadow, which the browser does not snap).
+    internal readonly struct RingMeasure
+    {
+        public readonly StyleLengthExpression? WidthExpression;
+        public readonly StyleLengthExpression? OffsetExpression;
+        public readonly bool Snaps;
+
+        public RingMeasure(StyleLengthExpression? widthExpression, StyleLengthExpression? offsetExpression, bool snaps)
+        {
+            WidthExpression = widthExpression;
+            OffsetExpression = offsetExpression;
+            Snaps = snaps;
+        }
+
+        public bool Any => Snaps || WidthExpression != null || OffsetExpression != null;
     }
 
     // --tw-ring-offset-shadow: a Ring.Offset-wide spread in Color painted over the ring. Every box-shadow Tailwind
@@ -71,6 +98,13 @@ namespace Velvet
         }
 
         public bool HasOffsetFill => Fill.Declared;
+
+        public RingSpec Resolved(RingBand ring, RingBand outline) => new(HasRing, ring, Fill, Inset, outline);
+
+        // Whether a width or an offset waits on the element's font or panel, so what is drawn is known only once measured
+        // (RingOverlay.Measure).
+        public bool IsMeasured => Ring.Measure.WidthExpression != null || Ring.Measure.OffsetExpression != null
+            || Outline.Measure.WidthExpression != null;
 
         public Color OffsetColor => Fill.Color;
 
@@ -137,6 +171,10 @@ namespace Velvet
             public bool RingDeclared;   // ring, ring-<n>, ring-[<length>]: the class that writes --tw-ring-shadow
             public bool RingWidthSet;
             public float RingWidth;
+            public StyleLengthExpression? RingWidthExpression;
+            public StyleLengthExpression? RingOffsetExpression;
+            public StyleLengthExpression? OutlineWidthExpression;
+            public StyleLengthExpression? OutlineOffsetExpression;
             public bool RingColorSet;
             public Color RingColor;
             // current or inherit where a class named one in place of a colour; RingColorSet is then false.
@@ -186,7 +224,8 @@ namespace Velvet
                 Mathf.Max(0f, slots.RingOffset),
                 slots.RingColor,
                 currentColor: !slots.RingColorSet && slots.RingColorRef != ColorReference.Inherit,
-                inheritColor: !slots.RingColorSet && slots.RingColorRef == ColorReference.Inherit);
+                inheritColor: !slots.RingColorSet && slots.RingColorRef == ColorReference.Inherit,
+                measure: new RingMeasure(slots.RingWidthExpression, slots.RingOffsetExpression, snaps: false));
             var outlineWidth = !slots.OutlineDeclared
                 ? 0f
                 : slots.OutlineWidthSet
@@ -197,7 +236,8 @@ namespace Velvet
                 slots.OutlineOffset,
                 slots.OutlineColor,
                 currentColor: !slots.OutlineColorSet && slots.OutlineColorRef != ColorReference.Inherit,
-                inheritColor: !slots.OutlineColorSet && slots.OutlineColorRef == ColorReference.Inherit);
+                inheritColor: !slots.OutlineColorSet && slots.OutlineColorRef == ColorReference.Inherit,
+                measure: new RingMeasure(slots.OutlineWidthExpression, slots.OutlineOffsetExpression, snaps: true));
             spec = new RingSpec(
                 slots.RingDeclared,
                 ring,
@@ -208,7 +248,7 @@ namespace Velvet
                     slots.RingOffsetColorSet ? ColorReference.None : slots.RingOffsetColorRef),
                 slots.Inset,
                 outline);
-            if (spec.RingSpread > 0f || spec.OffsetSpread > 0f || outline.Width > 0f)
+            if (spec.RingSpread > 0f || spec.OffsetSpread > 0f || outline.Width > 0f || spec.IsMeasured)
             {
                 return true;
             }
@@ -426,6 +466,7 @@ namespace Velvet
                 slots.OutlineDeclared = true;
                 slots.OutlineWidthSet = true;
                 slots.OutlineWidth = 0f;
+                slots.OutlineWidthExpression = null;
                 return;
             }
 
@@ -441,13 +482,23 @@ namespace Velvet
                     slots.RingDeclared = true;
                     slots.RingWidthSet = true;
                     slots.RingWidth = width;
+                    slots.RingWidthExpression = null;
                 }
                 else
                 {
                     slots.OutlineDeclared = true;
                     slots.OutlineWidthSet = true;
                     slots.OutlineWidth = width;
+                    slots.OutlineWidthExpression = null;
                 }
+                return;
+            }
+            if (isRingFamily && TryParseMeasuredWidth(suffix, inferred: true, floored: true, out var measuredWidth))
+            {
+                slots.RingDeclared = true;
+                slots.RingWidthSet = true;
+                slots.RingWidth = 0f;
+                slots.RingWidthExpression = measuredWidth;
                 return;
             }
 
@@ -463,6 +514,12 @@ namespace Velvet
                 if (TryParseWidthValue(ringOffSuffix, "ring-offset", out var off))
                 {
                     slots.RingOffset = off;
+                    slots.RingOffsetExpression = null;
+                }
+                else if (TryParseMeasuredWidth(ringOffSuffix, inferred: true, floored: true, out var measured))
+                {
+                    slots.RingOffset = 0f;
+                    slots.RingOffsetExpression = measured;
                 }
                 else if (TryParseColourReference(ringOffSuffix, out var offReference))
                 {
@@ -484,6 +541,12 @@ namespace Velvet
             if (TryParseOutlineOffset(outlineOffSuffix, out var outlineOff))
             {
                 slots.OutlineOffset = negative ? -outlineOff : outlineOff;
+                slots.OutlineOffsetExpression = null;
+            }
+            else if (TryParseMeasuredWidth(outlineOffSuffix, inferred: false, floored: false, out var measuredOffset))
+            {
+                slots.OutlineOffset = 0f;
+                slots.OutlineOffsetExpression = negative ? measuredOffset!.Negated() : measuredOffset;
             }
             return true;
         }
@@ -524,8 +587,9 @@ namespace Velvet
         }
 
         // An outline-[…] that Tailwind's type tests (or a length, number or percentage hint) take for a width, which
-        // it writes as outline-width beside outline-style: solid. A width the browser drops leaves the outline at
-        // the width the rest of the cascade gives it.
+        // it writes as outline-width beside outline-style: solid. A width the browser drops, a negative literal among
+        // them, leaves the outline at the width the rest of the cascade gives it; a math function coming below zero
+        // is raised to zero instead.
         private static bool TryParseOutlineWidth(string suffix, ref RingSlots slots)
         {
             if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
@@ -541,6 +605,14 @@ namespace Velvet
             {
                 slots.OutlineWidthSet = true;
                 slots.OutlineWidth = width;
+                slots.OutlineWidthExpression = null;
+            }
+            else if (StyleLengthExpression.TryParse(inner, out var expression) && !expression!.ReadsPercentage
+                && (StyleLengthExpression.OpensMathFunction(inner.Trim("_ ".AsSpan())) || inner.Trim("_ ".AsSpan())[0] != '-'))
+            {
+                slots.OutlineWidthSet = true;
+                slots.OutlineWidth = 0f;
+                slots.OutlineWidthExpression = expression.AtLeast(0f);
             }
             return true;
         }
@@ -603,6 +675,23 @@ namespace Velvet
                 return false;
             }
             return unit == LengthUnit.Pixel;
+        }
+
+        // A bracketed width or offset only the element can measure (a font-relative or viewport unit), read where
+        // TryParseWidthValue reads a length: never a percentage, which neither takes. A width or a ring offset is
+        // not below zero; an outline offset, which CSS lets be negative, is not floored.
+        private static bool TryParseMeasuredWidth(string? suffix, bool inferred, bool floored, out StyleLengthExpression? expression)
+        {
+            expression = null;
+            if (suffix == null || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
+                || (inferred && !(hint != null ? hint == "length" : TailwindDataTypes.IsLength(inner)))
+                || !StyleLengthExpression.TryParse(inner, out var parsed) || parsed!.ReadsPercentage)
+            {
+                return false;
+            }
+            expression = floored ? parsed.AtLeast(0f) : parsed;
+            return true;
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the

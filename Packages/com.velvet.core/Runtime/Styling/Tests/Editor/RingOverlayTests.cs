@@ -774,6 +774,105 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOutlineOfTwoEmsUnderATwelvePixelFont_When_LaidOut_Then_TheBandIsTwentyFourPixelsWide()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] text-[12px] outline-[2em]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — 24 is 2em only where the card's own 12px took effect, and is NaN where no binding is.
+            Assert.That(Mathf.Approximately(card.resolvedStyle.fontSize, 12f)
+                    ? RingOverlay.TryGet(card)?.Spec.Outline.Width ?? float.NaN
+                    : float.NaN,
+                Is.EqualTo(24f));
+        }
+
+        // The browser snaps an outline's width as a border width: down to a whole number of device pixels.
+        [Test]
+        public void Given_AFractionalOutlineWidth_When_LaidOut_Then_ItIsSnappedDownToDevicePixels()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-[2.75px]");
+            var perPixel = card.panel.scaledPixelsPerPoint;
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card)?.Spec.Outline.Width,
+                Is.EqualTo((float?)(Mathf.Floor(2.75f * perPixel) / perPixel)));
+        }
+
+        // And one under a device pixel up to one.
+        [Test]
+        public void Given_AnOutlineWidthUnderADevicePixel_When_LaidOut_Then_ItIsOneDevicePixel()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-[0.25px]");
+            var perPixel = card.panel.scaledPixelsPerPoint;
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card)?.Spec.Outline.Width, Is.EqualTo((float?)(1f / perPixel)));
+        }
+
+        // GREEN_ON_BASE(characterization): an outline offset is an absolute length that CSS does not snap, and the base
+        // drew it as written. Snapping it as the width is snapped reddens it.
+        [Test]
+        public void Given_AFractionalOutlineOffset_When_LaidOut_Then_TheBandIsGrownByTheOffsetAsWritten()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-2 outline-offset-[1.75px]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — the 40px box, and on each side the offset as written and the band's own width, which the panel's
+            // scale may have snapped.
+            var binding = RingOverlay.TryGet(card);
+            Assert.That(binding.OutlineElement.style.width.value.value,
+                Is.EqualTo(40f + (2f * (1.75f + binding.Spec.Outline.Width))).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): a ring is a box-shadow, which the browser does not snap, nor does this.
+        [Test]
+        public void Given_AFractionalRingWidth_When_LaidOut_Then_ItIsNotSnapped()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-[2.75px]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card).Spec.Ring.Width, Is.EqualTo(2.75f));
+        }
+
+        [Test]
+        public void Given_AnOutlineOfTwoEms_When_TheFontSizeChanges_Then_TheBandFollowsIt()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] text-[12px] outline-[2em]");
+            ForcePanelUpdate(card.panel);
+
+            // Act — a font change that leaves the box where it was, carried by the band's per-frame sample.
+            card.style.fontSize = 20f;
+            ForcePanelUpdate(card.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(card.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card)?.Spec.Outline.Width, Is.EqualTo((float?)40f));
+        }
+
+        [Test]
         public void Given_ARingNamingNoColour_When_LaidOut_Then_TheBandIsTheTextColour()
         {
             // Arrange
@@ -922,6 +1021,34 @@ namespace Velvet.Tests
                 }
             }
             return null;
+        }
+
+        [Test]
+        public void Given_AnInsetRingOfAFifthOfAnEm_When_Mounted_Then_TheBandIsFourPixelsWide()
+        {
+            // Arrange / Act
+            var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] text-[20px] ring-[0.2em] ring-inset"));
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card).Spec.Ring.Width, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_AnInsetRingOfAFifthOfAnEm_When_TheFontSizeChanges_Then_TheBandFollowsIt()
+        {
+            // Arrange
+            var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] text-[20px] ring-[0.2em] ring-inset"));
+
+            // Act — a font change that leaves the box where it was, carried by the band's per-frame sample.
+            card.style.fontSize = 30f;
+            ForcePanelUpdate(card.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(card.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card).Spec.Ring.Width, Is.EqualTo(6f));
         }
 
         [Test]

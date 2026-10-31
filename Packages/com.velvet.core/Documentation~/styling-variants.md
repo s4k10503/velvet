@@ -352,7 +352,10 @@ colours only its own family's band, so `outline ring-red-500` is an outline in t
 modifier in the forms Tailwind generates (`/50`, `/2.25`, `/[0.33]`, `/[33.3%]`); one outside 0–100% leaves an outline at
 the text colour and discards the box-shadow a ring belongs to. A band whose family names no colour, or names
 `ring-current` / `outline-current`, is drawn in the element's text colour and follows it as it changes;
-`ring-inherit`, `ring-offset-inherit` and `outline-inherit` take the parent's value of the same property.
+`ring-inherit`, `ring-offset-inherit` and `outline-inherit` take the parent's value of the same property. An outline's width
+is snapped as the browser snaps a border width, down to a whole number of the panel's device pixels
+and up to one where it is less (`outline-[2.75px]` is 2.5px at two device pixels a point); an outline's offset
+and a ring's width, a box-shadow in the browser, are not.
 
 What the ringed element's own subtree would carry reaches the bands as well. Its transform —
 `translate-*`, `scale-*`, `rotate-*` about any `origin-*`, a transition or a `V.Motion` animating those,

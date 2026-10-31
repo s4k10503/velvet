@@ -209,6 +209,15 @@ namespace Velvet.Tests
             Assert.That(Extract("ring-2", "ring-offset-4").Ring.Offset, Is.EqualTo(4f));
         }
 
+        // GREEN_ON_BASE(characterization): the base read no width from an outline bracket it could not measure as pixels.
+        // Reading a negative literal as a measured length floored to zero reddens it.
+        [TestCase("outline-[-2px]")]
+        [TestCase("outline-[-1em]")]
+        public void Given_ANegativeOutlineWidthLiteral_When_Extracted_Then_TheWidthBeforeItKeeps(string negative)
+        {
+            Assert.That(Extract("outline-4", negative).Outline.Width, Is.EqualTo(4f));
+        }
+
         [Test]
         public void Given_OutlinePreset_When_Extracted_Then_ResolvesWidth()
         {

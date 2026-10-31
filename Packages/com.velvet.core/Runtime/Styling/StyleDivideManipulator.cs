@@ -72,6 +72,13 @@ namespace Velvet
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
+        // Re-applies once what a measured width reads has moved; null while the spec measures none.
+        private RelativeLengthPoll? _poll;
+
+        // What the children measure, which the poll reads beside the container: a child's own font moves the length
+        // it measures without moving the container.
+        private int ChildReading() => _spec.WidthMeasured != null ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
+
         public StyleDivideManipulator(DivideSpec spec, ReconcilerContext ctx)
         {
             _spec = spec;
@@ -82,6 +89,8 @@ namespace Velvet
         public void UpdateSpec(DivideSpec spec)
         {
             _spec = spec;
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
+            SyncScaleWatch();
             _hasSignature = false;
             Apply();
         }
@@ -98,11 +107,33 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
+            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
+            SyncScaleWatch();
             Apply();
+        }
+
+        // A divider width written in pixels is snapped to the panel's device pixels (WidthOn), so it is applied again
+        // when the panel's scale changes; a measured one is applied again by the poll, which reads the scale.
+        private void SyncScaleWatch()
+        {
+            if (target == null)
+            {
+                return;
+            }
+            if (_spec.WidthMeasured == null)
+            {
+                PanelScaleWatch.Track(target, this, _ => Reapply());
+            }
+            else
+            {
+                PanelScaleWatch.Untrack(target, this);
+            }
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
+            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
+            PanelScaleWatch.Untrack(target, this);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
@@ -330,6 +361,11 @@ namespace Velvet
             return inline.value;
         }
 
+        // The divider's width on child: the border is the child's, so the child measures a measured one, and it is
+        // snapped as a border width.
+        private float WidthOn(VisualElement child)
+            => StyleRelativeLengths.SnapAsBorderWidth(child, StyleRelativeLengths.MeasureOr(child, _spec.WidthMeasured, _spec.Width));
+
         // Whether the child's own declaration of slot beats the divide's. An ordinary divide yields to any of
         // the child's own, an important one to its important ones alone: the divide's selector has zero
         // specificity and the child's has a class, so between two important declarations the child's wins.
@@ -341,7 +377,7 @@ namespace Velvet
         // alone where the divide is important.
         private void HoldWidth(VisualElement child, DivideEdge edge)
         {
-            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(WidthOn(child)));
             StyleArbitraryValueResolver.Yield(child, WidthSlot(edge), (_spec.Important & DivideImportance.Width) != 0);
         }
 

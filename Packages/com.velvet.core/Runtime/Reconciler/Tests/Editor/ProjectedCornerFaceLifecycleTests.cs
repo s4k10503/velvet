@@ -84,6 +84,28 @@ namespace Velvet.Tests
             Assert.That(FaceCallbacks(box) + FaceCallbacks(band), Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base grows no inset band's projected corners either. Growing them by the
+        // band's width and offset, as an outset band's are, reddens it.
+        [Test]
+        public void Given_AnInsetRingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsBandIsRepainted_Then_ItsCornersAreTheElementsOwn()
+        {
+            // Arrange — drawn at a quarter across and a half down, its band inside it.
+            s_classes = "rounded-[20px] bg-blue-500 ring-2 ring-inset ring-[#ff0000]";
+            using var mounted = MountAndWiden();
+            for (var i = 0; i < 3; i++) Tick();
+            var box = Root.Q<VisualElement>("box");
+            var band = box.Q<VisualElement>(RingOverlay.OverlayName);
+            var own = ProjectedCornerFace.TryGetRadii(box, out var radii)
+                ? BorderBandPainter.Fitted(radii, box.layout.width, box.layout.height).TopLeft.x
+                : float.NaN;
+
+            // Act
+            var drawn = band != null && ProjectedCornerFace.TryGetRadii(band, out var bandRadii) ? bandRadii.TopLeft.x : float.PositiveInfinity;
+
+            // Assert
+            Assert.That(drawn, Is.EqualTo(own).Within(1e-3f));
+        }
+
         [Test]
         public void Given_AShadowedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsRepainted_Then_ItsCornersTakeTheProjectedRadii()
         {

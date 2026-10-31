@@ -32,8 +32,12 @@ namespace Velvet
         {
         }
 
+        // The x, y, blur and spread lengths the element measures (a font-relative or viewport unit), each null
+        // where the matching field is written in pixels; null throughout for a preset.
+        public readonly StyleLengthExpression?[]? Measured;
+
         public ShadowSpec(Color color, float blur, float offsetY, float spread, float offsetX, bool inset = false,
-            ShadowColourFamily inheritFrom = ShadowColourFamily.None)
+            ShadowColourFamily inheritFrom = ShadowColourFamily.None, StyleLengthExpression?[]? measured = null)
         {
             Color = color;
             Blur = blur;
@@ -42,6 +46,19 @@ namespace Velvet
             OffsetX = offsetX;
             Inset = inset;
             InheritFrom = inheritFrom;
+            Measured = measured;
+        }
+
+        // This spec with the lengths element measures in pixels; this spec while it is on no panel.
+        public ShadowSpec MeasuredOn(VisualElement element)
+        {
+            if (Measured == null || !StyleRelativeLengths.TryBasisOf(element, out var basis))
+            {
+                return this;
+            }
+            var measured = Measured;
+            float At(int i, float written) => measured[i] is { } e ? e.Evaluate(basis) : written;
+            return new ShadowSpec(Color, At(2, Blur), At(1, OffsetY), At(3, Spread), At(0, OffsetX), Inset, InheritFrom);
         }
     }
 
@@ -228,7 +245,7 @@ namespace Velvet
                     var colour = Colour ?? layer.Color;
                     colour.a = Colour != null ? colour.a * SizeScale : SizeAlpha ?? colour.a;
                     resolved[i] = new ShadowSpec(colour, layer.Blur, layer.OffsetY, layer.Spread, layer.OffsetX, layer.Inset,
-                        Inherit ? family : ShadowColourFamily.None);
+                        Inherit ? family : ShadowColourFamily.None, layer.Measured);
                 }
                 return resolved;
             }
@@ -770,6 +787,7 @@ namespace Velvet
             var tokens = StyleGradientClass.SplitTopLevel(body.Replace('_', ' '), ' ');
             tokens.RemoveAll(t => t.Length == 0);
             var lengths = new float[4]; // x, y, blur, spread
+            StyleLengthExpression?[]? measured = null;
             var lengthCount = 0;
             var color = ArbitraryDefaultColor;
             var hasColor = false;
@@ -791,6 +809,19 @@ namespace Velvet
                     }
                     lengths[lengthCount++] = value;
                 }
+                else if (lengthCount < 4 && StyleLengthExpression.TryParse(token.AsSpan(), out var expression)
+                    && !expression!.ReadsPercentage)
+                {
+                    // A length the element measures; a blur takes none below zero: a literal below it rejects the shadow, as
+                    // the browser rejects it, and a math function coming below it is zero.
+                    if (lengthCount == 2 && !StyleLengthExpression.OpensMathFunction(token.AsSpan())
+                        && token.TrimStart()[0] == '-')
+                    {
+                        return false;
+                    }
+                    (measured ??= new StyleLengthExpression?[4])[lengthCount] = lengthCount == 2 ? expression.AtLeast(0f) : expression;
+                    lengthCount++;
+                }
                 else if (!hasColor && StyleColorValueParser.TryParseColor(token.AsSpan(), out var parsedColor))
                 {
                     color = parsedColor;
@@ -811,7 +842,7 @@ namespace Velvet
             {
                 return false; // CSS rejects a negative blur radius
             }
-            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], inset);
+            spec = new ShadowSpec(color, lengths[2], lengths[1], lengths[3], lengths[0], inset, measured: measured);
             return true;
         }
 

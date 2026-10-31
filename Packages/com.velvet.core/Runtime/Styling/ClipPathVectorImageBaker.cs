@@ -346,6 +346,11 @@ namespace Velvet
         public float BakedWidth = -1f;
         public float BakedHeight = -1f;
 
+        // The measured shape's Source at the last bake (ClipPathSpec.MeasuredOn), and the poll that re-syncs
+        // once what its lengths measure has moved; null while the spec measures none.
+        public string? MeasuredSource;
+        public RelativeLengthPoll? Poll;
+
         // Per-binding bake cache, keyed by SHAPE (spec.Source) — one image per distinct shape, holding the bake
         // at the most-recent size. A state variant (hover:clip-*) toggles between this element's base and hover
         // SHAPES at the same size, so each is cached and the toggle is an O(1) lookup with NO re-tessellation
@@ -407,6 +412,9 @@ namespace Velvet
         // here, so those owners must call this explicitly).
         internal void DisposeImage()
         {
+            Poll?.Stop();
+            Poll = null;
+            MeasuredSource = null;
             Wrapper.style.backgroundImage = StyleKeyword.Null;
             BakedWidth = -1f;
             BakedHeight = -1f;

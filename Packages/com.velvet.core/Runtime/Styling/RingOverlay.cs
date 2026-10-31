@@ -26,6 +26,9 @@ namespace Velvet
         public readonly VisualElement OutlineOverlay;
         public readonly VisualElement OutlineElement;
         public string[] ClassNames = null!;
+        // What the classes declared, and the same with each width and offset that waits on the element measured
+        // there (RingOverlay.Measure), which is what is placed and painted.
+        public RingSpec Declared;
         public RingSpec Spec;
         // The tree the element belongs to, whose mount container the outline is hosted inside of (OutlineHosting.Host).
         public ReconcilerContext? Context;
@@ -182,7 +185,8 @@ namespace Velvet
                 NewBand(outlineOverlay, OutlineBandName, mgc => PaintOutline(mgc, binding)))
             {
                 ClassNames = classNames,
-                Spec = spec,
+                Declared = spec,
+                Spec = Measure(element, spec),
                 Context = context,
             };
             SetMode(binding);
@@ -202,6 +206,11 @@ namespace Velvet
             // element is off a panel.
             binding.StateTick = element.schedule.Execute(() =>
             {
+                if (Differs(Measure(element, binding.Declared), binding.Spec))
+                {
+                    Place(element, binding);
+                    return;
+                }
                 OutlineHosting.Place(element, binding, force: false);
                 SyncElementState(element, binding);
             }).Every(StyleAnimateDriver.TickMs);
@@ -254,7 +263,8 @@ namespace Velvet
 
         public static void Sync(VisualElement element, RingBinding binding, RingSpec spec, string[] classNames)
         {
-            binding.Spec = spec;
+            binding.Declared = spec;
+            binding.Spec = Measure(element, spec);
             binding.ClassNames = classNames;
             SetMode(binding);
             ApplySpec(binding, element);
@@ -355,11 +365,47 @@ namespace Velvet
         private static Color TintOf(VisualElement element, in RingBand band, BandColourInheritance.Family family, Color text)
             => band.InheritColor ? BandColourInheritance.Resolve(element, family) : band.CurrentColor ? text : band.Color;
 
+        // The declared spec with each width and offset that waits on the element read on it: a font-relative or
+        // viewport length measured from the element's font and panel, which is zero while the element is on no
+        // panel, and an outline's width snapped to the panel's device pixels. A ring's width is not snapped.
+        internal static RingSpec Measure(VisualElement element, in RingSpec declared)
+            => declared.Ring.Measure.Any || declared.Outline.Measure.Any
+                ? declared.Resolved(MeasureBand(element, declared.Ring), MeasureBand(element, declared.Outline))
+                : declared;
+
+        private static RingBand MeasureBand(VisualElement element, in RingBand band)
+        {
+            var measure = band.Measure;
+            if (!measure.Any)
+            {
+                return band;
+            }
+            var width = Evaluate(element, measure.WidthExpression, band.Width);
+            return band.Resolved(measure.Snaps ? StyleRelativeLengths.SnapAsBorderWidth(element, width) : width,
+                Evaluate(element, measure.OffsetExpression, band.Offset));
+        }
+
+        private static float Evaluate(VisualElement element, StyleLengthExpression? expression, float literal)
+            => expression == null ? literal
+                : StyleRelativeLengths.TryBasisOf(element, out var basis) ? expression.Evaluate(basis)
+                : 0f;
+
+        private static bool Differs(in RingSpec a, in RingSpec b)
+            => a.Ring.Width != b.Ring.Width || a.Ring.Offset != b.Ring.Offset
+                || a.Outline.Width != b.Outline.Width || a.Outline.Offset != b.Outline.Offset;
+
         // Re-homes both overlays and re-sizes them. The hosts are re-derived on every call rather than captured at
         // attach: a keyed move, a z-* relocation into a layer container, or an attach that had not happened yet at
         // create time all change them, and each of those re-enters here.
         private static void Place(VisualElement element, RingBinding binding)
         {
+            var measured = Measure(element, binding.Declared);
+            if (Differs(measured, binding.Spec))
+            {
+                binding.Spec = measured;
+                SetMode(binding);
+                ApplySpec(binding, element);
+            }
             if (binding.Inside)
             {
                 PlaceInside(element, binding);

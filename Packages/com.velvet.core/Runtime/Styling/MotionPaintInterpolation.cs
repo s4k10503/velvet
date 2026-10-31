@@ -80,6 +80,8 @@ namespace Velvet
                 AngleDeg = Mathf.LerpUnclamped(from.AngleDeg, to.AngleDeg, progress),
                 CenterX = Mathf.LerpUnclamped(from.CenterX, to.CenterX, progress),
                 CenterY = Mathf.LerpUnclamped(from.CenterY, to.CenterY, progress),
+                CenterXPx = Mathf.LerpUnclamped(from.CenterXPx, to.CenterXPx, progress),
+                CenterYPx = Mathf.LerpUnclamped(from.CenterYPx, to.CenterYPx, progress),
                 Stops = stops,
             };
         }

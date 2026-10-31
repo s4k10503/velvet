@@ -392,14 +392,46 @@ namespace Velvet
                 return false;
             }
 
+            // CSS declines a literal below the property's range, where a math function is clamped into it.
+            if (!negate && value < MinimumOf(property) && !IsMathFunction(valueSpan))
+            {
+                return false;
+            }
+
+            // A fractional border width is measured on the element, which snaps it to its device pixels.
+            if (IsBorderWidth(property) && value != (float)Math.Floor(value)
+                && StyleLengthExpression.TryParse(valueSpan, out var snapped))
+            {
+                result = new ArbitraryStyle(property, snapped!.AtLeast(0f));
+                return true;
+            }
+
             if (negate)
             {
                 value = -value;
             }
 
-            result = new ArbitraryStyle(property, value, unit);
+            result = new ArbitraryStyle(property, ClampMathResult(valueSpan, value, MinimumOf(property)), unit);
             return true;
         }
+
+        private static bool IsMathFunction(ReadOnlySpan<char> text)
+            => StyleLengthExpression.OpensMathFunction(text.Trim("_ ".AsSpan()));
+
+        // A math function's result outside the range its property takes is clamped into it, as CSS clamps a
+        // top-level calculation; a literal is returned as written, for the caller to judge.
+        internal static float ClampMathResult(ReadOnlySpan<char> text, float value, float min, float max = float.MaxValue)
+            => IsMathFunction(text) ? Math.Clamp(value, min, max) : value;
+
+        // The least value property takes in CSS: zero for a size, a padding, a radius, a border width and a font
+        // size, and no bound for the rest.
+        private static float MinimumOf(ArbitraryProperty property)
+            => property is >= ArbitraryProperty.Width and <= ArbitraryProperty.MaxHeight
+                or >= ArbitraryProperty.PaddingTop and <= ArbitraryProperty.PaddingY
+                or >= ArbitraryProperty.BorderRadius and <= ArbitraryProperty.BorderLeftWidth
+                or ArbitraryProperty.FontSize or ArbitraryProperty.Size or ArbitraryProperty.FlexBasis
+                ? 0f
+                : -float.MaxValue;
 
         // Where Tailwind reads a bracket as either a length or a colour, whether its type tests take this one for
         // the length; a value they do not is written as a colour, which a browser discards. Every other property
@@ -478,19 +510,23 @@ namespace Velvet
             ["x-large"] = 24f, ["xx-large"] = 32f, ["xxx-large"] = 48f,
         };
 
-        // A length only an element can measure — em, a viewport unit, or a math function mixing a percentage
-        // with a pixel length — is carried unresolved to ApplyInline, and only for the properties PropertySetters
-        // writes, whose setters name the axis their percentage is taken of.
+        // A length only an element can measure — a font-relative or viewport unit, or a math function mixing a
+        // percentage with a pixel length — is carried unresolved to ApplyInline: for the properties PropertySetters
+        // writes, whose setters name the axis their percentage is taken of, and without a percentage for a border
+        // width, which takes none, and a radius, whose percentage UI Toolkit takes of one side where CSS takes it
+        // of each.
         private static bool TryParseRelativeLength(
             ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
-            if (!PropertySetters.ContainsKey(property) || !StyleLengthExpression.TryParse(valueSpan, out var expression)
-                || !expression!.IsFinite())
+            var measurable = PropertySetters.ContainsKey(property) || IsBorderWidth(property) || RadiusCornersOf.ContainsKey(property);
+            if (!measurable || !StyleLengthExpression.TryParse(valueSpan, out var expression)
+                || (!PropertySetters.ContainsKey(property) && expression!.ReadsPercentage)
+                || (!negate && MinimumOf(property) == 0f && !IsMathFunction(valueSpan) && valueSpan.Trim("_ ".AsSpan())[0] == '-'))
             {
                 return false;
             }
-            result = new ArbitraryStyle(property, negate ? expression!.Negated() : expression!);
+            result = new ArbitraryStyle(property, negate ? expression!.Negated() : expression!.AtLeast(MinimumOf(property)));
             return true;
         }
 
@@ -1187,7 +1223,7 @@ namespace Velvet
             result = default;
             if (prefix == "slice-scale-")
             {
-                if (negate || !TryParseFloat(value, out var factor) || factor < 0f)
+                if (negate || !TryParseFloat(value, out var factor) || (factor = ClampMathResult(value, factor, 0f)) < 0f)
                 {
                     return false;
                 }
@@ -1279,9 +1315,16 @@ namespace Velvet
         }
 
         // Parses a duration-[..] time value to SECONDS. Accepts "<n>ms" / "<n>s" (duration-[400ms] /
-        // duration-[.4s]); a bare number is rejected (a unit is required on arbitrary durations).
+        // duration-[.4s]) and a math function coming to a time; a bare number is rejected (a unit is required on
+        // arbitrary durations).
         private static bool TryParseDurationSeconds(ReadOnlySpan<char> value, out float seconds)
         {
+            if (StyleLengthExpression.OpensMathFunction(value))
+            {
+                var parsed = StyleLengthExpression.TryParseTime(value, out var ms);
+                seconds = Math.Max(0f, ms / 1000f);
+                return parsed;
+            }
             seconds = 0f;
             float scale;
             ReadOnlySpan<char> num;
@@ -1299,8 +1342,7 @@ namespace Velvet
             {
                 return false;
             }
-            if (!float.TryParse(num.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
-                || float.IsNaN(v) || float.IsInfinity(v) || v < 0f)
+            if (!TryParseCssFloat(num, out var v) || v < 0f)
             {
                 return false;
             }
@@ -3595,6 +3637,7 @@ namespace Velvet
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
         {
+            if (element != null) PanelScaleWatch.Untrack(element, s_resnapBorderWidths);
             if (element != null) StyleCustomProperties.Release(element);
             if (element != null && s_layers.TryGetValue(element, out var map))
             {
@@ -3656,6 +3699,11 @@ namespace Velvet
         // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
+            if (!IsFilter(property) && property != ArbitraryProperty.FilterCustom
+                && TryWinningLayer(map, property, out var measured) && measured.Expression != null)
+            {
+                map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
+            }
             if (property == ArbitraryProperty.TranslateX || property == ArbitraryProperty.TranslateY
                 || property == ArbitraryProperty.Translate)
             {
@@ -3686,13 +3734,9 @@ namespace Velvet
             {
                 ClearInline(element, property);
             }
-            else if (winner.Expression != null)
+            else
             {
-                map.RelativePoll ??= new RelativeLengthPoll(element, ReresolveRelativeLengths);
-            }
-            else if (winner.Reference != ColorReference.None)
-            {
-                map.ColorWatch ??= new ColorReferenceWatch(element, ReresolveColorReferences);
+                WatchColorReference(element, map, winner);
             }
             var rewritten = ResolveSharedLonghands(element, property, map, out var written);
             RewriteDriven(element, map, written);
@@ -3706,6 +3750,15 @@ namespace Velvet
             if (s_layers.TryGetValue(box, out var boxMap))
             {
                 ReassertHolds(box, boxMap, HeldSlotGroups.SlotsOf(property));
+            }
+        }
+
+        // A winner naming current or inherit follows what it names, which the watch re-reads.
+        private static void WatchColorReference(VisualElement element, LayerMap map, ArbitraryStyle winner)
+        {
+            if (winner.Reference != ColorReference.None)
+            {
+                map.ColorWatch ??= new ColorReferenceWatch(element, ReresolveColorReferences);
             }
         }
 
@@ -3979,10 +4032,27 @@ namespace Velvet
                 element.style.translate = new StyleTranslate(StyleKeyword.None);
                 return;
             }
-            // A keyword axis is an axis at its initial value, which translates by nothing.
-            var x = hasX && xw.Keyword == StyleKeyword.Undefined ? new Length(xw.Value, xw.Unit) : new Length(0f);
-            var y = hasY && yw.Keyword == StyleKeyword.Undefined ? new Length(yw.Value, yw.Unit) : new Length(0f);
+            // A keyword axis is an axis at its initial value, which translates by nothing. A translate's percentage is
+            // of the element's own box.
+            if (!TryAxisLength(element, hasX && xw.Keyword == StyleKeyword.Undefined, xw, element.layout.width, out var x)
+                || !TryAxisLength(element, hasY && yw.Keyword == StyleKeyword.Undefined, yw, element.layout.height, out var y))
+            {
+                return;
+            }
             element.style.translate = new Translate(x, y);
+        }
+
+        // One axis of a translate: none, the length written, or what the element measures it to, false until it can.
+        private static bool TryAxisLength(VisualElement element, bool has, in ArbitraryStyle winner, float box, out Length length)
+        {
+            if (!has || winner.Expression == null)
+            {
+                length = has ? new Length(winner.Value, winner.Unit) : new Length(0f);
+                return true;
+            }
+            var measured = StyleRelativeLengths.TryMeasure(element, winner.Expression, box, out var px);
+            length = new Length(px);
+            return measured;
         }
 
         // The layer holding one translate axis: the winning layer of the axis or of Translate, which writes both,
@@ -4610,22 +4680,8 @@ namespace Velvet
                 return;
             }
 
-            if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
+            if (TryWriteBorderOrRadius(element, style))
             {
-                var width = style.Keyword == StyleKeyword.Undefined
-                    ? new StyleFloat(style.Value)
-                    : new StyleFloat(style.Keyword);
-                var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
-                foreach (var setter in floatSetters)
-                {
-                    setter(fs, width);
-                }
-                return;
-            }
-
-            if (RadiusCornersOf.TryGetValue(style.Property, out var corners))
-            {
-                CornerRadiusFit.SetInline(element, corners, new Length(style.Value, style.Unit));
                 return;
             }
 
@@ -4635,6 +4691,46 @@ namespace Velvet
             }
 
             WriteLength(element, ClipPathLayoutBox.BoxFor(element, style.Property).style, style, setters);
+        }
+
+        // A border width or a corner radius, whose pixels the element settles itself: it measures an expression, and
+        // snaps a border width to the panel's device pixels. False for any other property.
+        private static bool TryWriteBorderOrRadius(VisualElement element, in ArbitraryStyle style)
+        {
+            if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
+            {
+                WriteBorderWidth(element, style, floatSetters);
+                return true;
+            }
+            if (RadiusCornersOf.TryGetValue(style.Property, out var corners))
+            {
+                if (TryMeasuredValue(element, style, out var radius))
+                {
+                    CornerRadiusFit.SetInline(element, corners, new Length(radius, style.Expression == null ? style.Unit : LengthUnit.Pixel));
+                }
+                return true;
+            }
+            return false;
+        }
+
+        private static void WriteBorderWidth(VisualElement element, in ArbitraryStyle style, Action<IStyle, StyleFloat>[] setters)
+        {
+            if (!TryMeasuredValue(element, style, out var measured))
+            {
+                return;
+            }
+            if (style.Expression == null && style.Keyword == StyleKeyword.Undefined && IsBorderWidth(style.Property))
+            {
+                PanelScaleWatch.Track(element, s_resnapBorderWidths, s_resnapBorderWidths);
+            }
+            var width = style.Keyword == StyleKeyword.Undefined
+                ? new StyleFloat(measured)
+                : new StyleFloat(style.Keyword);
+            var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
+            foreach (var setter in setters)
+            {
+                setter(fs, width);
+            }
         }
 
         // A keyword is written to each of the three longhands the shorthand sets.
@@ -4669,9 +4765,67 @@ namespace Velvet
                     : new StyleRotate(style.Keyword));
                 return;
             }
-            element.style.transformOrigin = style.Keyword == StyleKeyword.Undefined
-                ? new TransformOrigin(new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3)
-                : new StyleTransformOrigin(style.Keyword);
+            WriteTransformOrigin(element, style);
+        }
+
+        // A border width written in pixels is snapped to the panel's device pixels, so it is written again when the
+        // element attaches and when the panel's scale changes (PanelScaleWatch), through the layers so that the class
+        // holding the width is still the one that wins.
+        private static void ResnapBorderWidths(VisualElement element)
+        {
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            foreach (var written in new List<ArbitraryProperty>(map.Keys))
+            {
+                if (IsBorderWidth(written))
+                {
+                    ResolveAndApply(element, written, map);
+                }
+            }
+        }
+
+        private static readonly Action<VisualElement> s_resnapBorderWidths = ResnapBorderWidths;
+
+        // The value written, or what the element measures its expression to, which takes no percentage; false
+        // until the element can.
+        private static bool TryMeasuredValue(VisualElement element, in ArbitraryStyle style, out float value)
+        {
+            value = style.Value;
+            if (style.Expression == null)
+            {
+                // A whole-pixel border width is snapped as a fractional one is: at a panel scale that is no whole
+                // number the browser takes the width down to the device-pixel grid.
+                value = IsBorderWidth(style.Property) ? StyleRelativeLengths.SnapAsBorderWidth(element, value) : value;
+                return true;
+            }
+            var measured = StyleRelativeLengths.TryMeasure(element, style.Expression, 0f, out value);
+            // A border width is snapped to device pixels, as the browser snaps one. A width the parse left in
+            // pixels is whole, which a whole-number panel scale leaves as it is.
+            value = IsBorderWidth(style.Property) ? StyleRelativeLengths.SnapAsBorderWidth(element, value) : value;
+            return measured;
+        }
+
+        // A transform origin the element measures takes its percentages of the element's own box.
+        private static void WriteTransformOrigin(VisualElement element, in ArbitraryStyle style)
+        {
+            if (style.Keyword != StyleKeyword.Undefined)
+            {
+                element.style.transformOrigin = new StyleTransformOrigin(style.Keyword);
+                return;
+            }
+            if (style.Expression == null)
+            {
+                element.style.transformOrigin = new TransformOrigin(
+                    new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2), style.Value3);
+                return;
+            }
+            if (StyleRelativeLengths.TryMeasure(element, style.Expression, element.layout.width, out var x)
+                && StyleRelativeLengths.TryMeasure(element, style.Expression2!, element.layout.height, out var y))
+            {
+                element.style.transformOrigin = new TransformOrigin(new Length(x), new Length(y), style.Value3);
+            }
         }
 
         // A relative length is measured per setter, since each carries its own axis and its own stand-in for an
@@ -4946,7 +5100,7 @@ namespace Velvet
                 return false;
             }
             if (TryParseValue(inner, out var value, out var unit)
-                && unit == LengthUnit.Pixel && value >= 0f)
+                && unit == LengthUnit.Pixel && (value = ClampMathResult(inner, value, 0f)) >= 0f)
             {
                 px = value;
                 return true;
@@ -4973,55 +5127,37 @@ namespace Velvet
             if (valueStr.Length > 0 && valueStr[valueStr.Length - 1] == '%')
             {
                 unit = LengthUnit.Percent;
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 1),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 1), out value);
             }
             else if (valueStr.EndsWith("rem".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 // 1rem resolves to a fixed 16px (UI Toolkit has no rem unit), so the parsed head is
                 // scaled and emitted as a pixel length rather than carried as a distinct unit.
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 3),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 3), out value);
                 value *= 16f;
             }
             else if (valueStr.EndsWith("px".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
                 unit = LengthUnit.Pixel;
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - 2),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 2), out value);
             }
             else if (TryFindAbsoluteUnit(valueStr, out var unitLength, out var pixelsPerUnit))
             {
-                parsed = float.TryParse(
-                    valueStr.Slice(0, valueStr.Length - unitLength),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value);
+                parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - unitLength), out value);
                 value *= pixelsPerUnit;
             }
             else
             {
                 // A bare number is a length only as 0: the browser rejects the declaration Tailwind writes for
                 // any other.
-                parsed = (float.TryParse(
-                    valueStr,
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out value) && value == 0f)
+                parsed = (TryParseCssFloat(valueStr, out value) && value == 0f)
                     || (StyleLengthExpression.OpensMathFunction(valueStr) && StyleLengthExpression.TryParse(valueStr, out var expression)
                         && expression!.TryFoldConstant(out value, out unit));
             }
 
-            return parsed && float.IsFinite(value);
+            // A unit's factor can carry a literal past the range too.
+            value = Math.Clamp(value, -float.MaxValue, float.MaxValue);
+            return parsed && !float.IsNaN(value);
         }
 
         // CSS's absolute length units at their fixed ratio to a pixel (96 per inch).
@@ -5042,10 +5178,27 @@ namespace Velvet
             return (hint != null ? StyleColorValueParser.HintSelectsNonColour(root, hint) : TailwindDataTypes.IsLength(inner)) && TryParsePixels(inner, out px);
         }
 
+        // A bracketed length only an element can measure (a font-relative or viewport unit), where
+        // TryParseArbitraryPixels reads a pixel length: never a percentage, and never a negative literal unless
+        // allowNegative, nor below zero then.
+        internal static bool TryParseMeasuredPixels(ReadOnlySpan<char> suffix, out StyleLengthExpression? expression,
+            bool allowNegative = false)
+        {
+            expression = null;
+            if (!TryStripBrackets(suffix, 0, out var inner) || !StyleLengthExpression.TryParse(inner, out var parsed)
+                || parsed!.ReadsPercentage || (!allowNegative && !IsMathFunction(inner) && inner.Trim("_ ".AsSpan())[0] == '-'))
+            {
+                return false;
+            }
+            expression = allowNegative ? parsed : parsed.AtLeast(0f);
+            return true;
+        }
+
         // A non-negative pixel length, the grammar TryParseArbitraryPixels reads inside its bracket.
         internal static bool TryParsePixels(ReadOnlySpan<char> inner, out float px)
         {
-            var parsed = TryParseValue(inner, out px, out var unit) && unit == LengthUnit.Pixel && px >= 0f;
+            var parsed = TryParseValue(inner, out px, out var unit) && unit == LengthUnit.Pixel
+                && (px = ClampMathResult(inner, px, 0f)) >= 0f;
             px = parsed ? px : 0f;
             return parsed;
         }
@@ -5097,12 +5250,49 @@ namespace Velvet
             return false;
         }
 
-        // Parses a unitless finite float (used by scale-[..]). A trailing unit is rejected.
+        // Parses a unitless finite float (used by scale-[..]), or a math function coming to a number. A trailing
+        // unit is rejected.
         // Internal so the extracted transform/filter parsers share the one float grammar.
         internal static bool TryParseFloat(ReadOnlySpan<char> valueStr, out float value)
         {
-            var parsed = float.TryParse(valueStr, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
-            return parsed && float.IsFinite(value);
+            if (StyleLengthExpression.OpensMathFunction(valueStr))
+            {
+                return StyleLengthExpression.TryParseNumber(valueStr, out value);
+            }
+            return TryParseCssFloat(valueStr, out value);
+        }
+
+        // A <number> or a <percentage> as a number (50% is 0.5), literal or a math function coming to either: the
+        // grammar scale, opacity and the filter amounts take.
+        internal static bool TryParseNumberOrPercentage(ReadOnlySpan<char> valueStr, out float value)
+        {
+            if (StyleLengthExpression.OpensMathFunction(valueStr))
+            {
+                var parsed = StyleLengthExpression.TryParseNumberOrPercentage(valueStr, out value, out var percent);
+                value = percent ? value / 100f : value;
+                return parsed;
+            }
+            if (valueStr.Length > 1 && valueStr[valueStr.Length - 1] == '%')
+            {
+                var parsed = TryParseCssFloat(valueStr.Slice(0, valueStr.Length - 1), out value);
+                value /= 100f;
+                return parsed;
+            }
+            return TryParseCssFloat(valueStr, out value);
+        }
+
+        // A finite float, where a literal CSS number past a float's range is the largest float of its sign, as
+        // Chromium reads one, whether the parser declined it or returned an infinity; a spelled-out "Infinity" or
+        // "NaN" is no CSS number and is declined.
+        internal static bool TryParseCssFloat(ReadOnlySpan<char> text, out float value)
+        {
+            if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && float.IsFinite(value))
+            {
+                return true;
+            }
+            var end = TailwindDataTypes.NumberEnd(text.ToString(), withExponent: true);
+            value = end > 0 && end == text.Length ? (text[0] == '-' ? -float.MaxValue : float.MaxValue) : 0f;
+            return end > 0 && end == text.Length;
         }
 
         // Parses an aspect ratio (used by aspect-[..]): either a "w/h" fraction or a bare
@@ -5126,11 +5316,15 @@ namespace Velvet
         }
 
         // Parses an angle (used by rotate-[..]) and normalizes it to degrees. Accepts the
-        // deg / rad / grad / turn suffixes in any case; a bare number is degrees, which each caller
-        // narrows to what its CSS property takes (IsUnitlessAngle).
+        // deg / rad / grad / turn suffixes in any case, and a math function coming to an angle; a bare number is
+        // degrees, which each caller narrows to what its CSS property takes (IsUnitlessAngle).
         // Internal so the extracted transform/filter parsers share the one angle grammar.
         internal static bool TryParseAngleDegrees(ReadOnlySpan<char> valueStr, out float degrees)
         {
+            if (StyleLengthExpression.OpensMathFunction(valueStr))
+            {
+                return StyleLengthExpression.TryParseAngle(valueStr, out degrees);
+            }
             degrees = 0f;
 
             var factor = 1f;
@@ -5155,16 +5349,17 @@ namespace Velvet
                 factor = 360f;
             }
 
-            if (!float.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out var raw) || !float.IsFinite(raw))
+            if (!TryParseCssFloat(numeric, out var raw))
             {
                 return false;
             }
 
-            degrees = raw * factor;
+            degrees = Math.Clamp(raw * factor, -float.MaxValue, float.MaxValue);
             return true;
         }
 
         // Whether an angle TryParseAngleDegrees accepted was a bare number, which is never empty.
-        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr) => !char.IsLetter(valueStr[valueStr.Length - 1]);
+        internal static bool IsUnitlessAngle(ReadOnlySpan<char> valueStr)
+            => !char.IsLetter(valueStr[valueStr.Length - 1]) && valueStr[valueStr.Length - 1] != ')';
     }
 }

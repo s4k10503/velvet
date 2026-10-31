@@ -9,14 +9,22 @@ namespace Velvet
         public readonly float Y;
         public readonly bool XReverse;
         public readonly bool YReverse;
+        // A margin each child measures (space-x-[1em]) in place of X or Y; null where that one is in pixels.
+        public readonly StyleLengthExpression? XMeasured;
+        public readonly StyleLengthExpression? YMeasured;
 
-        public SpaceSpec(float x, float y, bool xReverse, bool yReverse)
+        public SpaceSpec(float x, float y, bool xReverse, bool yReverse,
+            StyleLengthExpression? xMeasured = null, StyleLengthExpression? yMeasured = null)
         {
             X = x;
             Y = y;
             XReverse = xReverse;
             YReverse = yReverse;
+            XMeasured = xMeasured;
+            YMeasured = yMeasured;
         }
+
+        public bool IsMeasured => XMeasured != null || YMeasured != null;
     }
 
     // What StyleGapManipulator applies to one container: CSS's column-gap and row-gap (gap-x-* / gap-y-*, both
@@ -30,18 +38,26 @@ namespace Velvet
         public readonly bool HasRowGap;
         public readonly float RowGap;
         public readonly SpaceSpec Space;
+        // A gap the container measures (gap-[1em]) in place of ColumnGap or RowGap; null where it is in pixels.
+        public readonly StyleLengthExpression? ColumnGapMeasured;
+        public readonly StyleLengthExpression? RowGapMeasured;
 
-        public GapSpec(bool hasColumnGap, float columnGap, bool hasRowGap, float rowGap, SpaceSpec space)
+        public GapSpec(bool hasColumnGap, float columnGap, bool hasRowGap, float rowGap, SpaceSpec space,
+            StyleLengthExpression? columnGapMeasured = null, StyleLengthExpression? rowGapMeasured = null)
         {
             HasColumnGap = hasColumnGap;
             ColumnGap = columnGap;
             HasRowGap = hasRowGap;
             RowGap = rowGap;
             Space = space;
+            ColumnGapMeasured = columnGapMeasured;
+            RowGapMeasured = rowGapMeasured;
         }
 
         // Whether this spec writes anything: a space-x-0 / space-y-0 writes no margin.
-        public bool IsActive => HasColumnGap || HasRowGap || Space.X != 0f || Space.Y != 0f;
+        public bool IsActive => HasColumnGap || HasRowGap || Space.X != 0f || Space.Y != 0f || Space.IsMeasured;
+
+        public bool IsMeasured => ColumnGapMeasured != null || RowGapMeasured != null || Space.IsMeasured;
     }
 
     // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
@@ -54,8 +70,13 @@ namespace Velvet
         // cls is a recognized gap or space utility. gap-x-* / space-x-* → horizontal,
         // gap-y-* / space-y-* → vertical, plain gap-* → GapAxis.Auto (follows
         // flex-direction). -space-x-* / -space-y-* are negative, as in Tailwind; a gap has no negative form.
-        public static bool TryParse(string cls, out float gap, out GapAxis axis)
+        public static bool TryParse(string cls, out float gap, out GapAxis axis) => TryParse(cls, out gap, out axis, out _);
+
+        // As above, with the length the element measures where the bracket holds one (gap then 0): the container
+        // for a gap, each child for a space margin.
+        public static bool TryParse(string cls, out float gap, out GapAxis axis, out StyleLengthExpression? measured)
         {
+            measured = null;
             gap = 0f;
             axis = GapAxis.Auto;
             if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
@@ -108,7 +129,14 @@ namespace Velvet
             if (!StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out gap)
                 && !StyleArbitraryValueResolver.TryGetSpacingPx(suffix, out gap))
             {
-                return false;
+                // A space margin takes a negative length, a gap none.
+                if (!StyleArbitraryValueResolver.TryParseMeasuredPixels(suffix.AsSpan(), out measured,
+                        allowNegative: axis != GapAxis.Auto && body.StartsWith("space-", StringComparison.Ordinal)))
+                {
+                    return false;
+                }
+                measured = negate ? measured!.Negated() : measured;
+                return true;
             }
             if (negate)
             {
@@ -196,26 +224,33 @@ namespace Velvet
 
         // The last space-x-* and the last space-y-* value in classNames, each 0 when absent.
         public static void ExtractSpace(string[] classNames, out float spaceX, out float spaceY)
+            => ExtractSpace(classNames, out spaceX, out spaceY, out _, out _);
+
+        // As above, with the margin each child measures where the last class of an axis holds one.
+        private static void ExtractSpace(string[] classNames, out float spaceX, out float spaceY,
+            out StyleLengthExpression? measuredX, out StyleLengthExpression? measuredY)
         {
             spaceX = 0f;
             spaceY = 0f;
+            measuredX = null;
+            measuredY = null;
             foreach (var cls in classNames)
             {
                 if (!IsSpaceToken(cls))
                 {
                     continue;
                 }
-                if (!TryParse(cls, out var value, out var axis))
+                if (!TryParse(cls, out var value, out var axis, out var measured))
                 {
                     continue;
                 }
                 if (axis == GapAxis.Horizontal)
                 {
-                    spaceX = value;
+                    (spaceX, measuredX) = (value, measured);
                 }
                 else
                 {
-                    spaceY = value;
+                    (spaceY, measuredY) = (value, measured);
                 }
             }
         }
@@ -223,17 +258,18 @@ namespace Velvet
         // The space margins and markers in classNames.
         public static SpaceSpec ExtractSpaceSpec(string[] classNames)
         {
-            ExtractSpace(classNames, out var spaceX, out var spaceY);
+            ExtractSpace(classNames, out var spaceX, out var spaceY, out var measuredX, out var measuredY);
             ExtractReverseMarkers(classNames, out var xReverse, out var yReverse);
-            return new SpaceSpec(spaceX, spaceY, xReverse, yReverse);
+            return new SpaceSpec(spaceX, spaceY, xReverse, yReverse, measuredX, measuredY);
         }
 
         // The whole spec StyleGapManipulator runs on.
         public static GapSpec Extract(string[] classNames)
         {
             ExtractGapAxes(classNames, out var hasColumnGap, out var hasRowGap);
-            StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap);
-            return new GapSpec(hasColumnGap, columnGap, hasRowGap, rowGap, ExtractSpaceSpec(classNames));
+            StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap, out var columnMeasured, out var rowMeasured);
+            return new GapSpec(hasColumnGap, columnGap, hasRowGap, rowGap, ExtractSpaceSpec(classNames),
+                columnMeasured, rowMeasured);
         }
     }
 }

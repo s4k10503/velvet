@@ -129,9 +129,16 @@ namespace Velvet
         // A grid routes its gap through StyleGridManipulator, so the values are read here rather than left to
         // the (suppressed) gap manipulator. Defaults to 0 when no gap class is present.
         public static void ExtractGaps(string[] classNames, out float columnGap, out float rowGap)
+            => ExtractGaps(classNames, out columnGap, out rowGap, out _, out _);
+
+        // As above, with the gap the container measures where the winning class holds one.
+        public static void ExtractGaps(string[] classNames, out float columnGap, out float rowGap,
+            out StyleLengthExpression? columnMeasured, out StyleLengthExpression? rowMeasured)
         {
             columnGap = 0f;
             rowGap = 0f;
+            columnMeasured = null;
+            rowMeasured = null;
             var columnImportant = false;
             var rowImportant = false;
             if (classNames == null)
@@ -142,7 +149,7 @@ namespace Velvet
             foreach (var cls in classNames)
             {
                 var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
-                if (!StyleGapClass.TryParse(cls, out var g, out var axis))
+                if (!StyleGapClass.TryParse(cls, out var g, out var axis, out var measured))
                 {
                     continue;
                 }
@@ -153,12 +160,12 @@ namespace Velvet
                 }
                 if (axis != GapAxis.Vertical && (important || !columnImportant))
                 {
-                    columnGap = g;
+                    (columnGap, columnMeasured) = (g, measured);
                     columnImportant = important;
                 }
                 if (axis != GapAxis.Horizontal && (important || !rowImportant))
                 {
-                    rowGap = g;
+                    (rowGap, rowMeasured) = (g, measured);
                     rowImportant = important;
                 }
             }
