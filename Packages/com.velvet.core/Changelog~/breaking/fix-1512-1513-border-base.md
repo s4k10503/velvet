@@ -1,12 +1,14 @@
 ### Fixed
 
-- A border-width utility (`border`, `border-2`, `border-x-4`, `border-[3px]`, under any variant) now draws in the
-  element's text colour, as Tailwind v4's preflight `border-color: currentcolor` does, and follows the text colour as it
-  changes. It gives way, side by side, to any rule of a stylesheet that is not a control theme's that sets that side's
-  border colour: a `border-*` colour utility or variant, a USS rule of any selector, `:hover` and
-  `border-color: transparent` included, and a colour your code writes inline. The children of a `divide-*` parent and an
-  element given a border width by a USS rule draw in the text colour too. A control theme's border does not hold it back, as preflight outranks a browser's
-  default styles.
+- A border-width utility (`border`, `border-2`, `border-x-4`, `border-s-2`, `border-[3px]`, under any variant) now draws
+  in the element's text colour, as Tailwind v4's preflight `border-color: currentcolor` does, and follows the text colour
+  as it changes. So do the children of a `divide-*` parent (dashed dividers included), the target of a child-scoped width
+  (`*:border`, a field's input box), and an element a USS rule gives a border width when the rule names one of its
+  classes or its name. It gives way, side by side, to any rule of a stylesheet that is not a control theme's that sets
+  that side's border colour (a `border-*` colour utility or variant, a USS rule of any selector, `:hover` and
+  `border-color: transparent` included) and to a colour your code writes inline, unless that is the colour Velvet last
+  wrote to the side. A control theme's border does not hold it back, as preflight outranks a browser's default styles.
+  A USS rule that selects an element by its type alone, and a width written inline by code, give no preflight colour.
 - Bundled border widths (`border`, `border-2`, `border-x`, `border-t-4`, …) are snapped to device pixels at a panel
   scale that is not a whole number, as a browser snaps them, and again when the scale changes: `border` is two thirds of a
   point at 1.5 device pixels a point. A stylesheet that follows the bundled utilities on the root they are attached to

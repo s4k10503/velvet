@@ -459,6 +459,9 @@ namespace Velvet
         private const string MatchedRulesExtractorType = "UnityEngine.UIElements.MatchedRulesExtractor";
         private const string SelectorMatchRecordType = "UnityEngine.UIElements.StyleSheets.SelectorMatchRecord";
 
+        internal static readonly EngineMember MatchedRulesExtractorConstruct = Constructor(UIElements,
+            MatchedRulesExtractorType, "System.Func`2[UnityEngine.UIElements.StyleSheet,System.String]");
+
         internal static readonly EngineMember MatchedRulesExtractorFind =
             Method(UIElements, MatchedRulesExtractorType, "FindMatchingRules", "System.Void", VisualElementType);
 
@@ -573,6 +576,10 @@ namespace Velvet
         private static string Signature(string returnType, IEnumerable<string> parameterTypes)
             => $"{returnType}({string.Join(",", parameterTypes)})";
 
+        // A constructor taking parameters, for a type that has no parameterless one (ConstructedType).
+        private static EngineMember Constructor(Assembly assembly, string typeName, params string[] parameterTypes)
+            => new(assembly, typeName, MemberTypes.Constructor, typeName, Signature("System.Void", parameterTypes));
+
         private static EngineMember ConstructedType(Assembly assembly, string typeName, string baseType)
             => new(assembly, typeName, MemberTypes.TypeInfo, typeName, baseType);
 
@@ -591,6 +598,8 @@ namespace Velvet
 
         internal MethodInfo? ResolveMethod() => Resolve() as MethodInfo;
 
+        internal ConstructorInfo? ResolveConstructor() => Resolve() as ConstructorInfo;
+
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
         // Null rather than a throw when the member is missing or has changed shape, so a later engine leaves the
@@ -603,6 +612,11 @@ namespace Velvet
             if (Kind == MemberTypes.TypeInfo)
             {
                 return MatchesType(type.BaseType, Shape) && type.GetConstructor(Type.EmptyTypes) != null ? type : null;
+            }
+
+            if (Kind == MemberTypes.Constructor)
+            {
+                return type.GetConstructors(OwnMembers).FirstOrDefault(constructor => MatchesParameters(constructor.GetParameters(), Shape));
             }
 
             if (Kind == MemberTypes.Method)
@@ -620,6 +634,15 @@ namespace Velvet
                    && (!Writable || property.SetMethod != null)
                 ? property
                 : null;
+        }
+
+        private static bool MatchesParameters(ParameterInfo[] actual, string shape)
+        {
+            var opening = shape.IndexOf('(');
+            if (opening < 0 || !shape.EndsWith(")", StringComparison.Ordinal)) return false;
+            var expected = SplitShapes(shape.Substring(opening + 1, shape.Length - opening - 2));
+            return actual.Length == expected.Length
+                && actual.Select((parameter, index) => MatchesType(parameter.ParameterType, expected[index])).All(matches => matches);
         }
 
         private static bool MatchesMethod(MethodInfo method, string shape)

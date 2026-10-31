@@ -281,12 +281,12 @@ namespace Velvet
             if (binding.Divider is { } divider && divides)
             {
                 return StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot, binding.DividerImportant) is { } over
-                    ? over.Color
+                    ? StyleArbitraryValueResolver.ColorOf(binding.Child, over)
                     : divider;
             }
             if (StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot) is { } layered)
             {
-                return layered.Color;
+                return StyleArbitraryValueResolver.ColorOf(binding.Child, layered);
             }
             return RulesColor(binding.Child, binding.Edge);
         }

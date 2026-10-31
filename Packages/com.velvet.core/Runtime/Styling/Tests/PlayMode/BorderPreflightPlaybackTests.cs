@@ -65,6 +65,75 @@ namespace Velvet.Tests
             return count;
         }
 
+        // A panel with the bundled utilities, and one bordered element whose text colour hover changes on a transition.
+        private IEnumerator MountTransitioning()
+        {
+            _host = new RenderTexturePanelHost("BorderPreflight", Size, Size, clear: true);
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            yield return Frames(3);
+            _mounted = V.Mount(_host.Root, V.Div(name: "button",
+                className: "w-[60px] h-[30px] border transition-colors text-blue-500 hover:text-red-500"));
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+        }
+
+        private static IEnumerator Frames(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                yield return null;
+            }
+        }
+
+        private static void Hover(VisualElement element, bool on)
+        {
+            var property = EngineMember.PseudoStates.ResolveProperty();
+            var flag = Convert.ToInt32(Enum.Parse(property.PropertyType, "Hover"));
+            var current = Convert.ToInt32(property.GetValue(element));
+            property.SetValue(element, Enum.ToObject(property.PropertyType, on ? current | flag : current & ~flag));
+            if (on)
+            {
+                using var over = PointerOverEvent.GetPooled();
+                element.SimulateEvent(over);
+            }
+            else
+            {
+                using var leave = PointerOutEvent.GetPooled();
+                element.SimulateEvent(leave);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABorderedElementWhoseTextColourTransitionsOnHover_When_TheTransitionEnds_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            yield return MountTransitioning();
+            var button = _host.Root.Q<VisualElement>("button");
+
+            // Act
+            Hover(button, true);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Assert
+            Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ABorderedElementWhoseHoverTransitionEnded_When_ThePointerLeaves_Then_ItsBorderFollowsTheTextColourBack()
+        {
+            // Arrange
+            yield return MountTransitioning();
+            var button = _host.Root.Q<VisualElement>("button");
+            Hover(button, true);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Act
+            Hover(button, false);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
+
+            // Assert
+            Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
+        }
+
         // The middle third of the left band, two pixels in from each edge of it.
         private static Rect LeftBand(Rect box)
             => new(box.xMin + 2f, box.yMin + (box.height / 3f), BandWidth - 4f, box.height / 3f);

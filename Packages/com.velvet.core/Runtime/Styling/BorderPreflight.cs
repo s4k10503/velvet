@@ -43,6 +43,11 @@ namespace Velvet
             Classes = 1,
             Divided = 2,
             Rule = 4,
+            // Listening only: a rule might give the element a width later, which the matcher is asked about.
+            Candidate = 8,
+            // A width a child-scoped variant puts on this element (*:border, a field's input box).
+            Scoped = 16,
+            Layered = Classes | Divided | Rule | Scoped,
         }
 
         private sealed class State
@@ -59,6 +64,7 @@ namespace Velvet
 
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
 
+        private static readonly ConstructorInfo? s_construct = EngineMember.MatchedRulesExtractorConstruct.ResolveConstructor();
         private static readonly MethodInfo? s_find = EngineMember.MatchedRulesExtractorFind.ResolveMethod();
         private static readonly MethodInfo? s_clear = EngineMember.MatchedRulesExtractorClear.ResolveMethod();
         private static readonly FieldInfo? s_records = EngineMember.MatchedRulesExtractorRecords.ResolveField();
@@ -75,21 +81,29 @@ namespace Velvet
 
         private static object? CreateExtractor()
         {
-            if (s_find == null || s_clear == null || s_records == null || s_recordSheet == null || s_recordSelector == null
+            if (s_construct == null || s_find == null || s_clear == null || s_records == null || s_recordSheet == null || s_recordSelector == null
                 || s_rule == null || s_isDefault == null || s_properties == null || s_propertyName == null)
             {
                 return null;
             }
-            return Activator.CreateInstance(s_find.DeclaringType!, new Func<StyleSheet, string>(_ => string.Empty));
+            try
+            {
+                return s_construct.Invoke(new object[] { new Func<StyleSheet, string>(_ => string.Empty) });
+            }
+            catch (Exception exception) when (exception is TargetInvocationException or MemberAccessException)
+            {
+                return null;
+            }
         }
 
+        // Nothing is written here: the text colour a layer reads is the element's own only once it has had its first
+        // style pass, and the restyle event that follows the attach is what asks.
         private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onAttached = (_, element) =>
         {
             if (s_states.TryGetValue(element, out var state) && (state.Reasons & Reasons.Classes) != 0)
             {
                 SnappedBorderSheets.FollowRootOf(element);
             }
-            Resync(element, ask: true);
         };
 
         private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached =
@@ -118,7 +132,7 @@ namespace Velvet
             {
                 return;
             }
-            if (HasBorderWidth(classNames))
+            if (HasOwnBorderWidth(element, classNames))
             {
                 if (!Add(element, Reasons.Classes) && classesChanged)
                 {
@@ -127,11 +141,15 @@ namespace Velvet
                 return;
             }
             Remove(element, Reasons.Classes);
-            if (!classesChanged || !IsRuleCandidate(element, classNames))
+            if (!classesChanged)
             {
                 return;
             }
-            if (element.panel == null)
+            if (!IsRuleCandidate(element, classNames))
+            {
+                Remove(element, Reasons.Candidate);
+            }
+            else if (element.panel == null)
             {
                 element.RegisterCallbackOnce(s_onCandidateAttached, element);
             }
@@ -140,6 +158,56 @@ namespace Velvet
                 LookForRule(element);
             }
         }
+
+        // The children a child-scoped variant gives a border width.
+        internal static void SetScoped(VisualElement child, bool widthGiven)
+        {
+            if (s_extractor == null)
+            {
+                return;
+            }
+            if (widthGiven)
+            {
+                Add(child, Reasons.Scoped);
+            }
+            else
+            {
+                Remove(child, Reasons.Scoped);
+            }
+        }
+
+        // Records the inline colours of element's sides as Velvet's own, after the resolver wrote one.
+        internal static void NoteWritten(VisualElement element)
+        {
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                return;
+            }
+            for (var i = 0; i < s_sideProperties.Length; i++)
+            {
+                var inline = InlineColor(element, i);
+                if (inline.keyword == StyleKeyword.Undefined)
+                {
+                    state.Seen[i] = inline.value;
+                }
+            }
+        }
+
+        // Whether the inline colour on edge of owner is the preflight layer's, which no other layer outranks.
+        internal static bool Writes(VisualElement owner, DivideEdge edge)
+        {
+            var property = edge switch
+            {
+                DivideEdge.Top => ArbitraryProperty.BorderTopColor,
+                DivideEdge.Right => ArbitraryProperty.BorderRightColor,
+                DivideEdge.Bottom => ArbitraryProperty.BorderBottomColor,
+                _ => ArbitraryProperty.BorderLeftColor,
+            };
+            return StyleArbitraryValueResolver.TryRestingLayer(owner, property, s_noSwap, out _, out var key)
+                && key == StyleLayerPriority.Preflight;
+        }
+
+        private static readonly System.Collections.Generic.HashSet<ArbitraryProperty> s_noSwap = new();
 
         // The child of a divide, which draws the divider as its border on one edge and so has a width to draw a colour on.
         internal static void SetDivided(VisualElement child, bool divided)
@@ -222,10 +290,15 @@ namespace Velvet
             {
                 Release(element);
             }
+            else if ((state.Reasons & Reasons.Layered) == 0)
+            {
+                DropLayers(element, state);
+            }
         }
 
-        // An element that may be given a width by a rule of a stylesheet: one with a class that is not a Velvet
-        // utility, or a name an id selector can match. Elements with neither are not asked.
+        // An element that may be given a width by a rule of a stylesheet: one with a class that no bundled utility
+        // stylesheet declares, or a name an id selector can match. Which of those a stylesheet does is asked when it
+        // attaches (DeclaresWidth); this keeps an element whose classes are all in the bundled stylesheets from waiting for that.
         private static bool IsRuleCandidate(VisualElement element, string[] classNames)
         {
             if (!string.IsNullOrEmpty(element.name))
@@ -242,16 +315,132 @@ namespace Velvet
             return false;
         }
 
+        // Starts listening on an attached candidate when a stylesheet reaching it has a rule setting a border width
+        // that names one of its classes or its name.
         private static void LookForRule(VisualElement element)
         {
             if (element.panel == null)
             {
                 return;
             }
-            var matched = Matches(element);
-            if (matched.SetsWidth)
+            if (DeclaresWidth(element))
             {
-                Add(element, Reasons.Rule);
+                Add(element, Reasons.Candidate);
+            }
+            else
+            {
+                Remove(element, Reasons.Candidate);
+            }
+        }
+
+        private static bool DeclaresWidth(VisualElement element)
+        {
+            for (var root = element; root != null; root = root.hierarchy.parent)
+            {
+                for (var i = 0; i < root.styleSheets.count; i++)
+                {
+                    var names = WidthNames.Of(root.styleSheets[i]);
+                    if (names.Ids.Contains(element.name))
+                    {
+                        return true;
+                    }
+                    foreach (var cls in element.GetClasses())
+                    {
+                        if (names.Classes.Contains(cls))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        // The classes and ids the selectors of a stylesheet's border-width rules name, not counting the bundled
+        // utilities' own, which a class token already decides.
+        private sealed class WidthNames
+        {
+            public readonly System.Collections.Generic.HashSet<string> Classes = new();
+            public readonly System.Collections.Generic.HashSet<string> Ids = new();
+
+            private static readonly ConditionalWeakTable<StyleSheet, WidthNames> s_names = new();
+
+            public static WidthNames Of(StyleSheet sheet) => s_names.GetValue(sheet, Read);
+
+            private static WidthNames Read(StyleSheet sheet)
+            {
+                var names = new WidthNames();
+                names.Add(sheet);
+                return names;
+            }
+
+            private static readonly PropertyInfo? s_rules = EngineMember.StyleSheetRules.ResolveProperty();
+            private static readonly PropertyInfo? s_ruleSelectors = EngineMember.StyleRuleComplexSelectors.ResolveProperty();
+            private static readonly PropertyInfo? s_simple = EngineMember.StyleComplexSelectorSelectors.ResolveProperty();
+            private static readonly PropertyInfo? s_parts = EngineMember.StyleSelectorParts.ResolveProperty();
+            private static readonly PropertyInfo? s_partValue = EngineMember.StyleSelectorPartValue.ResolveProperty();
+            private static readonly PropertyInfo? s_partType = EngineMember.StyleSelectorPartType.ResolveProperty();
+
+            private void Add(StyleSheet sheet)
+            {
+                if (VelvetStyleUtilities.IsUtilities(sheet) || SnappedBorderSheets.IsSnapped(sheet) || s_rules == null
+                    || s_ruleSelectors == null || s_simple == null || s_parts == null || s_partValue == null
+                    || s_partType == null)
+                {
+                    return;
+                }
+                foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
+                {
+                    Add(imported);
+                }
+                foreach (var rule in (Array)s_rules.GetValue(sheet))
+                {
+                    if (SetsWidth(rule))
+                    {
+                        AddNames(rule);
+                    }
+                }
+            }
+
+            private static bool SetsWidth(object rule)
+            {
+                foreach (var property in (Array)s_properties!.GetValue(rule))
+                {
+                    if (IsWidth((string)s_propertyName!.GetValue(property)))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            private void AddNames(object rule)
+            {
+                foreach (var complex in (Array)s_ruleSelectors!.GetValue(rule))
+                {
+                    foreach (var simple in (Array)s_simple!.GetValue(complex))
+                    {
+                        AddParts((Array)s_parts!.GetValue(simple));
+                    }
+                }
+            }
+
+            private void AddParts(Array parts)
+            {
+                foreach (var part in parts)
+                {
+                    var kind = Convert.ToInt32(s_partType!.GetValue(part));
+                    var value = (string)s_partValue!.GetValue(part);
+                    // StyleSelectorType.Class and StyleSelectorType.ID.
+                    if (kind == 3)
+                    {
+                        Classes.Add(value);
+                    }
+                    else if (kind == 6)
+                    {
+                        Ids.Add(value);
+                    }
+                }
             }
         }
 
@@ -274,16 +463,19 @@ namespace Velvet
                         SnappedBorderSheets.FollowRootOf(element);
                     }
                     state.Reasons = matched.SetsWidth ? state.Reasons | Reasons.Rule : state.Reasons & ~Reasons.Rule;
+                }
+                if ((state.Reasons & Reasons.Layered) == 0)
+                {
+                    DropLayers(element, state);
                     if (state.Reasons == Reasons.None)
                     {
-                        Release(element);
-                        return;
+                        Forget(element);
                     }
+                    return;
                 }
-                var resolved = element.resolvedStyle.color;
                 for (var i = 0; i < s_sideProperties.Length; i++)
                 {
-                    SyncSide(element, state, i, resolved);
+                    SyncSide(element, state, i);
                 }
             }
             finally
@@ -292,37 +484,49 @@ namespace Velvet
             }
         }
 
-        private static void SyncSide(VisualElement element, State state, int index, Color resolved)
+        private static void DropLayers(VisualElement element, State state)
+        {
+            for (var i = 0; i < s_sideProperties.Length; i++)
+            {
+                if ((state.Held & (Sides)(1 << i)) != 0)
+                {
+                    StyleArbitraryValueResolver.Clear(element, s_sideProperties[i], StyleLayerPriority.Preflight);
+                }
+            }
+            state.Held = Sides.None;
+        }
+
+        private static void SyncSide(VisualElement element, State state, int index)
         {
             var side = (Sides)(1 << index);
             var inline = InlineColor(element, index);
-            var set = inline.keyword == StyleKeyword.Undefined;
+            // A silhouette face's or a dashed divider's sentinel holds no colour of its own.
+            var foreign = inline.keyword == StyleKeyword.Undefined && !SilhouetteFace.IsSentinel(inline.value);
             if ((state.Held & side) != 0)
             {
-                if (set && inline.value != resolved && inline.value != state.Seen[index])
+                // Every write Velvet makes to the slot is recorded (NoteWritten), so a different value is another writer's.
+                if (foreign && inline.value != state.Seen[index])
                 {
-                    // Something else wrote the side since: its value stands, and the layer lets go without writing.
                     StyleArbitraryValueResolver.Withdraw(element, s_sideProperties[index], StyleLayerPriority.Preflight);
                     state.Held &= ~side;
                     return;
                 }
-                if ((state.Claimed & side) == 0)
+                if ((state.Claimed & side) != 0)
                 {
-                    state.Seen[index] = set ? inline.value : state.Seen[index];
-                    return;
+                    StyleArbitraryValueResolver.Clear(element, s_sideProperties[index], StyleLayerPriority.Preflight);
+                    state.Held &= ~side;
                 }
-                StyleArbitraryValueResolver.Clear(element, s_sideProperties[index], StyleLayerPriority.Preflight);
-                state.Held &= ~side;
                 return;
             }
-            if ((state.Claimed & side) != 0 || set)
+            if ((state.Claimed & side) != 0 || foreign)
             {
                 return;
             }
             StyleArbitraryValueResolver.Apply(element,
                 new ArbitraryStyle(s_sideProperties[index], Color.white, ColorReference.Current), StyleLayerPriority.Preflight);
             state.Held |= side;
-            state.Seen[index] = InlineColor(element, index).value;
+            // A face that took the slot's colour before the layer wrote it takes the layer's.
+            SilhouetteFaceStash.Retake(element);
         }
 
         private static StyleColor InlineColor(VisualElement element, int index) => index switch
@@ -381,7 +585,24 @@ namespace Velvet
             _ => Sides.None,
         };
 
-        private static bool HasBorderWidth(string[] classNames)
+        // The element's own classes with a border width, not counting those a child-scoped variant gives to a child nor
+        // those a field's surface takes for its input box.
+        private static bool HasOwnBorderWidth(VisualElement element, string[] classNames)
+        {
+            var control = StyleInputBoxSurface.IsControl(element);
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                var token = classNames[i];
+                if (IsBorderWidthToken(token) && !StyleChildVariantClass.IsChildVariant(token)
+                    && !(control && StyleInputBoxSurface.IsSurfaceToken(token)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        internal static bool HasBorderWidth(string[] classNames)
         {
             for (var i = 0; i < classNames.Length; i++)
             {
@@ -393,7 +614,7 @@ namespace Velvet
             return false;
         }
 
-        // A bundled or bare-number width (border, border-2, border-x-4) or a bracketed one (border-[3px],
+        // A bundled or bare-number width (border, border-2, border-x-4, border-s-2) or a bracketed one (border-[3px],
         // border-t-[0.5rem]), under any variants and the important marker. A zero width draws nothing.
         internal static bool IsBorderWidthToken(string token)
         {
@@ -418,9 +639,10 @@ namespace Velvet
                 return false;
             }
             rest = rest.Slice(1);
-            if (rest.Length > 0 && "xytrbl".IndexOf(rest[0]) >= 0 && (rest.Length == 1 || rest[1] == '-'))
+            var side = SideLength(rest);
+            if (side > 0)
             {
-                rest = rest.Length == 1 ? ReadOnlySpan<char>.Empty : rest.Slice(2);
+                rest = rest.Length == side ? ReadOnlySpan<char>.Empty : rest.Slice(side + 1);
                 if (rest.Length == 0)
                 {
                     return true;
@@ -432,6 +654,22 @@ namespace Velvet
             }
             return IsNonZeroNumber(rest);
         }
+
+        // The length of the side suffix rest begins with (x y t r b l, or the logical s e bs be), or 0.
+        private static int SideLength(ReadOnlySpan<char> rest)
+        {
+            foreach (var side in s_sideSuffixes)
+            {
+                if (rest.StartsWith(side.AsSpan(), StringComparison.Ordinal)
+                    && (rest.Length == side.Length || rest[side.Length] == '-'))
+                {
+                    return side.Length;
+                }
+            }
+            return 0;
+        }
+
+        private static readonly string[] s_sideSuffixes = { "bs", "be", "x", "y", "t", "r", "b", "l", "s", "e" };
 
         private static bool IsWidth(ArbitraryProperty property)
             => property is ArbitraryProperty.BorderWidth or ArbitraryProperty.BorderTopWidth

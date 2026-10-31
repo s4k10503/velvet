@@ -94,12 +94,13 @@ namespace Velvet.Tests
                             "field" when type.GetField(name, Declared) != null => MemberTypes.Field,
                             "property" when type.GetProperty(name, Declared) != null => MemberTypes.Property,
                             "method" when name == ".ctor" && type.GetConstructor(Type.EmptyTypes) != null => MemberTypes.TypeInfo,
+                            "method" when name == ".ctor" && type.GetConstructors(Declared).Length > 0 => MemberTypes.Constructor,
                             "method" when name != ".ctor" && type.GetMethods(Declared).Any(m => m.Name == name) => MemberTypes.Method,
                             _ => (MemberTypes?)null,
                         };
                         if (kind is { } found)
                         {
-                            kept.Add(Key(assemblyName, type.FullName, found, found == MemberTypes.TypeInfo ? type.FullName : name));
+                            kept.Add(Key(assemblyName, type.FullName, found, found is MemberTypes.TypeInfo or MemberTypes.Constructor ? type.FullName : name));
                         }
                     }
                 }

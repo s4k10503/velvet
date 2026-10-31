@@ -224,6 +224,7 @@ namespace Velvet
             {
                 StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this,
                     _declarations);
+                BorderPreflight.SetScoped(child, on && BorderPreflight.HasBorderWidth(_payloads));
                 return;
             }
 
@@ -241,6 +242,7 @@ namespace Velvet
             }
             StyleVariantPayload.Apply(child, kept.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
                 keptDeclarations.ToArray());
+            BorderPreflight.SetScoped(child, on && BorderPreflight.HasBorderWidth(kept.ToArray()));
         }
 
         // Whether the container is a composite control that redirects nothing, so that what it holds are the parts
@@ -270,6 +272,7 @@ namespace Velvet
             {
                 StyleVariantPayload.Apply(part, scoped.ToArray(), on, StyleLayerPriority.ChildVariant, _ctx, this,
                     scopedDeclarations.ToArray());
+                BorderPreflight.SetScoped(part, on && BorderPreflight.HasBorderWidth(scoped.ToArray()));
             }
         }
 

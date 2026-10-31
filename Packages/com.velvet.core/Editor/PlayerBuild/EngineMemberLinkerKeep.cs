@@ -47,7 +47,7 @@ namespace Velvet.Editor
 
         private static XElement Keep(EngineMember member)
         {
-            if (member.Kind == MemberTypes.TypeInfo) return new XElement("method", new XAttribute("name", ".ctor"));
+            if (member.Kind == MemberTypes.TypeInfo || member.Kind == MemberTypes.Constructor) return new XElement("method", new XAttribute("name", ".ctor"));
             // By name, which keeps every overload of it: the linker's signature form spells generic and nested types
             // differently from reflection, and a second spelling of the signature would be one more thing to drift.
             if (member.Kind == MemberTypes.Method) return new XElement("method", new XAttribute("name", member.Name));

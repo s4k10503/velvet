@@ -14,7 +14,7 @@ namespace Velvet
     // the same single-class rules in the same order with each width snapped (StyleRelativeLengths.SnapToDevicePixels).
     // A rule there has the selector and the specificity of the bundled rule it snaps, in the bundled order and later in
     // the cascade, so the bundled width classes rank among themselves as they do unsnapped, and a class a variant
-    // toggles is snapped the same; only the stylesheets after it outrank both. The sheet is followed through the
+    // toggles is snapped the same; a rule of higher specificity, or of equal specificity in a stylesheet after it, outranks both. The sheet is followed through the
     // panel's scale by PanelScaleWatch. SnappedBorderSheetTests pins the rules against _borders.uss.
     internal static class SnappedBorderSheets
     {

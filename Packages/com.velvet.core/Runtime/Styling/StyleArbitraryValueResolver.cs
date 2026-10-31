@@ -1728,6 +1728,10 @@ namespace Velvet
             return true;
         }
 
+        // The colour a layer comes to on element: its reference read now, or the colour it carries.
+        internal static Color ColorOf(VisualElement element, in ArbitraryStyle layer)
+            => layer.Reference != ColorReference.None && TryReferencedColor(element, layer, 0, out var read) ? read : layer.Color;
+
         private static bool IsBorderColor(ArbitraryProperty property)
             => property != ArbitraryProperty.TextColor && property != ArbitraryProperty.BackgroundColor;
 
@@ -3699,6 +3703,15 @@ namespace Velvet
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
         // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            ResolveAndApplyCore(element, property, map);
+            if (property >= ArbitraryProperty.BorderColor && property <= ArbitraryProperty.BorderBlockEndColor)
+            {
+                BorderPreflight.NoteWritten(element);
+            }
+        }
+
+        private static void ResolveAndApplyCore(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
             if (!IsFilter(property) && property != ArbitraryProperty.FilterCustom
                 && TryWinningLayer(map, property, out var measured) && measured.Expression != null)

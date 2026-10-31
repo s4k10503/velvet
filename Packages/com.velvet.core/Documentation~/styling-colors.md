@@ -81,15 +81,18 @@ The functions follow CSS Color 4:
   an `inherit` there passes on. Both follow their source as it changes, through a transition included: an element reading one through `text-`, `bg-` or `border-`, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
   cannot hold.
 - **A border width draws in the text colour** unless a rule says otherwise, as Tailwind v4's preflight
-  `border-color: currentcolor` does: `border`, `border-2`, `border-t-4`, `border-[3px]` (under any variant) on an
-  element, a `Label` among them, the children of a `divide-*` parent, and an element given a border width by a rule of
-  a stylesheet of your own (looked for on an element with a class that is not a Velvet utility, or a name) draw a border
-  in its text colour and follow it. A rule of a stylesheet that is not a control theme's that sets a side's border colour
-  takes that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as
+  `border-color: currentcolor` does. The element carries a border-width utility (`border`, `border-2`, `border-t-4`,
+  `border-s-2`, `border-[3px]`, under any variant), is given one by a child-scoped variant (`*:border`, or `border` on a
+  field, which goes to its input box), is a child of a `divide-*` parent (a dashed divider's dashes included), or is
+  given one by a rule of a stylesheet of your own that names one of its classes or its name, in a stylesheet reaching
+  it when it attaches or its classes change; the rule is then followed as pseudo-states and ancestors change. A rule that
+  selects the element by its type alone, and a width your code writes inline, give it no preflight colour. The border
+  follows the text colour. A rule of a stylesheet that is not a control theme's that sets a side's border colour takes
+  that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as
   `hover:border-blue-500`, and your own USS class, id, type, descendant or `:hover` rule. So does a colour your code
-  writes inline (`element.style.borderTopColor`), as an inline style outranks preflight. A control theme's rule does not,
-  as preflight outranks a browser's default styles. The colour is written to the element inline below every other
-  Velvet layer, and is read again when its classes, its pseudo-state or the stylesheets reaching it change.
+  writes inline (`element.style.borderTopColor`) unless it is the colour Velvet last wrote to that side. A control
+  theme's rule does not take a side, as preflight outranks a browser's default styles. The colour is written to the
+  element inline below every other Velvet layer.
 
 ## Where Velvet differs from CSS
 

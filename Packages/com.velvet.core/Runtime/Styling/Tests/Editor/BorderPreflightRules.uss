@@ -17,3 +17,7 @@
 .pf-plain { background-color: rgb(1, 2, 3); }
 
 #pf-width-id { border-top-width: 1px; }
+
+.pf-hover-width:hover { border-width: 2px; }
+
+.pf-open .pf-item { border-bottom-width: 1px; }

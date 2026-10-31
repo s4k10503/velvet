@@ -17,10 +17,10 @@ namespace Velvet.Tests
 
         private static IEnumerable<TestCaseData> Snapped()
             => SnappedBorderSheets.Rules().Select(rule => new TestCaseData(rule.Class, rule.Pixels, rule.Properties)
-                .SetName($"Given_TheSnappedRuleOf_{rule.Class}_When_TheClassIsMountedUnsnapped_Then_ItWritesTheSnappedRulesSidesAtItsWidth"));
+                .SetName($"Given_TheSnappedRuleOf_{rule.Class}_When_TheClassIsMounted_Then_ItWritesTheSnappedRulesSidesAtItsWidth"));
 
         [TestCaseSource(nameof(Snapped))]
-        public void Given_TheSnappedRuleOfABundledClass_When_TheClassIsMountedUnsnapped_Then_ItWritesTheSnappedRulesSidesAtItsWidth(
+        public void Given_TheSnappedRuleOfABundledClass_When_TheClassIsMounted_Then_ItWritesTheSnappedRulesSidesAtItsWidth(
             string cls, int pixels, string[] properties)
         {
             // Arrange
@@ -33,8 +33,11 @@ namespace Velvet.Tests
             var widths = new[] { style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth };
 
             // Assert
+            // The editor's own display scale decides whether the snapped sheet follows the bundled one here, so the
+            // widths are the bundled ones as that scale snaps them.
+            var scale = box.panel.scaledPixelsPerPoint;
             var expected = new[] { "border-top-width", "border-right-width", "border-bottom-width", "border-left-width" }
-                .Select(side => properties.Contains(side) ? (float)pixels : 0f).ToArray();
+                .Select(side => properties.Contains(side) ? StyleRelativeLengths.SnapToDevicePixels(pixels, scale) : 0f).ToArray();
             Assert.That(widths, Is.EqualTo(expected));
         }
 
