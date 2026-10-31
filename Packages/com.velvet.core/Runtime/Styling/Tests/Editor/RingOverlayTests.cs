@@ -43,6 +43,16 @@ namespace Velvet.Tests
                 : null;
         }
 
+        // The outline's measured width, NaN while its band is hidden or there is no binding: the band shows only
+        // where a placement acted on the measured spec.
+        private static float ShownOutlineWidth(VisualElement element)
+        {
+            var binding = RingOverlay.TryGet(element);
+            return binding != null && binding.OutlineElement.style.display.value == DisplayStyle.Flex
+                ? binding.Spec.Outline.Width
+                : float.NaN;
+        }
+
         // The ring's band itself, a child of the overlay that covers the element's box.
         private static VisualElement RingBandOf(VisualElement element)
             => BandFor(element).Q<VisualElement>(RingOverlay.RingBandName);
@@ -784,7 +794,7 @@ namespace Velvet.Tests
 
             // Assert — 24 is 2em only where the card's own 12px took effect, and is NaN where no binding is.
             Assert.That(Mathf.Approximately(card.resolvedStyle.fontSize, 12f)
-                    ? RingOverlay.TryGet(card)?.Spec.Outline.Width ?? float.NaN
+                    ? ShownOutlineWidth(card)
                     : float.NaN,
                 Is.EqualTo(24f));
         }
@@ -801,8 +811,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(RingOverlay.TryGet(card)?.Spec.Outline.Width,
-                Is.EqualTo((float?)(Mathf.Floor(2.75f * perPixel) / perPixel)));
+            Assert.That(ShownOutlineWidth(card), Is.EqualTo(Mathf.Floor(2.75f * perPixel) / perPixel));
         }
 
         // And one under a device pixel up to one.
@@ -817,7 +826,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(RingOverlay.TryGet(card)?.Spec.Outline.Width, Is.EqualTo((float?)(1f / perPixel)));
+            Assert.That(ShownOutlineWidth(card), Is.EqualTo(1f / perPixel));
         }
 
         // GREEN_ON_BASE(characterization): an outline offset is an absolute length that CSS does not snap, and the base
@@ -849,7 +858,9 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(RingOverlay.TryGet(card).Spec.Ring.Width, Is.EqualTo(2.75f));
+            var binding = RingOverlay.TryGet(card);
+            Assert.That(binding.RingElement.style.display.value == DisplayStyle.Flex ? binding.Spec.Ring.Width : float.NaN,
+                Is.EqualTo(2.75f));
         }
 
         [Test]
@@ -869,7 +880,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(RingOverlay.TryGet(card)?.Spec.Outline.Width, Is.EqualTo((float?)40f));
+            Assert.That(ShownOutlineWidth(card), Is.EqualTo(40f));
         }
 
         [Test]
@@ -1030,7 +1041,7 @@ namespace Velvet.Tests
             var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] text-[20px] ring-[0.2em] ring-inset"));
 
             // Assert
-            Assert.That(RingOverlay.TryGet(card).Spec.Ring.Width, Is.EqualTo(4f));
+            Assert.That(InsetBandIn(card) != null ? RingOverlay.TryGet(card).Spec.Ring.Width : float.NaN, Is.EqualTo(4f));
         }
 
         [Test]
@@ -1048,7 +1059,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
 
             // Assert
-            Assert.That(RingOverlay.TryGet(card).Spec.Ring.Width, Is.EqualTo(6f));
+            Assert.That(InsetBandIn(card) != null ? RingOverlay.TryGet(card).Spec.Ring.Width : float.NaN, Is.EqualTo(6f));
         }
 
         [Test]

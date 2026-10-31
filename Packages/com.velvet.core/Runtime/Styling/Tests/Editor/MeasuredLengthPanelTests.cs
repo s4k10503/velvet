@@ -291,7 +291,9 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] ring-[0.5em]");
 
             // Assert
-            Assert.That(RingOverlay.TryGet(First)?.Spec.Ring.Width, Is.EqualTo((float?)10f));
+            var binding = RingOverlay.TryGet(First);
+            Assert.That(binding.RingElement.style.display.value == DisplayStyle.Flex ? binding.Spec.Ring.Width : float.NaN,
+                Is.EqualTo(10f));
         }
 
         [Test]
