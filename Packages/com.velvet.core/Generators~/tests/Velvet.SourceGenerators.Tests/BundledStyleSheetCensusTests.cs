@@ -24,8 +24,8 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2409;
-        private const int SurveyedSingleClassRuleCount = 2371;
+        private const int SurveyedRuleCount = 2410;
+        private const int SurveyedSingleClassRuleCount = 2372;
         private const int SurveyedDistinctPropertyNameCount = 65;
         private const int SurveyedUtilityClassCount = 2299;
         private const int SurveyedTransitionUtilityCount = 36;
@@ -296,7 +296,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2371,
+                [SelectorShape.SingleClass] = 2372,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
                 [SelectorShape.Root] = 2,

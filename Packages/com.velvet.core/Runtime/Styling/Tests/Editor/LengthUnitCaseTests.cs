@@ -82,7 +82,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "outline", "outline-offset-[5PX]" }, out var spec);
 
             // Assert
-            Assert.That(spec.Offset, Is.EqualTo(5f));
+            Assert.That(spec.Outline.Offset, Is.EqualTo(5f));
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so these were declined.
@@ -172,7 +172,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[5PX]" }, out var spec);
 
             // Assert
-            Assert.That(spec.Offset, Is.EqualTo(0f));
+            Assert.That(spec.Ring.Offset, Is.EqualTo(0f));
         }
 
         // GREEN_ON_BASE(characterization): the base read a lower-case offset, the control for the unset case above.
@@ -183,7 +183,7 @@ namespace Velvet.Tests
             StyleRingClass.TryExtract(new[] { "ring", "ring-offset-[5px]" }, out var spec);
 
             // Assert
-            Assert.That(spec.Offset, Is.EqualTo(5f));
+            Assert.That(spec.Ring.Offset, Is.EqualTo(5f));
         }
 
         // GREEN_ON_BASE(characterization): the base matched every unit case-sensitively, so this was declined.

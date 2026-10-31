@@ -2,8 +2,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The wrapper-less layer for ring-*/outline-* utilities: a native-border overlay hosted as a
-    // reconciler-invisible SIBLING of the ringed element (see RingOverlay for why a sibling rather than a
+    // The wrapper-less layer for ring-*/outline-* utilities: painted overlays hosted as
+    // reconciler-invisible SIBLINGs of the ringed element (see RingOverlay for why a sibling rather than a
     // wrapper around it or a paint inside it). Adding no wrapper is what lets a ring be attached and detached
     // from a variant re-sync — which runs outside a reconcile pass, where parent surgery on a real slot is
     // forbidden — so focus:ring-* renders instead of toggling an inert class.
@@ -20,7 +20,15 @@ namespace Velvet
         // overlay on the element's attach instead.
         internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
         {
-            if (!StyleRingClass.HasRingClass(classNames) || !StyleRingClass.TryExtract(classNames, out var spec))
+            if (!StyleRingClass.HasRingClass(classNames))
+            {
+                BandColourInheritance.Forget(element);
+                return;
+            }
+            // Before the extraction: an element naming only a colour draws nothing, and its descendants' -inherit
+            // reads what it names.
+            StyleRingClass.RecordOwnColours(element, classNames);
+            if (!StyleRingClass.TryExtract(classNames, out var spec))
             {
                 return;
             }
@@ -34,7 +42,7 @@ namespace Velvet
             {
                 return;
             }
-            _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames);
+            _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames, _ctx);
             // The element is not in the hierarchy yet, so the overlay has no host to sit beside; the drain at
             // the reconcile boundary places it once the caller has inserted the element.
             RingOverlay.RequestPlacement(_ctx, element);
@@ -48,9 +56,17 @@ namespace Velvet
         {
             var bound = _ctx.RingBindings.TryGetValue(element, out var binding);
             // Fast path: no ring anywhere near this element.
-            if (!bound && !StyleRingClass.HasRingClass(classNames))
+            if (!StyleRingClass.HasRingClass(classNames))
             {
-                return;
+                BandColourInheritance.Forget(element);
+                if (!bound)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                StyleRingClass.RecordOwnColours(element, classNames);
             }
 
             var spec = default(RingSpec);
@@ -62,7 +78,7 @@ namespace Velvet
             }
             else if (want)
             {
-                _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames);
+                _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames, _ctx);
                 // A patch-time attach usually has its parent already, and Attach places the overlay itself;
                 // queue a retry anyway for the one case that does not — an element created earlier in this
                 // same pass whose ring arrived through a variant payload before the caller inserted it.

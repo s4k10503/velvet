@@ -82,7 +82,8 @@ namespace Velvet
             {
                 return false;
             }
-            if (core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core))
+            if (core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core)
+                || StyleColorValueParser.IsColourKeywordUtility(core))
             {
                 return true;
             }
@@ -152,7 +153,8 @@ namespace Velvet
             }
 
             if (StyleBorderSideColor.TryParse(className, out result)
-                || StyleLogicalUtilities.TryParse(className, out result))
+                || StyleLogicalUtilities.TryParse(className, out result)
+                || StyleColorValueParser.TryParseColourKeywordUtility(className, out result))
             {
                 return true;
             }
@@ -1590,6 +1592,165 @@ namespace Velvet
             [ArbitraryProperty.BorderBlockEndColor] = new Action<IStyle, StyleColor>[] { (s, v) => s.borderBottomColor = v },
         };
 
+        // Where each of ColorSetters' setters reads the value it inherits: the same longhand, read off the parent.
+        private static readonly Dictionary<ArbitraryProperty, Func<IResolvedStyle, Color>[]> ColorSources = new()
+        {
+            [ArbitraryProperty.TextColor] = new Func<IResolvedStyle, Color>[] { s => s.color },
+            [ArbitraryProperty.BackgroundColor] = new Func<IResolvedStyle, Color>[] { s => s.backgroundColor },
+            [ArbitraryProperty.BorderColor] = new Func<IResolvedStyle, Color>[]
+            {
+                s => s.borderTopColor, s => s.borderRightColor, s => s.borderBottomColor, s => s.borderLeftColor,
+            },
+            [ArbitraryProperty.BorderTopColor] = new Func<IResolvedStyle, Color>[] { s => s.borderTopColor },
+            [ArbitraryProperty.BorderRightColor] = new Func<IResolvedStyle, Color>[] { s => s.borderRightColor },
+            [ArbitraryProperty.BorderBottomColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
+            [ArbitraryProperty.BorderLeftColor] = new Func<IResolvedStyle, Color>[] { s => s.borderLeftColor },
+            [ArbitraryProperty.BorderXColor] = new Func<IResolvedStyle, Color>[] { s => s.borderLeftColor, s => s.borderRightColor },
+            [ArbitraryProperty.BorderYColor] = new Func<IResolvedStyle, Color>[] { s => s.borderTopColor, s => s.borderBottomColor },
+            [ArbitraryProperty.BorderInlineStartColor] = new Func<IResolvedStyle, Color>[] { s => s.borderLeftColor },
+            [ArbitraryProperty.BorderInlineEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderRightColor },
+            [ArbitraryProperty.BorderBlockStartColor] = new Func<IResolvedStyle, Color>[] { s => s.borderTopColor },
+            [ArbitraryProperty.BorderBlockEndColor] = new Func<IResolvedStyle, Color>[] { s => s.borderBottomColor },
+        };
+
+        // The border edge each of ColorSources' readers reads, null for a reader of the text or background colour.
+        private static readonly Dictionary<ArbitraryProperty, DivideEdge?[]> ColorEdges = new()
+        {
+            [ArbitraryProperty.BorderColor] = new DivideEdge?[] { DivideEdge.Top, DivideEdge.Right, DivideEdge.Bottom, DivideEdge.Left },
+            [ArbitraryProperty.BorderTopColor] = new DivideEdge?[] { DivideEdge.Top },
+            [ArbitraryProperty.BorderRightColor] = new DivideEdge?[] { DivideEdge.Right },
+            [ArbitraryProperty.BorderBottomColor] = new DivideEdge?[] { DivideEdge.Bottom },
+            [ArbitraryProperty.BorderLeftColor] = new DivideEdge?[] { DivideEdge.Left },
+            [ArbitraryProperty.BorderXColor] = new DivideEdge?[] { DivideEdge.Left, DivideEdge.Right },
+            [ArbitraryProperty.BorderYColor] = new DivideEdge?[] { DivideEdge.Top, DivideEdge.Bottom },
+            [ArbitraryProperty.BorderInlineStartColor] = new DivideEdge?[] { DivideEdge.Left },
+            [ArbitraryProperty.BorderInlineEndColor] = new DivideEdge?[] { DivideEdge.Right },
+            [ArbitraryProperty.BorderBlockStartColor] = new DivideEdge?[] { DivideEdge.Top },
+            [ArbitraryProperty.BorderBlockEndColor] = new DivideEdge?[] { DivideEdge.Bottom },
+        };
+
+        // What parent paints for the colour a setter writes: the colour a face that holds the slot shows in place of the
+        // sentinel in the slot's inline value, else its resolved colour. Asked of the inline slot first, since a colour
+        // transition animates the sentinel's own write and the resolved slot is then neither value.
+        internal static Color ParentColor(VisualElement parent, ArbitraryProperty property, int index)
+        {
+            if (property != ArbitraryProperty.TextColor)
+            {
+                DivideEdge? edge = ColorEdges.TryGetValue(property, out var edges) ? edges[index] : null;
+                if (HeldFaceColor(parent, edge, out var shown))
+                {
+                    return shown;
+                }
+            }
+            return ColorSources[property][index](parent.resolvedStyle);
+        }
+
+        // The colour slot of a projected face an edge is: the background (null), then top, right, bottom and left.
+        private static int SlotOf(DivideEdge? edge) => edge is { } border ? BorderSlotOf(border) : 0;
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to say which colour slot it is
+        private static int BorderSlotOf(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Top => 1,
+            DivideEdge.Right => 2,
+            DivideEdge.Bottom => 3,
+            DivideEdge.Left => 4,
+        };
+#pragma warning restore CS8524
+
+        // The colour a silhouette face, a dashed divider's mask or a projected corner face shows on element's background
+        // (edge null) or border edge in place of the sentinel it writes to the slot; false where none holds it.
+        private static bool HeldFaceColor(VisualElement element, DivideEdge? edge, out Color color)
+        {
+            // A face leaves an edge a divider masks to the divider, so the divider's colour is asked first.
+            if (edge is { } masked && DivideDashPainter.ColorUnderMask(element, masked) is { } under)
+            {
+                color = under;
+                return true;
+            }
+            if (SilhouetteFaceStash.TryReadFace(element, edge, out color, out _))
+            {
+                return true;
+            }
+            var slot = SlotOf(edge);
+            if (ProjectedCornerFace.Drawn(element, slot) is { } drawn)
+            {
+                color = drawn;
+                return true;
+            }
+            return false;
+        }
+
+        // A colour read off a live source, which ColorReferenceWatch writes again as the source moves. currentcolor is
+        // the element's own text colour, except on the text colour itself, where CSS reads it as the inherited one.
+        // inherit is the parent's value of the same longhand; the parent is the one the element is laid out in, past
+        // a clip-path wrapper (ClipPathLayoutBox), whose own colours mirror the element's rather than the parent's.
+        private static void WriteReferencedColor(VisualElement element, in ArbitraryStyle style,
+            Action<IStyle, StyleColor>[] setters)
+        {
+            var cs = element.style;
+            for (var i = 0; i < setters.Length; i++)
+            {
+                if (TryReferencedColor(element, style, i, out var color))
+                {
+                    setters[i](cs, new StyleColor(color));
+                }
+            }
+        }
+
+        // The colour the reference at the index-th setter of style's property comes to now; false while it has no
+        // source yet, a parent the element is not laid out in.
+        private static bool TryReferencedColor(VisualElement element, in ArbitraryStyle style, int index, out Color color)
+        {
+            var fromParent = style.Reference == ColorReference.Inherit || style.Property == ArbitraryProperty.TextColor;
+            var parent = ClipPathLayoutBox.Of(element).hierarchy.parent;
+            if (!fromParent)
+            {
+                color = element.resolvedStyle.color;
+            }
+            else if (parent == null)
+            {
+                color = default;
+                return false;
+            }
+            else if (style.Reference == ColorReference.Inherit && IsBorderColor(style.Property)
+                && BorderKeepsCurrentColor(parent, style.Property, out var parentAlpha))
+            {
+                // currentcolor inherits as the keyword, so it reads against this element's own text colour.
+                color = element.resolvedStyle.color;
+                color.a *= parentAlpha;
+            }
+            else
+            {
+                color = ParentColor(parent, style.Property, index);
+            }
+            color.a *= style.Color.a;
+            return true;
+        }
+
+        private static bool IsBorderColor(ArbitraryProperty property)
+            => property != ArbitraryProperty.TextColor && property != ArbitraryProperty.BackgroundColor;
+
+        // Whether element's border colour at property is named currentcolor by its winning layer (or, through an
+        // inherit, its parent's). alpha is the modifier of the currentcolor layer it comes from. Anything else is a
+        // colour the parent paints, which an inherit reads off its resolved style.
+        private static bool BorderKeepsCurrentColor(VisualElement element, ArbitraryProperty property, out float alpha)
+        {
+            alpha = 1f;
+            if (s_layers.TryGetValue(element, out var map)
+                && (TryWinningLayer(map, property, out var own) || TryWinningLayer(map, ArbitraryProperty.BorderColor, out own)))
+            {
+                if (own.Reference == ColorReference.Inherit)
+                {
+                    var up = ClipPathLayoutBox.Of(element).hierarchy.parent;
+                    return up != null && BorderKeepsCurrentColor(up, property, out alpha);
+                }
+                alpha = own.Reference == ColorReference.Current ? own.Color.a : 1f;
+                return own.Reference == ColorReference.Current;
+            }
+            return false;
+        }
+
         // Float-valued counterpart to PropertySetters. Border widths are
         // StyleFloat (pixels) rather than StyleLength; the value's unit
         // is ignored (percent border widths are not meaningful).
@@ -1683,6 +1844,10 @@ namespace Velvet
             // Set while a winning layer holds a relative length (ArbitraryStyle.Expression) — see
             // ReresolveRelativeLengths.
             public RelativeLengthPoll? RelativePoll;
+
+            // Set while a winning layer reads its colour off a live source (ArbitraryStyle.Reference) — see
+            // ReresolveColorReferences.
+            public ColorReferenceWatch? ColorWatch;
 
             // What each writer of the background image last asked for — see WriteBackgroundImage. Lazily
             // allocated: only an element something writes a background image to gets one.
@@ -2968,8 +3133,18 @@ namespace Velvet
         // A held length slot takes a percentage of the parent's size on its axis (AxisOf) and stands in for an
         // indefinite one as PropertySetters' setter for its longhand does. A length that cannot be measured yet
         // leaves the slot as it is, as ApplyInline does.
-        private static void WriteLayered(VisualElement element, HeldSlot slot, in ArbitraryStyle winner)
+        private static void WriteLayered(VisualElement element, HeldSlot slot, in ArbitraryStyle layer)
         {
+            // A colour read off a live source carries only its alpha factor as a payload, so it is resolved here.
+            var winner = layer;
+            if (layer.Reference != ColorReference.None)
+            {
+                if (!TryReferencedColor(element, new ArbitraryStyle(PropertyOf(slot), layer.Color, layer.Reference), 0, out var referenced))
+                {
+                    return;
+                }
+                winner = new ArbitraryStyle(layer.Property, referenced);
+            }
             var length = winner.ToStyleLength();
             if (winner.Expression == null || StyleRelativeLengths.TryResolve(element, winner.Expression,
                     AxisOf(slot), IndefiniteOf(slot), out length))
@@ -2977,6 +3152,13 @@ namespace Velvet
                 StyleHeldSlots.WriteLayered(element.style, slot, length, winner);
             }
         }
+
+        // The single-edge border colour property a held colour slot writes.
+        private static ArbitraryProperty PropertyOf(HeldSlot slot)
+            => slot == HeldSlot.BorderTopColor ? ArbitraryProperty.BorderTopColor
+                : slot == HeldSlot.BorderRightColor ? ArbitraryProperty.BorderRightColor
+                : slot == HeldSlot.BorderBottomColor ? ArbitraryProperty.BorderBottomColor
+                : ArbitraryProperty.BorderLeftColor;
 
         private static RelativeLengthAxis AxisOf(HeldSlot slot)
             => slot is HeldSlot.Height or HeldSlot.MinHeight or HeldSlot.MaxHeight
@@ -3460,6 +3642,7 @@ namespace Velvet
             if (element != null && s_layers.TryGetValue(element, out var map))
             {
                 map.RelativePoll?.Stop();
+                map.ColorWatch?.Stop();
                 RemoveCustomFilterHosts(element, map);
             }
             if (element != null) s_layers.Remove(element);
@@ -3547,9 +3730,13 @@ namespace Velvet
                 ApplyTransitionDuration(element, map);
                 return;
             }
-            if (!TryWinningLayer(map, property, out _))
+            if (!TryWinningLayer(map, property, out var winner))
             {
                 ClearInline(element, property);
+            }
+            else
+            {
+                WatchColorReference(element, map, winner);
             }
             var rewritten = ResolveSharedLonghands(element, property, map, out var written);
             RewriteDriven(element, map, written);
@@ -3563,6 +3750,15 @@ namespace Velvet
             if (s_layers.TryGetValue(box, out var boxMap))
             {
                 ReassertHolds(box, boxMap, HeldSlotGroups.SlotsOf(property));
+            }
+        }
+
+        // A winner naming current or inherit follows what it names, which the watch re-reads.
+        private static void WatchColorReference(VisualElement element, LayerMap map, ArbitraryStyle winner)
+        {
+            if (winner.Reference != ColorReference.None)
+            {
+                map.ColorWatch ??= new ColorReferenceWatch(element, ReresolveColorReferences);
             }
         }
 
@@ -3618,6 +3814,43 @@ namespace Velvet
                     ApplyCombinedFilter(element, map);
                 }
             }
+        }
+
+        // The watch's tick for colours read off a live source: re-writes each property such a colour wins once the
+        // colours it reads have moved, and stops the watch once none wins.
+        private static void ReresolveColorReferences(VisualElement element)
+        {
+            // MUTANT_SURVIVES(unreachable): a ticking watch always finds its element's map holding a watch.
+            if (!s_layers.TryGetValue(element, out var map) || map.ColorWatch == null)
+            {
+                return;
+            }
+            s_relativeWinners.Clear();
+            foreach (var property in map.Keys)
+            {
+                if (TryWinningLayer(map, property, out var style) && style.Reference != ColorReference.None)
+                {
+                    s_relativeWinners.Add(property);
+                }
+            }
+            if (s_relativeWinners.Count == 0)
+            {
+                map.ColorWatch.Stop();
+                map.ColorWatch = null;
+                return;
+            }
+            if (!map.ColorWatch.Moved())
+            {
+                return;
+            }
+            // Written colours notify the elements reading them (ColorReferenceWatch.NotifyWritten), which re-enter here.
+            var winners = s_relativeWinners.ToArray();
+            foreach (var property in winners)
+            {
+                ResolveAndApply(element, property, map);
+            }
+            // A face the element itself holds in these slots has had its sentinel written over.
+            SilhouetteFaceStash.Retake(element);
         }
 
         // Settles every longhand property shares with another property's layers (m-[4px] beside mt-[8px] and
@@ -4361,6 +4594,27 @@ namespace Velvet
             return fn;
         }
 
+        // Writes a colour result, or the colour it reads off a live source, and tells the watches reading the element.
+        private static void WriteColor(VisualElement element, in ArbitraryStyle style, Action<IStyle, StyleColor>[] setters)
+        {
+            if (style.Reference != ColorReference.None)
+            {
+                WriteReferencedColor(element, style, setters);
+            }
+            else
+            {
+                var color = style.Keyword == StyleKeyword.Undefined
+                    ? new StyleColor(style.Color)
+                    : new StyleColor(style.Keyword);
+                var cs = element.style;
+                foreach (var setter in setters)
+                {
+                    setter(cs, color);
+                }
+            }
+            ColorReferenceWatch.NotifyWritten(element);
+        }
+
         // Writes a single ArbitraryStyle to the element's inline style (no layering), fanning a shorthand out to
         // every slot it owns (padding → four edges, border-color → four sides, size → width + height). A value
         // that places or sizes a clipped element goes to its clip wrapper instead (ClipPathLayoutBox.StyleFor).
@@ -4411,14 +4665,7 @@ namespace Velvet
 
             if (ColorSetters.TryGetValue(style.Property, out var colorSetters))
             {
-                var color = style.Keyword == StyleKeyword.Undefined
-                    ? new StyleColor(style.Color)
-                    : new StyleColor(style.Keyword);
-                var cs = element.style;
-                foreach (var setter in colorSetters)
-                {
-                    setter(cs, color);
-                }
+                WriteColor(element, style, colorSetters);
                 return;
             }
 
@@ -4621,6 +4868,7 @@ namespace Velvet
                 {
                     setter(cs, nullColor);
                 }
+                ColorReferenceWatch.NotifyWritten(element);
                 return;
             }
 

@@ -66,8 +66,7 @@ namespace Velvet.Tests
                 .Count(callback => callback.Method.DeclaringType?.FullName?.Contains("ProjectedCornerFace") == true);
 
         // GREEN_ON_BASE(characterization): the base paints no face of its own on a moving Motion or on its ring.
-        // Dropping `ProjectedCornerFace.Forget` from MotionLayoutIdDriver.CancelForTeardown, or from RingOverlay.Detach,
-        // reddens this case.
+        // Dropping `ProjectedCornerFace.Forget` from MotionLayoutIdDriver.CancelForTeardown reddens this case.
         [Test]
         public void Given_ARingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItIsTornDown_Then_NeitherItNorItsBandKeepsAFaceCallback()
         {
@@ -85,8 +84,6 @@ namespace Velvet.Tests
             Assert.That(FaceCallbacks(box) + FaceCallbacks(band), Is.Zero);
         }
 
-        // GREEN_ON_BASE(characterization): the base grows no inset band's projected corners either. Growing them by the
-        // band's width and offset, as an outset band's are, reddens it.
         [Test]
         public void Given_AnInsetRingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsBandIsRepainted_Then_ItsCornersAreTheElementsOwn()
         {
@@ -95,13 +92,13 @@ namespace Velvet.Tests
             using var mounted = MountAndWiden();
             for (var i = 0; i < 3; i++) Tick();
             var box = Root.Q<VisualElement>("box");
-            var band = box.Q<VisualElement>(RingOverlay.OverlayName);
+            var binding = RingOverlay.TryGet(box);
             var own = ProjectedCornerFace.TryGetRadii(box, out var radii)
                 ? BorderBandPainter.Fitted(radii, box.layout.width, box.layout.height).TopLeft.x
                 : float.NaN;
 
-            // Act
-            var drawn = band != null && ProjectedCornerFace.TryGetRadii(band, out var bandRadii) ? bandRadii.TopLeft.x : float.PositiveInfinity;
+            // Act — the radii the inset band is painted with.
+            var drawn = binding is { Inside: true } ? binding.InsideRadii.TopLeft.x : float.PositiveInfinity;
 
             // Assert
             Assert.That(drawn, Is.EqualTo(own).Within(1e-3f));

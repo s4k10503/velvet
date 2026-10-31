@@ -53,7 +53,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "ring-2", "ring-[" + Hsl + "]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? Channels(spec.Color) : Unresolved, Is.EqualTo(Expected).Within(Tolerance));
+            Assert.That(ok ? Channels(spec.Ring.Color) : Unresolved, Is.EqualTo(Expected).Within(Tolerance));
         }
 
         [Test]
@@ -116,7 +116,7 @@ namespace Velvet.Tests
             var ok = StyleRingClass.TryExtract(new[] { "outline-2", "outline-[" + Hsl + "]" }, out var spec);
 
             // Assert
-            Assert.That(ok ? Channels(spec.Color) : Unresolved, Is.EqualTo(Expected).Within(Tolerance));
+            Assert.That(ok ? Channels(spec.Outline.Color) : Unresolved, Is.EqualTo(Expected).Within(Tolerance));
         }
 
         [Test]

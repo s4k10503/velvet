@@ -70,13 +70,6 @@ namespace Velvet.Tests
             }
         }
 
-        private static VisualElement BandAfter(VisualElement element)
-        {
-            var host = element.parent;
-            var next = host.IndexOf(element) + 1;
-            return next < host.childCount && host[next].ClassListContains(RingOverlay.MarkerClass) ? host[next] : null;
-        }
-
         [Test]
         public void Given_AnElementTrackedAndReleasedRepeatedly_When_TrackedOnceMore_Then_ThePanelWatchHoldsOneReference()
         {
@@ -298,7 +291,9 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] ring-[0.5em]");
 
             // Assert
-            Assert.That(BandAfter(First)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)10f));
+            var binding = RingOverlay.TryGet(First);
+            Assert.That(binding.RingElement.style.display.value == DisplayStyle.Flex ? binding.Spec.Ring.Width : float.NaN,
+                Is.EqualTo(10f));
         }
 
         [Test]
@@ -308,7 +303,7 @@ namespace Velvet.Tests
             Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] ring-2 ring-offset-[0.5em]");
 
             // Assert
-            Assert.That(BandAfter(First)?.layout.x - First.layout.x, Is.EqualTo((float?)-12f));
+            Assert.That(RingOverlay.TryGet(First)?.RingElement.style.left.value.value, Is.EqualTo((float?)-12f));
         }
 
         // GREEN_ON_BASE(characterization): a leading mixing an em with pixels was measured on its element before the

@@ -84,6 +84,8 @@ namespace Velvet
         public bool Inherit { get; }
 
         public Color? Colour { get; }
+
+        public bool SameAs(DeclaredShadowColour other) => Inherit == other.Inherit && Colour == other.Colour;
     }
 
     // The colours an element's classes declare for each family, which a child's -inherit class takes.
@@ -96,6 +98,9 @@ namespace Velvet
             InsetShadow = insetShadow;
             InsetRing = insetRing;
         }
+
+        public bool SameAs(DeclaredShadowColours other)
+            => Shadow.SameAs(other.Shadow) && InsetShadow.SameAs(other.InsetShadow) && InsetRing.SameAs(other.InsetRing);
 
         public DeclaredShadowColour Shadow { get; }
 
@@ -216,7 +221,10 @@ namespace Velvet
         private struct ShadowFamily
         {
             public ShadowSpec[] Layers;
+            // The size's /N as its own colour takes it, clamped to 0..1 as oklab(from <colour> l a b / N) clamps it.
             public float? SizeAlpha;
+            // The size's /N as --tw-shadow-alpha scales a colour class beside it (TrySizeColourScale).
+            public float SizeScale;
             public Color? Colour;
             // -inherit, which takes the parent's colour for this family and keeps each layer's own where it has none.
             public bool Inherit;
@@ -235,7 +243,7 @@ namespace Velvet
                 {
                     var layer = Layers[i];
                     var colour = Colour ?? layer.Color;
-                    colour.a = Colour != null ? colour.a * (SizeAlpha ?? 1f) : SizeAlpha ?? colour.a;
+                    colour.a = Colour != null ? colour.a * SizeScale : SizeAlpha ?? colour.a;
                     resolved[i] = new ShadowSpec(colour, layer.Blur, layer.OffsetY, layer.Spread, layer.OffsetX, layer.Inset,
                         Inherit ? family : ShadowColourFamily.None, layer.Measured);
                 }
@@ -251,7 +259,7 @@ namespace Velvet
                     return new DeclaredShadowColour(Inherit, null);
                 }
                 var colour = Colour.Value;
-                colour.a *= SizeAlpha ?? 1f;
+                colour.a *= SizeScale;
                 return new DeclaredShadowColour(false, colour);
             }
         }
@@ -306,8 +314,8 @@ namespace Velvet
 
         private static void Read(string[] classNames, out ShadowFamily outer, out ShadowFamily inset, out InsetRing ring)
         {
-            outer = new ShadowFamily();
-            inset = new ShadowFamily();
+            outer = new ShadowFamily { SizeScale = 1f };
+            inset = new ShadowFamily { SizeScale = 1f };
             ring = new InsetRing();
             foreach (var cls in classNames)
             {
@@ -328,7 +336,7 @@ namespace Velvet
             {
                 return false;
             }
-            if (!TrySplitModifier(cls, root, out var suffix, out var alpha))
+            if (!TrySplitModifier(cls, root, out var suffix, out var alpha, out var scale))
             {
                 return false;
             }
@@ -356,6 +364,12 @@ namespace Velvet
                 }
                 return true;
             }
+            // A color hint makes the bracket the family's colour whether or not it holds one: a hinted value that is no
+            // colour sets nothing here (BoxShadowSlot reads it as a rejected colour), and is never a size.
+            if (StyleArbitraryValueResolver.TypeHintOf(cls) == "color")
+            {
+                return true;
+            }
             if (!TryReadSize(suffix, presets, alpha, out var layers))
             {
                 return false;
@@ -364,6 +378,7 @@ namespace Velvet
             {
                 family.Layers = layers;
                 family.SizeAlpha = alpha;
+                family.SizeScale = scale ?? 1f;
             }
             return true;
         }
@@ -414,7 +429,7 @@ namespace Velvet
             {
                 return;
             }
-            if (!TrySplitModifier(cls, "inset-ring", out var suffix, out var alpha))
+            if (!TrySplitModifier(cls, "inset-ring", out var suffix, out var alpha, out _))
             {
                 return;
             }
@@ -452,21 +467,24 @@ namespace Velvet
             return null;
         }
 
-        // The suffix of a root-* class with its type hint dropped, and the /N after it; false for a class of another
-        // root, a malformed hint or a modifier that is no alpha.
-        private static bool TrySplitModifier(string cls, string root, out string suffix, out float? alpha)
+        // The suffix of a root-* class with its type hint dropped, and the /N after it, clamped to 0..1 as the alpha of
+        // a colour (alpha) and as the factor --tw-shadow-alpha scales a colour beside it by (scale, TrySizeColourScale);
+        // false for a class of another root, a malformed hint or a modifier that is no opacity modifier.
+        private static bool TrySplitModifier(string cls, string root, out string suffix, out float? alpha, out float? scale)
         {
             suffix = string.Empty;
             alpha = null;
+            scale = null;
             var slash = StyleColorValueParser.ColorModifierSlashIndex(cls, root.Length);
             var body = slash < 0 ? cls : cls.Substring(0, slash);
             if (slash >= 0)
             {
-                if (!StyleColorValueParser.TryParseAlphaModifier(cls.AsSpan(slash + 1), out var parsed))
+                if (!StyleColorValueParser.TryParseModifierPercent(cls.AsSpan(slash + 1), out var percent))
                 {
                     return false;
                 }
-                alpha = parsed;
+                alpha = Mathf.Clamp01(percent / 100f);
+                scale = SizeColourScale(cls.AsSpan(slash + 1), percent);
             }
             if (!StyleArbitraryValueResolver.TryDropTypeHint(body, out body))
             {
@@ -482,6 +500,27 @@ namespace Velvet
             }
             suffix = body.Substring(root.Length + 1);
             return true;
+        }
+
+        // The factor a size's /N scales a colour class beside it by, as --tw-shadow-alpha does. That property is
+        // registered as a percentage, so a bracketed number is invalid for it and leaves its initial 100%; a
+        // percentage outside 0..100 is valid and makes the colour's color-mix() invalid (SizeScaleInvalid).
+        private static float SizeColourScale(ReadOnlySpan<char> modifier, float percent)
+            => IsBareBracketNumber(modifier) || SizeScaleInvalid(modifier, percent) ? 1f : percent / 100f;
+
+        private static bool IsBareBracketNumber(ReadOnlySpan<char> modifier)
+            => modifier.Length > 1 && modifier[0] == '[' && modifier[modifier.Length - 2] != '%';
+
+        private static bool SizeScaleInvalid(ReadOnlySpan<char> modifier, float percent)
+            => !IsBareBracketNumber(modifier) && (percent < 0f || percent > 100f);
+
+        // Whether cls's /N is a valid --tw-shadow-alpha outside 0..100%, which makes a shadow colour's color-mix()
+        // invalid.
+        private static bool SizeScaleInvalid(string cls, int from)
+        {
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(cls, from);
+            return slash >= 0 && StyleColorValueParser.TryParseModifierPercent(cls.AsSpan(slash + 1), out var percent)
+                && SizeScaleInvalid(cls.AsSpan(slash + 1), percent);
         }
 
         // A colour a shadow-, inset-shadow- or inset-ring- suffix names: current (ShadowSpec.CurrentColor), a palette
@@ -515,8 +554,11 @@ namespace Velvet
 
             public bool ReadsColour { get; private set; }
 
+            // A layer's size carries an opacity modifier outside 0..100%, which makes the colour beside it invalid.
+            public bool ScaleInvalid { get; private set; }
+
             // Takes the slot for a class read after the one holding it, unless that one is important and this is not.
-            public void Offer(bool important, bool rejected, bool readsColour = false)
+            public void Offer(bool important, bool rejected, bool readsColour = false, bool scaleInvalid = false)
             {
                 if (Set && _important && !important)
                 {
@@ -526,6 +568,7 @@ namespace Velvet
                 _important = important;
                 Rejected = rejected;
                 ReadsColour = readsColour;
+                ScaleInvalid = scaleInvalid;
             }
         }
 
@@ -537,7 +580,7 @@ namespace Velvet
         // Whether a family's layer and colour discard the box-shadow: a layer the browser rejects, or one reading
         // the family's colour variable where the colour is one the browser rejects.
         internal static bool Discards(in BoxShadowSlot layer, in BoxShadowSlot colour)
-            => layer.Set && (layer.Rejected || (layer.ReadsColour && colour.Rejected));
+            => layer.Set && (layer.Rejected || (layer.ReadsColour && (colour.Rejected || (colour.Set && layer.ScaleInvalid))));
 
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
@@ -549,40 +592,60 @@ namespace Velvet
         internal static bool TryReadBoxShadowClass(string core, string root, bool important, ref BoxShadowSlot layer,
             ref BoxShadowSlot colour)
         {
-            var inset = root == "inset-shadow";
-            if (core == root && !inset)
-            {
-                layer.Offer(important, false, readsColour: true);
-                return true;
-            }
-            if (!core.StartsWith(root + "-", StringComparison.Ordinal))
+            if (!core.StartsWith(root, StringComparison.Ordinal))
             {
                 return false;
             }
-            var suffix = core.Substring(root.Length + 1);
+            var inset = root == "inset-shadow";
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(core, 0);
+            var body = slash < 0 ? core : core.Substring(0, slash);
+            if (slash >= 0 && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
+            {
+                return false;
+            }
+            var scaleInvalid = SizeScaleInvalid(core, 0);
+            if (body == root && !inset)
+            {
+                layer.Offer(important, false, readsColour: true, scaleInvalid: scaleInvalid);
+                return true;
+            }
+            if (!body.StartsWith(root + "-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var suffix = body.Substring(root.Length + 1);
             if (suffix == "none" || (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix)))
             {
-                layer.Offer(important, false, readsColour: suffix != "none");
+                layer.Offer(important, false, readsColour: suffix != "none", scaleInvalid: scaleInvalid);
                 return true;
             }
             if (TryReadBracket(core, root, out var hint, out var value))
             {
                 if (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value.AsSpan()))
                 {
-                    colour.Offer(important, StyleColorValueParser.RejectsAsColour(value));
+                    colour.Offer(important, StyleColorValueParser.RejectsAsColour(value) || ModifierOutside(core, 0));
                 }
                 else
                 {
-                    layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value));
+                    layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value), scaleInvalid);
                 }
                 return true;
             }
             if (suffix is "inherit" or "initial" or "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
             {
-                colour.Offer(important, false);
+                colour.Offer(important, ModifierOutside(core, 0));
                 return true;
             }
             return false;
+        }
+
+        // Whether a colour class's opacity modifier lies outside 0..100%, which leaves the color-mix() Tailwind writes
+        // invalid.
+        private static bool ModifierOutside(string cls, int from)
+        {
+            var slash = StyleColorValueParser.ColorModifierSlashIndex(cls, from);
+            return slash >= 0 && StyleColorValueParser.TryParseModifierPercent(cls.AsSpan(slash + 1), out var percent)
+                && (percent < 0f || percent > 100f);
         }
 
         // Whether the browser rejects value as a box-shadow, each layer behind an inset where inset says Tailwind

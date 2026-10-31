@@ -373,6 +373,14 @@ namespace Velvet
         SliceType,        // -unity-slice-type  (Value = the SliceType)
     }
 
+    // Where a colour reads its value from where a class names a keyword in place of one.
+    internal enum ColorReference : byte
+    {
+        None,
+        Current,
+        Inherit,
+    }
+
     // A parsed arbitrary-value result: the target Property plus its length payload
     // (Value + Unit) or its Expression, its Color, or (FilterCustom only) its Custom payload.
     internal readonly struct ArbitraryStyle
@@ -418,6 +426,10 @@ namespace Velvet
         // (StyleCompositeRejection): the layer ranks as the value would, and its composer writes the family's
         // none value while it holds. False for every other result.
         public bool Rejected { get; }
+        // A colour property's value read off a live source rather than written: the element's own text colour
+        // (currentcolor, with Color.a the factor an opacity modifier scales its alpha by) or the parent's value of
+        // the same property (inherit). None for every other result.
+        public ColorReference Reference { get; }
 
         // A keyword value for property.
         public ArbitraryStyle(ArbitraryProperty property, StyleKeyword keyword)
@@ -447,6 +459,7 @@ namespace Velvet
         {
             Property = property;
             Rejected = false;
+            Reference = ColorReference.None;
             Auto = auto;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -467,6 +480,7 @@ namespace Velvet
         {
             Property = property;
             Rejected = false;
+            Reference = ColorReference.None;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -502,6 +516,7 @@ namespace Velvet
         {
             Property = property;
             Rejected = false;
+            Reference = ColorReference.None;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -534,6 +549,7 @@ namespace Velvet
         {
             Property = property;
             Rejected = false;
+            Reference = ColorReference.None;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;
@@ -549,11 +565,19 @@ namespace Velvet
             Expression = null;
         }
 
+        // Creates a colour result read off source, Color.a scaling a currentcolor's alpha.
+        public ArbitraryStyle(ArbitraryProperty property, Color color, ColorReference reference)
+            : this(property, color)
+        {
+            Reference = reference;
+        }
+
         // Creates a FilterCustom result.
         public ArbitraryStyle(ArbitraryProperty property, CustomFilterValue custom)
         {
             Property = property;
             Rejected = false;
+            Reference = ColorReference.None;
             Auto = false;
             Keyword = StyleKeyword.Undefined;
             PercentEdges = 0;

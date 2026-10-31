@@ -121,7 +121,9 @@ hears a source that code outside a render adds ([styling-variants.md](styling-va
 clear and insert of its children, which lay a relocated `z-*` or `order-*` element out at its place in flex order
 ([styling-z-index.md](styling-z-index.md)), and the viewport, projection, clip rectangle, stencil reference and mask
 depth the renderer draws an immediate-mode element under, which place a
-[backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element.
+[backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element, and whether an element clips
+what it holds, with a panel's hierarchy version, which decide where an `outline-*` paints
+([styling-variants.md](styling-variants.md)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole

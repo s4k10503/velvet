@@ -43,6 +43,20 @@ namespace Velvet.Tests
                 : null;
         }
 
+        // The outline's measured width, NaN while its band is hidden or there is no binding: the band shows only
+        // where a placement acted on the measured spec.
+        private static float ShownOutlineWidth(VisualElement element)
+        {
+            var binding = RingOverlay.TryGet(element);
+            return binding != null && binding.OutlineElement.style.display.value == DisplayStyle.Flex
+                ? binding.Spec.Outline.Width
+                : float.NaN;
+        }
+
+        // The ring's band itself, a child of the overlay that covers the element's box.
+        private static VisualElement RingBandOf(VisualElement element)
+            => BandFor(element).Q<VisualElement>(RingOverlay.RingBandName);
+
         // How far along x a band paints from the element it rings. worldBound and not layout because layout
         // is the pre-transform box, and the element's OWN transform is the thing this reading exists to
         // catch: read from layout, a translated element and a still one both measure -4.
@@ -51,11 +65,11 @@ namespace Velvet.Tests
         // difference exactly and this helper cannot see one at all. An ancestor SCALE does not cancel — it
         // multiplies the difference, so scale-150 over a ring-4 band reads -6 and not -4.
         private static float BandOffsetX(VisualElement element)
-            => BandFor(element).worldBound.x - element.worldBound.x;
+            => RingBandOf(element).worldBound.x - element.worldBound.x;
 
         // The same reading along y, with the same scope.
         private static float BandOffsetY(VisualElement element)
-            => BandFor(element).worldBound.y - element.worldBound.y;
+            => RingBandOf(element).worldBound.y - element.worldBound.y;
 
         private VisualElement MountRinged(string className)
         {
@@ -125,6 +139,23 @@ namespace Velvet.Tests
             Assert.That((hostedAtRest, RingOverlayIn(btn.parent) != null), Is.EqualTo((true, false)));
         }
 
+        [TestCase("focus:ring-2 focus:ring-4")]
+        [TestCase("focus:ring-4 focus:ring-2")]
+        public void Given_TwoRingWidthsBehindOneVariant_When_Focused_Then_TheOneTailwindEmitsLastWins(string rings)
+        {
+            // Arrange — both tokens apply at one priority, which a rule's place in Tailwind's order breaks.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Button(name: "btn", className: "w-[80px] h-[30px] " + rings, text: "ok"));
+            var btn = _window.rootVisualElement.Q<VisualElement>("btn");
+            ForcePanelUpdate(btn.panel);
+
+            // Act
+            using (var e = FocusEvent.GetPooled()) { btn.SimulateEvent(e); }
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(btn)?.Spec.Ring.Width, Is.EqualTo((float?)4f));
+        }
+
         // Geometry
 
         [Test]
@@ -133,10 +164,10 @@ namespace Velvet.Tests
             // Arrange & Act — an arbitrary rounded-[12px] resolves through resolvedStyle rather than the
             // rounded-* class scale, and the band's OUTER radius is that radius plus the ring width.
             var card = MountRinged("w-[100px] h-[40px] rounded-[12px] ring-4");
-            var overlay = RingOverlayIn(card.parent);
+            var binding = RingOverlay.TryGet(card);
 
             // Assert
-            Assert.That(overlay?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)16f));
+            Assert.That(RingBandShape.Spread(binding.Radii, 4f).TopLeft.x, Is.EqualTo(16f));
         }
 
         [Test]
@@ -146,12 +177,521 @@ namespace Velvet.Tests
             // for the whole element (top-left representative), so an arbitrary rounded-tl-[12px] never reaches
             // it and would pass even with the fallback rounding all four corners. rounded-tl-lg does reach it.
             var card = MountRinged("w-[100px] h-[40px] rounded-tl-lg ring-4");
-            var overlay = RingOverlayIn(card.parent);
+            var binding = RingOverlay.TryGet(card);
 
-            // Assert — top-left carries the radius plus the ring width; top-right carries the ring width only.
-            // rounded-lg is 8px.
-            Assert.That((overlay?.resolvedStyle.borderTopLeftRadius, overlay?.resolvedStyle.borderTopRightRadius),
-                Is.EqualTo(((float?)12f, (float?)4f)));
+            // Assert — top-left carries the radius plus the ring width. rounded-lg is 8px.
+            Assert.That(RingBandShape.Spread(binding.Radii, 4f).TopLeft.x, Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_PerCornerRadii_When_LaidOut_Then_ASquareCornerStaysSquare()
+        {
+            // Arrange & Act — the same element; a box-shadow spread grows a corner's radius by CSS Backgrounds 3's
+            // formula, so a corner with none stays square where a native border would round it by the ring width.
+            var card = MountRinged("w-[100px] h-[40px] rounded-tl-lg ring-4");
+            var binding = RingOverlay.TryGet(card);
+
+            // Assert
+            Assert.That(RingBandShape.Spread(binding.Radii, 4f).TopRight.x, Is.EqualTo(0f));
+        }
+
+        // The outline's band, a child of the overlay OutlineHosting places.
+        private static VisualElement OutlineBandOf(VisualElement element)
+            => RingOverlay.TryGet(element)?.OutlineElement;
+
+        [Test]
+        public void Given_ARingAndAnOutlineWithTheirOwnOffsets_When_LaidOut_Then_TheRingSitsAtItsOwnDistance()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-offset-4 outline-2 outline-offset-1");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — the ring spreads its offset plus its width, 6px. Rounded because both are whole pixels.
+            Assert.That(Mathf.Round(RingBandOf(card).worldBound.x - card.worldBound.x), Is.EqualTo(-6f));
+        }
+
+        [Test]
+        public void Given_ARingAndAnOutlineWithTheirOwnOffsets_When_LaidOut_Then_TheOutlineSitsAtItsOwnDistance()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-offset-4 outline-2 outline-offset-1");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — the outline its own offset plus its width, 3px.
+            Assert.That(Mathf.Round(OutlineBandOf(card).worldBound.x - card.worldBound.x), Is.EqualTo(-3f));
+        }
+
+        [Test]
+        public void Given_AnOutline_When_LaidOut_Then_ItsBandIsTheElementsBoxGrownByItsWidth()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] outline-2");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — 2px outside each edge.
+            Assert.That(OutlineBandOf(card).resolvedStyle.width, Is.EqualTo(44f));
+        }
+
+        [Test]
+        public void Given_AnInsetRingBesideAnOutline_When_LaidOut_Then_TheOutlineBandIsStillSized()
+        {
+            // Arrange — the inset band is the element's child and never measures the element itself.
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-inset outline-2");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(OutlineBandOf(card).resolvedStyle.width, Is.EqualTo(44f));
+        }
+
+        [Test]
+        public void Given_AnOutlineNamingNoColourBesideARingColour_When_LaidOut_Then_TheOutlineIsTheTextColour()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-[#0000ff] outline-2 text-[#ff0000]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert — each band takes its own family's colour: the ring the blue it names, the outline the text.
+            Assert.That(RingOverlay.TryGet(card).OutlineTint, Is.EqualTo(Color.red));
+        }
+
+        [Test]
+        public void Given_AnOutlineNamingNoColourBesideARingColour_When_LaidOut_Then_TheRingKeepsItsColour()
+        {
+            // Arrange
+            var card = MountRinged("w-[40px] h-[40px] ring-2 ring-[#0000ff] outline-2 text-[#ff0000]");
+
+            // Act
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card).RingTint, Is.EqualTo(Color.blue));
+        }
+
+        // Where an outline is hosted: after the content of its stacking context, clipped only by its own ancestors.
+
+        [Test]
+        public void Given_AnOutlineInsideAClippingParent_When_LaidOut_Then_AProxyStandsOverThatClip()
+        {
+            // Arrange
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+
+            // Act — twice: the proxy is placed by the first pass's geometry event and laid out by the second.
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var proxy = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a")).OutlineOverlay.parent;
+
+            // Assert
+            Assert.That(proxy.worldBound, Is.EqualTo(clip.worldBound));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAClippingParent_When_LaidOut_Then_ItsTopLevelNodeFollowsTheContentAfterTheClip()
+        {
+            // Arrange — after is content outside the clip, which the outline has to paint over.
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+
+            // Act
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var top = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a")).OutlineOverlay.parent;
+            while (top?.parent != null && !top.parent.Contains(wrap))
+            {
+                top = top.parent;
+            }
+
+            // Assert
+            Assert.That(top.parent.IndexOf(top), Is.GreaterThan(top.parent.IndexOf(AncestorUnder(top.parent, wrap))));
+        }
+
+        private void MountClippedOutline()
+            => _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]
+                {
+                    V.Div(name: "clip", className: "w-[200px] h-[100px] overflow-hidden", children: new VNode[]
+                    {
+                        V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                    V.Div(name: "after", className: "w-[40px] h-[40px]"),
+                }));
+
+        // The child of host on the way down to e.
+        private static VisualElement AncestorUnder(VisualElement host, VisualElement e)
+        {
+            while (e != null && e.parent != host)
+            {
+                e = e.parent;
+            }
+            return e;
+        }
+
+        [Test]
+        public void Given_TwoOutlinesInOneStackingContext_When_TheLaterIsPlacedFirst_Then_TheyShareOneHost()
+        {
+            // Arrange / Act
+            var (outlineA, outlineB) = MountTwoOutlinesLaterFirst();
+
+            // Assert
+            Assert.That(outlineA?.parent, Is.SameAs(outlineB?.parent));
+        }
+
+        [Test]
+        public void Given_TwoOutlinesInOneStackingContext_When_TheLaterIsPlacedFirst_Then_TheyKeepTreeOrder()
+        {
+            // Arrange / Act
+            var (outlineA, outlineB) = MountTwoOutlinesLaterFirst();
+
+            // Assert — a's outline painted before b's, as a comes before b.
+            Assert.That(outlineA.parent.IndexOf(outlineA), Is.LessThan(outlineA.parent.IndexOf(outlineB)));
+        }
+
+        // b's outline is hosted first; a's arrives with a later render.
+        private (VisualElement A, VisualElement B) MountTwoOutlinesLaterFirst()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "wrap", className: "w-[200px] h-[100px]",
+                children: new VNode[]
+                {
+                    V.Div(name: "a", className: "w-[40px] h-[40px]"),
+                    V.Div(name: "b", className: "w-[40px] h-[40px] outline-2"),
+                }));
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+            ForcePanelUpdate(wrap.panel);
+            _mounted.Render(V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+            {
+                V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                V.Div(name: "b", className: "w-[40px] h-[40px] outline-2"),
+            }));
+            ForcePanelUpdate(wrap.panel);
+            return (RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"))?.OutlineOverlay,
+                RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("b"))?.OutlineOverlay);
+        }
+
+        [Test]
+        public void Given_AHostedOutline_When_AStyleChangesOutsideItsAncestors_Then_PlacingItAllocatesNothing()
+        {
+            // Arrange — other's opacity changes between placements, outside the outlined card's ancestors; a re-host
+            // allocates, so nothing allocated is nothing re-hosted. The canary is the instrument's own control.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                    V.Div(name: "other", className: "w-[40px] h-[40px]"),
+                }));
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            var other = _window.rootVisualElement.Q<VisualElement>("other");
+            ForcePanelUpdate(card.panel);
+            var binding = RingOverlay.TryGet(card);
+            var opaque = true;
+            System.Action arrange = () =>
+            {
+                opaque = !opaque;
+                other.style.opacity = opaque ? 1f : 0.5f;
+                ForcePanelUpdate(card.panel);
+            };
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            arrange();
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(arrange, place);
+
+            // Assert
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 ? blocks : -1, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AHostedOutline_When_AnAncestorBeginsToFade_Then_ThatAncestorHostsIt()
+        {
+            // Arrange — laid out unfaded, the outline is hosted above wrap.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                }));
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(wrap.panel);
+            var binding = RingOverlay.TryGet(card);
+
+            // Act — a change no event reports to the card: the next placement reads it off the ancestors.
+            wrap.style.opacity = 0.5f;
+            ForcePanelUpdate(wrap.panel);
+            OutlineHosting.Place(card, binding, force: false);
+
+            // Assert
+            Assert.That(binding.OutlineOverlay.parent, Is.SameAs(wrap));
+        }
+
+        [Test]
+        public void Given_AnOutlineWithNoCompositingAncestor_When_LaidOut_Then_ItIsHostedAboveTheWrapper()
+        {
+            // Arrange / Act — the control for the case above: nothing composites, so the outline is hosted above wrap.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                }));
+            var wrap = _window.rootVisualElement.Q<VisualElement>("wrap");
+            ForcePanelUpdate(wrap.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("card")).OutlineOverlay.parent,
+                Is.Not.SameAs(wrap));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAClipPathWrapper_When_LaidOut_Then_ItsProxyCarriesTheWrappersMask()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[200px]", children: new VNode[]
+                {
+                    V.Div(name: "shaped", className: "w-[100px] h-[100px] clip-path-[circle(50%)]", children: new VNode[]
+                    {
+                        V.Div(name: "card", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                }));
+            var shaped = _window.rootVisualElement.Q<VisualElement>("shaped");
+
+            // Act
+            ForcePanelUpdate(shaped.panel);
+            ForcePanelUpdate(shaped.panel);
+            // The wrapper bakes its mask after the card is placed, so the next tick, which compares the mask the proxy
+            // copied, is what hands it over.
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(shaped.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(shaped.panel);
+            ForcePanelUpdate(shaped.panel);
+            var proxy = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("card")).OutlineOverlay.parent;
+            var mask = shaped.parent.style.backgroundImage.value.vectorImage;
+
+            // Assert — the wrapper's own mask is the control: it has to exist to be carried.
+            Assert.That(mask != null ? proxy.style.backgroundImage.value.vectorImage : null, Is.SameAs(mask));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideARoundedClip_When_TheClipsRadiusChangesAlone_Then_TheProxyFollowsOnTheNextTick()
+        {
+            // Arrange — the clip's rect stays put, so only the radius it is read for moves.
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            clip.style.borderTopLeftRadius = 20f;
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var binding = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a"));
+
+            // Act
+            clip.style.borderTopLeftRadius = 0f;
+            ForcePanelUpdate(clip.panel);
+            var now = 0.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(clip.panel, () => now);
+            now = 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(clip.panel);
+            ForcePanelUpdate(clip.panel);
+
+            // Assert
+            Assert.That(binding.OutlineOverlay.parent.resolvedStyle.borderTopLeftRadius, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AnOutlineInATreeMountedBelowAnotherElement_When_LaidOut_Then_TheMountContainerHostsIt()
+        {
+            // Arrange — the container belongs to the application, and may be taken out of the panel with the tree in it.
+            var top = new VisualElement { name = "top" };
+            var container = new VisualElement { name = "container" };
+            top.Add(container);
+            _window.rootVisualElement.Add(top);
+            _mounted = V.Mount(container, V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"));
+
+            // Act
+            ForcePanelUpdate(container.panel);
+            ForcePanelUpdate(container.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(container.Q<VisualElement>("a")).OutlineOverlay.parent, Is.SameAs(container));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAPortal_When_PlacedOnAnIdleTick_Then_NothingIsReHosted()
+        {
+            // Arrange — the portal's content is outside the tree's mount container, whose check must not apply to it.
+            RuntimeStateProbe.ClearPortalRegistry();
+            var target = new VisualElement { name = "target" };
+            _window.rootVisualElement.Add(target);
+            FiberPortalRegistry.Register("outline-portal-target", target);
+            var container = new VisualElement { name = "container" };
+            _window.rootVisualElement.Add(container);
+            _mounted = V.Mount(container, V.Portal("outline-portal-target", children: new VNode[]
+            {
+                V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+            }));
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(container.panel);
+            ForcePanelUpdate(container.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("a");
+            var binding = RingOverlay.TryGet(card);
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(place);
+
+            // Assert — a re-host allocates; the canary is the instrument's own control.
+            RuntimeStateProbe.ClearPortalRegistry();
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 && binding != null ? blocks : -1, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnOutlineHostedAtAMountContainerBelowAnotherElement_When_PlacedOnAnIdleTick_Then_NothingIsReHosted()
+        {
+            // Arrange — the container is not a child of the panel's root, which the idle check once required.
+            var top = new VisualElement { name = "top" };
+            var container = new VisualElement { name = "container" };
+            top.Add(container);
+            _window.rootVisualElement.Add(top);
+            _mounted = V.Mount(container, V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"));
+            ForcePanelUpdate(container.panel);
+            ForcePanelUpdate(container.panel);
+            var card = container.Q<VisualElement>("a");
+            var binding = RingOverlay.TryGet(card);
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(place);
+
+            // Assert — a re-host allocates; the canary is the instrument's own control.
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 ? blocks : -1, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAZStackedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
+        {
+            // Arrange — a z-index other than auto makes a stacking context of what the element holds.
+            var outline = MountOutlineUnder("w-[100px] h-[60px] relative z-10");
+
+            // Assert
+            Assert.That(outline.parent.name, Is.EqualTo("holder"));
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAFlexOrderedAncestor_When_LaidOut_Then_ThatAncestorDoesNotHostIt()
+        {
+            // Arrange — order-* moves an item in flex order and makes no stacking context.
+            var outline = MountOutlineUnder("w-[100px] h-[60px] order-1");
+
+            // Assert
+            Assert.That(outline.parent.name, Is.Not.EqualTo("holder"));
+        }
+
+        private VisualElement MountOutlineUnder(string holderClass)
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "flex w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "holder", className: holderClass, children: new VNode[]
+                    {
+                        V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                    V.Div(name: "after", className: "w-[40px] h-[40px]"),
+                }));
+            var holder = _window.rootVisualElement.Q<VisualElement>("holder");
+            ForcePanelUpdate(holder.panel);
+            ForcePanelUpdate(holder.panel);
+            return RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a")).OutlineOverlay;
+        }
+
+        [Test]
+        public void Given_AnOutlineInsideAFadedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
+        {
+            // Arrange — an opacity below 1 composites what it holds, so the outline stays inside it to fade with it.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[200px] h-[100px]", children: new VNode[]
+                {
+                    V.Div(name: "faded", className: "w-[100px] h-[60px] opacity-50", children: new VNode[]
+                    {
+                        V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                    }),
+                }));
+            var faded = _window.rootVisualElement.Q<VisualElement>("faded");
+
+            // Act
+            ForcePanelUpdate(faded.panel);
+            ForcePanelUpdate(faded.panel);
+            var outline = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("a")).OutlineOverlay;
+
+            // Assert
+            Assert.That(outline.parent.name, Is.EqualTo("faded"));
+        }
+
+        // An inherited shadow colour reaches the children inheriting it when it changes, though their own classes
+        // do not.
+
+        [Test]
+        public void Given_AChildInheritingAShadowColour_When_TheParentsColourChanges_Then_ThatChildRepaints()
+        {
+            // Arrange
+            var (parent, inherits, _, _) = MountInheritingPair();
+
+            // Act — the parent's colour changes with nothing re-rendered.
+            BoxShadowSilhouette.RecordDeclaredColours(parent, new[] { "shadow-lg", "shadow-[#00ff00]" });
+            ForcePanelUpdate(parent.panel);
+
+            // Assert
+            Assert.That(inherits.Count, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void Given_AChildInheritingAShadowColour_When_TheParentsColourChanges_Then_AnotherChildIsNotRepainted()
+        {
+            // Arrange
+            var (parent, _, control, _) = MountInheritingPair();
+
+            // Act
+            BoxShadowSilhouette.RecordDeclaredColours(parent, new[] { "shadow-lg", "shadow-[#00ff00]" });
+            ForcePanelUpdate(parent.panel);
+
+            // Assert
+            Assert.That(control.Count, Is.Zero);
+        }
+
+        private (VisualElement Parent, Counter Inherits, Counter Control, VisualElement Child) MountInheritingPair()
+        {
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "parent", className: "w-[200px] h-[100px] shadow-lg shadow-[#ff0000]", children: new VNode[]
+                {
+                    V.Div(name: "inherits", className: "w-[40px] h-[40px] bg-[#ffffff] shadow-lg shadow-inherit"),
+                    V.Div(name: "control", className: "w-[40px] h-[40px] bg-[#ffffff] shadow-lg"),
+                }));
+            var parent = _window.rootVisualElement.Q<VisualElement>("parent");
+            var inherits = new Counter();
+            var control = new Counter();
+            var child = _window.rootVisualElement.Q<VisualElement>("inherits");
+            child.generateVisualContent += _ => inherits.Count++;
+            _window.rootVisualElement.Q<VisualElement>("control").generateVisualContent += _ => control.Count++;
+            ForcePanelUpdate(parent.panel);
+            inherits.Count = 0;
+            control.Count = 0;
+            return (parent, inherits, control, child);
+        }
+
+        private sealed class Counter
+        {
+            public int Count;
         }
 
         // Which transforms the band follows. The band is a sibling, so the element's own transform reaches
@@ -252,9 +792,9 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert — 24 is 2em only where the card's own 12px took effect, and is NaN where no band is laid out.
+            // Assert — 24 is 2em only where the card's own 12px took effect, and is NaN where no binding is.
             Assert.That(Mathf.Approximately(card.resolvedStyle.fontSize, 12f)
-                    ? BandFor(card)?.resolvedStyle.borderTopWidth ?? float.NaN
+                    ? ShownOutlineWidth(card)
                     : float.NaN,
                 Is.EqualTo(24f));
         }
@@ -271,8 +811,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth,
-                Is.EqualTo((float?)(Mathf.Floor(2.75f * perPixel) / perPixel)));
+            Assert.That(ShownOutlineWidth(card), Is.EqualTo(Mathf.Floor(2.75f * perPixel) / perPixel));
         }
 
         // And one under a device pixel up to one.
@@ -287,7 +826,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)(1f / perPixel)));
+            Assert.That(ShownOutlineWidth(card), Is.EqualTo(1f / perPixel));
         }
 
         // GREEN_ON_BASE(characterization): an outline offset is an absolute length that CSS does not snap, and the base
@@ -303,8 +842,9 @@ namespace Velvet.Tests
 
             // Assert — the 40px box, and on each side the offset as written and the band's own width, which the panel's
             // scale may have snapped.
-            var band = BandFor(card);
-            Assert.That(band.style.width.value.value, Is.EqualTo(40f + (2f * (1.75f + band.style.borderTopWidth.value))).Within(1e-3f));
+            var binding = RingOverlay.TryGet(card);
+            Assert.That(binding.OutlineElement.style.width.value.value,
+                Is.EqualTo(40f + (2f * (1.75f + binding.Spec.Outline.Width))).Within(1e-3f));
         }
 
         // GREEN_ON_BASE(characterization): a ring is a box-shadow, which the browser does not snap, nor does this.
@@ -317,8 +857,10 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(card.panel);
 
-            // Assert — the width written on the band, which layout then rounds to the panel's pixel grid.
-            Assert.That(BandFor(card).style.borderTopWidth.value, Is.EqualTo(2.75f));
+            // Assert
+            var binding = RingOverlay.TryGet(card);
+            Assert.That(binding.RingElement.style.display.value == DisplayStyle.Flex ? binding.Spec.Ring.Width : float.NaN,
+                Is.EqualTo(2.75f));
         }
 
         [Test]
@@ -338,7 +880,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(BandFor(card)?.resolvedStyle.borderTopWidth, Is.EqualTo((float?)40f));
+            Assert.That(ShownOutlineWidth(card), Is.EqualTo(40f));
         }
 
         [Test]
@@ -351,7 +893,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(BandFor(card).resolvedStyle.borderTopColor, Is.EqualTo(Color.red));
+            Assert.That(RingOverlay.TryGet(card).RingTint, Is.EqualTo(Color.red));
         }
 
         [Test]
@@ -423,7 +965,7 @@ namespace Velvet.Tests
             // the claim — it sits inside the host, so the engine carries it, where the element's own
             // transform in the cases above reaches it only through SyncElementState.
             var cardShift = Mathf.Round(movedCard.worldBound.x - stillCard.worldBound.x);
-            var bandShift = Mathf.Round(BandFor(movedCard).worldBound.x - BandFor(stillCard).worldBound.x);
+            var bandShift = Mathf.Round(RingBandOf(movedCard).worldBound.x - RingBandOf(stillCard).worldBound.x);
             Assert.That((cardShift, bandShift), Is.EqualTo((32f, 32f)));
         }
     }
@@ -499,7 +1041,7 @@ namespace Velvet.Tests
             var card = MountCard(V.Div(name: "card", className: "w-[100px] h-[40px] text-[20px] ring-[0.2em] ring-inset"));
 
             // Assert
-            Assert.That(InsetBandIn(card).style.borderTopWidth.value, Is.EqualTo(4f));
+            Assert.That(InsetBandIn(card) != null ? RingOverlay.TryGet(card).Spec.Ring.Width : float.NaN, Is.EqualTo(4f));
         }
 
         [Test]
@@ -517,7 +1059,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(card.panel);
 
             // Assert
-            Assert.That(InsetBandIn(card).style.borderTopWidth.value, Is.EqualTo(6f));
+            Assert.That(InsetBandIn(card) != null ? RingOverlay.TryGet(card).Spec.Ring.Width : float.NaN, Is.EqualTo(6f));
         }
 
         [Test]
@@ -573,7 +1115,7 @@ namespace Velvet.Tests
                 className: "w-[128px] h-[64px] rounded-[20px] border-[2px] ring-2 ring-inset"));
 
             // Assert
-            Assert.That(InsetBandIn(card)?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)18f));
+            Assert.That(RingOverlay.TryGet(card).InsideRadii.TopLeft.x, Is.EqualTo(18f));
         }
 
         [Test]
@@ -596,7 +1138,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(card.panel);
 
             // Assert
-            Assert.That(InsetBandIn(card)?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)14f));
+            Assert.That(RingOverlay.TryGet(card).InsideRadii.TopLeft.x, Is.EqualTo(14f));
         }
 
         [Test]

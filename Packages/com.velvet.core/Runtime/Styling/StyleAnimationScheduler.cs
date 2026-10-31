@@ -2494,9 +2494,11 @@ namespace Velvet
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
             public string[]? KeptClasses;
 
-            // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
-            // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
-            public VisualElement? RingOverlay;
+            // The animating element's OWN ring binding, when it has one. Only its own: a band belonging to a
+            // DESCENDANT sits beside that descendant, inside the subtree UI Toolkit's opacity compositing already
+            // fades — except an outline hosted above the animating element, which its own binding does not reach
+            // either.
+            public RingBinding? Ring;
 
             // A spring or bezier play's MotionPlayback, null for one on none, and the play's time on it, negative
             // inside its delay.
@@ -2519,13 +2521,17 @@ namespace Velvet
             internal static void BindRing(VisualElement element,
                 StyleAnimationScheduler.PendingAnimation pending, float startFactor)
             {
-                // An inset band is the element's own child, so the element's opacity composites it already.
-                if (RingOverlay.TryGet(element) is not { } binding || binding.Inside)
+                if (RingOverlay.TryGet(element) is not { } binding)
                 {
                     return;
                 }
-                pending.RingOverlay = binding.Overlay;
-                binding.Overlay.style.opacity = startFactor;
+                pending.Ring = binding;
+                // An inset band is the element's own child, so the element's opacity composites it already.
+                if (!binding.Inside)
+                {
+                    binding.Overlay.style.opacity = startFactor;
+                }
+                binding.OutlineOverlay.style.opacity = startFactor;
             }
 
             // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-
@@ -2537,7 +2543,7 @@ namespace Velvet
             // ringless animation costs nothing. Paused by EndRingCoFade on completion / cancel.
             internal static void StartRingCoFadeTick(StyleAnimationScheduler.PendingAnimation pending)
             {
-                if (pending.RingOverlay == null)
+                if (pending.Ring == null)
                 {
                     return;
                 }
@@ -2553,13 +2559,18 @@ namespace Velvet
                 }
                 pending.RingTick = host.schedule.Execute(() =>
                 {
-                    var overlay = pending.RingOverlay;
-                    if (overlay == null || ReferenceEquals(overlay.parent, animatingElement))
+                    var ring = pending.Ring;
+                    if (ring == null)
                     {
                         return;
                     }
                     var raw = animatingElement.resolvedStyle.opacity;
-                    overlay.style.opacity = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
+                    var opacity = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
+                    if (!ring.Inside)
+                    {
+                        ring.Overlay.style.opacity = opacity;
+                    }
+                    ring.OutlineOverlay.style.opacity = opacity;
                 }).Every(StyleAnimateDriver.TickMs);
             }
 
@@ -2573,14 +2584,18 @@ namespace Velvet
             internal static void EndRingCoFade(StyleAnimationScheduler.PendingAnimation pending)
             {
                 pending.RingTick?.Pause();
-                if (pending.RingOverlay == null)
+                if (pending.Ring == null)
                 {
                     return;
                 }
                 // Null, not 1: the inline opacity is this play's alone, so releasing it returns the band
                 // to whatever the cascade says rather than pinning it opaque.
-                pending.RingOverlay.style.opacity = StyleKeyword.Null;
-                pending.RingOverlay = null;
+                if (!pending.Ring.Inside)
+                {
+                    pending.Ring.Overlay.style.opacity = StyleKeyword.Null;
+                }
+                pending.Ring.OutlineOverlay.style.opacity = StyleKeyword.Null;
+                pending.Ring = null;
             }
         }
 

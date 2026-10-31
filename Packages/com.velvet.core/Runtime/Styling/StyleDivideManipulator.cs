@@ -275,6 +275,8 @@ namespace Velvet
             {
                 binding.Driven = driven;
             }
+            // The divider's colour is on the binding now, which the inheritors of this row read it from.
+            ColorReferenceWatch.NotifyWritten(child);
         }
 
         // The line style the divided edge takes: a border-style class of the child's own beats the divide's

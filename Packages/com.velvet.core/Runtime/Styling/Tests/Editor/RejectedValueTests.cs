@@ -115,7 +115,7 @@ namespace Velvet.Tests
                 StyleSpacingPrecedence.Normalize(new[] { "ring-2", "ring-red-500", "ring-[5PX]" }), out var spec);
 
             // Assert
-            Assert.That(ok ? spec.Color : Color.clear, Is.EqualTo(red));
+            Assert.That(ok ? spec.Ring.Color : Color.clear, Is.EqualTo(red));
         }
 
         [Test]

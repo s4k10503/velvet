@@ -340,6 +340,13 @@ namespace Velvet
         internal static readonly EngineMember BorderBottomLeftRadiusPropertyId =
             Field(UIElements, StylePropertyIdType, "BorderBottomLeftRadius", StylePropertyIdShape);
 
+        // OutlineHosting: whether an element clips what it holds, and whether the panel's hierarchy changed.
+        internal static readonly EngineMember PanelHierarchyVersion =
+            ReadProperty(UIElements, "UnityEngine.UIElements.BaseVisualElementPanel", "hierarchyVersion", "System.UInt32");
+
+        internal static readonly EngineMember ElementShouldClip =
+            Method(UIElements, VisualElementType, "ShouldClip", "System.Boolean");
+
         // StyleFontUnits: the font asset an element's text is drawn with.
         internal static readonly EngineMember ElementFontAsset = Method(UIElements, "UnityEngine.UIElements.TextUtilities",
             "GetFontAsset", "UnityEngine.TextCore.Text.FontAsset", VisualElementType);

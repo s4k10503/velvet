@@ -107,10 +107,14 @@ namespace Velvet
                         // border-x and border-y write the border-inline-color and border-block-color shorthands.
                         var longhand = candidate.Property != ArbitraryProperty.BorderXColor
                             && candidate.Property != ArbitraryProperty.BorderYColor;
-                        if (StyleColorValueParser.HintSelectsNonColour("border", StyleArbitraryValueResolver.TypeHintOf(cls))
-                            || !StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, longhand, out var color))
+                        if (StyleColorValueParser.HintSelectsNonColour("border", StyleArbitraryValueResolver.TypeHintOf(cls)))
                         {
                             return false;
+                        }
+                        if (!StyleColorValueParser.TryParseColorValue(cls, name.Length + 1, longhand, out var color))
+                        {
+                            // current, inherit, and a colour whose modifier leaves it invalid once computed.
+                            return StyleColorValueParser.TryParseColourKeyword(candidate.Property, cls, name.Length + 1, out result);
                         }
                         result = new ArbitraryStyle(candidate.Property, color);
                         return true;

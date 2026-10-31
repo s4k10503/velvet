@@ -488,6 +488,41 @@ namespace Velvet.Tests
             Assert.That((unresolved, raised, PaintOrder()), Is.EqualTo((false, "lit,inner", "inner,lit")));
         }
 
+        // holder around an outlined element, holder's class list s_inner, outer's replaced through s_setOuter.
+        [Component]
+        private static VNode RenderStackedOutline()
+        {
+            var (outer, setOuter) = Hooks.UseState(s_outer);
+            s_setOuter = setOuter;
+            return V.Div(name: "outer", className: outer, children: new VNode?[]
+            {
+                V.Div(name: "holder", className: s_inner, children: new VNode?[]
+                {
+                    V.Div(name: "a", className: "w-[40px] h-[40px] outline-2"),
+                }),
+            });
+        }
+
+        [Test]
+        public void Given_AZIndexAncestorOfAnOutline_When_ItsDeclarationArrivesAfterMount_Then_ThatAncestorHostsTheOutline()
+        {
+            // Arrange — nothing declares --z at mount, so the holder is unstacked and the outline is hosted above it.
+            (s_outer, s_inner) = ("", "relative z-(--z)");
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderStackedOutline));
+            var card = _window.rootVisualElement.Q<VisualElement>("a");
+            ForcePanelUpdate(card.panel);
+
+            // Act
+            s_setOuter.Invoke("[--z:20]");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(card.panel);
+            var binding = RingOverlay.TryGet(card);
+            OutlineHosting.Place(card, binding, force: false);
+
+            // Assert
+            Assert.That(binding.OutlineOverlay.parent.name, Is.EqualTo("holder"));
+        }
+
         // GREEN_ON_BASE(characterization): the base leaves an element whose z reads auto unstacked as well. Read
         // through the relocation table now, since an unstacked element's parent no longer tells the two apart.
         [Test]
