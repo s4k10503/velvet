@@ -1001,7 +1001,7 @@ namespace Velvet
 
             // Taken after a request started over is cancelled, as v5 stores the state at that point.
             _revertState = new EntryState(this);
-            _requestTakesToken = options.TakesToken;
+            _requestTakesToken = false;
             var request = new CancellationTokenSource();
             _inFlight = request;
             _retriesStopped = false;
@@ -1044,6 +1044,8 @@ namespace Velvet
                 T data = default!;
                 Exception? failure = null;
                 var token = request.Token;
+                // The function has read the token only once it has started, which a request paused at the outset has not.
+                if (ReferenceEquals(_inFlight, request)) _requestTakesToken = options.TakesToken;
                 var task = Start(queryFn, token);
                 try
                 {

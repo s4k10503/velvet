@@ -492,6 +492,27 @@ namespace Velvet.Tests
                 "v5 keeps a paused fetch over data in flight, and removes a query only while its fetch status is idle");
         });
 
+        [UnityTest]
+        public IEnumerator Given_APausedRefetchOverDataOfAFunctionTakingTheToken_When_TheLastReaderLeavesAndTheDeviceComesBack_Then_TheFunctionRuns()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            await Frames();
+            s_online = false;
+            Last().Refetch();
+            Hide(mounted);
+
+            // Act
+            s_online = true;
+            await Frames();
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2),
+                "A function that never started has not read the token, so v5 keeps the paused refetch and runs it");
+        });
+
         [Test]
         public void Given_APausedFirstRequestOfAFunctionTakingNoToken_When_TheLastReaderLeaves_Then_TheEntryIsIdle()
         {
