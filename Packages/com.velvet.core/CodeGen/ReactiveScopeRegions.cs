@@ -217,7 +217,8 @@ namespace Velvet.CodeGen
         private ScopeRegion? TryBuildFrom(int start, int end, VariableDefinition? stored, out string? reason)
         {
             _internalLocals = new HashSet<int>();
-            reason = Check(start, end) ?? (stored == null ? null : ValueMutatedAfter(stored, start, end));
+            reason = Check(start, end)
+                ?? (stored == null ? null : NodeHolderProblem(stored.VariableType) ?? ValueMutatedAfter(stored, start, end));
             var region = stored == null
                 ? new ScopeRegion(start, end, _flow.Instructions[start], _flow.Instructions[end], ((MethodReference)_flow.Instructions[end].Operand).ReturnType)
                 {

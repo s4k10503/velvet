@@ -22,8 +22,9 @@ namespace Velvet.CodeGen
             var reads = new HashSet<string>();
             foreach (var region in found)
             {
-                if (Earns(region, bodyGate)) kept.Add(region);
-                if (region.Parent == null || !SameDependencies(region, region.Parent)) AddKeys(reads, region);
+                if (!Earns(region, bodyGate)) continue;
+                kept.Add(region);
+                AddKeys(reads, region);
             }
             kept.AddRange(KeepValues(values, reads));
             kept.Sort(CompareOuterFirst);

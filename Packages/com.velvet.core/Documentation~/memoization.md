@@ -75,7 +75,7 @@ Typing in the field builds the second label again and nothing else.
 Keys are compared the way hook dependencies are ([react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means)): by instance for a class, by content for a string, a number or a struct.
 
 - A parameter, a hook value or a local computed outside the scope is one key.
-- A class value that the scope reads only through its fields or its automatic properties — a props record's `Name` — is keyed on those members, so a new props record that differs only in `Count` leaves the scope reading `Name` cached. A value handed on whole, or read through any other member, is keyed on the value itself.
+- A class value that the scope reads only through its fields or its property getters — a props record's `Name` — is keyed on those members, a getter by what it returns, so a new props record that differs only in `Count` leaves the scope reading `Name` cached. A value handed on whole, or read through any other member, is keyed on the value itself.
 - A lambda in a scope captures variables of the enclosing method; the scope is keyed on every variable its closure holds.
 
 ### What keeps a scope from being cached
@@ -99,7 +99,8 @@ A hook whose value the body never reads, such as `var (_, bump) = Hooks.UseState
 
 A computation that does not end in a `VNode` is cached when it computes a local of a class, array, delegate or interface type and a scope that is cached reads that local as a whole. It meets the conditions a scope does, and one more: nothing may write into the local afterwards, since the one object is handed to the code after it on every render that hits.
 
-- Every later use of the local reads from it or hands it on: a `V.*` factory, a property getter, a framework member of the pure list, or a method that returns a value and is not called on the local. A store into its elements or fields, a call on it that is not a getter, or a method that returns nothing leaves the computation uncached, and the report names the instruction.
+- Every later use of the local only reads it: a `V.*` factory, a property getter or a framework member of the pure list, and whatever those return is followed the same way, so an element taken out of the value is read, not written. A store into its elements or fields, or handing it to any other call — a helper you wrote, a delegate, a constructor, a method on another object — leaves the computation uncached, since that call may write into it; the report names the instruction.
+- A value that can hold nodes is cached only as an array or a `List<T>` of nodes. A dictionary, a tuple or a row type with a node in it is built on every render.
 - A local that nothing cached reads whole, or reads only through a field or an automatic property, is not cached on its own; the scopes that read it are keyed on the member.
 - A string, a number or a struct is not cached on its own, since a rebuilt one compares equal to the one it replaces; a `VNode` is a scope of its own.
 - A computation that sits in a loop, that a branch can skip, or that reads something outside its keys — a mutable static, a call to a hook, a call whose target the build cannot see — is built on every render, as a scope in the same place is.

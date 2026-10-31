@@ -1204,7 +1204,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base leaves a discarded state value without a gate too, and so does this change.
         [Test]
-        public void Given_DiscardedHookValue_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_DiscardedHookValue_When_Analyzed_Then_TheBodyHasNoGate()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(DiscardedValueComponent))), Is.False,
@@ -1302,7 +1302,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base leaves a setter-only read without a gate, and so does this change.
         [Test]
-        public void Given_OnlyTheSetterReadOffTheStack_When_Analyzed_Then_IsLeftUnwoven()
+        public void Given_OnlyTheSetterReadOffTheStack_When_Analyzed_Then_TheBodyHasNoGate()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(StateSetterOffTheStackComponent))), Is.False,

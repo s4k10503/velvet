@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -50,6 +51,44 @@ namespace Velvet.CodeGen
             return false;
         }
 
+        // Only a node, an array of nodes and a list of nodes are walked by the sweep that keeps a cached value's nodes out
+        // of the pool, so a value that can hold a node anywhere else is not cached.
+        private string? NodeHolderProblem(TypeReference type)
+        {
+            if (IsNodeList(type)) return null;
+            return ReachesNodes(type, new HashSet<string>(), 0) ? "it can hold nodes that nothing keeps out of the pool" : null;
+        }
+
+        private bool IsNodeList(TypeReference type)
+        {
+            if (type is ArrayType array) return array.Rank == 1 && IsNode(array.ElementType);
+            return type is GenericInstanceType generic && generic.ElementType.FullName == "System.Collections.Generic.List`1"
+                && generic.GenericArguments.Count == 1 && IsNode(generic.GenericArguments[0]);
+        }
+
+        private bool IsNode(TypeReference type) => type is not ArrayType && DerivesFromVNode(type);
+
+        private bool ReachesNodes(TypeReference type, HashSet<string> seen, int depth)
+        {
+            if (type.IsGenericParameter || type.IsPrimitive || type.FullName == "System.String") return false;
+            if (IsNode(type)) return true;
+            if (depth >= MaxAliasDepth) return true;
+            if (!seen.Add(type.FullName)) return false;
+            if (type is ArrayType array) return ReachesNodes(array.ElementType, seen, depth + 1);
+            if (type is GenericInstanceType generic && generic.GenericArguments.Any(each => ReachesNodes(each, seen, depth + 1)))
+            {
+                return true;
+            }
+            return !IsFrameworkType(type.FullName) && FieldsReachNodes(type, seen, depth);
+        }
+
+        private bool FieldsReachNodes(TypeReference type, HashSet<string> seen, int depth)
+        {
+            var definition = ScopeResolution.Type(type);
+            if (definition == null) return true;
+            return definition.Fields.Any(field => !field.IsStatic && ReachesNodes(field.FieldType, seen, depth + 1));
+        }
+
         // The run's value is cached, so the one object is handed to the code after it on every render that hits. That is
         // sound only while nothing writes into it.
         private string? ValueMutatedAfter(VariableDefinition local, int start, int end)
@@ -87,6 +126,7 @@ namespace Velvet.CodeGen
             }
             switch (instruction.OpCode.Code)
             {
+                case Code.Pop:
                 case Code.Ldlen:
                 case Code.Brtrue:
                 case Code.Brfalse:
@@ -98,7 +138,7 @@ namespace Velvet.CodeGen
                 case Code.Call:
                 case Code.Callvirt:
                 case Code.Newobj:
-                    return CallProblem(consumer, value, origin);
+                    return CallProblem(consumer, value, origin, seen, depth);
                 default:
                     return $"local {origin} is used by {instruction.OpCode.Name}, which may write into it or hand it on";
             }
@@ -111,18 +151,21 @@ namespace Velvet.CodeGen
             return ReadsOnly(alias, -1, -1, seen, depth + 1);
         }
 
-        // A call the build classifies as pure leaves what it is handed as it found it, and so does a static one that
-        // returns a value. A call that returns nothing, or is made on the value itself, may be made for what it changes.
-        private string? CallProblem(int call, StackValue value, int origin)
+        // A call the build classifies as pure leaves what it is handed as it found it, but what it returns may be the value
+        // or part of it, so the result is followed like a field read. Any other call may write into what it is handed, as
+        // React Compiler assumes of a function it cannot see into.
+        private string? CallProblem(int call, StackValue value, int origin, HashSet<int> seen, int depth)
         {
-            var kind = _volatility.KindAt(call);
-            if (kind == CompilerWeaver.CallKind.Pure) return null;
-            var callee = (MethodReference)_flow.Instructions[call].Operand;
+            if (_volatility.KindAt(call) != CompilerWeaver.CallKind.Pure)
+            {
+                return $"local {origin} is handed to {((MethodReference)_flow.Instructions[call].Operand).Name}, which may write into it";
+            }
             var construction = _flow.Instructions[call].OpCode.Code == Code.Newobj;
-            var onValue = !construction && callee.HasThis && _flow.Popped[call][0] == value;
-            var returnsNothing = !construction && callee.ReturnType.FullName == "System.Void";
-            if (kind == CompilerWeaver.CallKind.Plain && !onValue && !returnsNothing) return null;
-            return $"local {origin} is handed to {callee.Name}, which may write into it";
+            var callee = (MethodReference)_flow.Instructions[call].Operand;
+            var result = construction ? callee.DeclaringType : callee.ReturnType;
+            if (!CachesAsValue(result)) return null;
+            if (depth >= MaxAliasDepth) return $"local {origin} is passed on too deeply to follow";
+            return ConsumerProblem(_flow.Pushed[call]!, call, seen, depth + 1, origin);
         }
     }
 }

@@ -7,16 +7,14 @@
   call whose target it cannot see, a stable object a call may have changed — and hands the reconciler every other
   part by instance, so a subtree that reads only parameters and hook values is not built again by it, as in
   React Compiler, where each reactive scope is recomputed according to the values it
-  reads and not according to whether the component rendered. A body that relied on the forced render to
-  re-read an object through a getter, or any value the build does not key a part on, opts out with
-  `[Component(Compiler = false)]` or reads it through a call or a mutable static.
+  reads and not according to whether the component rendered.
 - The code that computes what a local is given, such as `var visible = items.Where(Matches).ToArray();`, is cached
   in a part of its own when a cached part reads that local as a whole and nothing writes into the local afterwards.
   It keeps its identity while the values it reads are unchanged, so the parts that read it are no longer built
   again on every render in which something else changed, where the array was rebuilt each time and every part
   keyed on it missed. A body that expected a fresh array, list or delegate on each render, by comparing it with an
-  earlier one or by handing it to code that writes into it, sees the same instance until its inputs change; a local
-  the body writes into or hands to a method that returns nothing is still computed on every render. The memoization
+  earlier one, sees the same instance until its inputs change; a local the body writes into, or hands to any call
+  other than a pure one, is still computed on every render. The memoization
   guide states which computations are cached.
 
 ### Added

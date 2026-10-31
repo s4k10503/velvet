@@ -47,24 +47,6 @@ namespace Velvet.Tests
             return new[] { seed, seed + 1 };
         }
 
-        private static string Join(int[] rows)
-        {
-            s_calls[Joins]++;
-            return string.Join(",", rows);
-        }
-
-        private static int[] Double(int[] rows)
-        {
-            s_calls[Doubles]++;
-            return rows.Select(row => row * 2).ToArray();
-        }
-
-        private static string Count(int[] rows)
-        {
-            s_calls[Counts]++;
-            return rows.Length.ToString();
-        }
-
         private static string Describe(int slot, object value)
         {
             s_calls[slot]++;
@@ -89,8 +71,8 @@ namespace Velvet.Tests
             Capture(setFirst, setSecond);
             var rows = Build(first);
             return V.Div("derived",
-                V.Label(text: Join(rows)),
-                V.Label(text: Count(rows)),
+                V.Label(text: Describe(Joins, string.Join(",", rows))),
+                V.Label(text: Describe(Counts, rows.Length)),
                 V.Label(text: Describe(3, first)),
                 V.Label(text: Describe(4, second)));
         }
@@ -165,7 +147,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(LabelTexts(), Is.EqualTo(new[] { "3,4", "2", "3:3", "4:0" }));
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "1:3,4", "2:2", "3:3", "4:0" }));
         }
 
         // GREEN_ON_BASE(characterization): the base shows the same texts, from an array it computes whenever the gate on the body misses.
@@ -182,7 +164,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(LabelTexts(), Is.EqualTo(new[] { "3,4", "2", "3:3", "4:5" }));
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "1:3,4", "2:2", "3:3", "4:5" }));
         }
 
         #endregion
@@ -197,9 +179,9 @@ namespace Velvet.Tests
             Capture(setFirst, setSecond);
             var rows = Build(first);
             var shifted = second + 1;
-            var doubled = Double(rows);
+            var doubled = rows.Select(row => { s_calls[Doubles]++; return row * 2; }).ToArray();
             return V.Div("chain",
-                V.Label(text: Join(doubled)),
+                V.Label(text: Describe(Joins, string.Join(",", doubled))),
                 V.Label(text: Describe(3, first)),
                 V.Label(text: Describe(4, shifted)));
         }
@@ -215,7 +197,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(new[] { s_calls[Builds], s_calls[Doubles] }, Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(new[] { s_calls[Builds], s_calls[Doubles] }, Is.EqualTo(new[] { 1, 2 }));
         }
 
         #endregion
@@ -231,8 +213,8 @@ namespace Velvet.Tests
             var rows = Build(first);
             rows[0] = second;
             return V.Div("written",
-                V.Label(text: Join(rows)),
-                V.Label(text: Count(rows)),
+                V.Label(text: Describe(Joins, string.Join(",", rows))),
+                V.Label(text: Describe(Counts, rows.Length)),
                 V.Label(text: Describe(3, first)),
                 V.Label(text: Describe(4, second)));
         }
@@ -250,7 +232,7 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(LabelTexts()[0], Is.EqualTo("5,1"));
+            Assert.That(LabelTexts()[0], Is.EqualTo("1:5,1"));
         }
 
         // GREEN_ON_BASE(characterization): the base computes the array whenever the gate on the body misses.
@@ -290,7 +272,7 @@ namespace Velvet.Tests
             Capture(setFirst, setSecond);
             var rows = Build(first);
             return V.Div("single",
-                V.Label(text: Join(rows)),
+                V.Label(text: Describe(Joins, string.Join(",", rows))),
                 V.Label(text: Describe(3, first)),
                 V.Label(text: Describe(4, second)));
         }
@@ -307,6 +289,78 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_calls[Builds], Is.EqualTo(1));
+        }
+
+        #endregion
+
+        #region An array handed to code that may write into it
+
+        private static int Stamp(int[] rows, int value)
+        {
+            rows[0] = value;
+            return 0;
+        }
+
+        [Component]
+        private static VNode ArrayHandedToAHelperThatWrites()
+        {
+            var (first, setFirst) = Hooks.UseState(0);
+            var (second, setSecond) = Hooks.UseState(0);
+            Capture(setFirst, setSecond);
+            var rows = Build(first);
+            Stamp(rows, second);
+            return V.Div("stamped",
+                V.Label(text: Describe(Joins, string.Join(",", rows))),
+                V.Label(text: Describe(3, first)),
+                V.Label(text: Describe(4, second)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base computes the array whenever the gate on the body misses, so each carries only its own write.
+        [Test]
+        public void Given_AnArrayHandedToAHelperThatWritesIntoIt_When_AnotherStateChanges_Then_TheLabelShowsTheValueWritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ArrayHandedToAHelperThatWrites, key: "stamped"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts()[0], Is.EqualTo("1:5,1"));
+        }
+
+        #endregion
+
+        #region A value that holds nodes
+
+        [Component]
+        private static VNode DictionaryOfNodes()
+        {
+            var (first, setFirst) = Hooks.UseState(0);
+            var (second, setSecond) = Hooks.UseState(0);
+            Capture(setFirst, setSecond);
+            var ids = new[] { first, first + 1 };
+            var tabs = ids.ToDictionary(id => id, id => { s_calls[Builds]++; return (VNode)V.Label(text: "tab" + id); });
+            return V.Div("tabs",
+                tabs[first],
+                V.Div("again", tabs[first + 1]),
+                V.Label(text: Describe(4, second)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the dictionary whenever the gate on the body misses.
+        [Test]
+        public void Given_ADictionaryOfNodesReadByTwoScopes_When_AnotherStateChanges_Then_TheDictionaryIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DictionaryOfNodes, key: "tabs"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_calls[Builds], Is.EqualTo(4));
         }
 
         #endregion

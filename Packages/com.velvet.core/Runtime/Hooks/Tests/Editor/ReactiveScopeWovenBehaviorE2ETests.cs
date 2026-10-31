@@ -462,6 +462,41 @@ namespace Velvet.Tests
             return V.Label(text: s_text);
         }
 
+        private sealed class Model
+        {
+            public string First = "a";
+
+            public string Display => First + "!";
+        }
+
+        private static readonly Model s_model = new();
+
+        [Component]
+        private static VNode ForcedRenderOverAGetterOfAStateObject()
+        {
+            var (model, _) = Hooks.UseState(s_model);
+            var (_, force) = Hooks.UseState(0);
+            s_force = force;
+            return V.Label(text: model.Display);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses a body whose state value is never read, so it builds the label on every render.
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_AnObjectsGetterTheLabelReadsChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
+        {
+            // Arrange
+            s_model.First = "a";
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderOverAGetterOfAStateObject, key: "forced"));
+            s_model.First = "b";
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "b!" }));
+        }
+
         [Component]
         private static VNode ForcedRenderOverLabelsThatReadNothing()
         {
