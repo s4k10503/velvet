@@ -100,7 +100,8 @@ assume either has happened — a first-run failure there is worse than either nu
 Some engine members Velvet depends on have no public API, so it reaches them by name: what a panel's
 focus controller still holds of an element leaving it, an element's focus pseudo-state and composite-root
 flag, UI Toolkit's internal property-change event, a text input's record of an open IME composition, the
-`@import`s of a stylesheet, the rules of a stylesheet that declare a scale, a rotate or a transform origin and their
+font asset an element's text is drawn in, whose metrics the font-relative units read
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)), the `@import`s of a stylesheet, the rules of a stylesheet that declare a scale, a rotate or a transform origin and their
 selectors, the cached opacity, rotate, corner radii and transition lists, the transitions a panel
 is running and which longhands a shorthand covers, used by
 [layoutId moves](motion.md#shared-element-layout-animation-layoutid), native transition activity, and the timing and

@@ -18,6 +18,13 @@ namespace Velvet.TestUtilities
         /// <summary>The RenderTexture the panel's PanelSettings renders into.</summary>
         public RenderTexture TargetTexture { get; }
 
+        /// <summary>The PanelSettings scale, which the panel's scaledPixelsPerPoint follows (ConstantPixelSize).</summary>
+        public float Scale
+        {
+            get => _settings.scale;
+            set => _settings.scale = value;
+        }
+
         /// <summary>The panel's root, ready to V.Mount a VNode tree onto.</summary>
         public VisualElement Root => _document.rootVisualElement;
 

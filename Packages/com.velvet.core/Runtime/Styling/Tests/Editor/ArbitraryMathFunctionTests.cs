@@ -212,7 +212,6 @@ namespace Velvet.Tests
         [TestCase("calc(1px+2)")]
         [TestCase("calc(1px*2px)")]
         [TestCase("calc(1px/2px)")]
-        [TestCase("calc(1px/0)")]
         [TestCase("calc(4)")]
         [TestCase("calc(1px))")]
         [TestCase("min()")]
@@ -359,6 +358,25 @@ namespace Velvet.Tests
             Assert.That((ok, s.Property), Is.EqualTo((true, property)));
         }
 
+        [TestCase("ex")]
+        [TestCase("ch")]
+        [TestCase("cap")]
+        [TestCase("ic")]
+        [TestCase("lh")]
+        [TestCase("rex")]
+        [TestCase("RCH")]
+        [TestCase("rcap")]
+        [TestCase("ric")]
+        [TestCase("rlh")]
+        public void Given_AFontRelativeUnitOtherThanEm_When_ParsedAsAWidth_Then_ItIsClaimed(string unit)
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("w-[2" + unit + "]", out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
         [TestCase("vw")]
         [TestCase("vh")]
         [TestCase("vmin")]
@@ -376,37 +394,28 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): a translate taking the less of a percentage and pixels was never read.
         [Test]
-        public void Given_AMinOfAPercentageAndPixels_When_ParsedAsATranslate_Then_TheClassIsDeclined()
+        public void Given_AMinOfAPercentageAndPixels_When_ParsedAsATranslate_Then_TheClassIsRead()
         {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("translate-x-[min(10%,4px)]", out _);
+            // Act — a translate measures a percentage of the element's own box beside a length, as CSS does.
+            var ok = StyleArbitraryValueResolver.TryParse("translate-x-[min(10%,4px)]", out var s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(ok && s.Expression != null, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): an em beside an overflowing length was never read, and still is not.
-        [Test]
-        public void Given_AnEmBesideAnOverflowingLength_When_ParsedAsAWidth_Then_TheClassIsDeclined()
+        [TestCase("w-[calc(1e38px*10+1em)]")]
+        [TestCase("w-[calc(1em/0)]")]
+        public void Given_AnEmBesideAnInfiniteTerm_When_ParsedAsAWidth_Then_ItMeasuresTheLargestFloat(string cls)
         {
+            // Arrange
+            StyleArbitraryValueResolver.TryParse(cls, out var s);
+
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("w-[calc(1e38px*10+1em)]", out _);
+            var px = s.Expression?.Evaluate(new RelativeLengthBasis(10f, 200f, 800f, 600f)) ?? float.NaN;
 
             // Assert
-            Assert.That(ok, Is.False);
-        }
-
-        // GREEN_ON_BASE(characterization): an em divided by zero was never read as a width, and still is not.
-        [Test]
-        public void Given_AnEmDividedByZero_When_ParsedAsAWidth_Then_TheClassIsDeclined()
-        {
-            // Act
-            var ok = StyleArbitraryValueResolver.TryParse("w-[calc(1em/0)]", out _);
-
-            // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(px, Is.EqualTo(float.MaxValue));
         }
 
         // GREEN_ON_BASE(characterization): a stop at a bare number or a malformed function was never read.
@@ -421,14 +430,15 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): a calc() of a percentage alone was folded into the radius, and still is.
         [Test]
         public void Given_AnEllipseRadiusOfAFoldedPercentage_When_Extracted_Then_ItIsHalfTheBox()
         {
             // Act
             StyleGradientClass.TryExtract(new[] { "bg-radial-[ellipse_calc(25%*2)_1in,#ff0000,#0000ff]" }, out var spec);
 
-            // Assert
-            Assert.That((spec.Radial.X, spec.Radial.XPercent), Is.EqualTo((0.5f, true)));
+            // Assert — 25% of the width, twice: half of a 100px box.
+            Assert.That(GradientBackground.RadialRadii(spec, 100f, 100f).x, Is.EqualTo(50f));
         }
 
         [Test]
@@ -464,15 +474,14 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): an em border width was never read, and still is not.
         [Test]
-        public void Given_AnEmBorderWidth_When_Parsed_Then_TheClassIsDeclined()
+        public void Given_AnEmBorderWidth_When_Parsed_Then_ItIsMeasuredOnTheElement()
         {
             // Act
-            var ok = StyleArbitraryValueResolver.TryParse("border-[1em]", out _);
+            var ok = StyleArbitraryValueResolver.TryParse("border-[1em]", out var s);
 
             // Assert
-            Assert.That(ok, Is.False);
+            Assert.That(ok && s.Expression != null, Is.True);
         }
 
         // GREEN_ON_BASE(characterization): a viewport unit under a prefix CSS lacks was never read, nor is it now.

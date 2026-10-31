@@ -87,11 +87,13 @@ namespace Velvet
                 if (StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit))
                 {
                     if (blurUnit != LengthUnit.Pixel) return false;
-                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
+                    result = new ArbitraryStyle(ArbitraryProperty.FilterBlur,
+                        StyleArbitraryValueResolver.ClampMathResult(valueSpan, blurPx, 0f), LengthUnit.Pixel);
                     return true;
                 }
                 if (!TryParseMeasuredLength(valueSpan, out var measured)) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!);
+                if (IsNegativeLiteral(valueSpan)) return false;
+                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, measured!.AtLeast(0f));
                 return true;
             }
             if (prefix == null)
@@ -108,7 +110,8 @@ namespace Velvet
                 return null;
             }
             var amount = 0f;
-            if (!TryParseAmount(valueSpan, out amount) || amount < 0f) return false;
+            if (!TryParseAmount(valueSpan, out amount)
+                || (amount = StyleArbitraryValueResolver.ClampMathResult(valueSpan, amount, 0f)) < 0f) return false;
             result = new ArbitraryStyle(property, Mathf.Min(amount, ceiling), LengthUnit.Pixel);
             return true;
         }
@@ -116,19 +119,19 @@ namespace Velvet
         // A length only the element can measure: an em, a viewport unit, or a math function reading one, which
         // StyleRelativeLengths.TryMeasure measures. blur() and drop-shadow() take no percentage.
         private static bool TryParseMeasuredLength(ReadOnlySpan<char> value, out StyleLengthExpression? expression)
-            => StyleLengthExpression.TryParse(value, out expression) && expression!.IsFinite() && !expression.ReadsPercentage;
+            => StyleLengthExpression.TryParse(value, out expression) && !expression!.ReadsPercentage;
+
+        // A length written with a minus sign and no math function around it, which the browser rejects where the property
+        // takes none below zero; one a math function comes to below zero is zero.
+        private static bool IsNegativeLiteral(ReadOnlySpan<char> value)
+        {
+            var trimmed = value.Trim("_ ".AsSpan());
+            return trimmed.Length > 0 && trimmed[0] == '-' && !StyleLengthExpression.OpensMathFunction(trimmed);
+        }
 
         // A number, or a percentage of 1, as each of these CSS functions takes.
         internal static bool TryParseAmount(ReadOnlySpan<char> valueSpan, out float amount)
-        {
-            if (valueSpan.EndsWith("%"))
-            {
-                var parsed = StyleArbitraryValueResolver.TryParseFloat(valueSpan.Slice(0, valueSpan.Length - 1), out amount);
-                amount /= 100f;
-                return parsed;
-            }
-            return StyleArbitraryValueResolver.TryParseFloat(valueSpan, out amount);
-        }
+            => StyleArbitraryValueResolver.TryParseNumberOrPercentage(valueSpan, out amount);
 
         // Tailwind's --drop-shadow-* theme, and the bare drop-shadow's deprecated --drop-shadow.
         private static readonly Dictionary<string, DropShadowLayer[]> s_dropShadowPreset = new()
@@ -265,7 +268,8 @@ namespace Velvet
                 }
                 if (TryParseMeasuredLength(token.AsSpan(), out var expression))
                 {
-                    if (lengthCount == 3)
+                    // A deviation below zero as a literal rejects the shadow, as a literal deviation does.
+                    if (lengthCount == 3 || (lengthCount == 2 && IsNegativeLiteral(token.AsSpan())))
                     {
                         return false;
                     }

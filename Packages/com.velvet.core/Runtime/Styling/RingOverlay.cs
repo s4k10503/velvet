@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -19,6 +20,8 @@ namespace Velvet
         // True while the overlay is configured as the element's own first child (an inset band) rather than as
         // its following sibling; RingOverlay.SetMode is the only writer.
         public bool Inside;
+        // The offset the last geometry sync placed the band at, which the frame's sample compares against.
+        public float AppliedOffset;
 
         public RingBinding(VisualElement overlay) => Overlay = overlay;
     }
@@ -223,12 +226,35 @@ namespace Velvet
         // SyncGeometry once the element is laid out.
         private static void ApplySpec(VisualElement overlay, RingSpec spec, VisualElement element)
         {
-            overlay.style.borderTopWidth = spec.Width;
-            overlay.style.borderRightWidth = spec.Width;
-            overlay.style.borderBottomWidth = spec.Width;
-            overlay.style.borderLeftWidth = spec.Width;
+            ApplyWidth(overlay, WidthOf(element, spec));
             ApplyColor(overlay, spec.CurrentColor ? element.resolvedStyle.color : spec.Color);
         }
+
+        private static void ApplyWidth(VisualElement overlay, float width)
+        {
+            overlay.style.borderTopWidth = width;
+            overlay.style.borderRightWidth = width;
+            overlay.style.borderBottomWidth = width;
+            overlay.style.borderLeftWidth = width;
+        }
+
+        // The band's width on element: the spec's, or what its width expression measures there, which is zero
+        // while the element is on no panel.
+        internal static float WidthOf(VisualElement element, in RingSpec spec)
+            => Snap(element, spec, spec.WidthExpression == null ? spec.Width
+                : StyleRelativeLengths.TryBasisOf(element, out var basis) ? spec.WidthExpression.Evaluate(basis)
+                : 0f);
+
+        // The gap between the element's edge and the band.
+        internal static float OffsetOf(VisualElement element, in RingSpec spec)
+            => spec.OffsetExpression == null ? spec.Offset
+                : StyleRelativeLengths.TryBasisOf(element, out var basis) ? spec.OffsetExpression.Evaluate(basis)
+                : 0f;
+
+        // An outline's width as the browser snaps a border width to device pixels: one under a device pixel is
+        // one, any other is rounded toward zero to a whole number of them (RingOverlayTests pins it).
+        private static float Snap(VisualElement element, in RingSpec spec, float length)
+            => spec.Snaps ? StyleRelativeLengths.SnapAsBorderWidth(element, length) : length;
 
         private static void ApplyColor(VisualElement overlay, Color color)
         {
@@ -303,7 +329,23 @@ namespace Velvet
             style.bottom = 0f;
             style.width = StyleKeyword.Null;
             style.height = StyleKeyword.Null;
+            SyncInsideWidth(element, binding);
             SyncElementState(element, binding);
+        }
+
+        // An inset band's width where the element measures or snaps it, which the outset path writes in SyncGeometry: it
+        // is zero while the element is on no panel, and follows the font and the panel scale after.
+        private static void SyncInsideWidth(VisualElement element, RingBinding binding)
+        {
+            if (binding.Spec.WidthExpression == null && !binding.Spec.Snaps)
+            {
+                return;
+            }
+            var width = WidthOf(element, binding.Spec);
+            if (width != binding.Overlay.style.borderTopWidth.value)
+            {
+                ApplyWidth(binding.Overlay, width);
+            }
         }
 
         // The padding box's corners are the element's less the border beside them, the larger side's where the
@@ -354,7 +396,15 @@ namespace Velvet
             if (float.IsNaN(hostBorderLeft)) hostBorderLeft = 0f;
             if (float.IsNaN(hostBorderTop)) hostBorderTop = 0f;
 
-            var grow = spec.Offset + spec.Width;
+            var bandWidth = WidthOf(element, spec);
+            // A width the element measures follows its font and the panel as they change, as the em does in CSS.
+            if (spec.WidthExpression != null || spec.Snaps)
+            {
+                ApplyWidth(overlay, bandWidth);
+            }
+            var offset = OffsetOf(element, spec);
+            binding.AppliedOffset = offset;
+            var grow = offset + bandWidth;
             overlay.style.left = originX - grow - hostBorderLeft;
             overlay.style.top = originY - grow - hostBorderTop;
             overlay.style.right = StyleKeyword.Null;
@@ -386,6 +436,7 @@ namespace Velvet
             if (binding.Inside)
             {
                 // Everything else reaches the band from the element it is a child of (see SetMode).
+                SyncInsideWidth(element, binding);
                 SyncInsideRadii(element, binding);
                 if (!float.IsNaN(rs.width))
                 {
@@ -400,8 +451,16 @@ namespace Velvet
             {
                 return; // pre-layout: a percentage pivot has no box to resolve against yet
             }
+            var width = WidthOf(element, binding.Spec);
+            // A font change need not move the element's box, so the frame's sample carries it to the band.
+            var offset = OffsetOf(element, binding.Spec);
+            if ((binding.Spec.WidthExpression != null || binding.Spec.OffsetExpression != null || binding.Spec.Snaps)
+                && (width != style.borderTopWidth.value || offset != binding.AppliedOffset) && element.parent is { } host)
+            {
+                SyncGeometry(element, binding, host);
+            }
             SyncProjectedCorners(element, binding);
-            var grow = binding.Spec.Offset + binding.Spec.Width;
+            var grow = offset + width;
             var origin = rs.transformOrigin;
             var translate = rs.translate;
             style.transformOrigin = new TransformOrigin(origin.x + grow, origin.y + grow, origin.z);
@@ -419,7 +478,7 @@ namespace Velvet
                 ProjectedCornerFace.End(binding.Overlay);
                 return;
             }
-            var grow = binding.Spec.Inset ? 0f : binding.Spec.Offset + binding.Spec.Width;
+            var grow = binding.Spec.Inset ? 0f : OffsetOf(element, binding.Spec) + WidthOf(element, binding.Spec);
             var fitted = BorderBandPainter.Fitted(radii, element.layout.width, element.layout.height);
             var g = new Vector2(grow, grow);
             ProjectedCornerFace.Draw(binding.Overlay, new CornerRadii

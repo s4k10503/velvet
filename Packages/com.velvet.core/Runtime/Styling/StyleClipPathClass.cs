@@ -28,14 +28,33 @@ namespace Velvet
     {
         public readonly float Value;
         public readonly bool IsPercent;
+        // Pixels added to a percentage (calc(100%_-_10px)); 0 otherwise.
+        public readonly float AddedPx;
+        // A length reading a font-relative or viewport unit, which ClipPathSpec.MeasuredOn reads into At.
+        public readonly StyleLengthExpression? Measured;
+        public readonly string? MeasuredText;
+        // A length that is no percentage plus pixels, its percentage taken of the slot's basis when the shape is
+        // baked; where it is set, Value and AddedPx carry nothing and IsPercent holds, so a slot hands it a basis.
+        public readonly MeasuredLength? At;
 
-        public ClipPathLength(float value, bool isPercent)
+        public ClipPathLength(float value, bool isPercent, float px = 0f, StyleLengthExpression? measured = null,
+            string? measuredText = null, MeasuredLength? at = null)
         {
             Value = value;
             IsPercent = isPercent;
+            AddedPx = px;
+            Measured = measured;
+            MeasuredText = measuredText;
+            At = at;
         }
 
-        public float Resolve(float basis) => IsPercent ? Value * 0.01f * basis : Value;
+        public float Resolve(float basis) => At != null ? At.Of(basis) : (IsPercent ? Value * 0.01f * basis : Value) + AddedPx;
+
+        // Whether the length is a percentage alone, which scales with the box.
+        public bool ScalesWithBox => IsPercent && AddedPx == 0f && Measured == null && At == null;
+
+        public ClipPathLength MeasuredOn(in RelativeLengthBasis basis)
+            => Measured == null ? this : new ClipPathLength(0f, true, at: new MeasuredLength(Measured, basis, MeasuredText!));
 
         public static ClipPathLength Percent(float value) => new(value, true);
         public static ClipPathLength Px(float value) => new(value, false);
@@ -77,6 +96,35 @@ namespace Velvet
         // radius resolves against the diagonal and its side keywords couple both axes); px lengths
         // and inset round radii (min-axis basis) also pin the shape to absolute pixels.
         public bool StretchInvariant;
+
+        // Whether a length holds a font-relative or viewport unit, which MeasuredOn resolves.
+        public bool HasMeasured;
+
+        // This spec with every length the element measures resolved on it, under a Source that carries the
+        // resolved values, so the bake cache keys the shape as measured; this spec where it measures none.
+        public ClipPathSpec MeasuredOn(RelativeLengthBasis basis)
+        {
+            if (!HasMeasured)
+            {
+                return this;
+            }
+            var copy = (ClipPathSpec)MemberwiseClone();
+            copy.HasMeasured = false;
+            var key = new System.Text.StringBuilder(Source);
+            ClipPathLength Read(ClipPathLength length)
+            {
+                var read = length.MeasuredOn(basis);
+                key.Append('|').Append(read.At?.Key);
+                return read;
+            }
+            copy.PolygonPoints = PolygonPoints == null ? null : System.Array.ConvertAll(PolygonPoints, Read);
+            copy.CornerRadii = CornerRadii == null ? null : System.Array.ConvertAll(CornerRadii, Read);
+            (copy.RadiusX, copy.RadiusY, copy.CenterX, copy.CenterY) = (Read(RadiusX), Read(RadiusY), Read(CenterX), Read(CenterY));
+            (copy.InsetTop, copy.InsetRight, copy.InsetBottom, copy.InsetLeft) =
+                (Read(InsetTop), Read(InsetRight), Read(InsetBottom), Read(InsetLeft));
+            copy.Source = key.ToString();
+            return copy;
+        }
     }
 
     // Parses Velvet's clip-path-[…] utility into a ClipPathSpec.
@@ -251,6 +299,7 @@ namespace Velvet
                 return false;
             }
             spec!.Source = cls;
+            spec.HasMeasured = HoldsMeasured(spec);
             wantClip = true;
             return true;
         }
@@ -285,10 +334,10 @@ namespace Velvet
         private static bool TryParsePolygon(string inner, out ClipPathSpec? spec)
         {
             spec = null;
-            var args = inner.Split(',');
+            var args = StyleGradientClass.SplitTopLevel(inner, ',');
             var start = 0;
             var fillRule = FillRule.NonZero;
-            var first = args.Length > 0 ? args[0].Trim() : string.Empty;
+            var first = args[0].Trim();
             if (first == "nonzero")
             {
                 start = 1;
@@ -299,7 +348,7 @@ namespace Velvet
                 start = 1;
             }
 
-            var count = args.Length - start;
+            var count = args.Count - start;
             if (count < 3)
             {
                 return false;
@@ -316,7 +365,7 @@ namespace Velvet
                 {
                     return false;
                 }
-                stretchInvariant &= points[i * 2].IsPercent && points[(i * 2) + 1].IsPercent;
+                stretchInvariant &= points[i * 2].ScalesWithBox && points[(i * 2) + 1].ScalesWithBox;
             }
 
             spec = new ClipPathSpec
@@ -375,9 +424,9 @@ namespace Velvet
             }
             // ellipse() resolves per axis, so it stretches linearly when the center is % and each
             // radius is either a % length or a side keyword (min/max of %-center distances).
-            spec.StretchInvariant = spec.CenterX.IsPercent && spec.CenterY.IsPercent
-                && (spec.RadiusXExtent != ClipPathExtent.Length || spec.RadiusX.IsPercent)
-                && (spec.RadiusYExtent != ClipPathExtent.Length || spec.RadiusY.IsPercent);
+            spec.StretchInvariant = spec.CenterX.ScalesWithBox && spec.CenterY.ScalesWithBox
+                && (spec.RadiusXExtent != ClipPathExtent.Length || spec.RadiusX.ScalesWithBox)
+                && (spec.RadiusYExtent != ClipPathExtent.Length || spec.RadiusY.ScalesWithBox);
             return true;
         }
 
@@ -387,7 +436,7 @@ namespace Velvet
 
             string edgePart = inner;
             string? roundPart = null;
-            var round = inner.IndexOf(" round ", StringComparison.Ordinal);
+            var round = TopLevelIndexOf(inner, " round ");
             if (round >= 0)
             {
                 edgePart = inner.Substring(0, round);
@@ -407,7 +456,7 @@ namespace Velvet
                 {
                     return false;
                 }
-                stretchInvariant &= edgeValues[i].IsPercent;
+                stretchInvariant &= edgeValues[i].ScalesWithBox;
             }
             // CSS 1-4 value shorthand: top, right, bottom, left.
             ExpandShorthand(edgeValues, out var top, out var right, out var bottom, out var left);
@@ -463,7 +512,7 @@ namespace Velvet
         // Splits "radius-part at position-part"; positionPart is null when no `at` clause exists.
         private static void SplitAtPosition(string inner, out string radiusPart, out string? positionPart)
         {
-            var at = inner.IndexOf(" at ", StringComparison.Ordinal);
+            var at = TopLevelIndexOf(inner, " at ");
             if (at >= 0)
             {
                 radiusPart = inner.Substring(0, at).Trim();
@@ -554,22 +603,62 @@ namespace Velvet
             return true;
         }
 
+        private static bool HoldsMeasured(ClipPathSpec spec)
+        {
+            static bool Any(ClipPathLength[]? lengths) => lengths != null && Array.Exists(lengths, l => l.Measured != null);
+            return Any(spec.PolygonPoints) || Any(spec.CornerRadii)
+                || Any(new[]
+                {
+                    spec.RadiusX, spec.RadiusY, spec.CenterX, spec.CenterY,
+                    spec.InsetTop, spec.InsetRight, spec.InsetBottom, spec.InsetLeft,
+                });
+        }
+
         // Delegates to the shared utility length grammar (px/%/bare-number, InvariantCulture,
         // finite only) so clip-path values can never drift from w-[…]-style arbitrary values.
         private static bool TryParseLength(string token, out ClipPathLength length)
         {
             length = default;
             var span = token.AsSpan().Trim();
-            if (span.Length == 0 ||
-                !StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
+            if (span.Length == 0)
             {
                 return false;
             }
-            length = new ClipPathLength(value, unit == LengthUnit.Percent);
+            if (StyleArbitraryValueResolver.TryParseValue(span, out var value, out var unit))
+            {
+                length = new ClipPathLength(value, unit == LengthUnit.Percent);
+                return true;
+            }
+            // A percentage beside a length reads as both, a percentage under a function of one as At, and a length the
+            // element measures is read when the shape is baked.
+            if (!StyleLengthExpression.TryParse(span, out var expression))
+            {
+                return false;
+            }
+            length = expression!.TrySplitPercentage(out var fraction, out var px)
+                ? (fraction != 0f ? new ClipPathLength(fraction * 100f, true, px) : new ClipPathLength(px, false))
+                : expression.ReadsElementUnits ? new ClipPathLength(0f, false, 0f, expression, span.ToString())
+                : new ClipPathLength(0f, true, at: new MeasuredLength(expression, default, span.ToString()));
             return true;
         }
 
+        // Words outside parentheses, so a math function's own spaces stay in its word.
         private static string[] SplitWhitespace(string text)
-            => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            => StyleGradientClass.SplitTopLevel(text, ' ').FindAll(word => word.Length > 0).ToArray();
+
+        // Where word first occurs outside parentheses, or -1.
+        private static int TopLevelIndexOf(string text, string word)
+        {
+            var depth = 0;
+            for (var i = 0; i < text.Length; i++)
+            {
+                depth += text[i] == '(' ? 1 : text[i] == ')' ? -1 : 0;
+                if (depth == 0 && string.CompareOrdinal(text, i, word, 0, word.Length) == 0)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 }

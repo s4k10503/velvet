@@ -15,7 +15,11 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 | `1in`, `2.54cm`, `25.4mm`, `72pt`, `6pc`, `101.6Q` | pixels, at CSS's fixed ratio of 96px to the inch |
 | `25%` | a percentage, where the utility takes one; a border width takes none, as in CSS |
 | `auto` | the keyword, where the utility takes one: margin (a negated one, `-mt-[auto]`, is declined), `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `basis-*` and the insets; padding and the maximum sizes take none |
-| `calc()`, `min()`, `max()`, `clamp()` whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
+| a math function ([below](#math-functions)) whose terms all come to pixels, or all to percentages | that pixel length or that percentage |
+
+A bracketed border width (`border-[…]`, `border-t-[…]`, `divide-x-[…]`, …) is snapped as the browser snaps one,
+down to a whole number of the panel's device pixels and up to one where it is less: `border-[2.75px]` is 2.5px at
+two device pixels a point.
 
 A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as
 either a length or a colour — `border-*`, `text-*`, `ring-*`, `outline-*`, `ring-offset-*` and `from-*`,
@@ -57,6 +61,8 @@ and a time (`duration-[…]`, `animate-spin-[…]` and the other loops) in `ms` 
 is read only where the CSS property Tailwind writes takes one: `0` in `skew-[…]`, `skew-x-[…]`, `hue-rotate-[…]` and
 `bg-linear-[…]`, and none in `rotate-[…]`, whose `rotate` property takes no bare `0`, or in a time.
 
+### Math functions
+
 A math function follows CSS's grammar with Tailwind's spelling. `_` stands for a space. CSS wants a space
 on both sides of a binary `+` or `-`. Tailwind adds the spaces itself around an operator inside a function
 it names in lower case, so `calc(2rem-4px)`, `calc(2rem_-_4px)` and `calc(2rem_-4px)` are the same length.
@@ -66,15 +72,35 @@ A sign belongs to a number (`-2px`, `+.5rem`, `-1e3px`), never to a parenthesis 
 and `-calc(1px)` are declined. A space at either end of a length is trimmed, as the browser trims it from the
 declaration Tailwind writes (`top-[_calc(1px)]`, `w-[1px_]`), except where Tailwind reads the bracket as either a
 length or a colour: outside a math function its length test takes no space, so `border-[2px_]` is inert. Functions nest and `(` groups; `*`
-takes a plain number on one side, and `/` a plain number on its right. Up to 63 nested functions, and a run of
-up to 63 terms, factors or arguments, are read; 64 is declined. The two count against one bound, so a run
-inside nested functions is declined sooner. `clamp(low, value, high)` is `max(low, min(value, high))`, so a
-`low` above `high` wins. What CSS rejects is declined and leaves the class inert: adding a number to a length
-(`calc(1px+2)`), multiplying two lengths, dividing by a length, a result that is a plain number (`calc(4)`)
-and `clamp()` without three arguments. Valid CSS that is not read here is declined too: any function other
-than these four (`env()`, `round()`, …), and, as a deliberate deviation, a division by zero and a
-length too large for a float, both of which CSS reads by clamping an infinite result to the range of lengths
-it supports. A `var()` is replaced by the custom property it reads before the bracket is read
+multiplies and `/` divides any two terms, and the result carries the powers of their units, as CSS Values 4
+types them: `calc(100px/2px*1px)` is 50px and `calc(1s/1ms*1px)` 1000px. Up to 63 nested functions, and a run
+of up to 63 terms, factors or arguments, are read; 64 is declined. The two count against one bound, so a run
+inside nested functions is declined sooner.
+
+The functions are CSS Values 4's: `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `rem()`, `abs()`,
+`sign()`, `hypot()`, `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`, `atan2()`, `pow()`, `sqrt()`,
+`log()` and `exp()`, with the constants `e`, `pi`, `infinity`, `-infinity` and `NaN`, each in any case.
+`clamp(low, value, high)` is `max(low, min(value, high))`, so a `low` above `high` wins. `round()` takes an
+optional `nearest`, `up`, `down` or `to-zero` first, and leaves out its step only for a number, where the step
+is 1; a tie rounds up. `mod()` takes the sign of its divisor and `rem()` of its dividend. A trigonometric
+function takes an angle (`deg`, `grad`, `rad`, `turn`) or a number of radians, and is exact on a multiple of a
+quarter turn, so `tan(90deg)` is infinite. A time (`s`, `ms`) takes part in the arithmetic as an angle does.
+
+Inside a calculation a division by zero, an overflow and an undefined result follow IEEE arithmetic, so
+`min(1px/0,5px)` is 5px. At the top a NaN is 0, and an infinity, or a value past a float's range, is the
+largest float of its sign, the range a UI Toolkit length holds: `w-[calc(1px/0)]` is 3.4028235e38px. A result
+below what its property takes is raised to it, as CSS clamps a calculation: `w-[calc(-5px)]`, `p-[…]`,
+`rounded-[…]`, `border-[…]`, `text-[…]`, `basis-[…]`, `blur-[…]`, `duration-[…]`, `grow-[…]` and the filter
+amounts stop at 0, and `opacity-[…]` at 0 and 1.
+
+The same functions are read where a utility takes an angle (`rotate-[calc(45deg*2)]`, `skew-x-[…]`,
+`hue-rotate-[…]`, a gradient's angle), a number (`grow-[…]`), a number or a percentage (`scale-[…]`,
+`opacity-[…]`, the filter amounts, each of which takes a percentage literal too: `scale-[150%]` is 1.5) or a time
+(`duration-[…]`), coming to that type. What CSS rejects is declined and leaves the class inert:
+adding a number to a length (`calc(1px+2)`), a result of the wrong type (`calc(4)` or `calc(1px*2px)` for a
+length, `rotate-[calc(45)]`), a function given a type it does not take (`sin(1px)`, `mod(10px,3)`), `round()`
+leaving out a length's step, `clamp()` without three arguments, and any function other than these
+(`env()`, …). A `var()` is replaced by the custom property it reads before the bracket is read
 ([styling-custom-properties.md](styling-custom-properties.md)).
 
 So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
@@ -83,7 +109,10 @@ So `top-[calc(1rem+4px)]`, `gap-[min(2rem,24px)]`, `blur-[calc(2px*3)]`,
 ### A rejected value
 
 A value Tailwind writes and the browser rejects does what it does in the browser. A plain declaration is dropped,
-so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`. One Tailwind composes into the element's box-shadow
+so the class is inert: `border-[2PX]`, `text-[16]`, `w-[120]`, and a negative literal where the property takes
+none, as `w-[-5px]`, `p-[-5px]`, `rounded-[-2px]`, `border-[-2px]`, `text-[-4px]` and `basis-[-4px]` are (a margin,
+an inset and `tracking-[…]` take one). A literal past a float's range is the largest float of its sign, as the
+browser reads it (`w-[1e39px]`, `rotate-[1e39deg]`), and `opacity-[…]` takes any number, clamped to 0..1. One Tailwind composes into the element's box-shadow
 discards the whole box-shadow, the ring and every `shadow-*`, `inset-shadow-*` and `inset-ring-*` with it, while a `drop-shadow-*`, a filter, stays
 (`ring ring-[5PX] drop-shadow-lg` keeps its drop shadow): a ring or inset ring colour that is no colour
 (`ring ring-[5PX]`, `ring-2 ring-[2]`, `inset-ring inset-ring-[2]`), a ring width that is no length
@@ -114,7 +143,8 @@ Tailwind composes four more families through one declaration each: `translate-*`
 `drop-shadow-*`. Each utility writes custom properties of the element, and whenever the value holding one of them
 is one the browser rejects, the family's declaration is dropped and the family draws nothing:
 `translate-x-4 translate-y-[10]` translates nowhere, and `blur-sm brightness-[abc]`, `drop-shadow-lg blur-[2]` and
-`blur-sm drop-shadow-[foo]` filter nothing. Velvet answers which value holds as it does for any value of the
+`blur-sm drop-shadow-[foo]` filter nothing. A math function coming to a type the property does not take is
+such a value: `translate-y-[calc(45deg)]`, `skew-y-[calc(10px)]`, `blur-[calc(50%)]`. Velvet answers which value holds as it does for any value of the
 property, in the state the element is in: an important one first
 (`!translate-y-[10] hover:translate-y-2 translate-x-4` translates nowhere, hovered or not), then the one whose
 variants rank higher, by the selector they add and then by the order Tailwind registers them, with every
@@ -142,11 +172,16 @@ while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take no
 | Written | Measured against |
 |---------|------------------|
 | `2em` | the element's computed font size; on `text-[…]`, its parent's |
+| `2ex` | the x-height of the font UI Toolkit draws the element's text in, at that size; 0.5em where the font carries none |
+| `2cap` | that font's cap height; its ascent where it carries none, and the em where it carries neither |
+| `2ch`, `2ic` | the advance of `0` and of `水` in that font, or in its first fallback font holding the glyph; 0.5em and 1em where none does |
+| `2lh` | the line height Velvet gives the element's text: the nearest `leading-*` or `text-<size>` line height on it or an ancestor ([fonts.md](fonts.md)), else the font's own |
+| `2rex`, `2rch`, `2rcap`, `2ric`, `2rlh` | the same, for the panel root's font at 16px, the size a rem is taken at |
 | `50vw`, `50vh`, `50vmin`, `50vmax` | the panel — in an editor window, the window's content: its width, its height, the smaller and the larger of the two |
 | `50svw`, `50lvh`, `50dvmin`, … | the same as the unprefixed unit: a panel has no browser chrome to show or hide, which is where CSS makes the small, large and dynamic viewports equal |
 | a math function mixing a percentage with a length, or reading an `em` or a viewport unit | each term against its own basis, as CSS evaluates it |
 
-These are read by the utilities that write a length-percentage inline:
+The utilities that write a length-percentage inline read them:
 
 - sizing: `w-`, `h-`, `min-w-`, `min-h-`, `max-w-`, `max-h-`, `size-`, `basis-`;
 - position: `inset-`, `inset-x-`, `inset-y-`, `top-`, `right-`, `bottom-`, `left-`, `start-`, `end-`;
@@ -166,6 +201,13 @@ parent's size along its flex direction; `text-[…]` of the parent's font size; 
 element's own font size. The parent's size is its content box, and its padding box for an `absolute`
 element, as CSS and UI Toolkit both take it. On an element with a `clip-path-*`, every longhand — padding included — is measured against the parent the clip wrapper
 sits in, not the wrapper.
+
+These utilities read them too, each measuring them on the element it styles, its percentages as its property takes them: a border
+width, `rounded-*`, `translate-*` and `origin-[…]` (a percentage of the element's own box), `shadow-[…]`,
+`ring-*`, `ring-offset-*`, `outline-*` and `outline-offset-*`, `clip-path-[…]`, and a gradient's stops, radii and
+centre. A `gap-*` is measured on the container, and a `space-*` margin and a `divide-*` width on each child, whose
+margin or border it is. A border width, a ring, a divide width and a shadow take no percentage,
+as in CSS.
 
 A percentage of a parent size the parent takes from its content is not measured, since the parent's size
 would then follow the length measured from it. The parent's size on an axis is definite when the parent
@@ -189,27 +231,25 @@ The length is written in pixels once the element is on a panel and has been laid
 keeps what the cascade gives it, and the filter leaves out the blur or shadow reading it. It is measured again on a 16 ms tick of the panel's scheduler after any of
 these moves:
 
-- whether the element has been laid out, its own font size, and its `position`;
-- the parent's font size, size, border widths, padding and flex direction;
+- whether the element has been laid out, its own font-relative units (its font size, its font and its line
+  height), and its `position`;
+- the parent's font-relative units, size, border widths, padding and flex direction;
+- the panel root's font;
 - whether the parent's width and height are definite (above);
-- the panel's size.
+- the panel's size and scale;
+- for a `space-*` margin or a `divide-*` width, which each child measures, the number of children and their font
+  sizes and fonts.
 
-Unlike CSS, where the value is part of layout, the new value lands a tick after the change. A re-measure is
-written with the transitions of the element and of its clip wrapper held at zero duration and delay, and a
-filter's with no transition, so it lands at once rather than animating.
+The utilities that measure on their own element, above, are measured again on the same tick, or, for a
+ring or an outline, on the frame's sample of its element. Unlike CSS, where the value is part of layout, the
+new value lands a tick after the change. A re-measure is written with the transitions of the element and of its
+clip wrapper held at zero duration and delay, and a filter's with no transition, so it lands at once rather than
+animating.
 
-### Where they are not read
+### Where they are not interpolated
 
-- Font-relative units other than `em` (`ex`, `ch`, `lh`, `rlh`, `cap`, `ic`) are declined everywhere.
-- Elsewhere a length only an element can measure is declined and leaves the class inert: border widths,
-  `rounded-*`, `translate-*`, `origin-[…]`, `shadow-*`, `gap-*` / `space-*` / `divide-*` /
-  `ring-*`, `clip-path-[…]` and gradient positions among them. A math function those read has to come to
-  pixels or to a percentage. `leading-[…]` reads `em` and percentages itself ([fonts.md](fonts.md)), but no
-  viewport unit, and no math function reading `em` or mixing a percentage with a length.
-- A gradient stop list, a shadow and a `clip-path-[…]` split their bracket into words on `_`, so a math
-  function inside one is written without spaces: `bg-linear-[to_right,#000000_0px,#ffffff_calc(1rem+4px)]`.
-- A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
-  applies, uninterpolated, as `w-auto` does.
+A spring or bezier `V.Motion` does not interpolate a length only an element can measure: the class still
+applies, uninterpolated, as `w-auto` does.
 
 ## Bare spacing steps
 

@@ -53,7 +53,8 @@ namespace Velvet
 
     // A radial gradient's shape and size as radial-gradient() writes them. The default is CSS's: an ellipse
     // reaching the farthest corner. Explicit sizes are X and Y: pixels, or fractions of the box where the
-    // matching Percent flag is set (a circle's radius is X, in pixels).
+    // matching Percent flag is set (a circle's radius is X, in pixels), or XAt and YAt where an ellipse's radius
+    // is neither a pixel length nor a percentage alone.
     internal readonly struct RadialSizing : IEquatable<RadialSizing>
     {
         public bool Circle { get; init; }
@@ -62,32 +63,39 @@ namespace Velvet
         public float Y { get; init; }
         public bool XPercent { get; init; }
         public bool YPercent { get; init; }
+        public MeasuredLength? XAt { get; init; }
+        public MeasuredLength? YAt { get; init; }
 
         public bool Equals(RadialSizing other)
             => Circle == other.Circle && Extent == other.Extent && XPercent == other.XPercent
                 && YPercent == other.YPercent && Mathf.RoundToInt(X * 100f) == Mathf.RoundToInt(other.X * 100f)
-                && Mathf.RoundToInt(Y * 100f) == Mathf.RoundToInt(other.Y * 100f);
+                && Mathf.RoundToInt(Y * 100f) == Mathf.RoundToInt(other.Y * 100f)
+                && Equals(XAt, other.XAt) && Equals(YAt, other.YAt);
 
         public override bool Equals(object obj) => obj is RadialSizing o && Equals(o);
 
         public override int GetHashCode()
-            => HashCode.Combine(Circle, (int)Extent, XPercent, YPercent, Mathf.RoundToInt(X * 100f), Mathf.RoundToInt(Y * 100f));
+            => HashCode.Combine(Circle, (int)Extent, XPercent, YPercent, Mathf.RoundToInt(X * 100f), Mathf.RoundToInt(Y * 100f),
+                XAt?.Key, YAt?.Key);
     }
 
     // One colour stop of a resolved gradient: its colour and its position along the gradient line (0..1,
     // or beyond), and a colour hint between this stop and the next, if one was written there. A position
     // written in pixels is PositionPx, with Position NaN until the box is known (the same for HintPx), and
-    // a position the list left out is NaN until the colour-stop fix-up places it.
+    // a position the list left out is NaN until the colour-stop fix-up places it. A position that is neither a
+    // fraction plus pixels is PositionAt, its percentage taken of the line's length (the same for HintAt).
     internal readonly struct GradientStop
     {
         public GradientStop(Color color, float position, float positionPx = float.NaN, float hint = float.NaN,
-            float hintPx = float.NaN)
+            float hintPx = float.NaN, MeasuredLength? positionAt = null, MeasuredLength? hintAt = null)
         {
             Color = color;
             Position = position;
             PositionPx = positionPx;
             Hint = hint;
             HintPx = hintPx;
+            PositionAt = positionAt;
+            HintAt = hintAt;
         }
 
         public Color Color { get; }
@@ -95,10 +103,13 @@ namespace Velvet
         public float PositionPx { get; }
         public float Hint { get; }
         public float HintPx { get; }
+        public MeasuredLength? PositionAt { get; }
+        public MeasuredLength? HintAt { get; }
 
-        public GradientStop WithHint(float hint, float hintPx) => new(Color, Position, PositionPx, hint, hintPx);
+        public GradientStop WithHint(float hint, float hintPx, MeasuredLength? hintAt)
+            => new(Color, Position, PositionPx, hint, hintPx, PositionAt, hintAt);
 
-        public bool HasLength => !float.IsNaN(PositionPx) || !float.IsNaN(HintPx);
+        public bool HasLength => !float.IsNaN(PositionPx) || !float.IsNaN(HintPx) || PositionAt != null || HintAt != null;
     }
 
     // A resolved gradient: shape (linear angle / radial-or-conic centre), interpolation space, and its ordered
@@ -121,6 +132,12 @@ namespace Velvet
         public RadialSizing Radial { get; init; }
         public float CenterX { get; init; }
         public float CenterY { get; init; }
+        // Pixels the centre sits from where CenterX and CenterY fall (at_right_10px is 1 and -10).
+        public float CenterXPx { get; init; }
+        public float CenterYPx { get; init; }
+        // A length the centre also sits from where CenterX and CenterY fall, its percentage taken of the box's side.
+        public MeasuredLength? CenterXAt { get; init; }
+        public MeasuredLength? CenterYAt { get; init; }
         public GradientInterp Interp { get; init; }
         public HueMethod Hue { get; init; }
         public GradientStop[] Stops { get; init; }
@@ -165,7 +182,9 @@ namespace Velvet
                 return false;
             }
             if (Type != GradientType.Linear
-                && (PosKey(CenterX) != PosKey(other.CenterX) || PosKey(CenterY) != PosKey(other.CenterY)))
+                && (PosKey(CenterX) != PosKey(other.CenterX) || PosKey(CenterY) != PosKey(other.CenterY)
+                    || PosKey(CenterXPx) != PosKey(other.CenterXPx) || PosKey(CenterYPx) != PosKey(other.CenterYPx)
+                    || !Equals(CenterXAt, other.CenterXAt) || !Equals(CenterYAt, other.CenterYAt)))
             {
                 return false;
             }
@@ -183,10 +202,22 @@ namespace Velvet
             {
                 same = ColorKey(a[i].Color) == ColorKey(b[i].Color) && PosKey(a[i].Position) == PosKey(b[i].Position)
                     && PosKey(a[i].PositionPx) == PosKey(b[i].PositionPx) && PosKey(a[i].Hint) == PosKey(b[i].Hint)
-                    && PosKey(a[i].HintPx) == PosKey(b[i].HintPx);
+                    && PosKey(a[i].HintPx) == PosKey(b[i].HintPx) && Equals(a[i].PositionAt, b[i].PositionAt)
+                    && Equals(a[i].HintAt, b[i].HintAt);
             }
             return same;
         }
+
+        // The centre as fractions of a width x height box.
+        public Vector2 CentreIn(float width, float height)
+            => new(CenterX + Along(CenterXPx, CenterXAt, width), CenterY + Along(CenterYPx, CenterYAt, height));
+
+        private static float Along(float px, MeasuredLength? at, float side)
+            => side > 0f ? (px + (at?.Of(side) ?? 0f)) / side : 0f;
+
+        // True when the centre is placed in pixels, so its place in the box depends on the box's size.
+        public bool HasCentreLength
+            => Type != GradientType.Linear && (CenterXPx != 0f || CenterYPx != 0f || CenterXAt != null || CenterYAt != null);
 
         // True when a stop or hint is written in pixels, so the stops cannot be placed before the box is known.
         public bool HasLengths
@@ -219,9 +250,13 @@ namespace Velvet
                 h = h * 31 + (Type == GradientType.Radial ? Radial.GetHashCode() : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterX) : 0);
                 h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterY) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterXPx) : 0);
+                h = h * 31 + (Type != GradientType.Linear ? PosKey(CenterYPx) : 0);
+                h = HashCode.Combine(h, Type != GradientType.Linear ? CenterXAt?.Key : null, Type != GradientType.Linear ? CenterYAt?.Key : null);
                 foreach (var stop in Stops ?? Array.Empty<GradientStop>())
                 {
-                    h = HashCode.Combine(h, ColorKey(stop.Color), PosKey(stop.Position), PosKey(stop.PositionPx), PosKey(stop.Hint));
+                    h = HashCode.Combine(h, ColorKey(stop.Color), PosKey(stop.Position), PosKey(stop.PositionPx), PosKey(stop.Hint),
+                        stop.PositionAt?.Key, stop.HintAt?.Key);
                 }
                 return h;
             }
@@ -274,6 +309,10 @@ namespace Velvet
             public RadialSizing Radial;
             public float CenterX;
             public float CenterY;
+            public float CenterXPx;
+            public float CenterYPx;
+            public MeasuredLength? CenterXAt;
+            public MeasuredLength? CenterYAt;
             public GradientInterp Interp;
             public HueMethod Hue;
             public GradientStop[]? Stops;
@@ -285,6 +324,8 @@ namespace Velvet
         {
             public bool Ok;
             public Shape Shape;
+            // Whether the class held a length an element measures, whose reading depends on the element.
+            public bool Measured;
         }
 
         // The accumulated reading of one of the from-/via-/to- utilities.
@@ -294,6 +335,7 @@ namespace Velvet
             public Color Color;
             public float Position;
             public float PositionPx;
+            public MeasuredLength? PositionAt;
         }
 
         // A from-/via-/to- suffix's reading: a position, a colour, or neither.
@@ -302,8 +344,11 @@ namespace Velvet
             public bool IsPosition;
             public float Position;
             public float PositionPx;
+            public MeasuredLength? PositionAt;
             public bool IsColor;
             public Color Color;
+            // Whether the suffix held a length an element measures (see ActivatorReading.Measured).
+            public bool Measured;
         }
 
         // ApplyGradientOnPatch re-extracts on every patch of a gradient element, so each reading of a class
@@ -340,8 +385,8 @@ namespace Velvet
 
         private static readonly BoundedMemo<string, ActivatorReading> s_activators = new();
         private static readonly BoundedMemo<string, StopToken> s_stopTokens = new();
-        private static readonly BoundedMemo<(GradientStop[]?, ((bool, Color, float, float), (bool, Color, float, float),
-            (bool, Color, float, float))),
+        private static readonly BoundedMemo<(GradientStop[]?, ((bool, Color, float, float, MeasuredLength?),
+            (bool, Color, float, float, MeasuredLength?), (bool, Color, float, float, MeasuredLength?))),
             GradientStop[]> s_utilityStops = new();
 
         // Cheap prefix/equality table for gradient shape activators, shared by the gate and the parser
@@ -406,6 +451,82 @@ namespace Velvet
         // A stop list's stops are followed by the from-/via-/to- stops when one of them names a colour (see
         // ResolveStops).
         public static bool TryExtract(string[] classNames, out GradientSpec spec)
+            => TryExtract(classNames, null, out spec, out _);
+
+        // As above, with the lengths an element measures (a font-relative or viewport unit) read on element; such
+        // a length is declined without one. measured says whether any class read one, so the caller can read
+        // the classes again once what it measures moves.
+        public static bool TryExtract(string[] classNames, VisualElement? element, out GradientSpec spec, out bool measured)
+        {
+            s_basis = element != null && StyleRelativeLengths.TryBasisOf(element, out var basis) ? basis : null;
+            s_measuredRead = false;
+            try
+            {
+                return TryExtractClasses(classNames, out spec);
+            }
+            finally
+            {
+                measured = s_measuredRead;
+                s_basis = null;
+                s_measuredRead = false;
+            }
+        }
+
+        // What a length an element measures is read against while TryExtract runs, null where it is given none;
+        // and whether a class held one, which keeps that class's reading out of the memos.
+        [ThreadStatic] private static RelativeLengthBasis? s_basis;
+        [ThreadStatic] private static bool s_measuredRead;
+
+        // What a length in a gradient's shape (a radius, a centre) or in an arbitrary stop list (a position, a hint) is
+        // read against while there is no basis: the gradient binds on it, and the poll reads the classes again against
+        // the element once it is on a panel. A from-/via-/to- utility's position waits instead, which leaves that stop
+        // at its default position until then.
+        private static readonly RelativeLengthBasis s_provisional = new(StyleLengthExpression.RootFontSize, 0f, 0f, 0f);
+
+        // A length-percentage as a fraction of its basis plus pixels where it is affine in its percentage, and as At,
+        // read once the basis is known, where it is not; one reading a font-relative or viewport unit is measured on
+        // s_basis, and declined where there is none.
+        private static bool TryMeasuredLength(string token, out float fraction, out float px, out MeasuredLength? at,
+            bool provisional = false)
+        {
+            fraction = 0f;
+            px = 0f;
+            at = null;
+            if (!StyleLengthExpression.TryParse(token.AsSpan(), out var expression))
+            {
+                return false;
+            }
+            if (expression!.TrySplitPercentage(out fraction, out px))
+            {
+                return true;
+            }
+            var basis = default(RelativeLengthBasis);
+            if (expression.ReadsElementUnits)
+            {
+                s_measuredRead = true;
+                if (s_basis is { } measured)
+                {
+                    basis = measured;
+                }
+                else if (provisional)
+                {
+                    basis = s_provisional;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            if (expression.IsAffine)
+            {
+                expression.SplitPercentage(basis, out fraction, out px);
+                return true;
+            }
+            at = new MeasuredLength(expression, basis, token);
+            return true;
+        }
+
+        private static bool TryExtractClasses(string[] classNames, out GradientSpec spec)
         {
             spec = default;
             if (classNames == null)
@@ -459,6 +580,10 @@ namespace Velvet
                 Radial = shape.Radial,
                 CenterX = shape.CenterX,
                 CenterY = shape.CenterY,
+                CenterXPx = shape.CenterXPx,
+                CenterYPx = shape.CenterYPx,
+                CenterXAt = shape.CenterXAt,
+                CenterYAt = shape.CenterYAt,
                 Interp = shape.Interp,
                 Hue = shape.Hue,
                 Stops = stops,
@@ -482,19 +607,19 @@ namespace Velvet
             {
                 return null;
             }
-            var key = (shape.Raw, ((fromStop.HasColor, fromStop.Color, fromStop.Position, fromStop.PositionPx),
-                (viaStop.HasColor, viaStop.Color, viaStop.Position, viaStop.PositionPx),
-                (toStop.HasColor, toStop.Color, toStop.Position, toStop.PositionPx)));
+            var key = (shape.Raw, ((fromStop.HasColor, fromStop.Color, fromStop.Position, fromStop.PositionPx, fromStop.PositionAt),
+                (viaStop.HasColor, viaStop.Color, viaStop.Position, viaStop.PositionPx, viaStop.PositionAt),
+                (toStop.HasColor, toStop.Color, toStop.Position, toStop.PositionPx, toStop.PositionAt)));
             if (s_utilityStops.TryGet(key, out var cached))
             {
                 return cached;
             }
             var first = new GradientStop(fromStop.HasColor ? fromStop.Color : Transparent(Neighbour(toStop, viaStop)),
-                fromStop.Position, fromStop.PositionPx);
+                fromStop.Position, fromStop.PositionPx, positionAt: fromStop.PositionAt);
             var last = new GradientStop(toStop.HasColor ? toStop.Color : Transparent(Neighbour(fromStop, viaStop)),
-                toStop.Position, toStop.PositionPx);
+                toStop.Position, toStop.PositionPx, positionAt: toStop.PositionAt);
             var utilities = viaStop.HasColor
-                ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position, viaStop.PositionPx), last }
+                ? new[] { first, new GradientStop(viaStop.Color, viaStop.Position, viaStop.PositionPx, positionAt: viaStop.PositionAt), last }
                 : new[] { first, last };
             var raw = shape.Raw == null ? utilities : shape.Raw.Concat(utilities).ToArray();
             var stops = Place(raw);
@@ -516,11 +641,19 @@ namespace Velvet
             {
                 return false;
             }
-            if (!s_activators.TryGet(cls, out var reading))
+            if (!s_activators.TryGet(cls, out var reading) || (reading.Measured && s_basis != null))
             {
+                var before = s_measuredRead;
+                s_measuredRead = false;
                 reading.Ok = TryParseActivator(cls, out reading.Shape);
-                s_activators.Add(cls, reading);
+                reading.Measured = s_measuredRead;
+                s_measuredRead |= before;
+                if (!reading.Measured || s_basis == null)
+                {
+                    s_activators.Add(cls, reading);
+                }
             }
+            s_measuredRead |= reading.Measured;
             shape = reading.Shape;
             return reading.Ok;
         }
@@ -531,16 +664,25 @@ namespace Velvet
         // initialPosition: the stop's registered initial position, which a position the browser rejects falls back to.
         private static void ReadStop(string cls, int prefixLength, float initialPosition, ref UtilityStop stop)
         {
-            if (!s_stopTokens.TryGet(cls, out var token))
+            if (!s_stopTokens.TryGet(cls, out var token) || (token.Measured && s_basis != null))
             {
+                var before = s_measuredRead;
+                s_measuredRead = false;
                 token = ParseStopToken(cls.Substring(prefixLength));
-                s_stopTokens.Add(cls, token);
+                token.Measured = s_measuredRead;
+                s_measuredRead |= before;
+                if (!token.Measured || s_basis == null)
+                {
+                    s_stopTokens.Add(cls, token);
+                }
             }
+            s_measuredRead |= token.Measured;
             if (token.IsPosition)
             {
-                var rejected = float.IsNaN(token.Position) && float.IsNaN(token.PositionPx);
+                var rejected = float.IsNaN(token.Position) && float.IsNaN(token.PositionPx) && token.PositionAt == null;
                 stop.Position = rejected ? initialPosition : token.Position;
                 stop.PositionPx = token.PositionPx;
+                stop.PositionAt = token.PositionAt;
             }
             else if (token.IsColor)
             {
@@ -654,14 +796,30 @@ namespace Velvet
             {
                 return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
             }
-            // A length Tailwind's tests take that the line cannot place (`from-[2em]`) is a position here too.
+            // A length Tailwind's tests take that the element measures, or that adds a percentage to a length, is a
+            // position too: what is left of one the element cannot measure yet is no stop.
             if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
                 && (TailwindDataTypes.IsLength(inner) || TailwindDataTypes.IsPercentage(inner)))
             {
-                return default;
+                return TryMeasuredLength(inner.ToString(), out var fraction, out var measuredPx, out var at)
+                    ? PositionToken(fraction, measuredPx, at)
+                    : default;
             }
             return ColourStopToken(suffix);
         }
+
+        // A position as a fraction of the line plus pixels.
+        private static StopToken PositionToken(float fraction, float px, MeasuredLength? at)
+        {
+            var (position, positionPx) = AsStopPosition(fraction, px, at);
+            return new StopToken { IsPosition = true, Position = position, PositionPx = positionPx, PositionAt = at };
+        }
+
+        // A stop's Position and PositionPx for a fraction of the line plus pixels: NaN for the part that is zero,
+        // pixels alone where both are, and both NaN where at carries the position.
+        private static (float Position, float PositionPx) AsStopPosition(float fraction, float px, MeasuredLength? at)
+            => at != null ? (float.NaN, float.NaN)
+                : fraction == 0f ? (float.NaN, px) : px == 0f ? (fraction, float.NaN) : (fraction, px);
 
         // Tailwind registers the stop colours as <color> with a transparent initial value, so a bracket it writes
         // as a colour and the browser rejects leaves the stop transparent rather than unset.
@@ -698,6 +856,10 @@ namespace Velvet
             if (TryParseStopLength(value, out var px))
             {
                 return new StopToken { IsPosition = true, Position = float.NaN, PositionPx = px };
+            }
+            if (TryMeasuredLength(value, out var fraction, out var measuredPx, out var at))
+            {
+                return PositionToken(fraction, measuredPx, at);
             }
             // Tailwind registers the stop positions as <length-percentage>, so one the browser rejects is the initial
             // position, which both NaN stand for in ReadStop; one it takes that the line cannot place is ignored.
@@ -850,10 +1012,11 @@ namespace Velvet
                 {
                     afterStop = true;
                 }
-                else if (afterStop && i < args.Count - 1 && TryParseStopPosition(args[i], shape.Type, out var hint, out var hintPx))
+                else if (afterStop && i < args.Count - 1
+                    && TryParseStopPosition(args[i], shape.Type, out var hint, out var hintPx, out var hintAt))
                 {
                     // A bare position between two stops is a colour hint on the stop before it.
-                    raw[raw.Count - 1] = raw[raw.Count - 1].WithHint(hint, hintPx);
+                    raw[raw.Count - 1] = raw[raw.Count - 1].WithHint(hint, hintPx, hintAt);
                     afterStop = false;
                 }
                 else
@@ -912,27 +1075,30 @@ namespace Velvet
                 return false;
             }
             float first = float.NaN, firstPx = float.NaN, second = float.NaN, secondPx = float.NaN;
-            if (tokens.Count > 1 && !TryParseStopPosition(tokens[1], type, out first, out firstPx))
+            MeasuredLength? firstAt = null, secondAt = null;
+            if (tokens.Count > 1 && !TryParseStopPosition(tokens[1], type, out first, out firstPx, out firstAt))
             {
                 return false;
             }
-            if (tokens.Count > 2 && !TryParseStopPosition(tokens[2], type, out second, out secondPx))
+            if (tokens.Count > 2 && !TryParseStopPosition(tokens[2], type, out second, out secondPx, out secondAt))
             {
                 return false;
             }
-            stops.Add(new GradientStop(color, first, firstPx));
+            stops.Add(new GradientStop(color, first, firstPx, positionAt: firstAt));
             if (tokens.Count > 2)
             {
-                stops.Add(new GradientStop(color, second, secondPx));
+                stops.Add(new GradientStop(color, second, secondPx, positionAt: secondAt));
             }
             return true;
         }
 
         // A stop or hint position: a percentage, a conic's angle (a fraction of the turn), or any other
         // shape's length in pixels, which waits for the box. A bare 0 is the start of the line.
-        private static bool TryParseStopPosition(string token, GradientType type, out float fraction, out float px)
+        private static bool TryParseStopPosition(string token, GradientType type, out float fraction, out float px,
+            out MeasuredLength? at)
         {
             px = float.NaN;
+            at = null;
             if (token == "0")
             {
                 fraction = 0f;
@@ -944,12 +1110,24 @@ namespace Velvet
             }
             if (type == GradientType.Conic)
             {
-                var ok = TryParseCssAngle(token, out var deg);
+                var ok = StyleLengthExpression.OpensMathFunction(token.AsSpan())
+                    ? StyleLengthExpression.TryParseAnglePercentage(token.AsSpan(), 360f, out var deg)
+                    : TryParseCssAngle(token, out deg);
                 fraction = deg / 360f;
                 return ok;
             }
             fraction = float.NaN;
-            return TryParseStopLength(token, out px);
+            if (TryParseStopLength(token, out px))
+            {
+                return true;
+            }
+            // A length the element measures, or a percentage beside a length or under a function of one.
+            if (!TryMeasuredLength(token, out var measuredFraction, out var measuredPx, out at, provisional: true))
+            {
+                return false;
+            }
+            (fraction, px) = AsStopPosition(measuredFraction, measuredPx, at);
+            return true;
         }
 
         // A palette name or [bracketed] value as from-/via-/to- take it, or a bare CSS colour, which is how a
@@ -968,7 +1146,7 @@ namespace Velvet
         // in_{space}[_{method}_hue].
         private static bool TryParseLine(string arg, ref Shape shape)
         {
-            var tokens = arg.Split('_');
+            var tokens = SplitTopLevel(arg, '_').ToArray();
             var at = Array.IndexOf(tokens, "in");
             if (at < 0)
             {
@@ -1040,28 +1218,28 @@ namespace Velvet
             if (rest.StartsWith("from_", StringComparison.Ordinal))
             {
                 // "from", the angle, and whatever follows it.
-                var parts = rest.Split(new[] { '_' }, 3);
+                var parts = SplitTopLevel(rest, '_');
                 if (!TryParseCssAngle(parts[1], out shape.Angle))
                 {
                     return false;
                 }
-                if (parts.Length < 3)
+                if (parts.Count < 3)
                 {
                     return true;
                 }
-                rest = parts[2];
+                rest = string.Join("_", parts.Skip(2));
             }
-            return TryParseListPosition(rest, out shape.CenterX, out shape.CenterY);
+            return TryParseListPosition(rest, ref shape);
         }
 
         // The head of radial-gradient(): an optional shape and size, then an optional at_{position}, in any
         // order of shape and size. Writes the shape only when the whole line reads.
         private static bool TryParseRadialLine(string line, ref Shape shape)
         {
-            var tokens = line.Split('_');
+            var tokens = SplitTopLevel(line, '_').ToArray();
             var at = Array.IndexOf(tokens, "at");
-            float centerX = shape.CenterX, centerY = shape.CenterY;
-            if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), out centerX, out centerY))
+            var centre = shape;
+            if (at >= 0 && !TryParseListPosition(string.Join("_", tokens, at, tokens.Length - at), ref centre))
             {
                 return false;
             }
@@ -1071,8 +1249,8 @@ namespace Velvet
                 return false;
             }
             shape.Radial = sizing;
-            shape.CenterX = centerX;
-            shape.CenterY = centerY;
+            (shape.CenterX, shape.CenterXPx, shape.CenterXAt, shape.CenterY, shape.CenterYPx, shape.CenterYAt) =
+                (centre.CenterX, centre.CenterXPx, centre.CenterXAt, centre.CenterY, centre.CenterYPx, centre.CenterYAt);
             return true;
         }
 
@@ -1108,11 +1286,12 @@ namespace Velvet
                 case 1 when shapeToken != "ellipse" && TryParsePixelLength(rest[0], out var radius):
                     sizing = new RadialSizing { Circle = true, Extent = RadialExtent.Explicit, X = radius, Y = radius };
                     return true;
-                case 2 when !circle && TryParseLengthPercentage(rest[0], out var x, out var xPercent)
-                    && TryParseLengthPercentage(rest[1], out var y, out var yPercent):
+                case 2 when !circle && TryParseLengthPercentage(rest[0], out var x, out var xPercent, out var xAt)
+                    && TryParseLengthPercentage(rest[1], out var y, out var yPercent, out var yAt):
                     sizing = new RadialSizing
                     {
-                        Extent = RadialExtent.Explicit, X = x, Y = y, XPercent = xPercent, YPercent = yPercent,
+                        Extent = RadialExtent.Explicit, X = x, Y = y, XPercent = xPercent, YPercent = yPercent, XAt = xAt,
+                        YAt = yAt,
                     };
                     return true;
                 default:
@@ -1133,26 +1312,54 @@ namespace Velvet
         }
 
         // A non-negative length, as a radius is: TryParseStopLength's grammar without the sign.
+        // CSS rejects a negative radius written as a literal and clamps one a math function comes to at zero.
         private static bool TryParsePixelLength(string token, out float px)
-            => TryParseStopLength(token, out px) && px >= 0f;
-
-        // A non-negative length or percentage: pixels as written, a percentage as a fraction of the box.
-        private static bool TryParseLengthPercentage(string token, out float value, out bool percent)
         {
-            percent = token.EndsWith("%", StringComparison.Ordinal)
-                || (token.EndsWith(")", StringComparison.Ordinal) && TryParsePercent(token, out _));
+            var literal = !StyleLengthExpression.OpensMathFunction(token.AsSpan());
+            // A circle takes no percentage.
+            var read = TryParseStopLength(token, out px)
+                || (StyleLengthExpression.TryParse(token.AsSpan(), out var expression) && !expression!.ReadsPercentage
+                    && TryMeasuredLength(token, out _, out px, out _, provisional: true));
+            px = literal ? px : Mathf.Max(px, 0f);
+            return read && px >= 0f;
+        }
+
+        // An ellipse's radius: pixels or a percentage alone, the percentage as a fraction of the box, and any other
+        // length-percentage as at, which RadialRadii reads against the box's side.
+        private static bool TryParseLengthPercentage(string token, out float value, out bool percent, out MeasuredLength? at)
+        {
+            at = null;
+            var literal = !StyleLengthExpression.OpensMathFunction(token.AsSpan());
+            percent = literal && token.EndsWith("%", StringComparison.Ordinal);
             if (percent)
             {
-                var ok = TryParsePercent(token, out value) && value >= 0f;
-                return ok;
+                return TryParsePercent(token, out value) && value >= 0f;
             }
-            return TryParsePixelLength(token, out value);
+            if (TryParseStopLength(token, out value))
+            {
+                value = literal ? value : Mathf.Max(value, 0f);
+                return value >= 0f;
+            }
+            if (!StyleLengthExpression.TryParse(token.AsSpan(), out var expression))
+            {
+                return false;
+            }
+            if (expression!.ReadsElementUnits)
+            {
+                s_measuredRead = true;
+            }
+            at = new MeasuredLength(expression, s_basis ?? (expression.ReadsElementUnits ? s_provisional : default), token);
+            return !literal || at.Of(0f) >= 0f;
         }
 
         // An angle as CSS writes one: a number with a deg, grad, rad or turn unit, or a bare 0. Any other
         // bare number is no angle in CSS.
         private static bool TryParseCssAngle(string s, out float deg)
         {
+            if (StyleLengthExpression.OpensMathFunction(s.AsSpan()))
+            {
+                return StyleLengthExpression.TryParseAngle(s.AsSpan(), out deg);
+            }
             deg = 0f;
             foreach (var (unit, degrees) in AngleUnits)
             {
@@ -1184,34 +1391,129 @@ namespace Velvet
             ("deg", 1f), ("grad", 0.9f), ("rad", 180f / Mathf.PI), ("turn", 360f),
         };
 
-        // An at_{position} the list reads: one or two of left, right, top, bottom, center and percentages,
-        // after the at. A token it does not know rejects the list, as it does in CSS.
-        private static bool TryParseListPosition(string arg, out float centerX, out float centerY)
+        // An at_{position} the list reads, as CSS's <position> writes one after the at: one value, two (x then y,
+        // or two keywords in either order), or two keywords each followed by its offset from that edge. A length
+        // places the centre in pixels from the box's left or top, so it is a fraction of the box plus pixels.
+        private static bool TryParseListPosition(string arg, ref Shape shape)
         {
-            centerX = 0.5f;
-            centerY = 0.5f;
             if (!arg.StartsWith("at_", StringComparison.Ordinal))
             {
                 return false;
             }
-            var tokens = arg.Substring(3).Split('_');
-            if (tokens.Length > 2)
+            var tokens = SplitTopLevel(arg.Substring(3), '_');
+            var x = new Offset(0.5f, 0f);
+            var y = new Offset(0.5f, 0f);
+            var read = tokens.Count switch
+            {
+                1 => TryOneValue(tokens[0], ref x, ref y),
+                2 => TryTwoValues(tokens[0], tokens[1], ref x, ref y),
+                4 => TryEdgeOffset(tokens[0], tokens[1], ref x, ref y) && TryEdgeOffset(tokens[2], tokens[3], ref x, ref y)
+                    && IsHorizontal(tokens[0]) != IsHorizontal(tokens[2]),
+                _ => false,
+            };
+            if (read)
+            {
+                (shape.CenterX, shape.CenterXPx, shape.CenterXAt, shape.CenterY, shape.CenterYPx, shape.CenterYAt) =
+                    (x.Fraction, x.Pixels, x.At, y.Fraction, y.Pixels, y.At);
+            }
+            return read;
+        }
+
+        // A place along one axis: a fraction of the box's side, and pixels from where that fraction falls.
+        private readonly struct Offset
+        {
+            public readonly float Fraction;
+            public readonly float Pixels;
+            // A length added to both, its percentage taken of the box's side.
+            public readonly MeasuredLength? At;
+
+            public Offset(float fraction, float pixels, MeasuredLength? at = null)
+            {
+                Fraction = fraction;
+                Pixels = pixels;
+                At = at;
+            }
+        }
+
+        private static bool TryOneValue(string token, ref Offset x, ref Offset y)
+        {
+            switch (token)
+            {
+                case "center": return true;
+                case "left": x = new Offset(0f, 0f); return true;
+                case "right": x = new Offset(1f, 0f); return true;
+                case "top": y = new Offset(0f, 0f); return true;
+                case "bottom": y = new Offset(1f, 0f); return true;
+                default: return TryLengthPercentage(token, out x);
+            }
+        }
+
+        // x then y, either a keyword of its own axis, center, or a length-percentage; or two keywords, which may come
+        // y first.
+        private static bool TryTwoValues(string first, string second, ref Offset x, ref Offset y)
+        {
+            if (IsVertical(first) || (first == "center" && IsHorizontal(second)))
+            {
+                return IsKeyword(second) && !IsVertical(second) && TryOneValue(first, ref x, ref y)
+                    && TryOneValue(second, ref x, ref y);
+            }
+            return TryAxisValue(first, horizontal: true, out x) && TryAxisValue(second, horizontal: false, out y);
+        }
+
+        private static bool TryAxisValue(string token, bool horizontal, out Offset offset)
+        {
+            offset = new Offset(0.5f, 0f);
+            switch (token)
+            {
+                case "center": return true;
+                case "left" when horizontal: offset = new Offset(0f, 0f); return true;
+                case "right" when horizontal: offset = new Offset(1f, 0f); return true;
+                case "top" when !horizontal: offset = new Offset(0f, 0f); return true;
+                case "bottom" when !horizontal: offset = new Offset(1f, 0f); return true;
+                default: return !IsKeyword(token) && TryLengthPercentage(token, out offset);
+            }
+        }
+
+        // An edge keyword and its offset into the box from that edge.
+        private static bool TryEdgeOffset(string edge, string length, ref Offset x, ref Offset y)
+        {
+            if (!TryLengthPercentage(length, out var offset))
             {
                 return false;
             }
-            foreach (var token in tokens)
+            var fromFar = new Offset(1f - offset.Fraction, -offset.Pixels, offset.At?.Negated());
+            switch (edge)
             {
-                if (!IsPositionToken(token))
-                {
-                    return false;
-                }
+                case "left": x = offset; return true;
+                case "right": x = fromFar; return true;
+                case "top": y = offset; return true;
+                case "bottom": y = fromFar; return true;
+                default: return false;
             }
-            ParseRadialPosition(arg, ref centerX, ref centerY);
-            return true;
         }
 
-        private static bool IsPositionToken(string token)
-            => token is "left" or "right" or "top" or "bottom" or "center" || TryParseCentrePercent(token, out _);
+        private static bool IsHorizontal(string token) => token is "left" or "right";
+
+        private static bool IsVertical(string token) => token is "top" or "bottom";
+
+        private static bool IsKeyword(string token) => token is "left" or "right" or "top" or "bottom" or "center";
+
+        // A length, a percentage, or a math function coming to pixels and a percentage added together.
+        private static bool TryLengthPercentage(string token, out Offset offset)
+        {
+            offset = default;
+            if (StyleArbitraryValueResolver.TryParseValue(token.AsSpan(), out var value, out var unit))
+            {
+                offset = unit == LengthUnit.Percent ? new Offset(value / 100f, 0f) : new Offset(0f, value);
+                return true;
+            }
+            if (TryMeasuredLength(token, out var fraction, out var pixels, out var at, provisional: true))
+            {
+                offset = new Offset(fraction, pixels, at);
+                return true;
+            }
+            return false;
+        }
 
         // The stops as the spec keeps them: fixed up when every position is known, and as written when one is
         // in pixels, which GradientBackground.ResolveStops places once it knows the box.
@@ -1301,48 +1603,6 @@ namespace Velvet
             }
             deg = 0f;
             return s.Length > 0 && s[0] != '[' && TryParseAngleValue(s, negative: false, out deg);
-        }
-
-        // Reads the position tokens of an at_ position into a UV centre, which may lie outside the box.
-        // Keywords (top/bottom/left/right/center) pin their own axis; a {N}% value fills the next axis not
-        // already pinned by a keyword (CSS position order: x then y). Tracking which axes are set with
-        // explicit flags (not a value sentinel on centerX) is what lets `at_50%_75%` and `at_left_50%`
-        // resolve correctly. Callers have already checked every token with IsPositionToken.
-        private static void ParseRadialPosition(string content, ref float centerX, ref float centerY)
-        {
-            bool xSet = false, ySet = false;
-            foreach (var tok in content.Split('_'))
-            {
-                switch (tok)
-                {
-                    case "at":
-                    case "center": break;
-                    case "left": centerX = 0f; xSet = true; break;
-                    case "right": centerX = 1f; xSet = true; break;
-                    case "top": centerY = 0f; ySet = true; break;
-                    case "bottom": centerY = 1f; ySet = true; break;
-                    default:
-                        if (TryParseCentrePercent(tok, out var frac))
-                        {
-                            if (!xSet) { centerX = frac; xSet = true; }
-                            else if (!ySet) { centerY = frac; ySet = true; }
-                        }
-                        break;
-                }
-            }
-        }
-
-        private static bool TryParseCentrePercent(string token, out float frac)
-        {
-            frac = 0f;
-            if (token.Length < 2 || token[token.Length - 1] != '%'
-                || !float.TryParse(token.Substring(0, token.Length - 1), NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
-                || float.IsNaN(pct) || float.IsInfinity(pct))
-            {
-                return false;
-            }
-            frac = pct / 100f;
-            return true;
         }
 
         // "10%" or "[12.5%]" → 0.10 / 0.125, beyond 0..1 as written. False when not a percentage. Delegates to

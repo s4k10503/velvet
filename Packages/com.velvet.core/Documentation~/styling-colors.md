@@ -60,6 +60,10 @@ The functions follow CSS Color 4:
   `3.4e38`, as Chromium reads it, so `rgb(1e999_0_0)` is red and `rgb(-1e999_0_0)` black. A hue is then the hue of
   plus or minus that value: 0deg in degrees or turns, 216deg in gradians and 240deg in radians, and 144deg and
   120deg for the negative gradians and radians.
+- **A math function** ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#math-functions)) stands for any
+  component that comes to a number or a percentage, and for a hue that comes to an angle or a number:
+  `rgb(calc(255/2)_0_0)`, `hsl(calc(60deg*2)_100%_50%)`, `rgb(255_0_0_/_calc(50%))`. It is clamped as a written
+  component is, and a NaN reads as 0. One coming to a length is no component (`rgb(calc(1px)_0_0)` is inert).
 - **Function names, `none` and angle units** are read in any case.
 - **The opacity modifier** (`bg-[…]/50`, `bg-red-500/50`, `text-…/[0.3]`, `text-…/[30%]`) multiplies the colour's alpha, as
   Tailwind v4's `color-mix(in oklab, <colour> 50%, transparent)` does: `bg-[#ff000080]/50` has an alpha of a
@@ -72,5 +76,5 @@ The functions follow CSS Color 4:
   is converted as CSS Color 4 converts it and a channel outside 0–1 is clipped, so `bg-blue-500` is `#2b7fff`.
 - **A colour outside sRGB**, which an `hsl()` or `hwb()` whose components lie outside their ranges can
   describe, has each channel clipped to 0–1 where CSS Color 4 maps it into the gamut.
-- **`calc()`, `currentColor` and relative colour syntax** are not read. A `var()` is replaced by the custom
+- **`currentColor` and relative colour syntax** are not read. A `var()` is replaced by the custom
   property it reads before the colour is read ([styling-custom-properties.md](styling-custom-properties.md)).

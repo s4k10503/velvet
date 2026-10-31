@@ -38,6 +38,9 @@ namespace Velvet
         // Whether a check of who owns the face is waiting to run (BoxShadowSilhouette.SettleFace).
         public bool FacePending;
 
+        // Re-measures a layer with lengths the element measures, once what they measure has moved.
+        public RelativeLengthPoll? Poll;
+
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
@@ -170,15 +173,26 @@ namespace Velvet
             }
 
             s_byElement.AddOrUpdate(element, binding);
+            SyncPoll(element, binding);
             element.MarkDirtyRepaint();
             return binding;
         }
+
+        // Starts the re-measuring poll while a layer holds a length the element measures, and stops it after.
+        private static void SyncPoll(VisualElement element, BoxShadowBinding binding)
+            => StyleRelativeLengths.SyncPoll(ref binding.Poll, element,
+                Array.Exists(binding.Layers, layer => layer.Measured != null), () =>
+                {
+                    SyncBoundsSpacer(element, binding);
+                    element.MarkDirtyRepaint();
+                });
 
         // Unregisters the callbacks, releases the face suppression (so a pooled / detached upright caster
         // restores its native chrome), and drops the side-channel entry so a pooled element cannot ghost a
         // prior consumer's shadow. The baked textures are cached process-wide and are NOT destroyed here.
         public static void Detach(VisualElement element, BoxShadowBinding binding)
         {
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, false, () => { });
             element.generateVisualContent -= binding.OnGenerate;
             if (binding.OnGeometryChanged != null)
             {
@@ -219,7 +233,7 @@ namespace Velvet
                 var box = BoxOf(element, binding, w, h);
                 foreach (var layer in binding.Layers)
                 {
-                    aabb = SilhouetteBoundsSpacer.Union(aabb, BoxShadowBaker.ShadowRect(box, layer, Vector2.zero));
+                    aabb = SilhouetteBoundsSpacer.Union(aabb, BoxShadowBaker.ShadowRect(box, layer.MeasuredOn(element), Vector2.zero));
                 }
             }
             aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);
@@ -234,6 +248,7 @@ namespace Velvet
         {
             binding.Layers = request.Layers;
             binding.ClassNames = request.ClassNames;
+            SyncPoll(element, binding);
             ResolveCornerRadius(element, binding);
 
             if (binding.Face.SuppressionApplied)
@@ -419,7 +434,7 @@ namespace Velvet
             {
                 if (binding.Layers[i].Inset == inset)
                 {
-                    DrawShadowQuad(mgc, binding, binding.Layers[i], box, unscale);
+                    DrawShadowQuad(mgc, binding, binding.Layers[i].MeasuredOn(mgc.visualElement), box, unscale);
                 }
             }
         }

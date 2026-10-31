@@ -277,7 +277,7 @@
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
-          "anchor": "public static bool TryExtract(string[] classNames, out GradientSpec spec)",
+          "anchor": "private static bool TryExtractClasses(string[] classNames, out GradientSpec spec)",
           "neuter": "spec = default; return false;"
         },
         {

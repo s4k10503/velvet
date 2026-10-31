@@ -331,7 +331,10 @@ as it is in `ring-offset-<n>` and `outline-offset-<n>`. `-outline-offset-<n>`, `
 `outline-offset-[…]` draw the outline that far inside the element's edge. A colour class alone (`ring-red-500`, `outline-white`) draws nothing, and
 colours only its own family's band, so `outline ring-red-500` is an outline in the text colour. A band whose
 family names no colour, or names `ring-current` / `outline-current`, is drawn in the element's text colour and
-follows it as it changes. Velvet still
+follows it as it changes. An outline's width
+is snapped as the browser snaps a border width, down to a whole number of the panel's device pixels
+and up to one where it is less (`outline-[2.75px]` is 2.5px at two device pixels a point); an outline's offset
+and a ring's width, a box-shadow in the browser, are not. Velvet still
 draws one band where CSS draws a ring and an outline together.
 
 What the ringed element's own subtree would carry reaches the band as well. Its transform —
