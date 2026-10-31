@@ -212,6 +212,7 @@ namespace Velvet
                 var child = ClipPathLayoutBox.InnerOf(flowChild);
                 var isDivider = !ReferenceEquals(flowChild, last);
                 ApplyToChild(child, edge, isDivider);
+                BorderPreflight.SetDivided(child, isDivider);
                 StyleChildOwnership.Claim(_ctx.ChildDividerOwners, child, this);
                 _bordered.Add(child);
             }
@@ -582,6 +583,7 @@ namespace Velvet
             if (StyleChildOwnership.TryRelease(_ctx.ChildDividerOwners, child, this))
             {
                 var carried = DetachDash(child);
+                BorderPreflight.SetDivided(child, false);
                 ResetOwnedEdges(child);
                 WriteColors(child, null, false);
                 RestoreCodeColor(child, carried, divided: false);

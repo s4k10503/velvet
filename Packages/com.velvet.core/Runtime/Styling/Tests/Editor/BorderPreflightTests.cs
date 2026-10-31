@@ -346,6 +346,180 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALabelWhoseCodeWritesABorderColourInline_When_Mounted_Then_TheInlineColourStands()
+        {
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "tag", className: "border text-red-500", text: "Tag",
+                refCallback: element =>
+                {
+                    element.style.borderTopColor = new StyleColor(Color.magenta);
+                    return () => { };
+                }));
+            var tag = Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.magenta));
+        }
+
+        [Test]
+        public void Given_ABorderedLabel_When_CodeWritesABorderColourInlineAfterwards_Then_TheInlineColourStands()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            ForcePanelUpdate(tag.panel);
+            tag.style.color = new StyleColor(Color.blue);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.magenta));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseCodeWroteOneSideInline_When_Mounted_Then_TheOtherSidesAreTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "tag", className: "border text-red-500", text: "Tag",
+                refCallback: element =>
+                {
+                    element.style.borderTopColor = new StyleColor(Color.magenta);
+                    return () => { };
+                }));
+            var tag = Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithoutADivideColour_When_Resolved_Then_TheDividerIsInItsTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "flex flex-row divide-x-2 text-red-500",
+                children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADividedRowWithoutADivideColour_When_Resolved_Then_TheLastChildHasNoDivider()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "flex flex-row divide-x-2 text-red-500",
+                children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var second = Settled("second");
+
+            // Assert
+            Assert.That(second.resolvedStyle.borderRightColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ADividedChildWithADivideColour_When_Resolved_Then_TheDivideColourHoldsTheDivider()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row",
+                className: "flex flex-row divide-x-2 divide-blue-500 text-red-500", children: new VNode[]
+                {
+                    V.Label(name: "first", text: "A"),
+                    V.Label(name: "second", text: "B"),
+                }));
+            Settled("row");
+
+            // Act
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsABorderWidth_When_Resolved_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("pf-width text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsABorderWidthAndColour_When_Resolved_Then_TheRuleColourStands()
+        {
+            // Act
+            var tag = MountLabel("pf-width-colored text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseIdRuleSetsABorderWidth_When_Resolved_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("text-red-500", "pf-width-id");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsNoBorderWidth_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-plain text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_AnElementOwningAStylesheet_When_ItsRulesAreAsked_Then_ItsPseudoStatesAreUnchanged()
+        {
+            // Arrange
+            var states = EngineMember.PseudoStates.ResolveProperty()!;
+            var owner = new Label { name = "owner" };
+            owner.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            _window.rootVisualElement.Add(owner);
+            ForcePanelUpdate(owner.panel);
+            var before = (int)states.GetValue(owner);
+
+            // Act
+            BorderPreflight.OnClassesResolved(owner, new[] { "border" }, classesChanged: true);
+
+            // Assert
+            Assert.That((int)states.GetValue(owner), Is.EqualTo(before));
+        }
+
+        [Test]
         public void Given_APreflightLayer_When_ItsKeyIsAskedWhetherItIsUnderAVariant_Then_ItIsNot()
         {
             // Assert

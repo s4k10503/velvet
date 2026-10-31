@@ -82,13 +82,14 @@ The functions follow CSS Color 4:
   cannot hold.
 - **A border width draws in the text colour** unless a rule says otherwise, as Tailwind v4's preflight
   `border-color: currentcolor` does: `border`, `border-2`, `border-t-4`, `border-[3px]` (under any variant) on an
-  element, a `Label` among them, draw a border in its text colour and follow it. Any rule of a stylesheet that is not a
-  control theme's that sets a side's border colour takes that side from it, whatever its selector or state:
-  `border-red-500`, `border-transparent`, a variant such as `hover:border-blue-500`, and your own USS class, id, type,
-  descendant or `:hover` rule. A control theme's rule does not, as preflight outranks a browser's default styles. The
-  colour is written to the element inline below every other Velvet layer, and is read again when its classes, its
-  pseudo-state or the stylesheets reaching it change. A border width that comes from a stylesheet of your own, or a
-  `divide-*` width, has no preflight colour.
+  element, a `Label` among them, the children of a `divide-*` parent, and an element given a border width by a rule of
+  a stylesheet of your own (looked for on an element with a class that is not a Velvet utility, or a name) draw a border
+  in its text colour and follow it. A rule of a stylesheet that is not a control theme's that sets a side's border colour
+  takes that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as
+  `hover:border-blue-500`, and your own USS class, id, type, descendant or `:hover` rule. So does a colour your code
+  writes inline (`element.style.borderTopColor`), as an inline style outranks preflight. A control theme's rule does not,
+  as preflight outranks a browser's default styles. The colour is written to the element inline below every other
+  Velvet layer, and is read again when its classes, its pseudo-state or the stylesheets reaching it change.
 
 ## Where Velvet differs from CSS
 

@@ -69,6 +69,20 @@ namespace Velvet
             Place(root);
         }
 
+        // Follows the scale of the nearest ancestor of element, itself included, whose stylesheets bring in the bundled
+        // utilities, for a project that attached them without AttachTo.
+        internal static void FollowRootOf(VisualElement element)
+        {
+            for (var root = element; root != null; root = root.hierarchy.parent)
+            {
+                if (VelvetStyleUtilities.IndexOfUtilities(root) >= 0)
+                {
+                    Follow(root);
+                    return;
+                }
+            }
+        }
+
         internal static void Stop(VisualElement root) => PanelScaleWatch.Untrack(root, s_owner);
 
         internal static bool IsSnapped(StyleSheet sheet) => sheet != null && sheet.name == SheetName;
@@ -88,15 +102,14 @@ namespace Velvet
             return sheet;
         }
 
-        // Puts root's snapped sheet, or none, directly after the bundled utilities.
+        // Puts root's snapped sheet, or none, directly after the stylesheet that brings in the bundled utilities.
         private static void Place(VisualElement root)
         {
-            var utilities = VelvetStyleUtilities.TryGetSheet();
-            var wanted = root.panel != null && utilities != null && root.styleSheets.Contains(utilities)
+            var wanted = root.panel != null && VelvetStyleUtilities.IndexOfUtilities(root) >= 0
                 ? For(root.panel.scaledPixelsPerPoint)
                 : null;
             var held = s_held.TryGetValue(root, out var holder) ? holder[0] : null;
-            var at = IndexOf(root, utilities);
+            var at = VelvetStyleUtilities.IndexOfUtilities(root);
             if (wanted != null && ReferenceEquals(held, wanted) && at >= 0 && at + 1 < root.styleSheets.count
                 && ReferenceEquals(root.styleSheets[at + 1], wanted))
             {
@@ -111,21 +124,9 @@ namespace Velvet
                 s_held.Remove(root);
                 return;
             }
-            root.styleSheets.Insert(IndexOf(root, utilities) + 1, wanted);
+            root.styleSheets.Insert(VelvetStyleUtilities.IndexOfUtilities(root) + 1, wanted);
             s_held.Remove(root);
             s_held.Add(root, new[] { wanted });
-        }
-
-        private static int IndexOf(VisualElement root, StyleSheet? sheet)
-        {
-            for (var i = 0; sheet != null && i < root.styleSheets.count; i++)
-            {
-                if (ReferenceEquals(root.styleSheets[i], sheet))
-                {
-                    return i;
-                }
-            }
-            return -1;
         }
 
         // Every class the sheet snaps, in the order the bundled sheet declares them, with its width in pixels and the

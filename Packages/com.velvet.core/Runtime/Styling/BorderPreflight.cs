@@ -9,15 +9,20 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Tailwind's preflight gives every element `border-color: currentcolor`, below every rule an author writes. An
-    // element carrying a border-width utility therefore holds a currentcolor layer in its layer map at
+    // element with a border width therefore holds a currentcolor layer per side in its layer map at
     // StyleLayerPriority.Preflight, which every other layer outranks and whose colour ColorReferenceWatch follows.
+    // The width comes from a border-width utility in its classes, from a divide on its parent (SetDivided), or from a
+    // rule of a non-default stylesheet that sets one, which is looked for on an element carrying a class or a name of
+    // its own when it attaches.
     //
     // A layer is written inline, which outranks every stylesheet rule, so a side is held back while a rule of a
     // stylesheet that is not a default one (control themes are, and CSS preflight overrides user-agent styles) matches
-    // the element and sets that side's border colour, whatever the rule's selector. The rules that match are asked of
+    // the element and sets that side's border colour, whatever the rule's selector, and while an inline colour that
+    // is not Velvet's stands on it, as an inline style outranks preflight in CSS. The rules that match are asked of
     // the engine's own matcher (MatchedRulesExtractor) when the element's classes are applied and each time the
-    // element is restyled, which is what a class, a pseudo-state or a stylesheet changing does. The restyle event
-    // reaches the element through the marker class ColorReferenceWatch documents.
+    // element is restyled with a different set of matched rules, which is what a class, a pseudo-state or a
+    // stylesheet changing does. The restyle event reaches the element through the marker class ColorReferenceWatch
+    // documents.
     internal static class BorderPreflight
     {
         [Flags]
@@ -31,12 +36,25 @@ namespace Velvet
             All = Top | Right | Bottom | Left,
         }
 
+        [Flags]
+        private enum Reasons
+        {
+            None = 0,
+            Classes = 1,
+            Divided = 2,
+            Rule = 4,
+        }
+
         private sealed class State
         {
+            public Reasons Reasons;
             public Sides Held;
+            public Sides Claimed;
             public bool Resyncing;
             // The key the engine cached the element's matched rules under when they were last asked.
             public long? Matched;
+            // The colour each side's inline value last had while it was Velvet's, to tell a write that is not.
+            public readonly Color[] Seen = new Color[4];
         }
 
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
@@ -65,17 +83,23 @@ namespace Velvet
             return Activator.CreateInstance(s_find.DeclaringType!, new Func<StyleSheet, string>(_ => string.Empty));
         }
 
-        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onAttached = (_, element) => Resync(element);
+        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onAttached = (_, element) =>
+        {
+            if (s_states.TryGetValue(element, out var state) && (state.Reasons & Reasons.Classes) != 0)
+            {
+                SnappedBorderSheets.FollowRootOf(element);
+            }
+            Resync(element, ask: true);
+        };
+
+        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached =
+            (_, element) => LookForRule(element);
 
         private static readonly EventCallback<CustomStyleResolvedEvent, VisualElement> s_onResolved = (_, element) =>
         {
             // A restyle that moves no rule (a colour inherited from above, say) asks nothing of the matcher.
-            if (s_states.TryGetValue(element, out var state) && StyleCascade.RulesHash(element) is { } hash
-                && hash == state.Matched)
-            {
-                return;
-            }
-            Resync(element);
+            var hash = StyleCascade.RulesHash(element);
+            Resync(element, ask: !(s_states.TryGetValue(element, out var state) && hash is { } known && known == state.Matched));
         };
 
         private static readonly ArbitraryProperty[] s_sideProperties =
@@ -94,22 +118,43 @@ namespace Velvet
             {
                 return;
             }
-            if (!HasBorderWidth(classNames))
+            if (HasBorderWidth(classNames))
             {
-                Release(element);
+                if (!Add(element, Reasons.Classes) && classesChanged)
+                {
+                    Resync(element, ask: true);
+                }
                 return;
             }
-            if (!s_states.TryGetValue(element, out _))
+            Remove(element, Reasons.Classes);
+            if (!classesChanged || !IsRuleCandidate(element, classNames))
             {
-                s_states.Add(element, new State());
-                ColorReferenceWatch.Mark(element);
-                element.RegisterCallback(s_onAttached, element);
-                element.RegisterCallback(s_onResolved, element);
-                classesChanged = true;
+                return;
             }
-            if (classesChanged)
+            if (element.panel == null)
             {
-                Resync(element);
+                element.RegisterCallbackOnce(s_onCandidateAttached, element);
+            }
+            else
+            {
+                LookForRule(element);
+            }
+        }
+
+        // The child of a divide, which draws the divider as its border on one edge and so has a width to draw a colour on.
+        internal static void SetDivided(VisualElement child, bool divided)
+        {
+            if (s_extractor == null)
+            {
+                return;
+            }
+            if (divided)
+            {
+                Add(child, Reasons.Divided);
+            }
+            else
+            {
+                Remove(child, Reasons.Divided);
             }
         }
 
@@ -139,10 +184,78 @@ namespace Velvet
             }
             element.UnregisterCallback(s_onAttached);
             element.UnregisterCallback(s_onResolved);
+            element.UnregisterCallback(s_onCandidateAttached);
             ColorReferenceWatch.Unmark(element);
         }
 
-        private static void Resync(VisualElement element)
+        // Whether the element was asked for its rules in doing so.
+        private static bool Add(VisualElement element, Reasons reason)
+        {
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                state = new State();
+                s_states.Add(element, state);
+                ColorReferenceWatch.Mark(element);
+                element.RegisterCallback(s_onAttached, element);
+                element.RegisterCallback(s_onResolved, element);
+                state.Reasons = reason;
+                Resync(element, ask: true);
+                return true;
+            }
+            if ((state.Reasons & reason) == 0)
+            {
+                state.Reasons |= reason;
+                Resync(element, ask: true);
+                return true;
+            }
+            return false;
+        }
+
+        private static void Remove(VisualElement element, Reasons reason)
+        {
+            if (!s_states.TryGetValue(element, out var state) || (state.Reasons & reason) == 0)
+            {
+                return;
+            }
+            state.Reasons &= ~reason;
+            if (state.Reasons == Reasons.None)
+            {
+                Release(element);
+            }
+        }
+
+        // An element that may be given a width by a rule of a stylesheet: one with a class that is not a Velvet
+        // utility, or a name an id selector can match. Elements with neither are not asked.
+        private static bool IsRuleCandidate(VisualElement element, string[] classNames)
+        {
+            if (!string.IsNullOrEmpty(element.name))
+            {
+                return true;
+            }
+            for (var i = 0; i < classNames.Length; i++)
+            {
+                if (FiberElementFactory.IsPlainClassToken(classNames[i]) && !StyleUtilityProperties.TryGet(classNames[i], out _))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static void LookForRule(VisualElement element)
+        {
+            if (element.panel == null)
+            {
+                return;
+            }
+            var matched = Matches(element);
+            if (matched.SetsWidth)
+            {
+                Add(element, Reasons.Rule);
+            }
+        }
+
+        private static void Resync(VisualElement element, bool ask)
         {
             if (element.panel == null || !s_states.TryGetValue(element, out var state) || state.Resyncing)
             {
@@ -151,28 +264,26 @@ namespace Velvet
             state.Resyncing = true;
             try
             {
-                state.Matched = StyleCascade.RulesHash(element);
-                var wanted = Sides.All & ~Claimed(element);
+                if (ask)
+                {
+                    state.Matched = StyleCascade.RulesHash(element);
+                    var matched = Matches(element);
+                    state.Claimed = matched.Claimed;
+                    if ((state.Reasons & Reasons.Classes) != 0)
+                    {
+                        SnappedBorderSheets.FollowRootOf(element);
+                    }
+                    state.Reasons = matched.SetsWidth ? state.Reasons | Reasons.Rule : state.Reasons & ~Reasons.Rule;
+                    if (state.Reasons == Reasons.None)
+                    {
+                        Release(element);
+                        return;
+                    }
+                }
+                var resolved = element.resolvedStyle.color;
                 for (var i = 0; i < s_sideProperties.Length; i++)
                 {
-                    var side = (Sides)(1 << i);
-                    var holds = (state.Held & side) != 0;
-                    if (holds == ((wanted & side) != 0))
-                    {
-                        continue;
-                    }
-                    if (holds)
-                    {
-                        StyleArbitraryValueResolver.Clear(element, s_sideProperties[i], StyleLayerPriority.Preflight);
-                        state.Held &= ~side;
-                    }
-                    else
-                    {
-                        StyleArbitraryValueResolver.Apply(element,
-                            new ArbitraryStyle(s_sideProperties[i], Color.white, ColorReference.Current),
-                            StyleLayerPriority.Preflight);
-                        state.Held |= side;
-                    }
+                    SyncSide(element, state, i, resolved);
                 }
             }
             finally
@@ -181,12 +292,63 @@ namespace Velvet
             }
         }
 
-        // The sides a rule of a non-default stylesheet matching element sets the border colour of.
-        private static Sides Claimed(VisualElement element)
+        private static void SyncSide(VisualElement element, State state, int index, Color resolved)
+        {
+            var side = (Sides)(1 << index);
+            var inline = InlineColor(element, index);
+            var set = inline.keyword == StyleKeyword.Undefined;
+            if ((state.Held & side) != 0)
+            {
+                if (set && inline.value != resolved && inline.value != state.Seen[index])
+                {
+                    // Something else wrote the side since: its value stands, and the layer lets go without writing.
+                    StyleArbitraryValueResolver.Withdraw(element, s_sideProperties[index], StyleLayerPriority.Preflight);
+                    state.Held &= ~side;
+                    return;
+                }
+                if ((state.Claimed & side) == 0)
+                {
+                    state.Seen[index] = set ? inline.value : state.Seen[index];
+                    return;
+                }
+                StyleArbitraryValueResolver.Clear(element, s_sideProperties[index], StyleLayerPriority.Preflight);
+                state.Held &= ~side;
+                return;
+            }
+            if ((state.Claimed & side) != 0 || set)
+            {
+                return;
+            }
+            StyleArbitraryValueResolver.Apply(element,
+                new ArbitraryStyle(s_sideProperties[index], Color.white, ColorReference.Current), StyleLayerPriority.Preflight);
+            state.Held |= side;
+            state.Seen[index] = InlineColor(element, index).value;
+        }
+
+        private static StyleColor InlineColor(VisualElement element, int index) => index switch
+        {
+            0 => element.style.borderTopColor,
+            1 => element.style.borderRightColor,
+            2 => element.style.borderBottomColor,
+            _ => element.style.borderLeftColor,
+        };
+
+        private readonly struct Match
+        {
+            public readonly Sides Claimed;
+            public readonly bool SetsWidth;
+
+            public Match(Sides claimed, bool setsWidth) => (Claimed, SetsWidth) = (claimed, setsWidth);
+        }
+
+        // The sides a rule of a non-default stylesheet matching element sets the border colour of, and whether one sets
+        // a border width.
+        private static Match Matches(VisualElement element)
         {
             s_clear!.Invoke(s_extractor, null);
             s_find!.Invoke(s_extractor, new object[] { element });
             var claimed = Sides.None;
+            var width = false;
             foreach (var record in (IList)s_records!.GetValue(s_extractor))
             {
                 if ((bool)s_isDefault!.GetValue(s_recordSheet!.GetValue(record)))
@@ -196,12 +358,18 @@ namespace Velvet
                 var rule = s_rule!.GetValue(s_recordSelector!.GetValue(record));
                 foreach (var property in (Array)s_properties!.GetValue(rule))
                 {
-                    claimed |= SidesOf((string)s_propertyName!.GetValue(property));
+                    var name = (string)s_propertyName!.GetValue(property);
+                    claimed |= SidesOf(name);
+                    width |= IsWidth(name);
                 }
             }
             s_clear.Invoke(s_extractor, null);
-            return claimed;
+            return new Match(claimed, width);
         }
+
+        private static bool IsWidth(string property)
+            => property is "border-width" or "border-top-width" or "border-right-width" or "border-bottom-width"
+                or "border-left-width";
 
         private static Sides SidesOf(string property) => property switch
         {

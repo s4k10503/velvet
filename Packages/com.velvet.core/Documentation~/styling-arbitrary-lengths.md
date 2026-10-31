@@ -20,8 +20,9 @@ a shorthand and a longhand of one spacing family ([below](#a-shorthand-and-its-l
 A bracketed border width (`border-[…]`, `border-t-[…]`, `divide-x-[…]`, …) is snapped as the browser snaps one,
 down to a whole number of the panel's device pixels and up to one where it is less: `border-[2.75px]` is 2.5px at
 two device pixels a point. So is a bundled one (`border`, `border-2`, `border-x`, `border-t-4`, …), by a stylesheet that
-follows the bundled utilities on the roots `VelvetStyleUtilities.AttachTo` and the portal hosts attach them to, at a panel
-scale that is not a whole number: `border` is two thirds of a point at 1.5 device pixels a point. The scale is followed
+follows the stylesheet bringing in the bundled utilities, on the roots `VelvetStyleUtilities.AttachTo` and the portal
+hosts attach them to and on a root a project attached them to itself (found from the first element with a border-width
+utility to attach under it), at a panel scale that is not a whole number: `border` is two thirds of a point at 1.5 device pixels a point. The scale is followed
 as it changes.
 
 A unit is read in any case, as CSS reads it: `w-[10PX]` is `w-[10px]`. Where Tailwind reads a bracket as

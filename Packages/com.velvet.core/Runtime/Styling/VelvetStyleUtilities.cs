@@ -68,7 +68,19 @@ namespace Velvet
             }
         }
 
-        internal static StyleSheet? TryGetSheet() => TryResolve();
+        // The place in root's own stylesheets of the first that is the bundled utilities or imports them, or -1.
+        internal static int IndexOfUtilities(VisualElement root)
+        {
+            var utilities = TryResolve();
+            for (var i = 0; utilities != null && i < root.styleSheets.count; i++)
+            {
+                if (Reaches(root.styleSheets[i], utilities))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
 
         private static StyleSheet? TryResolve()
         {

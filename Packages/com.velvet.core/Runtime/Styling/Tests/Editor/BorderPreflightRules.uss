@@ -9,3 +9,11 @@
 .pf-top { border-top-color: rgb(255, 0, 0); }
 
 .pf-ancestor .pf-descendant { border-color: rgb(255, 255, 0); }
+
+.pf-width { border-width: 2px; }
+
+.pf-width-colored { border-width: 2px; border-color: rgb(0, 0, 255); }
+
+.pf-plain { background-color: rgb(1, 2, 3); }
+
+#pf-width-id { border-top-width: 1px; }

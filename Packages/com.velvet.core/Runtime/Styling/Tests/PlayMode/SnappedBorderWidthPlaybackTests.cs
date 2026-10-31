@@ -43,6 +43,15 @@ namespace Velvet.Tests
             yield return Frames(5);
         }
 
+        private IEnumerator MountHandAttached(float scale, string className)
+        {
+            _host = new RenderTexturePanelHost("SnappedBorder", 200, 200) { Scale = scale };
+            _host.Root.styleSheets.Add(VelvetStyleUtilities.Sheet);
+            yield return Frames(3);
+            _mounted = V.Mount(_host.Root, V.Div(name: "box", className: "w-[50px] h-[50px] " + className));
+            yield return Frames(5);
+        }
+
         private VisualElement Box => _host.Root.Q<VisualElement>("box");
 
         [UnityTest]
@@ -113,6 +122,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Box.resolvedStyle.borderRightWidth, Is.EqualTo(2f / 3f).Within(1e-4f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TheBundledUtilitiesAttachedWithoutAttachTo_When_TheBareBorderIsMountedAtOneAndAHalf_Then_ItIsSnapped()
+        {
+            // Act
+            yield return MountHandAttached(1.5f, "border");
+
+            // Assert
+            Assert.That(Box.resolvedStyle.borderTopWidth, Is.EqualTo(2f / 3f).Within(1e-4f));
         }
 
         [UnityTest]
