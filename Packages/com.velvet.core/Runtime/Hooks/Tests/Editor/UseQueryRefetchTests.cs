@@ -121,8 +121,7 @@ namespace Velvet.Tests
             LogAssert.ignoreFailingMessages = false;
             if (_onLog != null) UnityEngine.Application.logMessageReceived -= _onLog;
             _onLog = null;
-            NetworkSignals.IsVisible = null;
-            NetworkSignals.IsOnline = null;
+            MutationNetworkFixture.Reset();
         }
 
         #region Interval

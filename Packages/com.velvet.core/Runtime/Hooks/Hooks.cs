@@ -2885,7 +2885,7 @@ namespace Velvet
                 return null;
             }));
 
-            return observer.Read(queryClient.Peek<TQueryFnData>(options.QueryKey), settings);
+            return observer.Read(queryClient.PeekById<TQueryFnData>(settings.KeyId), settings);
         }
 
         #endregion

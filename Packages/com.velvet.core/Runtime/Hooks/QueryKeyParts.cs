@@ -3,12 +3,15 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Velvet
 {
-    // How one part of a QueryKey is compared. Only a type that keeps object's own Equals is taken apart; a type
-    // that declares its own equality keeps it.
+    // How one part of a QueryKey is compared. A collection is taken apart only when its type keeps object's own
+    // Equals, and a record or an anonymous type only when its equality is the compiler's own; a type that
+    // declares its own equality keeps it.
     internal enum QueryKeyPartKind
     {
         // Compared with object.Equals.
@@ -19,10 +22,14 @@ namespace Velvet
         Dictionary,
         // A set: by element, whatever order the elements were added in.
         Set,
+        // A tuple, a record or an anonymous type: by its members, each compared as a part is.
+        Members,
     }
 
     // TanStack's hashKey, which sorts a plain object's keys before hashing it, and partialMatchKey, which
-    // matches a filter's array as a leading run and a filter's object on the properties it names.
+    // matches a filter's array as a leading run and a filter's object on the properties it names. A record, a
+    // tuple or an anonymous type is the object of this port, so what it holds is compared as deeply as a part
+    // is.
     internal static class QueryKeyParts
     {
         private static readonly ConcurrentDictionary<Type, QueryKeyPartKind> s_kinds = new();
@@ -36,7 +43,7 @@ namespace Velvet
             if (!typeof(IEnumerable).IsAssignableFrom(type)
                 || type.GetMethod(nameof(object.Equals), new[] { typeof(object) })!.DeclaringType != typeof(object))
             {
-                return QueryKeyPartKind.Value;
+                return IsTuple(type) || MemberFieldsOf(type) != null ? QueryKeyPartKind.Members : QueryKeyPartKind.Value;
             }
 
             if (typeof(IDictionary).IsAssignableFrom(type)) return QueryKeyPartKind.Dictionary;
@@ -53,10 +60,71 @@ namespace Velvet
             return false;
         }
 
+        // Only the framework's own tuples: a type that implements ITuple and declares its own equality keeps it.
+        private static bool IsTuple(Type type)
+            => type.Namespace == nameof(System)
+                && (type.Name.StartsWith("ValueTuple`", StringComparison.Ordinal)
+                    || type.Name.StartsWith("Tuple`", StringComparison.Ordinal));
+
+        private static readonly ConcurrentDictionary<Type, FieldInfo[]?> s_memberFields = new();
+        private static readonly Func<Type, FieldInfo[]?> s_findMemberFields = FindMemberFields;
+
+        // The fields a record's or an anonymous type's compiler-written Equals compares, null for a type whose
+        // equality is not that: the instance fields of the type and of each record it derives from, which is the
+        // set the synthesized Equals walks. A tuple is read through ITuple instead.
+        private static FieldInfo[]? MemberFieldsOf(Type type) => s_memberFields.GetOrAdd(type, s_findMemberFields);
+
+        private static FieldInfo[]? FindMemberFields(Type type)
+        {
+            const BindingFlags declared = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                | BindingFlags.DeclaredOnly;
+            const BindingFlags equalsFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
+            var fields = new List<FieldInfo>();
+            for (var level = type; level != null && level != typeof(object) && level != typeof(ValueType); level = level.BaseType)
+            {
+                // A record is told by the Equals taking its own type, which the compiler writes unless the record
+                // declares it; an anonymous type, which has none of that shape, by being written by the compiler.
+                var typed = level.GetMethod(nameof(object.Equals), equalsFlags, null, new[] { level }, null);
+                // The binder also offers Equals(object) for the type's own, which says nothing about a record.
+                if (typed != null && typed.GetParameters()[0].ParameterType != level) typed = null;
+                var compilerWritten = typed != null
+                    ? typed.IsDefined(typeof(CompilerGeneratedAttribute), false)
+                    : level.IsDefined(typeof(CompilerGeneratedAttribute), false)
+                        && level.GetMethod(nameof(object.Equals), equalsFlags, null, new[] { typeof(object) }, null) != null;
+                if (!compilerWritten) return null;
+                fields.AddRange(level.GetFields(declared));
+            }
+            return fields.ToArray();
+        }
+
+        // The members of a Members part, in the order they are declared: a tuple's items, or the fields above.
+        private static object?[] MembersOf(object part)
+        {
+            if (part is ITuple tuple)
+            {
+                var items = new object?[tuple.Length];
+                for (var i = 0; i < items.Length; i++)
+                {
+                    items[i] = tuple[i];
+                }
+                return items;
+            }
+
+            var fields = MemberFieldsOf(part.GetType())!;
+            var members = new object?[fields.Length];
+            for (var i = 0; i < members.Length; i++)
+            {
+                members[i] = fields[i].GetValue(part);
+            }
+            return members;
+        }
+
         internal static int HashOf(object? part)
         {
             switch (KindOf(part))
             {
+                case QueryKeyPartKind.Members:
+                    return MembersHash(part!);
                 case QueryKeyPartKind.Sequence:
                     return SequenceHash((IEnumerable)part!);
                 case QueryKeyPartKind.Dictionary:
@@ -66,6 +134,18 @@ namespace Velvet
                 default:
                     return part?.GetHashCode() ?? 0;
             }
+        }
+
+        // The type joins the hash because two records of different types holding the same members are different
+        // parts.
+        private static int MembersHash(object part)
+        {
+            var hash = part.GetType().GetHashCode();
+            foreach (var member in MembersOf(part))
+            {
+                hash = unchecked(hash * 31 + HashOf(member));
+            }
+            return hash;
         }
 
         private static int SequenceHash(IEnumerable sequence)
@@ -110,6 +190,8 @@ namespace Velvet
             if (kind == QueryKeyPartKind.Value || kind != KindOf(filter)) return object.Equals(part, filter);
             switch (kind)
             {
+                case QueryKeyPartKind.Members:
+                    return MembersMatch(part!, filter!, partial);
                 case QueryKeyPartKind.Sequence:
                     return SequenceMatches((IEnumerable)part!, (IEnumerable)filter!, partial);
                 case QueryKeyPartKind.Dictionary:
@@ -117,6 +199,23 @@ namespace Velvet
                 default:
                     return SetEquals((IEnumerable)part!, (IEnumerable)filter!);
             }
+        }
+
+        // Two parts of one type, as a record's Equals requires its EqualityContract to agree; a tuple's members
+        // are its items, so tuples of different arity are different types.
+        private static bool MembersMatch(object part, object filter, bool partial)
+        {
+            if (part.GetType() != filter.GetType()) return false;
+            var partMembers = MembersOf(part);
+            var filterMembers = MembersOf(filter);
+            for (var i = 0; i < filterMembers.Length; i++)
+            {
+                // A member a filter leaves null is one it does not name, as partialMatchKey visits only the
+                // properties of the filter.
+                if (partial && filterMembers[i] == null) continue;
+                if (!Matches(partMembers[i], filterMembers[i], partial)) return false;
+            }
+            return true;
         }
 
         private static bool SequenceMatches(IEnumerable part, IEnumerable filter, bool partial)
@@ -175,6 +274,10 @@ namespace Velvet
         {
             switch (KindOf(part))
             {
+                case QueryKeyPartKind.Members:
+                    if (!IsTuple(part!.GetType())) builder.Append(part.GetType().Name);
+                    AppendItems(builder, '(', MembersOf(part), ')');
+                    break;
                 case QueryKeyPartKind.Sequence:
                     AppendItems(builder, '[', (IEnumerable)part!, ']');
                     break;

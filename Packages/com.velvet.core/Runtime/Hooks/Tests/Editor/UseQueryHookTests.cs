@@ -47,7 +47,7 @@ namespace Velvet.Tests
     /// <c>Clear</c> makes a mounted query fetch into a new entry; a request started over that completes on
     /// another thread does not land; a cancellation callback that throws is logged rather than raised.</item>
     /// <item>The Editor warns once when a key that prints the same is unequal on two commits running, as one
-    /// holding an array inside a record is, and not after a single such commit, nor for keys that print
+    /// holding an array inside a class that defines no equality is, and not after a single such commit, nor for keys that print
     /// differently or stay equal.</item>
     /// <item>The client is read from <see cref="QueryClientContext.Ref"/> when none is passed, and a query
     /// with neither, or with null options, key or function, throws.</item>
@@ -97,7 +97,18 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setGeneration;
         private static StateUpdater<int> s_setTick;
 
-        private sealed record Filter(string Status, string[] Ids);
+        // Equal to no other instance, whatever it holds: a class declares no equality of its own.
+        private sealed class Filter
+        {
+            internal Filter(string status, string[] ids)
+            {
+                Status = status;
+                Ids = ids;
+            }
+
+            internal string Status { get; }
+            internal string[] Ids { get; }
+        }
 
         [SetUp]
         public void SetUp()
@@ -1400,11 +1411,12 @@ namespace Velvet.Tests
 
         #region A key rebuilt unequal on every render
 
+        // GREEN_ON_BASE(characterization): the base warns for a key rebuilt unequal as well; this change only swaps the record that rebuilt it for a class.
         [Test]
-        public void Given_AKeyHoldingAnArrayInARecord_When_TwoCommitsRebuildIt_Then_TheEditorWarns()
+        public void Given_AKeyHoldingAnArrayInAClassWithNoEquality_When_TwoCommitsRebuildIt_Then_TheEditorWarns()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(RecordKeyReader, key: "record"));
+            using var mounted = V.Mount(_root, V.Component(ClassKeyReader, key: "class"));
             mounted.FlushEffectsForTest();
             LogAssert.Expect(LogType.Warning, new Regex("though it prints the same"));
 
@@ -1415,11 +1427,12 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the warning was logged
         }
 
+        // GREEN_ON_BASE(characterization): the base warns for a key rebuilt unequal as well; this change only swaps the record that rebuilt it for a class.
         [Test]
-        public void Given_AKeyHoldingAnArrayInARecord_When_OneCommitRebuildsIt_Then_NothingIsLogged()
+        public void Given_AKeyHoldingAnArrayInAClassWithNoEquality_When_OneCommitRebuildsIt_Then_NothingIsLogged()
         {
             // Arrange — one change between keys printing alike can be a real change.
-            using var mounted = V.Mount(_root, V.Component(RecordKeyReader, key: "record"));
+            using var mounted = V.Mount(_root, V.Component(ClassKeyReader, key: "class"));
             mounted.FlushEffectsForTest();
 
             // Act
@@ -1429,11 +1442,12 @@ namespace Velvet.Tests
             LogAssert.NoUnexpectedReceived();
         }
 
+        // GREEN_ON_BASE(characterization): the base warns for a key rebuilt unequal as well; this change only swaps the record that rebuilt it for a class.
         [Test]
         public void Given_AWarnedRebuiltKey_When_MoreCommitsRebuildIt_Then_TheWarningIsNotRepeated()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(RecordKeyReader, key: "record"));
+            using var mounted = V.Mount(_root, V.Component(ClassKeyReader, key: "class"));
             mounted.FlushEffectsForTest();
             LogAssert.Expect(LogType.Warning, new Regex("though it prints the same"));
 
@@ -1747,12 +1761,12 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode RecordKeyReader()
+        private static VNode ClassKeyReader()
         {
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             s_rendersA.Add(Hooks.UseQuery(Options("todos", new Filter("open", new[] { "a" })), s_client));
-            return V.Label(text: "record");
+            return V.Label(text: "class");
         }
 
         [Component]
