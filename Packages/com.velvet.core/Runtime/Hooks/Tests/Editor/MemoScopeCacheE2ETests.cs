@@ -12,7 +12,8 @@ namespace Velvet.Tests
     /// Specifies the runtime half of per-scope memoization: a component that reserves several scope slots in one
     /// render gets one cache entry per scope, so a scope whose deps are unchanged returns the VNode it cached
     /// while a sibling whose deps changed builds again. The components call the gate API by hand, as the weaver's
-    /// output does.
+    /// output does. A scope that caches a value rather than a VNode goes through the same slots and the same
+    /// equality, through the gate pair that carries a value.
     /// </summary>
     [TestFixture]
     internal sealed class MemoScopeCacheE2ETests
@@ -26,6 +27,8 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             Array.Clear(s_builds, 0, s_builds.Length);
+            Array.Clear(s_valueBuilds, 0, s_valueBuilds.Length);
+            s_values.Clear();
             s_setters = null;
             s_reservations = default;
             s_storeFailure = null;
@@ -33,6 +36,8 @@ namespace Velvet.Tests
         }
 
         private static readonly int[] s_builds = new int[ScopeCount];
+        private static readonly int[] s_valueBuilds = new int[ScopeCount];
+        private static readonly List<int[][]> s_values = new();
         private static Action<int>[] s_setters;
 
         private static VNode Scoped(int firstSlot, int scope, int dep)
@@ -185,6 +190,89 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_storeFailure, Is.EqualTo(typeof(InvalidOperationException)));
+        }
+
+        private static int[] ScopedValue(int firstSlot, int scope, int dep)
+        {
+            var deps = new object[] { dep };
+            if (Hooks.TryGetValueScope(firstSlot, scope, deps, out var cached))
+            {
+                return (int[])cached!;
+            }
+            s_valueBuilds[scope]++;
+            var result = new[] { dep };
+            Hooks.StoreValueScope(firstSlot, scope, deps, result);
+            return result;
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThreeValueScopes()
+        {
+            var (a, setA) = Hooks.UseState(0);
+            var (b, setB) = Hooks.UseState(0);
+            var (c, setC) = Hooks.UseState(0);
+            s_setters = new Action<int>[] { setA.Invoke, setB.Invoke, setC.Invoke };
+            var first = Hooks.ReserveScopes(MethodBase.GetCurrentMethod().MethodHandle, ScopeCount);
+            var values = new[] { ScopedValue(first, 0, a), ScopedValue(first, 1, b), ScopedValue(first, 2, c) };
+            s_values.Add(values);
+            return V.Label(text: string.Join(",", values.Select(value => value[0])));
+        }
+
+        [Test]
+        public void Given_ThreeValueScopes_When_OnlyTheMiddleDepChanges_Then_OnlyTheMiddleValueIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ThreeValueScopes, key: "three-values"));
+
+            // Act
+            s_setters[1](5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_valueBuilds, Is.EqualTo(new[] { 1, 2, 1 }));
+        }
+
+        [Test]
+        public void Given_ThreeValueScopes_When_OnlyTheMiddleDepChanges_Then_TheOtherValuesAreTheInstancesBuiltBefore()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ThreeValueScopes, key: "three-values"));
+
+            // Act
+            s_setters[1](5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(new[] { ReferenceEquals(s_values[0][0], s_values[1][0]), ReferenceEquals(s_values[0][2], s_values[1][2]) },
+                Is.EqualTo(new[] { true, true }));
+        }
+
+        [Test]
+        public void Given_ThreeValueScopes_When_OnlyTheMiddleDepChanges_Then_TheLabelShowsEveryCurrentValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ThreeValueScopes, key: "three-values"));
+
+            // Act
+            s_setters[1](5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "0,5,0" }));
+        }
+
+        [Test]
+        public void Given_NoRender_When_ValueScopeGatesAreCalledWithAnUngrantedSlot_Then_NothingIsServedOrStaged()
+        {
+            // Arrange
+            var first = Hooks.ReserveScopes(MethodBase.GetCurrentMethod().MethodHandle, ScopeCount);
+
+            // Act
+            var hit = Hooks.TryGetValueScope(first, 0, Array.Empty<object>(), out _);
+            Hooks.StoreValueScope(first, 0, Array.Empty<object>(), new object());
+
+            // Assert
+            Assert.That(hit ? 0 : first, Is.EqualTo(-1));
         }
     }
 }

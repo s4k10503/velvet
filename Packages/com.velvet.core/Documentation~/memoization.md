@@ -53,6 +53,7 @@ Every `[Component]` is processed at build time unless it sets `Compiler = false`
 
 - **The body as a whole** is keyed on the component's parameters and the values its hooks return. When every key compares equal, the cached tree is returned and the rest of the body does not run.
 - **A scope** is a call that builds a `VNode` — `V.Label(...)`, `V.Div(...)`, a call to a helper returning a node — together with the code that builds its arguments. Each scope is keyed on only the values it reads, so when the body as a whole misses, a scope whose own keys did not change returns the node it built last time and the reconciler skips that subtree by instance.
+- **A derived value** is the code that computes what a local is given, such as `var visible = items.Where(Matches).ToArray();`, when a scope reads that local as a whole. It is a scope of its own, keyed on the values the computation reads, so the local keeps its identity while they are unchanged and the scopes reading it are not built again either ([which computations](#which-computations-are-cached-as-a-value)).
 
 ```csharp
 [Component]
@@ -88,11 +89,36 @@ A scope is built on every render when it:
 - calls `V.Portal` or `V.WorldSpace`, or builds a child of one, directly or through a local;
 - sits in a loop, calls a hook, writes a variable or object it did not create, or is entered by a branch from outside it.
 
-Only the scope that does one of these is affected: its siblings, and the scopes around it that do not read what it reads, stay cached. A body-level gate is not placed when a call the build cannot see runs ahead of the last hook, when a hook result is used in a shape the weaver cannot key on, when the body reaches a hook outside the allow-lists, or when a return or the last hook sits inside a `try`; the scopes that read none of those are still cached.
+Only the scope that does one of these is affected: its siblings, and the scopes around it that do not read what it reads, stay cached. A body-level gate is not placed when a call the build cannot see runs ahead of the last hook, when a hook result is used in a shape the weaver cannot key on, when a hook's value is never read, when the body reaches a hook outside the allow-lists, or when a return or the last hook sits inside a `try`; the scopes that read none of those are still cached.
 
-A body that breaks the Rules of Hooks — a return before a hook call, a hook that a branch can skip or repeat, or a hook inside a `try`, `catch` or `finally` — is left exactly as written. So is a body with a hook whose value it never reads, such as `var (_, setTick) = Hooks.UseState(0)` kept to force a render: the render stands for something the body reads some other way, and nothing in it says what.
+A body that breaks the Rules of Hooks — a return before a hook call, a hook that a branch can skip or repeat, or a hook inside a `try`, `catch` or `finally` — is left exactly as written.
 
-A computation that does not end in a `VNode` — a LINQ query, a string — is not a scope of its own: it runs whenever the scope reading it does, or on a miss of the body as a whole. To keep other work cached across a change, split it out by hand with `Hooks.UseMemo`, `V.Memoized(factory, deps)` or a `[MemoizeMethod]`.
+A hook whose value the body never reads, such as `var (_, bump) = Hooks.UseState(0)` kept to force a render, leaves the body as a whole without a gate: the render it causes changes nothing the gate is keyed on, so it would be served the tree it already holds. The scopes are cached as in any other body, so the forced render builds again only the scopes that read something the build cannot track — a mutable static, a call whose target it cannot see, a stable object a call may have changed — and every scope that reads only parameters and hook values returns what it built before.
+
+### Which computations are cached as a value
+
+A computation that does not end in a `VNode` is cached when it computes a local of a class, array, delegate or interface type and a scope that is cached reads that local as a whole. It meets the conditions a scope does, and one more: nothing may write into the local afterwards, since the one object is handed to the code after it on every render that hits.
+
+- Every later use of the local reads from it or hands it on: a `V.*` factory, a property getter, a framework member of the pure list, or a method that returns a value and is not called on the local. A store into its elements or fields, a call on it that is not a getter, or a method that returns nothing leaves the computation uncached, and the report names the instruction.
+- A local that nothing cached reads whole, or reads only through a field or an automatic property, is not cached on its own; the scopes that read it are keyed on the member.
+- A string, a number or a struct is not cached on its own, since a rebuilt one compares equal to the one it replaces; a `VNode` is a scope of its own.
+- A computation that sits in a loop, that a branch can skip, or that reads something outside its keys — a mutable static, a call to a hook, a call whose target the build cannot see — is built on every render, as a scope in the same place is.
+
+```csharp
+[Component]
+public static VNode Render()
+{
+    var (query, setQuery) = Hooks.UseState("");
+    var (tick, setTick) = Hooks.UseState(0);
+    var visible = Items.Where(item => item.Contains(query)).ToArray();   // runs again when `query` changes
+    return V.Div("column",
+        V.Label(text: string.Join(", ", visible)),                        // runs again when `visible` does
+        V.Label(text: $"{visible.Length} found"),
+        V.Label(text: $"Tick {tick}"));                                  // runs again when `tick` changes
+}
+```
+
+Changing `tick` leaves `visible` and the two labels that read it as they were.
 
 ### Reading what was left out
 

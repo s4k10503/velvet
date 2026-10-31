@@ -5,7 +5,8 @@ using Mono.Cecil.Cil;
 namespace Velvet.CodeGen
 {
     // Wraps each chosen run in its own gate: the dependencies are read into an array, the cache is asked for the
-    // VNode those dependencies built last time, and the run itself executes only when it has none.
+    // VNode, or for the value of a run that computes one, those dependencies built last time, and the run itself
+    // executes only when it has none.
     //
     //     deps = [...]; if (TryGetScope(first, n, deps, out cached)) { value = cached; }
     //     else { value = <the run>; StoreScope(first, n, deps, value); }
@@ -38,7 +39,7 @@ namespace Velvet.CodeGen
         {
             var module = _method.Module;
             var dependencies = new VariableDefinition(new ArrayType(module.TypeSystem.Object));
-            var cached = new VariableDefinition(_context.VNode);
+            var cached = new VariableDefinition(region.IsValue ? module.TypeSystem.Object : _context.VNode);
             var result = new VariableDefinition(module.ImportReference(region.Result));
             _method.Body.Variables.Add(dependencies);
             _method.Body.Variables.Add(cached);
@@ -60,10 +61,10 @@ namespace Velvet.CodeGen
             gate.Add(Instruction.Create(OpCodes.Ldc_I4, region.Slot));
             gate.Add(Instruction.Create(OpCodes.Ldloc, dependencies));
             gate.Add(Instruction.Create(OpCodes.Ldloca, cached));
-            gate.Add(Instruction.Create(OpCodes.Call, _context.TryGetScope!));
+            gate.Add(Instruction.Create(OpCodes.Call, region.IsValue ? _context.TryGetValueScope! : _context.TryGetScope!));
             gate.Add(Instruction.Create(OpCodes.Brfalse, region.First));
             gate.Add(Instruction.Create(OpCodes.Ldloc, cached));
-            if (region.Result.FullName != _context.VNode.FullName)
+            if (region.IsValue || region.Result.FullName != _context.VNode.FullName)
             {
                 gate.Add(Instruction.Create(OpCodes.Castclass, _method.Module.ImportReference(region.Result)));
             }
@@ -163,7 +164,7 @@ namespace Velvet.CodeGen
                 Instruction.Create(OpCodes.Ldc_I4, region.Slot),
                 Instruction.Create(OpCodes.Ldloc, dependencies),
                 Instruction.Create(OpCodes.Ldloc, result),
-                Instruction.Create(OpCodes.Call, _context.StoreScope!),
+                Instruction.Create(OpCodes.Call, region.IsValue ? _context.StoreValueScope! : _context.StoreScope!),
                 Instruction.Create(OpCodes.Ldloc, result),
                 join,
             };

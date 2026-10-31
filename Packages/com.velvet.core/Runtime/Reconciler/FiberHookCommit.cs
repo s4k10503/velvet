@@ -127,6 +127,7 @@ namespace Velvet
             {
                 slots[i].LastDeps = slots[i].NextDeps;
                 slots[i].CachedResult = slots[i].NextCachedResult;
+                slots[i].CachedValue = slots[i].NextCachedValue;
             }
         }
 

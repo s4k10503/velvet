@@ -101,8 +101,9 @@ namespace Velvet.Tests
         }
 
         // Phase 0 mounts a button logging "first"; phase 1 unmounts it, returning it to the pool; phase 2
-        // mounts a button logging "second", which the pool hands the same instance.
-        [Component]
+        // mounts a button logging "second", which the pool hands the same instance. Each render builds its nodes
+        // afresh, which that hand-back needs.
+        [Component(Compiler = false)]
         private static VNode Screen()
         {
             var phase = Hooks.UseStore(s_store, s => s.Phase);

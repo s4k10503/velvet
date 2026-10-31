@@ -192,7 +192,7 @@ namespace Velvet.Tests
         }
 
         // A discarded hook result (UseState whose value element is dropped via '_') leaves the changing value
-        // out of the deps array, so the weaver must bail rather than cache against the stable setter alone.
+        // out of the deps array, so the body gets no gate on the whole rather than one keyed on the stable setter alone.
         [Component]
         public static VNode DiscardedValueComponent()
         {
@@ -1202,12 +1202,13 @@ namespace Velvet.Tests
                 + " untouched");
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves a discarded state value without a gate too, and so does this change.
         [Test]
         public void Given_DiscardedHookValue_When_Analyzed_Then_IsLeftUnwoven()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(DiscardedValueComponent))), Is.False,
-                "Discarding the state value leaves the changing input out of the deps array; the weaver bails");
+                "Discarding the state value leaves the changing input out of the deps array; the body gets no gate");
         }
 
         [Test]
@@ -1299,15 +1300,13 @@ namespace Velvet.Tests
                 "UseMutatingLoopSecond reaches UseMutation through UseMutatingLoopFirst, so the body bails");
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves a setter-only read unwoven, and so does this change.
-        // What it pins is the stack capture taking Item1 alone: deleting the `field.Name != "Item1"` check from
-        // `TryCaptureStackValue` captures the stable setter and reddens it.
+        // GREEN_ON_BASE(characterization): the base leaves a setter-only read without a gate, and so does this change.
         [Test]
         public void Given_OnlyTheSetterReadOffTheStack_When_Analyzed_Then_IsLeftUnwoven()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(StateSetterOffTheStackComponent))), Is.False,
-                "The setter is stable while the value it sets is never captured, so the weaver bails");
+                "The setter is stable while the value it sets is never captured, so the body gets no gate");
         }
 
         // GREEN_ON_BASE(characterization): the base leaves a whole tuple unwoven, and so does this change.
