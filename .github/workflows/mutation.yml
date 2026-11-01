@@ -140,7 +140,7 @@ jobs:
       # The list every shard and the verdict job hands back to mutation_check.py, which refuses a tree
       # that generates another, and the plan's decision of what the record answers and what the cap
       # leaves, which each of them measures around.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: >-
           (steps.plan.outputs.shards != '[]' || (steps.plan.outputs.reusing || '0') != '0')
           && needs.license-check.outputs.has_license == 'true'
@@ -227,7 +227,7 @@ jobs:
           restore-keys: |
             Library-EditMode-
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Mutation mutant list
           path: Logs/mutation-list
@@ -269,7 +269,7 @@ jobs:
               --budget 10200 \
               --output Logs/mutation-shard
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: Mutation EditMode shard ${{ matrix.shard }}
@@ -347,7 +347,7 @@ jobs:
           mkdir -p Logs/mutation-playmode-shard
           echo "shard ${{ matrix.shard }}" > Logs/mutation-playmode-shard/shard-${{ matrix.shard }}.txt
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: Mutation PlayMode shard ${{ matrix.shard }}
@@ -371,7 +371,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Mutation mutant list
           path: Logs/mutation-list
@@ -379,14 +379,14 @@ jobs:
       # Only where a shard ran: a run whose every mutant the record answered has no shard artifact for a
       # pattern to match, and what the action does with a pattern that matches nothing is not relied on.
       - if: needs.mutation-shard.result != 'skipped'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Mutation EditMode shard *
           path: Logs/mutation-shards
           merge-multiple: true
 
       - if: needs.mutation-shard.result != 'skipped'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: Mutation PlayMode shard *
           path: Logs/mutation-playmode-shards
@@ -421,14 +421,14 @@ jobs:
       # Both uploaded whether the decision passed or failed: a run that failed on a survivor still
       # measured every mutant it records, and the report reads its findings from the verdict.
       - if: ${{ !cancelled() && hashFiles('verdict.txt') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Mutation campaign verdict
           path: verdict.txt
           overwrite: true
 
       - if: ${{ !cancelled() && hashFiles('Logs/mutation-record/*.json') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Mutation campaign record entries
           path: Logs/mutation-record
@@ -458,7 +458,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Absent where the verdict recorded nothing, which publishes nothing.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: Mutation campaign record entries
@@ -501,7 +501,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Absent where the verdict job did not run, which the report names.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: Mutation campaign verdict
@@ -520,7 +520,7 @@ jobs:
 
       # Not written where the verdict is absent: an upload with no results closes every alert.
       - if: ${{ hashFiles('mutation.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: mutation.sarif
           category: mutation-campaign
