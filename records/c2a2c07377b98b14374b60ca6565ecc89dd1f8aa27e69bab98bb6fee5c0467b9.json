@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 78 case(s) that ran the site: Given_AnEmRadialRadius_When_Mounted_Then_TheBoundGradientIsReadAgainstTheElement",
+ "file": "d3fe94fefa38f7d0a610279b41ab7c64e732447fe794d7091516a804fedc5cf6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MeasuredLengthPanelTests.Given_AnEmRadialRadius_When_Mounted_Then_TheBoundGradientIsReadAgainstTheElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MeasuredLengthPanelTests.cs": "f8ac963d5ceb5ed0bff4dc81a94b321d0a94f055afed454bd2fd7b26daa0c646",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ";",
+  "before": "SyncMeasuredPoll(element, binding, classNames, measured);",
+  "column": 12,
+  "line": 29,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

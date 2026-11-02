@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the editor was killed at 642s, 1.5 times the baseline's 424s plus 5s, with no readable result",
+ "file": "f40a5ff13762e2811fe110a77d64c46e543b2a1b902a2254a43499235addfcba",
+ "killers": [],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ";",
+  "before": "_current = _logical ? LogicalParentOf(_current) : _current.parent;",
+  "column": 20,
+  "line": 1383,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberFocusNavigator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed (timed out)"
+}

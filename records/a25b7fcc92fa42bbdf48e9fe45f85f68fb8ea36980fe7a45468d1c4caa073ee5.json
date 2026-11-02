@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 2 failed among the 5 case(s) that ran the site: Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheFirstResourceResolves_Then_TheTargetHoldsNoRow, Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheSecondResourceResolves_Then_TheTargetHoldsEachRowOnce",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheFirstResourceResolves_Then_TheTargetHoldsNoRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheSecondResourceResolves_Then_TheTargetHoldsEachRowOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 35,
+  "line": 1459,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

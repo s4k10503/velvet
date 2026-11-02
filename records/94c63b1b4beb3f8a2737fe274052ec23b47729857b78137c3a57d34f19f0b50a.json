@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed among the 51 case(s) that ran the site: Given_APortalIntoAnElementCarryingHandlers_When_APointerDownReachesTheContent_Then_TheElementRunsNoneOfThem",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalOffChainAncestorTests.Given_APortalIntoAnElementCarryingHandlers_When_APointerDownReachesTheContent_Then_TheElementRunsNoneOfThem",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOffChainAncestorTests.cs": "d7aca11b19d938062d908a0eab7e29ae01e529723ec1ff83b30d77a0b2de4262",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOffChainFixtureBase.cs": "bfa977eca9cf32058756c244bcdbab75815ca6838e0a3f92285b79fdeb17bcce",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalOffChainSupport.cs": "88523c7fcea1803392e3762cd6aeec35acf75b7ba199d3972326f28b6f58cc28",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.BindPortalTarget(resolvedTarget);",
+  "column": 12,
+  "line": 1260,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

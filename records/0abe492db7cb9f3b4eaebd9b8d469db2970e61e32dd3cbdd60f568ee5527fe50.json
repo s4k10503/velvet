@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_RowsWhosePropsAreUnchanged_When_TheirParentReRenders_Then_NoRowElementIsPatched; 1 other editor(s) were up",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_RowsWhosePropsAreUnchanged_When_TheirParentReRenders_Then_NoRowElementIsPatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 43,
+  "line": 262,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

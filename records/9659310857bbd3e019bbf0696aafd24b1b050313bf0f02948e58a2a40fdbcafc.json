@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 592 case(s) that ran the site: Given_AnAnchorInheritingItsLabelUnderAMotionNotEnteringOnMount_When_ItsKeyIsAdded_Then_ItRestsWithNoPresetEnter",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AnAnchorInheritingItsLabelUnderAMotionNotEnteringOnMount_When_ItsKeyIsAdded_Then_ItRestsWithNoPresetEnter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 15,
+  "line": 500,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

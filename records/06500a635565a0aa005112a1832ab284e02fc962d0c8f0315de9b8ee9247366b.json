@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_SupportsVariantApplied_When_VariantRemovedOnPatch_Then_PayloadCleared",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VariantSelectorResolutionTests.Given_SupportsVariantApplied_When_VariantRemovedOnPatch_Then_PayloadCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantSelectorResolutionTests.cs": "cce6c34e5d4378ccef5eb8c199c9c128267daa70a72fd9258662be8ecf14e6e2",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "",
+  "before": " || _ctx.SupportsVariants.ContainsKey(element)",
+  "column": 15,
+  "line": 2846,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

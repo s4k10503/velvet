@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 482 case(s) that ran the site: Given_PresenceChildrenWithDistinctKeys_When_Mounted_Then_NoRepeatIsReported",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RepeatedComponentKeyReconcileTests.Given_PresenceChildrenWithDistinctKeys_When_Mounted_Then_NoRepeatIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/RepeatedComponentKeyReconcileTests.cs": "4833adfa280117d49019fa26959dfc01b46e7803505cdab3c21956c06d9368f2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 30,
+  "line": 779,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

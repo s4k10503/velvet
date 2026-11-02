@@ -1,0 +1,102 @@
+{
+ "detail": "EditMode: 21 failed among the 51 case(s) that ran the site: Given_AChildAppendedBehindThePortal_When_TheContainerGainsAChildAndThePortalPatches_Then_TheAppendedChildStaysBehind, Given_AComponentInAPortalIntoAScrollView_When_TheComponentOfItsOwnRowsGrowsAloneAndThePortalsComponentRerendersAlone_Then_ItPatchesItsOwnElement, Given_AComponentInsideThePortal_When_TheContainerGainsAChildAndThatComponentRerendersAlone_Then_ItPatchesItsOwnElement",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_AChildAppendedBehindThePortal_When_TheContainerGainsAChildAndThePortalPatches_Then_TheAppendedChildStaysBehind",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_AComponentInAPortalIntoAScrollView_When_TheComponentOfItsOwnRowsGrowsAloneAndThePortalsComponentRerendersAlone_Then_ItPatchesItsOwnElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_AComponentInsideThePortal_When_TheContainerGainsAChildAndThatComponentRerendersAlone_Then_ItPatchesItsOwnElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_AContainerInsideAnotherPortal_When_ItsOwnRowsGrowAndTheirComponentGrowsAlone_Then_BothItAndThePortalIntoTheContainerPatchTheirOwnRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalAfterTheContainerRowsItTargets_When_ThoseRowsAndItGrowInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalAfterTheContainerRowsItTargets_When_ThoseRowsShrinkAndAreReplacedAheadOfItAndItChangesInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalBesideAFragmentOfTheContainerRowsItTargets_When_ThoseRowsAndItChangeInOneRender_Then_ItsPatchInThatRenderLandsOnItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalDeclaredBeforeTheContainer_When_TheContainerGainsAChildAndAComponentInThePortalRerendersAlone_Then_ItPatchesItsOwnElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalInsideTheContainerItTargets_When_ItAndTheContainersRowsGrowInOneRender_Then_ItsNextPatchLandsOnItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_APortalInsideTheContainerItTargets_When_TheTargetRegistersInTheRenderTheContainerGrows_Then_ItsNextPatchLandsOnItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ";",
+  "before": "RebaseRangeOnto(placeholder, resolvedTarget);",
+  "column": 12,
+  "line": 1255,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

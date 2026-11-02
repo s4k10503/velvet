@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 1123 case(s) that ran the site: Given_MotionContextAbovePortal_When_ChildMounts_Then_InheritsActiveLabel",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalContextInheritanceTests.Given_MotionContextAbovePortal_When_ChildMounts_Then_InheritsActiveLabel",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PortalContextInheritanceTests.cs": "0239cef46d2d729c1b16bb606ecd4012d92a9f9e07b164ddb692581bab6cb5ab",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 52,
+  "line": 471,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

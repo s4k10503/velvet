@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 373 case(s) that ran the site: 0f), 0f)",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_ADrivenMotionMidwayToItsLabel_When_TheLabelFlipsBack_Then_ItContinuesFromTheValueItWasDrawnAt(Bezier,\"opacity-0\",\"opacity-100\",\"opacity\",0.0f,1.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_ADrivenMotionMidwayToItsLabel_When_TheLabelFlipsBack_Then_ItContinuesFromTheValueItWasDrawnAt(Bezier,\"scale-50\",\"scale-100\",\"scale\",0.5f,1.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "",
+  "before": " || !motionNode.EnterOnMount",
+  "column": 37,
+  "line": 387,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

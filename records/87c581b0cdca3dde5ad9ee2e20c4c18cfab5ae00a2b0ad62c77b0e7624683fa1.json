@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_NothingWarns",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CustomFilterRegistryTests.Given_ANameUnregisteredAfterApply_When_TheClassesAreReordered_Then_NothingWarns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomFilterRegistryTests.cs": "79f4ac0faf77059ac75d59ff8d953896bc0bbd82f24de5cabae567b1a374b378"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "",
+  "before": " && StyleCustomPropertyClass.IsCustomPropertyToken(core)",
+  "column": 51,
+  "line": 2865,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

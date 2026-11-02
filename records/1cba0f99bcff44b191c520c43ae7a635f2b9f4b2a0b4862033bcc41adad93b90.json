@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d3fe94fefa38f7d0a610279b41ab7c64e732447fe794d7091516a804fedc5cf6",
+ "killers": [],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 27,
+  "line": 51,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

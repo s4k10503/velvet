@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode survived; PlayMode: 3 failed: Given_ARuntimeSortingOrderChange_When_TheLayerPortalRerenders_Then_TheHostReanchors, Given_ARuntimeThemeCleared_When_TheLayerPortalRerenders_Then_TheHostDropsTheStaleTheme, Given_ARuntimeThemeSwap_When_TheLayerPortalRerenders_Then_TheHostFollowsIt",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalLayersPlaybackTests.Given_ARuntimeSortingOrderChange_When_TheLayerPortalRerenders_Then_TheHostReanchors",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/PortalLayersPlaybackTests.cs": "d120c4de584e47d972b270cd446737eb8c34cffc2319a16e023bc296d3552dda",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalLayersPlaybackTests.Given_ARuntimeThemeCleared_When_TheLayerPortalRerenders_Then_TheHostDropsTheStaleTheme",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/PortalLayersPlaybackTests.cs": "d120c4de584e47d972b270cd446737eb8c34cffc2319a16e023bc296d3552dda",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalLayersPlaybackTests.Given_ARuntimeThemeSwap_When_TheLayerPortalRerenders_Then_TheHostFollowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/PortalLayersPlaybackTests.cs": "d120c4de584e47d972b270cd446737eb8c34cffc2319a16e023bc296d3552dda",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ";",
+  "before": "PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);",
+  "column": 16,
+  "line": 1233,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

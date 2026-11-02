@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 1122 case(s) that ran the site: Given_AParentEnterDeclaringAfterChildren_When_TheChildsEnterIsWithheld_Then_ItEntersAtOnce",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionVariantChildEnterTests.Given_AParentEnterDeclaringAfterChildren_When_TheChildsEnterIsWithheld_Then_ItEntersAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionVariantChildEnterTests.cs": "5c62c202d610f02b4d89c187af7138f3af83e070d056040e0db1b65c79ef0914",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "",
+  "before": " && !EntersBlocked",
+  "column": 30,
+  "line": 495,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

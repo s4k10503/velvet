@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_ElementsWithAndWithoutChildren_When_TheyAreCreated_Then_OnlyTheOneWithChildrenHasThemReconciled",
+ "file": "0f41be8ab621cb95a128f06dc7b5a9efa2be1b673e4da84ea96e4fd438cb461a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.NewElementChildReconcileTests.Given_ElementsWithAndWithoutChildren_When_TheyAreCreated_Then_OnlyTheOneWithChildrenHasThemReconciled",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/NewElementChildReconcileTests.cs": "51aafbf46b53eff17a8facc80608729ec6dbd65c5a1f3bfac2d76b6696275cf5",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 49,
+  "line": 141,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

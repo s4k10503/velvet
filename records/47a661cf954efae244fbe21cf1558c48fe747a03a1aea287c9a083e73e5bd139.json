@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 3 failed among the 5 case(s) that ran the site: Given_APortalIntoALayerHostsRoot_When_APointerDownBubblesFromTheLayersChild_Then_TheAncestorRunsOnce, Given_APortalIntoALayerHostsRoot_When_TheHostIsDestroyedTwice_Then_TheRootKeepsThePortalsBridge, Given_APortalIntoALayerHostsRootThatLeaves_When_APointerDownBubblesFromTheLayersChild_Then_TheAncestorStillRuns",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CrossPanelEventBubblingTests.Given_APortalIntoALayerHostsRootThatLeaves_When_APointerDownBubblesFromTheLayersChild_Then_TheAncestorStillRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossPanelEventBubblingTests.cs": "a06a490ddfbd0a48ecd01c8b91833ec90dc44387ef99b84c087eb4ca3896813e",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossPanelEventBubblingTests.Given_APortalIntoALayerHostsRoot_When_APointerDownBubblesFromTheLayersChild_Then_TheAncestorRunsOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossPanelEventBubblingTests.cs": "a06a490ddfbd0a48ecd01c8b91833ec90dc44387ef99b84c087eb4ca3896813e",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CrossPanelEventBubblingTests.Given_APortalIntoALayerHostsRoot_When_TheHostIsDestroyedTwice_Then_TheRootKeepsThePortalsBridge",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossPanelEventBubblingTests.cs": "a06a490ddfbd0a48ecd01c8b91833ec90dc44387ef99b84c087eb4ca3896813e",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 47,
+  "line": 1228,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

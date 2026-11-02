@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 160 case(s) that ran the site: Given_APlayWithholdingAToken_When_TheSameClassesComposeAgain_Then_NothingIsBuilt",
+ "file": "84fd05cf5173c8e3a9236c21678d370bb935ee41b7251561b239a440cb9977e1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VariantClassCompositionAllocationTests.Given_APlayWithholdingAToken_When_TheSameClassesComposeAgain_Then_NothingIsBuilt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantClassCompositionAllocationTests.cs": "293f7e1829a18f3b9b6ee7dc3218ae17e3fbf3f68c25fe5826a0b1d260117c72",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "41433815711",
+ "mutant": {
+  "after": ";",
+  "before": "composed[at++] = cls;",
+  "column": 20,
+  "line": 3838,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
