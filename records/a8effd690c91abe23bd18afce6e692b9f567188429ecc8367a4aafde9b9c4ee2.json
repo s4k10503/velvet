@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_APercentSlice_When_ItsElementIsRemoved_Then_ItsMarkerClassGoes",
+ "file": "d1af8778622b04aa14f0f54465ef5d2c0d95e08c910d88aeac24462af2abe914",
+ "killers": [
+  {
+   "case": "Velvet.Tests.NineSlicePercentTests.Given_APercentSlice_When_ItsElementIsRemoved_Then_ItsMarkerClassGoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/NineSlicePercentTests.cs": "a65bf685e1c56d6d07edf6677d44951601458369e56ba07a6decaf19f4c54002",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41345847163",
+ "mutant": {
+  "after": ";",
+  "before": "StyleArbitraryValueResolver.ReleaseShownImageWatchOf(element);",
+  "column": 12,
+  "line": 356,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementCleaner.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

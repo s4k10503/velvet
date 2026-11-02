@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed: Given_AnimatePresence_When_InitialRender_Then_ItsChildIsADirectParentChild, Given_MotionChild_When_InitialRender_Then_ElementCarriesItsClass",
+ "file": "a9d40b8af83de6aad6654c3601aa322bbb85d988af0dfc9e31617a8ce7493438",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_AnimatePresence_When_InitialRender_Then_ItsChildIsADirectParentChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimatePresenceTests.Given_MotionChild_When_InitialRender_Then_ElementCarriesItsClass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceTests.cs": "d68149d8e0f54e7a243f0b25f02b8add378a811d56dc3e6d820bd9b1a3cd8c2a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41345847163",
+ "mutant": {
+  "after": ";",
+  "before": "StyleClassProjection.Add(element, cls, priority);",
+  "column": 16,
+  "line": 263,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberElementFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

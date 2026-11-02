@@ -6,7 +6,7 @@
    "case": "Velvet.Tests.CrossPanelPointerRoutingTests.Given_AnOverlayLayerOverlapsTheMainPanel_When_PointerDownHitsTheOverlap_Then_OnlyTheOverlaysHandlerFires",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/CrossPanelPointerRoutingTests.cs": "07588851b69af779bf2da91d14fe5d96f345511301c95bdfc1431f2ae5e9173b",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
     "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
     "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
    }
@@ -15,7 +15,7 @@
    "case": "Velvet.Tests.ReroutedPointerPropagationTests.Given_AContentCaptureThatStopsPropagation_When_ARoutedPointerDownHitsTheContent_Then_ItsOwnBubbleHandlerDoesNotRun",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ReroutedPointerPropagationTests.cs": "15e4b624c2596b8329a727465ebc3f7f185ce6c02e15c36360e2356e433dc584",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
     "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
     "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
    }
@@ -24,7 +24,7 @@
    "case": "Velvet.Tests.ReroutedPointerPropagationTests.Given_AContentHandlerThatStopsPropagation_When_ARoutedPointerDownHitsTheContent_Then_TheAncestorDoesNotBubble",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ReroutedPointerPropagationTests.cs": "15e4b624c2596b8329a727465ebc3f7f185ce6c02e15c36360e2356e433dc584",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
     "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
     "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
    }
@@ -33,13 +33,13 @@
    "case": "Velvet.Tests.ReroutedPointerPropagationTests.Given_ALayerPortalsContentUnderACapturingAndBubblingAncestor_When_ARoutedPointerDownHitsTheContent_Then_TheAncestorWrapsTheContent",
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ReroutedPointerPropagationTests.cs": "15e4b624c2596b8329a727465ebc3f7f185ce6c02e15c36360e2356e433dc584",
-    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "c5a771a44c08d4e817118692b2f18cc4efdb8e1fedfd524242d7bcb2d82b359b",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
     "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
     "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
    }
   }
  ],
- "measured_by": "41065113338",
+ "measured_by": "41345847163",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -58,6 +58,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "518d4ae697413a9cb755e37b134071eb3066a2b132ab05295358039c5a6c415d",
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
  "verdict": "killed"
 }
