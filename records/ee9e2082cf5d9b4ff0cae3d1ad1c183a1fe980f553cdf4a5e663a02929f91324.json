@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 4 case(s) that ran the site: Given_ASpringEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose, Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+ "file": "60703c4fe1b01794c1c9191a55504e8d0590dff1747464d3031ccc7aa3bd3fde",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringDriverTests.Given_ASpringEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDriverTests.cs": "94dea8e9d9e65a02ab155b2b216074aecc8e391a752ce9fcab03776dd2ce72d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSpringDriverTests.Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDriverTests.cs": "94dea8e9d9e65a02ab155b2b216074aecc8e391a752ce9fcab03776dd2ce72d1"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "AuthoredTransform.Engage(element, xDeg ?? resting.X, yDeg ?? resting.Y);",
+  "column": 12,
+  "line": 89,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

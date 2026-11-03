@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed: Given_ATransitionWhoseFirstSliceParkedBeforeItsPortalChildSuspended_When_TheScheduledResumeRunsAndTheResourceResolves_Then_TheHostsEffectRunsOncePerTick, Given_ATransitionWhoseLaterSliceParkedAndThenSuspendedInThePortalDrain_When_TheResourceResolves_Then_TheHostsEffectRunsOncePerTick",
+ "file": "767cbc84287fa7b4afe4f156f81611035600ba06316fa57ea889b08dbefbf4c1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParkedTransitionPassSuspendTests.Given_ATransitionWhoseFirstSliceParkedBeforeItsPortalChildSuspended_When_TheScheduledResumeRunsAndTheResourceResolves_Then_TheHostsEffectRunsOncePerTick",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedTransitionPassSuspendTests.cs": "dd8e41e90fe36fa15d1f741df737233aa9161e85f8c8d614077d9a7bd1fa634e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedTransitionPassSuspendTests.Given_ATransitionWhoseLaterSliceParkedAndThenSuspendedInThePortalDrain_When_TheResourceResolves_Then_TheHostsEffectRunsOncePerTick",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedTransitionPassSuspendTests.cs": "dd8e41e90fe36fa15d1f741df737233aa9161e85f8c8d614077d9a7bd1fa634e",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 38,
+  "line": 50,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPassJournal.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

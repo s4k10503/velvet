@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 2 case(s) that ran the site: Given_APlayEndingWithoutTheShadow_When_ItIsReleased_Then_TheLayerIsDetached, Given_APlayHoldingTheShadow_When_ItIsReleased_Then_TheBlurIsTheEndPoses",
+ "file": "075c7c0d55040a13d4fee3801c13889c38192bff641a861f0f1f265cbc6a2733",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayEndingWithoutTheShadow_When_ItIsReleased_Then_TheLayerIsDetached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "aeae5b88db28431a9876d2e615d6d7ae2679b23fcf27ffd841ebe12507bcfe59",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayHoldingTheShadow_When_ItIsReleased_Then_TheBlurIsTheEndPoses",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "aeae5b88db28431a9876d2e615d6d7ae2679b23fcf27ffd841ebe12507bcfe59",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 27,
+  "line": 372,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPaintLeases.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

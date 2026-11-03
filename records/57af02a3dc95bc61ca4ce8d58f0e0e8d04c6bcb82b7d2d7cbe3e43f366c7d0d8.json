@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "767cbc84287fa7b4afe4f156f81611035600ba06316fa57ea889b08dbefbf4c1",
+ "killers": [],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "fiber.SourceTree = SourceTree;",
+  "column": 12,
+  "line": 30,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPassJournal.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

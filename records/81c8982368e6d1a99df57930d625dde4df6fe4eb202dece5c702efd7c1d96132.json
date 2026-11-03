@@ -1,0 +1,41 @@
+{
+ "detail": "EditMode: 2 failed among the 165 case(s) that ran the site: Given_MemoizedBoundary_When_ResourceResolves_Then_ChildDisplaysResolvedValue, Given_MemoizedBoundary_When_ResourceResolves_Then_FallbackIsRemoved",
+ "file": "71afdb66656d98c71c80e3fa58dc9a33cbf9a9de717f8b53b385b2586d0fc427",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoizePropsBailInteractionTests.Given_MemoizedBoundary_When_ResourceResolves_Then_ChildDisplaysResolvedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizePropsBailInteractionTests.cs": "e349f878fe1a8c7c127e8dd20112613cafb2ec2c6bab6ba094fabb747abbf48c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MemoizePropsBailInteractionTests.Given_MemoizedBoundary_When_ResourceResolves_Then_FallbackIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MemoizePropsBailInteractionTests.cs": "e349f878fe1a8c7c127e8dd20112613cafb2ec2c6bab6ba094fabb747abbf48c",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 1006,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

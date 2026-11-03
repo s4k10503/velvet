@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "075c7c0d55040a13d4fee3801c13889c38192bff641a861f0f1f265cbc6a2733",
+ "killers": [],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 41,
+  "line": 283,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPaintLeases.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

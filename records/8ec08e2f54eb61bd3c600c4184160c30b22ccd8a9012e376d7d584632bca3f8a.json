@@ -1,0 +1,50 @@
+{
+ "detail": "EditMode: 4 failed: Given_ComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName, Given_ComponentWithEmptyDisplayName_When_HookTypeChanges_Then_MessageUsesDefaultName, Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+ "file": "71afdb66656d98c71c80e3fa58dc9a33cbf9a9de717f8b53b385b2586d0fc427",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_ComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_ComponentWithEmptyDisplayName_When_HookTypeChanges_Then_MessageUsesDefaultName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 35,
+  "line": 251,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

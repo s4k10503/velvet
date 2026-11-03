@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_AParkedPassUnderABoundaryShowingItsPrimary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsNotAskedToRenderAndTheTransitionStaysPending",
+ "file": "71afdb66656d98c71c80e3fa58dc9a33cbf9a9de717f8b53b385b2586d0fc427",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_AParkedPassUnderABoundaryShowingItsPrimary_When_ItsResumedSliceMountsAComponentThatSuspends_Then_TheBoundaryIsNotAskedToRenderAndTheTransitionStaysPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 60,
+  "line": 891,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

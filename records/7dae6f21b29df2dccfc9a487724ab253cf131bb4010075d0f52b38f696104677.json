@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Reconciler.Editor: Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(\"Exiting\"), Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(\"PendingSettles\")",
+ "file": "71afdb66656d98c71c80e3fa58dc9a33cbf9a9de717f8b53b385b2586d0fc427",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(\"Exiting\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "b93dd52ba71be52485beb170069aad84aa0f76ede7f332cecd36c3a54fb00b00",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_AWaitModeRenderWithholdingAKeyStillLeavingThatAnAbortStopped_When_ItsRemovalsArePutBack_Then_ThePresenceHoldsTheKeysRecordAgain(\"PendingSettles\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "b93dd52ba71be52485beb170069aad84aa0f76ede7f332cecd36c3a54fb00b00",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 51,
+  "line": 408,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

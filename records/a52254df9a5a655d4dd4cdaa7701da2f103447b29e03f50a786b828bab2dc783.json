@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "60703c4fe1b01794c1c9191a55504e8d0590dff1747464d3031ccc7aa3bd3fde",
+ "killers": [],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.SkewTransformed[element] = (landing.SourceX, landing.SourceY);",
+  "column": 12,
+  "line": 70,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

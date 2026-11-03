@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_ASkewedElement_When_TheSkewIsRemoved_Then_ItsTransformSlotsAreGivenBack",
+ "file": "60703c4fe1b01794c1c9191a55504e8d0590dff1747464d3031ccc7aa3bd3fde",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SkewTransformAppliedTests.Given_ASkewedElement_When_TheSkewIsRemoved_Then_ItsTransformSlotsAreGivenBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewTransformAppliedTests.cs": "99145e765f41c060aff77a5c9753ddef7c8072e1d27c7a4dcdb2bbd1c48ea156",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "AuthoredTransform.Release(element);",
+  "column": 12,
+  "line": 124,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

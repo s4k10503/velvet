@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 22 case(s) that ran the site: Given_AMotion_When_APatchAddsARing_Then_TheMotionIsRinged, Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted, Given_RingOnMotion_When_Reconciled_Then_TheMotionIsRingedLikeADiv",
+ "file": "bae67799a19ef7be2f9c897ebc7a7f11c9aac1045bf69afd3386605d1bcd9092",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_AMotion_When_APatchAddsARing_Then_TheMotionIsRinged",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "fb25bb944f3bdf6f42469b0064ac55b90d387868a2925e90831736a478021e0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "fb25bb944f3bdf6f42469b0064ac55b90d387868a2925e90831736a478021e0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClipPathWrapTests.Given_RingOnMotion_When_Reconciled_Then_TheMotionIsRingedLikeADiv",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs": "fb25bb944f3bdf6f42469b0064ac55b90d387868a2925e90831736a478021e0e",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames, _ctx);",
+  "column": 16,
+  "line": 81,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,114 @@
+{
+ "detail": "EditMode: 11 failed in Velvet.Tests.Reconciler.Editor: Given_AModalWithNothingToAnimateRelegatingTheCard_When_TheRenderClosingItSuspendsAndIsTakenAgain_Then_TheCardIsRelegatedOnce, Given_AComponentAboveTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsComponentIsRegistered, Given_AComponentBesideTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_NoAbandonedAttemptsSiblingIsRegistered",
+ "file": "71afdb66656d98c71c80e3fa58dc9a33cbf9a9de717f8b53b385b2586d0fc427",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AModalWithNothingToAnimateRelegatingTheCard_When_TheRenderClosingItSuspendsAndIsTakenAgain_Then_TheCardIsRelegatedOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_AComponentAboveTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsComponentIsRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_AComponentBesideTheReaderInTheHostElement_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_NoAbandonedAttemptsSiblingIsRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseChildSuspendsAgainInTheRetryAfterInsertingARow_When_TheSecondResourceResolves_Then_TheTargetHoldsEachRowOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseChildSuspendsInAHostElementItCreates_When_TheFirstResourceResolvesAndTheRetrySuspendsAgain_Then_OnlyTheLatestAttemptsReaderIsRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_APortalWhoseHostChildrenMountedInTheRetry_When_TheHostRendersAgain_Then_TheTargetHoldsEachRowOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_OneReaderIsRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_OneSiblingIsRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_ASuspenseAboveAHostWhoseUpdateMountsAPortalElementWhoseChildSuspends_When_TheResourceResolves_Then_TheBoundaryRevealsTheContent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspendWithoutBoundaryTests.Given_AnErrorBoundaryBetweenASuspenseAndTheReaderOfAnAbandonedMount_When_TheResourceResolves_Then_OneReaderIsRegistered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspendWithoutBoundaryTests.cs": "8bdbe34b6814546e754730b15ced6ff9199ab6504ddb5de765a5f3f74b7e3cea",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 51,
+  "line": 972,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

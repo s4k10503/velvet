@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+ "file": "71afdb66656d98c71c80e3fa58dc9a33cbf9a9de717f8b53b385b2586d0fc427",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncalledRuntimeMemberTests.Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/UncalledRuntimeMemberTests.cs": "60bd57285e73ac27e4ef7dc25ca75ad041d9a148e352a1e585eb23e774bb9665"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "FiberHookCommit.UndoStateCommits(fiber.StateSlots);",
+  "column": 16,
+  "line": 931,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

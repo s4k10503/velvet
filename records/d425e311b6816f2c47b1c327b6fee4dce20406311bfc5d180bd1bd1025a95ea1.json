@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_ABoxSkewedByItsClass_When_APointerPicksNearItsTopEdge_Then_OnlyTheShearedShapePicksTheBox",
+ "file": "60703c4fe1b01794c1c9191a55504e8d0590dff1747464d3031ccc7aa3bd3fde",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SkewTransformPlaybackTests.Given_ABoxSkewedByItsClass_When_APointerPicksNearItsTopEdge_Then_OnlyTheShearedShapePicksTheBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SkewTransformPlaybackTests.cs": "499dc90de16d983847111be4fa1e4c73fa59fdf4d8e23291725667bd51a23f7a",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "target.PickRegion ??= new SkewPickRegion();",
+  "column": 16,
+  "line": 117,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

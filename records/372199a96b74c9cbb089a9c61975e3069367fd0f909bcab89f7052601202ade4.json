@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 145 case(s) that ran the site: Given_AButtonWithAClickedWithEventInfoHandler_When_ResetForReuse_Then_TheHandlerIsGone",
+ "file": "41fc7ed2759e1af964c22c3075d597618a98ad0ce20dcb4b6190f77a1b030e8d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ButtonClickablePoolResetTests.Given_AButtonWithAClickedWithEventInfoHandler_When_ResetForReuse_Then_TheHandlerIsGone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ButtonClickablePoolResetTests.cs": "499bd57c46c2278e41f01ee58fbde7229777394adf423cbc00e9b88850a0747f"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "s_clickedWithEventInfo.SetValue(clickable, null);",
+  "column": 12,
+  "line": 67,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPrimitiveElementPool.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AQueryOnAProvidedClient_When_TheProviderSwitchesClients_Then_TheQueryReadsTheNewOne",
+ "file": "767cbc84287fa7b4afe4f156f81611035600ba06316fa57ea889b08dbefbf4c1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AQueryOnAProvidedClient_When_TheProviderSwitchesClients_Then_TheQueryReadsTheNewOne",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "e8d1b1ef5323f949430b4729015f06d525357eb2e6e254e5f742b831fc7afadf",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "_owner = null;",
+  "column": 16,
+  "line": 86,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPassJournal.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering; 1 other editor(s) were up",
+ "file": "767cbc84287fa7b4afe4f156f81611035600ba06316fa57ea889b08dbefbf4c1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SelfScheduledResuspendTests.Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SelfScheduledResuspendTests.cs": "51fe3f30601af175194bf265952d4275d66386dd8383a2aa89ce6c241f7b23f8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": ";",
+  "before": "_hooks.Clear();",
+  "column": 16,
+  "line": 84,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPassJournal.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

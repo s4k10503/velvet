@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 217 case(s) that ran the site: Given_ADescendantExitCompleted_When_TheKeyReturnsBeforeTheDropRender_Then_TheWaitAndItsRegistrationAreGone",
+ "file": "075c7c0d55040a13d4fee3801c13889c38192bff641a861f0f1f265cbc6a2733",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceDescendantExitStateTests.Given_ADescendantExitCompleted_When_TheKeyReturnsBeforeTheDropRender_Then_TheWaitAndItsRegistrationAreGone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceDescendantExitStateTests.cs": "5a9a4330ed08f375fb9ba587beea02ac68a4548e9f803f571e7af83aec8a8c03",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41489604024",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 22,
+  "line": 58,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberPaintLeases.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
