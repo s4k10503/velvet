@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 105 case(s) that ran the site: Given_OnlyABackBandElement_When_ResolvingTheAppendPosition_Then_ItLandsAfterIt",
+ "file": "f75b800333028dd165e8cb6991a947a9d8f50de17494efef2e3f71415e030783",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_OnlyABackBandElement_When_ResolvingTheAppendPosition_Then_ItLandsAfterIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "e3379e279db2570a4b19a5a4f3af4202b2f8d1b0a7fa4614f2b0148efe587045",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "41551792776",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 20,
+  "line": 83,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": [
+   "clause removed",
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

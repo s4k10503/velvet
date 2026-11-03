@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 43 case(s) that ran the site: Given_AnOverClassThatArrivesWithAPaintOnARerender_When_TheItemIsOverIt_Then_ItPaints",
+ "file": "68be753b959d48adfe3bd80d637d6d2b834c7343059f9f7d0f8f165533d8b76f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndInteractionTests.Given_AnOverClassThatArrivesWithAPaintOnARerender_When_TheItemIsOverIt_Then_ItPaints",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41551792776",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.ExpectGatePayload(element, V.ParseClassNames(settings.WhileOverClass));",
+  "column": 16,
+  "line": 259,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "68be753b959d48adfe3bd80d637d6d2b834c7343059f9f7d0f8f165533d8b76f",
+ "killers": [],
+ "measured_by": "41551792776",
+ "mutant": {
+  "after": ";",
+  "before": "binding.Settings = settings;",
+  "column": 20,
+  "line": 313,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWrapperElementAppliers.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}
