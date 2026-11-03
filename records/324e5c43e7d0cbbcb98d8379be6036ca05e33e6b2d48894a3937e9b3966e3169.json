@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 5 failed: Given_AMidListInvisibleChild_When_AChildIsAppendedOnTheGeneralPath_Then_ItLandsLast, Given_AMidListInvisibleChild_When_AChildIsInserted_Then_ItLandsAtItsLogicalSlot, Given_AMidListInvisibleChild_When_AChildIsPatchedInPlace_Then_TheCorrectSlotIsPatched",
+ "file": "f75b800333028dd165e8cb6991a947a9d8f50de17494efef2e3f71415e030783",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_AMidListInvisibleChild_When_AChildIsAppendedOnTheGeneralPath_Then_ItLandsLast",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "e3379e279db2570a4b19a5a4f3af4202b2f8d1b0a7fa4614f2b0148efe587045",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_AMidListInvisibleChild_When_AChildIsInserted_Then_ItLandsAtItsLogicalSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "e3379e279db2570a4b19a5a4f3af4202b2f8d1b0a7fa4614f2b0148efe587045",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_AMidListInvisibleChild_When_AChildIsPatchedInPlace_Then_TheCorrectSlotIsPatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "e3379e279db2570a4b19a5a4f3af4202b2f8d1b0a7fa4614f2b0148efe587045",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_AMidListInvisibleChild_When_ARenderedChildIsRemoved_Then_OnlyThatChildLeaves",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "e3379e279db2570a4b19a5a4f3af4202b2f8d1b0a7fa4614f2b0148efe587045",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LogicalChildSlotTests.Given_AMidListInvisibleChild_When_TheLastKeyIsReplaced_Then_TheCreatedRowLandsLast",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalChildSlotTests.cs": "e3379e279db2570a4b19a5a4f3af4202b2f8d1b0a7fa4614f2b0148efe587045",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "41604882667",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 880,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

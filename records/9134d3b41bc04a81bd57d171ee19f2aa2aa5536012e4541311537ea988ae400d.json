@@ -1,0 +1,48 @@
+{
+ "detail": "EditMode: 3 failed among the 157 case(s) that ran the site: Given_ChildThrowsOnRender_When_WrappedByHelper_Then_FallbackReceivesTheException, Given_ChildThrowsOnRender_When_WrappedByHelper_Then_FallbackUIReplacesChild, Given_MultipleChildren_When_FirstThrows_Then_FallbackUIIsRendered",
+ "file": "a4886e6a2627514c0db7cd84e5a4bcb54b4961e78fa76c3d7698f3ffcf213dbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VErrorBoundaryHelperTests.Given_ChildThrowsOnRender_When_WrappedByHelper_Then_FallbackReceivesTheException",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VErrorBoundaryHelperTests.cs": "7ed29b3f88cd33433bbdff4eeb845a9f7e649c12afef5c6f0bdad95762ff6c2e",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VErrorBoundaryHelperTests.Given_ChildThrowsOnRender_When_WrappedByHelper_Then_FallbackUIReplacesChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VErrorBoundaryHelperTests.cs": "7ed29b3f88cd33433bbdff4eeb845a9f7e649c12afef5c6f0bdad95762ff6c2e",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VErrorBoundaryHelperTests.Given_MultipleChildren_When_FirstThrows_Then_FallbackUIIsRendered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VErrorBoundaryHelperTests.cs": "7ed29b3f88cd33433bbdff4eeb845a9f7e649c12afef5c6f0bdad95762ff6c2e",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41604882667",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 738,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
