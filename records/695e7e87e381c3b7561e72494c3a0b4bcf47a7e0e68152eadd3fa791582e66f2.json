@@ -1,0 +1,96 @@
+{
+ "detail": "EditMode: 9 failed among the 185 case(s) that ran the site: Given_ComponentThatThrewOnMount_When_TheRootRendersItAgain_Then_RendersAgain, Given_FallbackReceivesErrorInfo_When_APropsChildThrows_Then_ComponentStackNamesTheChildMethod, Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_ComponentStackListsThrowingFiberFirst",
+ "file": "a4886e6a2627514c0db7cd84e5a4bcb54b4961e78fa76c3d7698f3ffcf213dbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_ComponentThatThrewOnMount_When_TheRootRendersItAgain_Then_RendersAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_FallbackReceivesErrorInfo_When_APropsChildThrows_Then_ComponentStackNamesTheChildMethod",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_ComponentStackListsThrowingFiberFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_ComponentStackWalksUpToCatchingBoundary",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_FallbackReceivesOriginalChildException",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_FallbackReceivesErrorInfo_When_ChildThrows_Then_TheStacksLastLineIsTheOutermostComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_InnerBoundaryFallbackFactoryThrows_When_ChildThrows_Then_OuterBoundaryCapturesOriginalChildException",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_InnerBoundaryFallbackFactoryThrows_When_ChildThrows_Then_OuterBoundaryFallbackFires",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_ThrowingComponent_When_MountedWithThrow_Then_LogsException",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 30,
+  "line": 1126,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

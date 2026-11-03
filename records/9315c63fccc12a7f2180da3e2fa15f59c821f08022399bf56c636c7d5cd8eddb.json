@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 59 case(s) that ran the site: Given_APortalIntoALayerHostsRoot_When_TheHostIsDestroyedTwice_Then_TheRootKeepsThePortalsBridge",
+ "file": "35cd77652ce9068e55ef9dba52fe7ca0834724e88a41c3d554d008da251f58b9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CrossPanelEventBubblingTests.Given_APortalIntoALayerHostsRoot_When_TheHostIsDestroyedTwice_Then_TheRootKeepsThePortalsBridge",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CrossPanelEventBubblingTests.cs": "a06a490ddfbd0a48ecd01c8b91833ec90dc44387ef99b84c087eb4ca3896813e",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ";",
+  "before": "ctx.LayerHosts[layer] = record;",
+  "column": 12,
+  "line": 113,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

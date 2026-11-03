@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_AMountedListsRef_When_TheListUnmounts_Then_ItLetsGoOfTheHandle",
+ "file": "390f8393e362735e67d8028383cfeca37ed5eb704ea72dc07deb5143cfbc3fce",
+ "killers": [
+  {
+   "case": "Velvet.Tests.VirtualListSizingAndScrollTests.Given_AMountedListsRef_When_TheListUnmounts_Then_ItLetsGoOfTheHandle",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListSizingAndScrollTests.cs": "6186c8e24efef62edab1e4571b6d85fe01759869ce31e5fa2de9691d4fc6cb87",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 26,
+  "line": 352,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

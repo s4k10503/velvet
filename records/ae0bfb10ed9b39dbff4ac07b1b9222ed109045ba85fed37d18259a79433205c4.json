@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AListOfInlineComponents_When_ItIsClearedAtTwiceTheLength_Then_TheContainerReadsGrowLessThanTwoAndAHalfTimes",
+ "file": "390f8393e362735e67d8028383cfeca37ed5eb704ea72dc07deb5143cfbc3fce",
+ "killers": [
+  {
+   "case": "Velvet.Tests.KeyedListClearScalingTests.Given_AListOfInlineComponents_When_ItIsClearedAtTwiceTheLength_Then_TheContainerReadsGrowLessThanTwoAndAHalfTimes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/KeyedListClearScalingTests.cs": "b35df873523463547318eaa2e540820b91119496a21d5ff0a4b1106f2b3f8fe6",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ";",
+  "before": "_logical = logical;",
+  "column": 12,
+  "line": 383,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

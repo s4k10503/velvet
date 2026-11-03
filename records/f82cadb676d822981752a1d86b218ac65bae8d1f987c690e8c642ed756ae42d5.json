@@ -1,0 +1,52 @@
+{
+ "detail": "EditMode: 3 failed among the 113 case(s) that ran the site: Given_AMotionChildWhoseDropAnAbortedRenderSkipped_When_TheDropIsPutBack_Then_ThePresenceKeepsItsMotionElement, Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePresenceStillCommitsTheGhost, Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag",
+ "file": "a4886e6a2627514c0db7cd84e5a4bcb54b4961e78fa76c3d7698f3ffcf213dbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_AMotionChildWhoseDropAnAbortedRenderSkipped_When_TheDropIsPutBack_Then_ThePresenceKeepsItsMotionElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "da63e1e649458d6bec385f8c1a73ada5e6b56b3a12d85eefd19a2bd35d37b3be",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePresenceStillCommitsTheGhost",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "da63e1e649458d6bec385f8c1a73ada5e6b56b3a12d85eefd19a2bd35d37b3be",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoundaryCatchScopeTests.Given_APresenceWhoseOwnerIsAnInlineChildOfAnAbortedPass_When_ItsGhostDropIsPutBack_Then_ThePutBackNodeKeepsItsPropsBag",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BoundaryCatchScopeTests.cs": "da63e1e649458d6bec385f8c1a73ada5e6b56b3a12d85eefd19a2bd35d37b3be",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ";",
+  "before": "NotePresenceRemovalPutBack(commit, state, key, node);",
+  "column": 12,
+  "line": 2537,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

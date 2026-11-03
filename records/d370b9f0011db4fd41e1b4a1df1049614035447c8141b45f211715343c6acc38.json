@@ -1,0 +1,64 @@
+{
+ "detail": "EditMode: 6 failed: Given_AComponentWithinADiv_When_ItAddsARow_Then_LastMovesToTheNewRow, Given_AFragmentAtTheMountRoot_When_Mounted_Then_FirstAndLastVariantsLandOnItsEnds, Given_AHostHoldingAnUnrelatedChild_When_RowsAreMounted_Then_FirstAndLastFollowTheWholeChildList",
+ "file": "dcf9ac0686e27cb7899c22836fcb4e5a95df8d027a71aed878b1ba1798ec5494",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_AComponentWithinADiv_When_ItAddsARow_Then_LastMovesToTheNewRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "e4e690cfd3b51a9012e366628650e2868018273391f6770ac3206158e95b5c9c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_AFragmentAtTheMountRoot_When_Mounted_Then_FirstAndLastVariantsLandOnItsEnds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "e4e690cfd3b51a9012e366628650e2868018273391f6770ac3206158e95b5c9c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_AHostHoldingAnUnrelatedChild_When_RowsAreMounted_Then_FirstAndLastFollowTheWholeChildList",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "e4e690cfd3b51a9012e366628650e2868018273391f6770ac3206158e95b5c9c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_ALoneDivAtTheMountRoot_When_Mounted_Then_ItsOnlyVariantApplies",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "e4e690cfd3b51a9012e366628650e2868018273391f6770ac3206158e95b5c9c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_RowsAtTheMountRoot_When_ARowIsAdded_Then_LastMovesToTheNewRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "e4e690cfd3b51a9012e366628650e2868018273391f6770ac3206158e95b5c9c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_RowsAtTheMountRoot_When_TheLastRowIsRemoved_Then_LastMovesToTheNewEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "e4e690cfd3b51a9012e366628650e2868018273391f6770ac3206158e95b5c9c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ";",
+  "before": "NodePatcher.ApplyStructuralVariants(parent);",
+  "column": 16,
+  "line": 254,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

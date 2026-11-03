@@ -1,0 +1,53 @@
+{
+ "detail": "EditMode: 4 failed among the 29 case(s) that ran the site: Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItAndItsParentUpdateTogether_Then_ItsSiblingBelowTheRowIsNotRenderedAgain, Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItUpdatesAndIsFlushedBeforeItsParentUpdates_Then_ItsSiblingBelowTheRowIsNotRenderedAgain, Given_ARowWhosePropsAreUnchangedAndWhoseOutputIsAComponent_When_TheirParentReRenders_Then_ThatComponentIsNotRenderedAgain",
+ "file": "a4886e6a2627514c0db7cd84e5a4bcb54b4961e78fa76c3d7698f3ffcf213dbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_ARowWhosePropsAreUnchangedAndWhoseOutputIsAComponent_When_TheirParentReRenders_Then_ThatComponentIsNotRenderedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItAndItsParentUpdateTogether_Then_ItsSiblingBelowTheRowIsNotRenderedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItUpdatesAndIsFlushedBeforeItsParentUpdates_Then_ItsSiblingBelowTheRowIsNotRenderedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_RowsWhosePropsAreUnchanged_When_TheirParentReRenders_Then_NoRowElementIsPatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 48,
+  "line": 1199,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

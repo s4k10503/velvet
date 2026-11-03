@@ -1,0 +1,54 @@
+{
+ "detail": "EditMode: 4 failed among the 20 case(s) that ran the site: Given_AreEqualComparesIdOnly_When_OnlyValueChanges_Then_BailedChildKeepsCommittedOutput, Given_AreEqualComparesIdOnly_When_OnlyValueChanges_Then_ChildDoesNotReRender, Given_MemoizedChild_When_FreshPropsInstanceHasEqualMembers_Then_ChildDoesNotReRender",
+ "file": "a4886e6a2627514c0db7cd84e5a4bcb54b4961e78fa76c3d7698f3ffcf213dbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentMemoPropsBailTests.Given_AreEqualComparesIdOnly_When_OnlyValueChanges_Then_BailedChildKeepsCommittedOutput",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentMemoPropsBailTests.cs": "62e4e233b9fbdf30c61c31a9f852bd461eca250033b3222122eb23c826f8df38",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentMemoPropsBailTests.Given_AreEqualComparesIdOnly_When_OnlyValueChanges_Then_ChildDoesNotReRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentMemoPropsBailTests.cs": "62e4e233b9fbdf30c61c31a9f852bd461eca250033b3222122eb23c826f8df38",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentMemoPropsBailTests.Given_MemoizedChild_When_FreshPropsInstanceHasEqualMembers_Then_ChildDoesNotReRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentMemoPropsBailTests.cs": "62e4e233b9fbdf30c61c31a9f852bd461eca250033b3222122eb23c826f8df38",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentMemoPropsBailTests.Given_MemoizedChild_When_PropsShallowEqualAcrossParentReRender_Then_ChildDoesNotReRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentMemoPropsBailTests.cs": "62e4e233b9fbdf30c61c31a9f852bd461eca250033b3222122eb23c826f8df38",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 23,
+  "line": 1206,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

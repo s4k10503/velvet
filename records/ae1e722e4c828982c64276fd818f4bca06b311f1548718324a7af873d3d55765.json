@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 105 case(s) that ran the site: Given_AnInsetBandHostedAfterTheLastInsertedChild_When_TheNextSlotIsInserted_Then_ItLandsAfterTheBand",
+ "file": "390f8393e362735e67d8028383cfeca37ed5eb704ea72dc07deb5143cfbc3fce",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LogicalSlotCursorTests.Given_AnInsetBandHostedAfterTheLastInsertedChild_When_TheNextSlotIsInserted_Then_ItLandsAfterTheBand",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalSlotCursorTests.cs": "8064fe281eea2d39b7938c69de03837054c9ee6b46d2146e9043675b76d3122c"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "",
+  "before": " || child.ClassListContains(RingOverlay.InsetMarkerClass)",
+  "column": 15,
+  "line": 149,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

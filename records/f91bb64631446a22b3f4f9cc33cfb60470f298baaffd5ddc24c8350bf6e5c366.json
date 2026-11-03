@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 5 failed among the 5 case(s) that ran the site: Given_FollowingSiblingParked_When_PrecedingSiblingGrows_Then_ResumesAtRebasedSlot, Given_FollowingSiblingParked_When_PrecedingSiblingItselfTimeSliced_Then_StaysAlignedAcrossSlices, Given_FollowingSiblingParked_When_PrecedingSiblingShrinks_Then_ResumesAtRebasedSlot",
+ "file": "dcf9ac0686e27cb7899c22836fcb4e5a95df8d027a71aed878b1ba1798ec5494",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_FollowingSiblingParked_When_PrecedingSiblingGrows_Then_ResumesAtRebasedSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_FollowingSiblingParked_When_PrecedingSiblingItselfTimeSliced_Then_StaysAlignedAcrossSlices",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_FollowingSiblingParked_When_PrecedingSiblingShrinks_Then_ResumesAtRebasedSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_MiddleIndexedSiblingParked_When_PrecedingSiblingGrows_Then_ResumesWithinRebasedLimit",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_TwoFollowingSiblingsParked_When_PrecedingSiblingGrows_Then_ReBasesBoth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ";",
+  "before": "ChildPass.RebasePendingSlotStart(delta);",
+  "column": 12,
+  "line": 539,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

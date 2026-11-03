@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 113 case(s) that ran the site: Given_TwoFinishedExitsWhoseDropAnAbortedRenderSkipped_When_TheDropIsPutBack_Then_TheCommittedChildrenKeepTheirOrder",
+ "file": "a4886e6a2627514c0db7cd84e5a4bcb54b4961e78fa76c3d7698f3ffcf213dbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PresenceKeyRecordTests.Given_TwoFinishedExitsWhoseDropAnAbortedRenderSkipped_When_TheDropIsPutBack_Then_TheCommittedChildrenKeepTheirOrder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PresenceKeyRecordTests.cs": "b93dd52ba71be52485beb170069aad84aa0f76ede7f332cecd36c3a54fb00b00",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": ";",
+  "before": "RemovePresenceCommittedEntry(state.Committed, key);",
+  "column": 12,
+  "line": 2539,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

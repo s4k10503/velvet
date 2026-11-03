@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 2 failed: Given_StaggeredChildren_When_FirstFramePasses_Then_FirstChildHasEnterToClass, When_Mounted_Then_EnterFromClassIsAppliedImmediately",
+ "file": "2f12007ae77726ff016fa4a4ab8d1938df22a00669597a1d6b471fe2ab8b4c12",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.When_Mounted_Then_EnterFromClassIsAppliedImmediately",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 101,
+  "line": 33,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/MotionContext.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

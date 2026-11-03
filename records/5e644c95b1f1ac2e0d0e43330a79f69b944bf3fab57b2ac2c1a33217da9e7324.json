@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 15 case(s) that ran the site: Given_AComponentGrewAheadOfOneHoldingAnother_When_TheHeldOneRerenders_Then_ItRewritesItsOwnRow, Given_AComponentGrewInsideTheOneAheadOfIt_When_TheOneBehindRerenders_Then_ItRewritesItsOwnRows, Given_AnEmptyComponentMountedAheadOfAnother_When_ItGrows_Then_TheOtherRerendersItsOwnRow",
+ "file": "390f8393e362735e67d8028383cfeca37ed5eb704ea72dc07deb5143cfbc3fce",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AComponentGrewAheadOfOneHoldingAnother_When_TheHeldOneRerenders_Then_ItRewritesItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "a95e6f45d0857f820a5da1531cf828235302a01d7d71512ea384a3b5ddf1e4a2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AComponentGrewInsideTheOneAheadOfIt_When_TheOneBehindRerenders_Then_ItRewritesItsOwnRows",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "a95e6f45d0857f820a5da1531cf828235302a01d7d71512ea384a3b5ddf1e4a2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InlineSlotStartTests.Given_AnEmptyComponentMountedAheadOfAnother_When_ItGrows_Then_TheOtherRerendersItsOwnRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSlotStartTests.cs": "a95e6f45d0857f820a5da1531cf828235302a01d7d71512ea384a3b5ddf1e4a2",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 259,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

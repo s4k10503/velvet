@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_AnAnchorEnterWaitingForItsChildren_When_AKeyIsAdded_Then_ItEntersOnlyOnceTheChildHasEntered",
+ "file": "32abd1d51993c9da8ab2804bc76dbd082e9a73ff1153e180790e95055055d21a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AnAnchorEnterWaitingForItsChildren_When_AKeyIsAdded_Then_ItEntersOnlyOnceTheChildHasEntered",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 21,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/MotionOrchestrationWait.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

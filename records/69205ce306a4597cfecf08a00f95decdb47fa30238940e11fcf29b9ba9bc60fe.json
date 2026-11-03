@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "35cd77652ce9068e55ef9dba52fe7ca0834724e88a41c3d554d008da251f58b9",
+ "killers": [],
+ "measured_by": "41622815197",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 281,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/PanelHostFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}
