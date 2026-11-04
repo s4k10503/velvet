@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AnElementNamingARingColour_When_Mounted_Then_ItHandsThatColourToAnInheritingDescendant",
+ "file": "6fefcfbf79fba07a1e665ed32b02141c0da25bc57ca78ed8a0f7aeeab076b26f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RingBandReconcileTests.Given_AnElementNamingARingColour_When_Mounted_Then_ItHandsThatColourToAnInheritingDescendant",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RingBandReconcileTests.cs": "ebfe0650677df7e395ce3a26c15835227832bde178a2007653e6c8dda76b25df",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 88,
+  "line": 74,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BandColourInheritance.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

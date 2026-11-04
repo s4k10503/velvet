@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: the editor was killed at 538s, 1.5 times the baseline's 355s plus 5s, with no readable result",
+ "file": "f9ab82e03f919ae443bb5fbc7ddc3124a8c224df601116df83e13c4ceab29a16",
+ "killers": [],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": ";",
+  "before": "halvings++;",
+  "column": 16,
+  "line": 532,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed (timed out)"
+}

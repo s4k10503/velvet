@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_ABackdropFilterListInvertThenBrightness_When_Rendered_Then_ItRunsInTheOrderWritten, Given_BrightnessAndInvertWrittenInEitherOrder_When_Rendered_Then_BrightnessAppliesFirst",
+ "file": "f9ab82e03f919ae443bb5fbc7ddc3124a8c224df601116df83e13c4ceab29a16",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BackdropFilterPlaybackTests.Given_ABackdropFilterListInvertThenBrightness_When_Rendered_Then_ItRunsInTheOrderWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/BackdropFilterPlaybackTests.cs": "afd929fc901e2b1ef8ce374f6f0d3c52cf09e54b8cd0d4ff098babb003ea518c",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BackdropFilterPlaybackTests.Given_BrightnessAndInvertWrittenInEitherOrder_When_Rendered_Then_BrightnessAppliesFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/BackdropFilterPlaybackTests.cs": "afd929fc901e2b1ef8ce374f6f0d3c52cf09e54b8cd0d4ff098babb003ea518c",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": ";",
+  "before": "material.SetVectorArray(offsets, s_offsets);",
+  "column": 12,
+  "line": 387,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropRenderer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

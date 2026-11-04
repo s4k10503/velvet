@@ -1,0 +1,76 @@
+{
+ "detail": "EditMode: 6 failed among the 87 case(s) that ran the site: Given_AMountNamingAHeldClock_When_AnAnimateLoopMounts_Then_TheLoopRunsOnThatClock, Given_AMountNamingAHeldClock_When_ARenderSwapsOneAnimateLoopForAnother_Then_TheNewLoopRunsOnThatClock, Given_AnAnimateLoopAttachedOffThePanelOnAHeldClock_When_ItJoinsThePanelAfterTheClockMoved_Then_ItsPhaseCountsFromTheJoin",
+ "file": "d4f738295d71ea2b129cc4c165a26db5070d507f526f59f8329e4f7c62fa062c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_AMountNamingAHeldClock_When_ARenderSwapsOneAnimateLoopForAnother_Then_TheNewLoopRunsOnThatClock",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "1626cd80dec0435aeda532cb0d9db37c339c0b8055046eb72c2d87b8bdca2a4b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_AMountNamingAHeldClock_When_AnAnimateLoopMounts_Then_TheLoopRunsOnThatClock",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "1626cd80dec0435aeda532cb0d9db37c339c0b8055046eb72c2d87b8bdca2a4b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_ATweenExitOfEveryChannelKindOnAHeldClock_When_ItIsCancelledAQuarterOfTheWayOut_Then_EachTurnsBackOverTheShortenedDuration",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "1626cd80dec0435aeda532cb0d9db37c339c0b8055046eb72c2d87b8bdca2a4b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_ATweenWhoseOverrideNamesAllOfEveryChannelKind_When_TheClockStepsAFrame_Then_EachMovesOnTheOverride",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "1626cd80dec0435aeda532cb0d9db37c339c0b8055046eb72c2d87b8bdca2a4b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_AnAnimateLoopAttachedOffThePanelOnAHeldClock_When_ItJoinsThePanelAfterTheClockMoved_Then_ItsPhaseCountsFromTheJoin",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "1626cd80dec0435aeda532cb0d9db37c339c0b8055046eb72c2d87b8bdca2a4b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_AnAnimateLoopOnAHeldClock_When_TheClockMovesAQuarterLoop_Then_TheLoopShowsAQuarterTurn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "1626cd80dec0435aeda532cb0d9db37c339c0b8055046eb72c2d87b8bdca2a4b",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": ";",
+  "before": "element.style.rotate = value;",
+  "column": 16,
+  "line": 57,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/AuthoredTransform.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "55bbfdbf8729fe9ac22cbc122d46c54ef636b3e85f337be6303b0173c9c3c459",
+ "killers": [],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 25,
+  "line": 137,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropFilterSteps.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

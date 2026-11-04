@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ABezierPlayWithAnOpacityOverride_When_SteppedToHalfTheDuration_Then_OnlyTheOverriddenChannelHasFinished",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ABezierPlayWithAnOpacityOverride_When_SteppedToHalfTheDuration_Then_OnlyTheOverriddenChannelHasFinished",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": ";",
+  "before": "Override(state, state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity), overrides);",
+  "column": 12,
+  "line": 237,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

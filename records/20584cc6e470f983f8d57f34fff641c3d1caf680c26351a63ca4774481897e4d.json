@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed among the 66 case(s) that ran the site: Given_AnOddReverseRepeatTweenEnter_When_ItCompletes_Then_TheElementKeepsItsFromOpacityInline, Given_ARepeatingTweenEnter_When_ItsFirstPassHasEnded_Then_ItHasNotCompleted, Given_ARepeatingTweenExit_When_ItsFirstPassHasEnded_Then_ItHasNotCompleted",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionRepeatSchedulerTests.Given_ARepeatingTweenEnter_When_ItsFirstPassHasEnded_Then_ItHasNotCompleted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionRepeatSchedulerTests.cs": "88289e6f05edce0b66307f5f0c4a4979335741aa2760a598e3df49e40316e443",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionRepeatSchedulerTests.Given_ARepeatingTweenExit_When_ItsFirstPassHasEnded_Then_ItHasNotCompleted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionRepeatSchedulerTests.cs": "88289e6f05edce0b66307f5f0c4a4979335741aa2760a598e3df49e40316e443",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionRepeatSchedulerTests.Given_AnOddReverseRepeatTweenEnter_When_ItCompletes_Then_TheElementKeepsItsFromOpacityInline",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionRepeatSchedulerTests.cs": "88289e6f05edce0b66307f5f0c4a4979335741aa2760a598e3df49e40316e443",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3"
+   }
+  }
+ ],
+ "measured_by": "41817246568",
+ "mutant": {
+  "after": ";",
+  "before": "state.Repeat = repeat;",
+  "column": 12,
+  "line": 202,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
