@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ASkewedElementUnderASpringOnScale_When_Stepped_Then_TheSlotsCarryTheScaleAndTheSkew",
+ "file": "d4f738295d71ea2b129cc4c165a26db5070d507f526f59f8329e4f7c62fa062c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SkewMotionTests.Given_ASkewedElementUnderASpringOnScale_When_Stepped_Then_TheSlotsCarryTheScaleAndTheSkew",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewCompositeMath.cs": "c88b38e855c9f38c76266fb3d5f4b50443da12bc199580316e003c142bf12b38",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SkewMotionTests.cs": "89ff32dd7f65d8ec2eada216ba01efc453b7bdc818bd64a29cb3ea1996c50ea4",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": ";",
+  "before": "state.Scale = value;",
+  "column": 12,
+  "line": 71,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/AuthoredTransform.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 227 case(s) that ran the site: Given_AFallbackShownUnderAPortalScope_When_TheScopeIsPruned_Then_TheFallbackIsNoLongerShown",
+ "file": "8ef97611ef6a32fc130914c553f64f1180b26a7373d319cc688767115653aac8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ContainerKeyedStatePruneIndexTests.Given_AFallbackShownUnderAPortalScope_When_TheScopeIsPruned_Then_TheFallbackIsNoLongerShown",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ContainerKeyedStatePruneIndexTests.cs": "36dd1d88b89ec8b1a3664a56aede000b64275c7c6b727d11c5c90f1eaffc8979"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 36,
+  "line": 2541,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

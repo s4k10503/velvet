@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_SeveralTopLevelRoutesIncludingTheRoot_When_AnUnmatchedPathIsNavigatedTo_Then_TheRootCarriesTheError",
+ "file": "e9e58e30bdc691853960767319883b720f339c97bd30967142cf416193372ddc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterNotFoundTests.Given_SeveralTopLevelRoutesIncludingTheRoot_When_AnUnmatchedPathIsNavigatedTo_Then_TheRootCarriesTheError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterNotFoundTests.cs": "fe00f541ef55f1df20a5626bf6cd20960fdee9e7eba926bb3cf23adc633061ab",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": ";",
+  "before": "position = index;",
+  "column": 24,
+  "line": 586,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

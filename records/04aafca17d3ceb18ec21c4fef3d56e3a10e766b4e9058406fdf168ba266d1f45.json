@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 220 case(s) that ran the site: Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+ "file": "8ef97611ef6a32fc130914c553f64f1180b26a7373d319cc688767115653aac8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SelfScheduledResuspendTests.Given_AFallbackWhoseOwnUpdateSuspends_When_TheImmediateTierDrains_Then_TheSuspenseAboveShowsItsFallbackWithoutTheFallbacksOwnerRendering",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SelfScheduledResuspendTests.cs": "51fe3f30601af175194bf265952d4275d66386dd8383a2aa89ce6c241f7b23f8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 44,
+  "line": 1837,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

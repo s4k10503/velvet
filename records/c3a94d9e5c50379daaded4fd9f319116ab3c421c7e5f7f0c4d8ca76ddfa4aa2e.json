@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d4f738295d71ea2b129cc4c165a26db5070d507f526f59f8329e4f7c62fa062c",
+ "killers": [],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "",
+  "before": " && scaled",
+  "column": 34,
+  "line": 169,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/AuthoredTransform.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

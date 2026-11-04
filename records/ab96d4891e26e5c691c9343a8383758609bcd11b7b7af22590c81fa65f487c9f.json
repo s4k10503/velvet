@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed among the 223 case(s) that ran the site: Given_AnElementWhoseChildSuspendsDuringItsCreation_When_TheBoundaryFallsBack_Then_AChildBuiltBeforeItGetsNoRef, Given_AnElementWhoseChildSuspendsDuringItsCreation_When_TheResourceResolves_Then_TheBoundaryRevealsItsChildren",
+ "file": "8ef97611ef6a32fc130914c553f64f1180b26a7373d319cc688767115653aac8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ElementCreationFailureTests.Given_AnElementWhoseChildSuspendsDuringItsCreation_When_TheBoundaryFallsBack_Then_AChildBuiltBeforeItGetsNoRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ElementCreationFailureTests.cs": "3c99acac697e54838c8c8f9fb341ec905dd7542a6484f6e15ec4f18c4e9033e1",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ElementCreationFailureTests.Given_AnElementWhoseChildSuspendsDuringItsCreation_When_TheResourceResolves_Then_TheBoundaryRevealsItsChildren",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ElementCreationFailureTests.cs": "3c99acac697e54838c8c8f9fb341ec905dd7542a6484f6e15ec4f18c4e9033e1",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 47,
+  "line": 1893,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 376 case(s) that ran the site: Given_TwoPortalsAmongTheChildrenOfTheContainerTheyTarget_When_TheSecondGoes_Then_TheFirstsNextPatchLandsOnItsChild",
+ "file": "8ef97611ef6a32fc130914c553f64f1180b26a7373d319cc688767115653aac8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalContainerOwnRowsTests.Given_TwoPortalsAmongTheChildrenOfTheContainerTheyTarget_When_TheSecondGoes_Then_TheFirstsNextPatchLandsOnItsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalContainerOwnRowsTests.cs": "9da7489b4fbfef2bf1f91157eb42c5cd77cae16f404f7894a311122d94d8f6c2",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 66,
+  "line": 117,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "94f33771c949723950276b048bce17676f02979166159ed591e59dd4a54f55b1",
+ "killers": [],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": ";",
+  "before": "binding.Layer.RemoveFromHierarchy();",
+  "column": 12,
+  "line": 99,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BackdropFilterLayer.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

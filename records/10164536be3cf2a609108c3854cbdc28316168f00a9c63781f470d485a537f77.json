@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 434 case(s) that ran the site: Given_AnOutletRouteInsideAPortal_When_TheRouteComponentReRendersAlone_Then_ItsOwnChildKeepsItsInstance",
+ "file": "e92803b95e3e619df9c4647dc3bb81611ec89e015ef32cf645768a41260a3126",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalChildFiberContinuityTests.Given_AnOutletRouteInsideAPortal_When_TheRouteComponentReRendersAlone_Then_ItsOwnChildKeepsItsInstance",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalChildFiberContinuityTests.cs": "601caa6906912f07378ec55bc9f32d23a7e87371243522754fa7f4481322a35a",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 35,
+  "line": 827,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Routing/Router.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

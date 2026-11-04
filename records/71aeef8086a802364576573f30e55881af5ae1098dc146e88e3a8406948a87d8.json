@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 2 failed among the 8 case(s) that ran the site: Given_GuardRedirectToMissingRoute_When_GoBack_Then_ReturnsNotFound, Given_GuardRedirectToMissingRouteDuringBack_When_Committed_Then_TheNotFoundTakesTheSteppedToSlot",
+ "file": "e9e58e30bdc691853960767319883b720f339c97bd30967142cf416193372ddc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RedirectTests.Given_GuardRedirectToMissingRouteDuringBack_When_Committed_Then_TheNotFoundTakesTheSteppedToSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RedirectTests.cs": "5d9cef70747b26d84b4cea01037af919572ae317d587ab5cf966f680f1ac338e",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/RouterHistoryProbe.cs": "5657eb0498603f19ffd3037401b45b5c09d6f70bf8cf56958a6b73425bd11585"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RedirectTests.Given_GuardRedirectToMissingRoute_When_GoBack_Then_ReturnsNotFound",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RedirectTests.cs": "5d9cef70747b26d84b4cea01037af919572ae317d587ab5cf966f680f1ac338e",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/RouterHistoryProbe.cs": "5657eb0498603f19ffd3037401b45b5c09d6f70bf8cf56958a6b73425bd11585"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 41,
+  "line": 582,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

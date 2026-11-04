@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 2 failed among the 391 case(s) that ran the site: Given_ARowAnotherTreePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild, Given_ARowOtherCodePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+ "file": "8ef97611ef6a32fc130914c553f64f1180b26a7373d319cc688767115653aac8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PortalRangeAnchorTests.Given_ARowAnotherTreePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeAnchorTests.cs": "8bde18e02011ca17a1cc3852b15d26db96043caba2c8df27a37d06edb286d0f7"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PortalRangeAnchorTests.Given_ARowOtherCodePutAheadOfThePortalsRange_When_ThePortalPatches_Then_ThePatchLandsOnThePortalsChild",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalRangeAnchorTests.cs": "8bde18e02011ca17a1cc3852b15d26db96043caba2c8df27a37d06edb286d0f7"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 56,
+  "line": 84,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/ReconcilerContext.cs",
+  "shadowed": [
+   "arithmetic",
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

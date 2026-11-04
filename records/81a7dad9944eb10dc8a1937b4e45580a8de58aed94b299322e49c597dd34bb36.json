@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed among the 504 case(s) that ran the site: Given_AMemoizedRouteShellThatWasUnmounted_When_NavigationReturnsToIt_Then_ItsBackdropIsBuiltAgain, Given_TwoRouteShellsWithAnUnkeyedMemoFirst_When_NavigationReplacesTheShell_Then_TheNewShellBuildsItsOwnBackdrop",
+ "file": "e9e58e30bdc691853960767319883b720f339c97bd30967142cf416193372ddc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MemoCacheCollisionTests.Given_AMemoizedRouteShellThatWasUnmounted_When_NavigationReturnsToIt_Then_ItsBackdropIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MemoCacheCollisionTests.cs": "d4579ae22ad89c1c98da947c3809aa772e54c0e829aef1f8ccf2a3f9db00fb05",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MemoCacheCollisionTests.Given_TwoRouteShellsWithAnUnkeyedMemoFirst_When_NavigationReplacesTheShell_Then_TheNewShellBuildsItsOwnBackdrop",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MemoCacheCollisionTests.cs": "d4579ae22ad89c1c98da947c3809aa772e54c0e829aef1f8ccf2a3f9db00fb05",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/RuntimeStateProbe.cs": "f5d4ec6298d8c5f2eb33b23fa83fc5788fc9c99583dc56c3cdc4243476aa9fce",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 54,
+  "line": 173,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

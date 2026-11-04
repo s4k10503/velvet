@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_CancelledToken_When_GoBack_Then_NothingIsLeftInFlight",
+ "file": "e92803b95e3e619df9c4647dc3bb81611ec89e015ef32cf645768a41260a3126",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterTests.Given_CancelledToken_When_GoBack_Then_NothingIsLeftInFlight",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "f40a3b9ed856525f7afd53410e4963e2216258c1511c86d47360aad1c7eac7b3",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterTests.cs": "0d7b6b47bb215779c075ce729e4897751813415048fe272dff3e1ff0d459d44b",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/RouterHistoryProbe.cs": "5657eb0498603f19ffd3037401b45b5c09d6f70bf8cf56958a6b73425bd11585",
+    "Packages/com.velvet.core/TestUtilities/TestRouteScopeFactory.cs": "acb928c1d9fc6ab60a83a3e2ed50cee8c8572ba3ba97f2667a269164f0e6214d"
+   }
+  }
+ ],
+ "measured_by": "41716618666",
+ "mutant": {
+  "after": ";",
+  "before": "ReleaseClaim(pending);",
+  "column": 24,
+  "line": 880,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/Router.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
