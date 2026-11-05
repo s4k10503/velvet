@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_AShadowedBoxWhoseTopBorderAloneIsBlue_When_ItsFaceIsRepainted_Then_ItsTopBandIsBlue, Given_AShadowedRoundedBoxWhoseLeftBorderIsFourTimesItsTop_When_ItsFaceIsRepainted_Then_TheLeftSideReachesPastTheCornersDiagonal",
+ "file": "7f72dfe7a9cf2ef7a2ffd69ede1a6aef115f6a6eb0687710bd95646dcd97274a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_AShadowedBoxWhoseTopBorderAloneIsBlue_When_ItsFaceIsRepainted_Then_ItsTopBandIsBlue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "14d3df29bce6f25dd82cd8da08883bcf1253a4f51eeaa6a3bcd462a77fe065f6",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteBorderSidesPlaybackTests.Given_AShadowedRoundedBoxWhoseLeftBorderIsFourTimesItsTop_When_ItsFaceIsRepainted_Then_TheLeftSideReachesPastTheCornersDiagonal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/SilhouetteBorderSidesPlaybackTests.cs": "14d3df29bce6f25dd82cd8da08883bcf1253a4f51eeaa6a3bcd462a77fe065f6",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": ";",
+  "before": "at = LineTo(painter, at, shear.Apply(contour[i].x, contour[i].y));",
+  "column": 16,
+  "line": 201,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BorderBandPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 126 case(s) that ran the site: Given_AnElementUnderDeclaringAncestors_When_ItsShadowColourIsInherited_Then_ItIsTheNearestDeclared(\"shadow-red-500\",\"\",\"FB2C36FF\"), Given_AnElementUnderDeclaringAncestors_When_ItsShadowColourIsInherited_Then_ItIsTheNearestDeclared(\"shadow-inherit\",\"shadow-red-500\",\"FB2C36FF\")",
+ "file": "a2103c19eb7966929b8eb13d83f08cf02cff00ca8429c04da6ab1908ab1ea81a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnElementUnderDeclaringAncestors_When_ItsShadowColourIsInherited_Then_ItIsTheNearestDeclared(\"shadow-inherit\",\"shadow-red-500\",\"FB2C36FF\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "3b116c8b6c6698cdc500d84478c3e2eaf86d510cf3411a8547691b424777619d"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_AnElementUnderDeclaringAncestors_When_ItsShadowColourIsInherited_Then_ItIsTheNearestDeclared(\"shadow-red-500\",\"\",\"FB2C36FF\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "3b116c8b6c6698cdc500d84478c3e2eaf86d510cf3411a8547691b424777619d"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": ";",
+  "before": "s_declaredColours.AddOrUpdate(element, declared);",
+  "column": 16,
+  "line": 101,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

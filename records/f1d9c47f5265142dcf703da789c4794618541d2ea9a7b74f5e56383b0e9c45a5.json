@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "9617eefafeb4bdecb42206e58afe639895b696ef71cb53b366ac3b0f2e8f7adf",
+ "killers": [],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": ";",
+  "before": "FaceBorderOverlay.Remove(element);",
+  "column": 12,
+  "line": 132,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BorderStyleSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

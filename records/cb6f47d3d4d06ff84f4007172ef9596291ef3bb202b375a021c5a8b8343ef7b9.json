@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringDriverTests.Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDriverTests.cs": "94dea8e9d9e65a02ab155b2b216074aecc8e391a752ce9fcab03776dd2ce72d1"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 54,
+  "line": 895,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,8 +1,36 @@
 {
- "detail": "EditMode survived (inconclusive); PlayMode: -",
+ "detail": "EditMode survived (inconclusive); PlayMode: 3 failed: Given_ATranslucentShadowCaster_When_AnEnterIsInFlightOverIt_Then_TheHaloMatchesTheSameCasterAtRest, Given_AShadowCasterWithNoOpaqueFill_When_ItsOwnOverflowIsHidden_Then_ItsShadowIsDrawnWhole, Given_AShadowedElement_When_ItsOwnOverflowIsHidden_Then_ItsShadowShowsAsUnclipped",
  "file": "b9e11215a83bb7cea86d3f73a2f0666b88a209c6e9fbfcf62069ef5471ebd45a",
- "killers": [],
- "measured_by": "39723193086",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ShadowFadeOpacityPlaybackTests.Given_ATranslucentShadowCaster_When_AnEnterIsInFlightOverIt_Then_TheHaloMatchesTheSameCasterAtRest",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShadowFadeOpacityPlaybackTests.cs": "20dec33b3e6575c505242b7b557d91a4b829bd67a860ede32ec39d392c2555a5",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_AShadowCasterWithNoOpaqueFill_When_ItsOwnOverflowIsHidden_Then_ItsShadowIsDrawnWhole",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "94f54fc080359e1cb2888249bc708440843c444109faa12f8813b3e11292998e",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_AShadowedElement_When_ItsOwnOverflowIsHidden_Then_ItsShadowShowsAsUnclipped",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "94f54fc080359e1cb2888249bc708440843c444109faa12f8813b3e11292998e",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -16,6 +44,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "d596c38694d35797e942a91ef2816b972145fb488c52ecb2274e27a8c265e8f8",
- "verdict": "survived"
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
 }

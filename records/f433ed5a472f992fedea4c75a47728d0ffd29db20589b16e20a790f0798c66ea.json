@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AMirroringTween_When_SoughtAQuarterIntoItsSecondPass_Then_ItRunsTheEasingFromTheToValueBack",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DrivenTweenRepeatTests.Given_AMirroringTween_When_SoughtAQuarterIntoItsSecondPass_Then_ItRunsTheEasingFromTheToValueBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DrivenTweenRepeatTests.cs": "ea9bd205499507b78c44f1867e2a69c669ca1c669ef7ca08c938b67dc01c3d2f"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 32,
+  "line": 840,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

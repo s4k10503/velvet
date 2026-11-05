@@ -1,0 +1,82 @@
+{
+ "detail": "EditMode: 33 failed in Velvet.Tests.Styling.Editor: Given_ALoopRepeat_When_ExactlyOnePassHasElapsed_Then_ItShowsTheEndOfThatPass, Given_ALoopRepeat_When_TheSecondPassIsAQuarterIn_Then_ItShowsTheCurveAQuarterInFromTheStart, Given_ALoopRepeatWithADelay_When_TheDelayIsRunning_Then_ItHoldsTheValueThePassEndedOn",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_ALoopRepeatWithADelay_When_TheDelayIsRunning_Then_ItHoldsTheValueThePassEndedOn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_ALoopRepeat_When_ExactlyOnePassHasElapsed_Then_ItShowsTheEndOfThatPass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_ALoopRepeat_When_TheSecondPassIsAQuarterIn_Then_ItShowsTheCurveAQuarterInFromTheStart",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AMirrorRepeat_When_TheSecondPassIsAQuarterIn_Then_ItShowsTheCurveAQuarterInFromTheToValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AReverseRepeatOutlastedByASlowerChannel_When_TheClockLandsExactlyOnTheEnd_Then_ItShowsTheEndOfTheLastPass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AReverseRepeatWithADelay_When_TheReversedPassIsAQuarterIn_Then_ItShowsTheCurveThreeQuartersIn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AReverseRepeat_When_ExactlyOnePassHasElapsed_Then_ItShowsTheTurnaroundAtTheToValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AReverseRepeat_When_TheSecondPassIsAQuarterIn_Then_ItShowsTheCurveThreeQuartersInPlayedBackwards",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AZeroDurationStateWithARepeatDelay_When_ItIsFirstWritten_Then_ItShowsTheEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BezierRepeatTests.Given_AnEndlessLoop_When_FourPassesElapseInOneStep_Then_ItShowsTheEndOfTheFourthPass",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierRepeatTests.cs": "6b05fd36cf322c10f428676177479fc9f96d32c96b72ca8113ba5e63a3f6a327"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 43,
+  "line": 870,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

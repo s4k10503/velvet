@@ -1,0 +1,48 @@
+{
+ "detail": "EditMode: 3 failed among the 14 case(s) that ran the site: 0f), 0f), Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_AMotionMidwayToItsLabelOnOneDriver_When_TheLabelFlipsBackOnTheOther_Then_ItContinuesFromTheValueItWasDrawnAt(Bezier,\"translate-x-[0px]\",\"translate-x-[100px]\",\"translate-x\",0.0f,100.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_AMotionMidwayToItsLabelOnOneDriver_When_TheLabelFlipsBackOnTheOther_Then_ItContinuesFromTheValueItWasDrawnAt(Bezier,\"w-[0px]\",\"w-[100px]\",\"width\",0.0f,100.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_AMotionMovingTowardItsLabelOnABezier_When_TheLabelFlipsBackOnASpring_Then_ItKeepsMovingThatWayForAFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 25,
+  "line": 794,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

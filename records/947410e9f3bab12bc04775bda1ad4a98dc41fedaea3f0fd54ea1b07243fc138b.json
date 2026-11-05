@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 324 case(s) that ran the site: Given_ASpinLoopAQuarterThroughItsTurn_When_ABezierWritesItsRotateChannel_Then_TheRotateIsTheQuarterTurn",
+ "file": "4e060077a6e2467e0299f9e00bfd40bfdbe1ca82c8950ca0a8eb498556bda7c0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionLoopPrecedenceTests.Given_ASpinLoopAQuarterThroughItsTurn_When_ABezierWritesItsRotateChannel_Then_TheRotateIsTheQuarterTurn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionLoopPrecedenceTests.cs": "130bc98bd920642395b3c956de23484b60bedc31e9b2fb8e7574f420b4f779c1",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": ";",
+  "before": "StyleAnimateDriver.ReassertLoop(element, DrivenSlots(state));",
+  "column": 12,
+  "line": 899,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

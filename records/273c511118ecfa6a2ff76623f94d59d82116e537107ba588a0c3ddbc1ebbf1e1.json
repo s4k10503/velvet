@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_ADashedBorderElement_When_ItsOwnOverflowIsHidden_Then_TheOutlineIsKept",
+ "file": "9617eefafeb4bdecb42206e58afe639895b696ef71cb53b366ac3b0f2e8f7adf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_ADashedBorderElement_When_ItsOwnOverflowIsHidden_Then_TheOutlineIsKept",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "94f54fc080359e1cb2888249bc708440843c444109faa12f8813b3e11292998e",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "42014657035",
+ "mutant": {
+  "after": ";",
+  "before": "DashedBorderPainter.PaintSide(mgc.painter2D, side, box, color, binding.Spec.Style);",
+  "column": 20,
+  "line": 220,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BorderStyleSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
