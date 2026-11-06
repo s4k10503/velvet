@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_TheBundledScaleRotateAndOriginClasses_When_TheirNamesAreRead_Then_EachGivesWhatItsSheetRuleDeclares",
+ "file": "1f6412286d16730052ff008acd2b233632fa2ee2acd12289d28f04e37082d0c6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BundledClassTransformTests.Given_TheBundledScaleRotateAndOriginClasses_When_TheirNamesAreRead_Then_EachGivesWhatItsSheetRuleDeclares",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BundledClassTransformTests.cs": "cb36d16bc427e40d2551aa116ed3318db78335a0ca552c0b03423333a7766588",
+    "Packages/com.velvet.core/TestUtilities/StyleUtilityTableProbe.cs": "58593d5382fa23d3309ac2c37e52681c1ac9f00e9cc3f7b201711b900e539707"
+   }
+  }
+ ],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 84,
+  "line": 189,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BundledClassTransform.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

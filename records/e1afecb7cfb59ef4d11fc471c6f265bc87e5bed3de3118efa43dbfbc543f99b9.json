@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 3 failed: Given_AHolderPivotedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatMovesItsOrigin_Then_ItsFirstFrameIsDrawnWhereItsMoveIs, Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale, Given_AHolderTurnedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatTurnsIt_Then_ItsFirstFrameMixesTowardsTheNewRotate",
+ "file": "1f6412286d16730052ff008acd2b233632fa2ee2acd12289d28f04e37082d0c6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHolderPivotedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatMovesItsOrigin_Then_ItsFirstFrameIsDrawnWhereItsMoveIs",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHolderScaledByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatRescalesIt_Then_ItsMoveIsDrawnAtTheNewScale",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHolderTurnedByAStylesheetClass_When_ItTakesTheLeadBackInTheRenderThatTurnsIt_Then_ItsFirstFrameMixesTowardsTheNewRotate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 59,
+  "line": 364,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BundledClassTransform.cs",
+  "shadowed": [
+   "clause removed",
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

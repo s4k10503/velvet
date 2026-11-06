@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 3 failed among the 40 case(s) that ran the site: Given_AWatchedElement_When_ItIsWatched_Then_TheMarkerGivesItsStyleACustomProperty, Given_AWatchedElement_When_ItsStylesResolve_Then_ItIsReResolved, Given_BorderCurrent_When_TheTextColourChanges_Then_TheBorderFollowsIt",
+ "file": "88e50b657711affde2a4ef0b79ae82ff1fe1db5b20f9445c49d7d77a07e76160",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ColourReferenceWatchTests.Given_AWatchedElement_When_ItIsWatched_Then_TheMarkerGivesItsStyleACustomProperty",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "191420bad426b6a5036464df80605c36b9aa8f54e05d41a26ea14b54cac3d460",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ColourReferenceWatchTests.Given_AWatchedElement_When_ItsStylesResolve_Then_ItIsReResolved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "191420bad426b6a5036464df80605c36b9aa8f54e05d41a26ea14b54cac3d460",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ColourReferenceWatchTests.Given_BorderCurrent_When_TheTextColourChanges_Then_TheBorderFollowsIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "191420bad426b6a5036464df80605c36b9aa8f54e05d41a26ea14b54cac3d460",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": ";",
+  "before": "Mark(element);",
+  "column": 12,
+  "line": 151,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ColorReferenceWatch.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

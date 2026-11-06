@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d690bbadef4fbd3ca11235ea8e44cf6df9fb67d2ed0acbcd22f85c78ed8fca4b",
+ "killers": [],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": ";",
+  "before": "_eased = UssEasing.Evaluate(_easing, t);",
+  "column": 12,
+  "line": 41,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ColorCarry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

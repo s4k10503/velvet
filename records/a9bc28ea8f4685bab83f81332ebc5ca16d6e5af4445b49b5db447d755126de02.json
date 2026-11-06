@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1f6412286d16730052ff008acd2b233632fa2ee2acd12289d28f04e37082d0c6",
+ "killers": [],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 42,
+  "line": 173,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BundledClassTransform.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

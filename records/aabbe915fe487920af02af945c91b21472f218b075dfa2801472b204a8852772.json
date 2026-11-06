@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 39 case(s) that ran the site: Given_ABackgroundInheritorOfAProjectedBox_When_TheFaceIsDrawn_Then_ItTakesTheFacesBackground, Given_ABorderInheritorOfAProjectedBox_When_TheFaceIsDrawn_Then_ItTakesTheFacesBorder",
+ "file": "88e50b657711affde2a4ef0b79ae82ff1fe1db5b20f9445c49d7d77a07e76160",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceColourReferenceTests.Given_ABackgroundInheritorOfAProjectedBox_When_TheFaceIsDrawn_Then_ItTakesTheFacesBackground",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ProjectedCornerFaceColourReferenceTests.cs": "0db4080f02342960839045c4403589a382ac93f03e04bb1fdf0c69ceed2cf65b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceColourReferenceTests.Given_ABorderInheritorOfAProjectedBox_When_TheFaceIsDrawn_Then_ItTakesTheFacesBorder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ProjectedCornerFaceColourReferenceTests.cs": "0db4080f02342960839045c4403589a382ac93f03e04bb1fdf0c69ceed2cf65b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": ";",
+  "before": "_reresolve(_element);",
+  "column": 16,
+  "line": 177,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ColorReferenceWatch.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

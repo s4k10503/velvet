@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 260 case(s) that ran the site: Given_ANaNYControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough",
+ "file": "c071548fcfa39b2bdc79a4843035036fb8b60ba5cb87dc27285abb1cfa7d0cbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierTweenDriverTests.Given_ANaNYControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierTweenDriverTests.cs": "adacd05cc4598c59595a4388b6c60d026a55474f984e6bf94d8244c1d3c7747a"
+   }
+  }
+ ],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": "",
+  "before": " || !float.IsFinite(y1)",
+  "column": 35,
+  "line": 71,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/CubicBezierEvaluator.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c071548fcfa39b2bdc79a4843035036fb8b60ba5cb87dc27285abb1cfa7d0cbe",
+ "killers": [],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 25,
+  "line": 138,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/CubicBezierEvaluator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

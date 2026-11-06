@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "88e50b657711affde2a4ef0b79ae82ff1fe1db5b20f9445c49d7d77a07e76160",
+ "killers": [],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 71,
+  "line": 38,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ColorReferenceWatch.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 14 case(s) that ran the site: Given_TwoScaleClassesOnAMotion_When_TheOrderTheyWereAddedInIsReversed_Then_TheOneLaterInTheCascadeGivesTheScaleBothWays",
+ "file": "1f6412286d16730052ff008acd2b233632fa2ee2acd12289d28f04e37082d0c6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LiveClassListOrderTests.Given_TwoScaleClassesOnAMotion_When_TheOrderTheyWereAddedInIsReversed_Then_TheOneLaterInTheCascadeGivesTheScaleBothWays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiveClassListOrderTests.cs": "881116fcbaab9e42c33c7459371ac1f6bb03a17bf877fb44c0903902cc922c53",
+    "Packages/com.velvet.core/TestUtilities/StyleUtilityTableProbe.cs": "58593d5382fa23d3309ac2c37e52681c1ac9f00e9cc3f7b201711b900e539707"
+   }
+  }
+ ],
+ "measured_by": "42205822333",
+ "mutant": {
+  "after": ";",
+  "before": "scaleAt = at;",
+  "column": 20,
+  "line": 158,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BundledClassTransform.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
