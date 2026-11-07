@@ -1,0 +1,95 @@
+{
+ "detail": "EditMode: 53 failed: Given_ACompilerServicesMemberTakingAParameter_When_Compiled_Then_BothLabelsAreCached, Given_AFuncInvokedByOneLabel_When_Compiled_Then_BothLabelsAreCached, Given_AMethodCalledOnAStableObject_When_Compiled_Then_TheLabelReadingItIsDeclined",
+ "file": "158e2b4ea6558ac0deed4a39e1ecd74f80ec696180d46cb67bc9325c60df1332",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_ACompilerServicesMemberTakingAParameter_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AFuncInvokedByOneLabel_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AMethodCalledOnAStableObject_When_Compiled_Then_TheLabelReadingItIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AStableArrayHandedToAVoidMemberOfAPureType_When_Compiled_Then_TheLabelReadingItIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AStableRefHandedToAFrameworkConstructor_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AStableRefHandedToAValueReturningMemberOfAPureType_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeCallKindTests.Given_AValueTupleMemberTakingAParameter_When_Compiled_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeCallKindTests.cs": "6d37a3d1a035d5ea1cd0c64dd9ad362bb4953c6fc346155fd4c6d77e46a3b13a",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AFieldOfAnObjectAClosureHolds_When_AnObjectWithAnEqualFieldIsSet_Then_TheLabelReadingItIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AGetterTheAuthorWrote_When_TheLabelReadingItIsMounted_Then_TheGetterRunsInTheKeyAndForTheLabel",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_ALabelReadingAMemberAndHandingTheObjectOn_When_Compiled_Then_ItsKeyHoldsTheObjectOnly",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": ";",
+  "before": "kept.Add(region);",
+  "column": 16,
+  "line": 26,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopePlan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

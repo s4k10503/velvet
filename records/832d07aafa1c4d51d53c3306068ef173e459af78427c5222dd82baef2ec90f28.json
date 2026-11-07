@@ -1,0 +1,103 @@
+{
+ "detail": "EditMode: 105 failed: Given_AHostWhosePassMountsAComponentAheadOfAVirtualListItem_When_TheItemCommitsItsOwnSubtree_Then_TheComponentsLayoutEffectWaitsForItsRef, Given_ACustomHookPairDeconstructedWhole_When_TheSecondElementChanges_Then_TheLabelShowsItsNewValue, Given_ARenderPhaseWrite_When_AClickRendersTheUrgentLane_Then_TheRerunFoldsItIn",
+ "file": "865f5b436be777c7f0fc73b901ee3e9c4000f5155e52a8ad9654b7e7c08b5278",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AsyncResourceCompletionSettleTests.Given_TransitionWorkQueuedOnASuspendedChild_When_OneOfItsTwoReadsResolves_Then_IsPendingStaysUp",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AsyncResourceCompletionSettleTests.cs": "b482ab3c738c3a1aec2a794eec6aa8ae5e6569a89a1440d53809e260a898b5de",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClickDrivenHookLifecycleTests.Given_AMountedCounter_When_ItsButtonIsClicked_Then_TheLabelReflectsTheNewStateWithoutAManualDrain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClickDrivenHookLifecycleTests.cs": "db22ffcb0b52c53b4430e6b4945b7b6e5ed82fda3c1eaae351360724e2fbbb17",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CommitPhaseStateWriteTests.Given_ARefSetupWritingStateDuringTheCommit_When_TheDrainEnds_Then_TheWriteHasCommitted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/CommitPhaseEdgeCaseTests.cs": "19369ed6dbc9a6f3157b4d7dfeab61e173973798416698073f8429885450439f",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_ACustomHookPairDeconstructedWhole_When_TheSecondElementChanges_Then_TheLabelShowsItsNewValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentContainerIdentityTests.Given_KeyedParentUnderKeyedWrapperWithStatefulKeyedChild_When_ParentRerendersAlone_Then_ChildKeepsInstanceAndState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ComponentContainerIdentityTests.cs": "4df1de846728e99a99244acafa017eb368cff03ad37b69d4ad20acec18a5a153",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentContainerIdentityTests.Given_SameKeyedComponentUnderDistinctRootKeyedProviders_When_FirstComponentUpdates_Then_BothKeepSeparateState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ComponentContainerIdentityTests.cs": "4df1de846728e99a99244acafa017eb368cff03ad37b69d4ad20acec18a5a153",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentContainerIdentityTests.Given_SameKeyedComponentUnderSameKeyedFragmentAndProvider_When_FirstComponentUpdates_Then_BothKeepSeparateState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ComponentContainerIdentityTests.cs": "4df1de846728e99a99244acafa017eb368cff03ad37b69d4ad20acec18a5a153",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentContainerIdentityTests.Given_TwoSiblingContainersHoldingTheSameComponentUnderOneExplicitKey_When_TheFirstContainersButtonIsClicked_Then_OnlyThatContainersOutputChanges",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ComponentContainerIdentityTests.cs": "4df1de846728e99a99244acafa017eb368cff03ad37b69d4ad20acec18a5a153",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentContainerIdentityTests.Given_TwoSiblingContainersHoldingTheSameUnkeyedComponent_When_TheFirstContainersButtonIsClicked_Then_OnlyThatContainersOutputChanges",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ComponentContainerIdentityTests.cs": "4df1de846728e99a99244acafa017eb368cff03ad37b69d4ad20acec18a5a153",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ConditionalNullChildParityTests.Given_ConditionalChildAmongSiblings_When_ConditionFlipsToFalse_Then_OnlyThatChildUnmounts",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InlineSiblingReorderRerenderTests.cs": "b0f0d802fef6de8ad5e766d81aa7a48b02192023f64d8870d28faa8d248ae7a8",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": ";",
+  "before": "region.Dependencies.Add(new ScopeDependency(key, type) { Local = local });",
+  "column": 12,
+  "line": 253,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

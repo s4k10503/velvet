@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_ALocalAssignedByBothArmsOfAnIfElseAndReadByALabel_When_Compiled_Then_TheLabelIsCachedBesideTheTreeAroundIt",
+ "file": "2aaf0433aaa0e964cc7401c320404cd6623d2802994f2fe8f59f32387b1d17e9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALocalAssignedByBothArmsOfAnIfElseAndReadByALabel_When_Compiled_Then_TheLabelIsCachedBesideTheTreeAroundIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 27,
+  "line": 370,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

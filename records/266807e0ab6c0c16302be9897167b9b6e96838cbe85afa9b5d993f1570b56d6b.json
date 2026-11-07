@@ -1,0 +1,57 @@
+{
+ "detail": "EditMode: 4 failed: Given_AGetterTheAuthorWrote_When_TheLabelReadingItIsMounted_Then_TheGetterRunsInTheKeyAndForTheLabel, Given_AnAutomaticPropertyOfAStateObject_When_AnObjectWithAnEqualPropertyIsSet_Then_TheLabelIsNotBuiltAgain, Given_AStateObjectsField_When_AnEqualObjectIsSet_Then_TheLabelReadingTheFieldIsNotBuiltAgain",
+ "file": "865f5b436be777c7f0fc73b901ee3e9c4000f5155e52a8ad9654b7e7c08b5278",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AGetterTheAuthorWrote_When_TheLabelReadingItIsMounted_Then_TheGetterRunsInTheKeyAndForTheLabel",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AnAutomaticPropertyOfAStateObject_When_AnObjectWithAnEqualPropertyIsSet_Then_TheLabelIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_AStateObjectsField_When_AnEqualObjectIsSet_Then_TheLabelReadingTheFieldIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeWovenBehaviorE2ETests.Given_AStateWhoseValueIsNeverRead_When_AnObjectsGetterTheLabelReadsChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "fb466b70e3f44f8e399d9502d3fda1c4a8dbbd99b28eb33a9aa348c9085fe210",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 48,
+  "line": 108,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

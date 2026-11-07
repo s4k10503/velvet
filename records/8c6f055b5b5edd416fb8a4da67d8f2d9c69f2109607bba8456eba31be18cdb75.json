@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 2 failed: Given_ALabelBuiltInAnArmOfAnIndexedSwitch_When_Mounted_Then_TheLabelShowsItsText, Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd",
+ "file": "0d60ec5e56dae19cd12d896876884d6a231a3d7e62ae481ac8dd3f76284e3758",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeInjectionTests.Given_ALabelBuiltInAnArmOfAnIndexedSwitch_When_Mounted_Then_TheLabelShowsItsText",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeInjectionTests.cs": "5fc160362eff72e6f4451d96c958d2b9512102ad219bdee50cd6fdb6f52666a1",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_EveryComponentBodyThisAssemblyHolds_When_TheFlowWalkReadsIt_Then_NoInstructionIsUnreachedAndNoneFallsOffTheEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": ";",
+  "before": "instruction.Operand = System.Array.ConvertAll(targets, t => ReferenceEquals(t, from) ? to : t);",
+  "column": 20,
+  "line": 142,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeInjector.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

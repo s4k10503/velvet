@@ -1,0 +1,54 @@
+{
+ "detail": "EditMode: 4 failed: Given_AnArrayDerivedFromAnArrayAndAStatementBetweenThem_When_AnotherStateChanges_Then_NeitherArrayIsBuiltAgain, Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_NeitherLabelReadingTheArrayIsBuiltAgain, Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_TheArrayIsNotBuiltAgain",
+ "file": "158e2b4ea6558ac0deed4a39e1ecd74f80ec696180d46cb67bc9325c60df1332",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromAnArrayAndAStatementBetweenThem_When_AnotherStateChanges_Then_NeitherArrayIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_NeitherLabelReadingTheArrayIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_TheArrayIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayReadByOneLabel_When_AnotherStateChanges_Then_TheArrayIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": ";",
+  "before": "kept.AddRange(KeepValues(values, reads));",
+  "column": 12,
+  "line": 29,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopePlan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

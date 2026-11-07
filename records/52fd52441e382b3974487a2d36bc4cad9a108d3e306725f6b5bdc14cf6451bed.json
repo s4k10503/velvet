@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_AStatementAtTheStartOfAHooklessBodyThatOnlyTheFirstRunUses_When_Woven_Then_TheStatementFollowsTheGateOfThatRun",
+ "file": "2aaf0433aaa0e964cc7401c320404cd6623d2802994f2fe8f59f32387b1d17e9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_AStatementAtTheStartOfAHooklessBodyThatOnlyTheFirstRunUses_When_Woven_Then_TheStatementFollowsTheGateOfThatRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "abb985c141200bea5fbd46d2dc51ff75e8195aca77ab9705a692af3d10527bb6",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 28,
+  "line": 247,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

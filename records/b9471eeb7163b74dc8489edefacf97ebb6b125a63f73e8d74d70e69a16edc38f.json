@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_ADictionaryOfNodesReadByTwoScopes_When_AnotherStateChanges_Then_TheDictionaryIsBuiltAgain",
+ "file": "3d0f9b098824aebce97b0a09c893b09eba67b6ba571646eb19f5458ae41c01ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_ADictionaryOfNodesReadByTwoScopes_When_AnotherStateChanges_Then_TheDictionaryIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 76,
+  "line": 73,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Values.cs",
+  "shadowed": [
+   "clause removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

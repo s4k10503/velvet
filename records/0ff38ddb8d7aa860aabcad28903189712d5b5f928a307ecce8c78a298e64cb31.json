@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "158e2b4ea6558ac0deed4a39e1ecd74f80ec696180d46cb67bc9325c60df1332",
+ "killers": [],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": ";",
+  "before": "kept.Sort(CompareOuterFirst);",
+  "column": 12,
+  "line": 30,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopePlan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "survived"
+}

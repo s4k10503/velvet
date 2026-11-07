@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed: Given_ALabelAssignedAfterATryStatement_When_Compiled_Then_OnlyTheTreeAroundItIsCached, Given_ALabelAssignedToALocalAndHandedOnWhole_When_Compiled_Then_OnlyTheTreeAroundItIsCached, Given_AStructBuiltInPlaceBesideTwoLabelsOnTheParameterAlone_When_Compiled_Then_OnlyTheLabelReadingTheStructIsCachedOnItsOwn",
+ "file": "865f5b436be777c7f0fc73b901ee3e9c4000f5155e52a8ad9654b7e7c08b5278",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALabelAssignedAfterATryStatement_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_ALabelAssignedToALocalAndHandedOnWhole_When_Compiled_Then_OnlyTheTreeAroundItIsCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_AStructBuiltInPlaceBesideTwoLabelsOnTheParameterAlone_When_Compiled_Then_OnlyTheLabelReadingTheStructIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": "",
+  "before": "if (_internalLocals.Contains(local.Index)) return null;",
+  "column": 12,
+  "line": 106,
+  "operator": "guard removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}

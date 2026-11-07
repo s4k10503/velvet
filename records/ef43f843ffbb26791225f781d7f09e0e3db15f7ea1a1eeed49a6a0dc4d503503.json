@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AStructBuiltInPlaceBesideTwoLabelsOnTheParameterAlone_When_Compiled_Then_OnlyTheLabelReadingTheStructIsCachedOnItsOwn",
+ "file": "865f5b436be777c7f0fc73b901ee3e9c4000f5155e52a8ad9654b7e7c08b5278",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_AStructBuiltInPlaceBesideTwoLabelsOnTheParameterAlone_When_Compiled_Then_OnlyTheLabelReadingTheStructIsCachedOnItsOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42387265711",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 65,
+  "line": 45,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Dependencies.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "verdict": "killed"
+}
