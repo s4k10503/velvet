@@ -37,7 +37,7 @@ namespace Velvet.Editor
         }
 
         private static bool IsImmutable(string path)
-            => PackageInfo.FindForAssetPath(path)?.source is PackageSource.Registry or PackageSource.BuiltIn or PackageSource.Git;
+            => PackageInfo.FindForAssetPath(path)?.source is PackageSource.Registry or PackageSource.BuiltIn or PackageSource.Git or PackageSource.LocalTarball;
 
         private static string? ReadOrNull(string path)
         {

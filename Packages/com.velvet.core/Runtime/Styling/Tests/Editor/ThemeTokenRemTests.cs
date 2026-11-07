@@ -16,7 +16,7 @@ namespace Velvet.Tests
         private const string SheetPath = "Assets/VelvetThemeTokenRem.uss";
 
         private const string SheetText =
-            ".theme-token-host {\n    --breakpoint-sm: 40rem;\n}\n"
+            ".theme-token-host {\n    --breakpoint-sm: 50rem;\n}\n"
             + ":root {\n    --spacing: 0.25rem;\n    --spacing-remtest: 1.5rem;\n    --spacing-calctest: calc(0.5rem + 4px);\n}\n";
 
         public override void TearDown()
@@ -87,7 +87,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABreakpointInRem_When_ItsThresholdIsReadAfterTheStylePass_Then_ItIsTheLengthAtSixteenPixelsToTheRem()
+        public void Given_ABreakpointInRem_When_ItsThresholdIsReadAfterTheStylePass_Then_ItIsTheLengthAtSixteenPixelsToTheRemNotTheDefault()
         {
             // Arrange
             Attach();
@@ -101,7 +101,7 @@ namespace Velvet.Tests
             }
 
             // Assert
-            Assert.That(px, Is.EqualTo(640f));
+            Assert.That(px, Is.EqualTo(800f));
         }
     }
 }

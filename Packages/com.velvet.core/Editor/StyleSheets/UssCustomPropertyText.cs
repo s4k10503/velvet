@@ -208,8 +208,8 @@ namespace Velvet.Editor
             return " !important";
         }
 
-        // Whether the importer would fail or drop value: a unit it does not keep, or a math function. A value that
-        // quotes or escapes is left to the importer, which reads those as written.
+        // Whether the importer would fail or drop value: a unit it does not keep, or a math function. A value holding a
+        // quote or a backslash is left as written, so a unit in it still fails the importer.
         internal static bool NeedsQuoting(string value)
         {
             if (value.IndexOfAny(new[] { '"', '\'', '\\' }) >= 0)

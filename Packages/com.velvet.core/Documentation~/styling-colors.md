@@ -142,7 +142,8 @@ A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--s
 a whole file on a `rem` it meets in a custom property and drops a math function, so `Velvet.Editor` imports such a file
 itself, storing those custom properties as the text they were written with. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
-file; commit that meta file. The selection is not made for a file in a package the Package Manager installs, which
+file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,
+start from their defaults on the file's new importer. The selection is not made for a file in a package the Package Manager installs, which
 cannot be written to.
 
 Each mount reads the sheets attached to its mount target or one of its ancestors, and the sheets they `@import`, at

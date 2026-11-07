@@ -35,6 +35,32 @@ namespace Velvet.Tests
             Assert.That(selected, Is.EqualTo(expected));
         }
 
+        [Test]
+        public void Given_AFileImportedWithATokenInRem_When_TheEditorPostprocessesTheImport_Then_VelvetsImporterIsSelected()
+        {
+            // Arrange
+            RemSheetImport.Import(SheetPath, ":root { --spacing: 4px; }");
+            System.IO.File.WriteAllText(SheetPath, ":root { --spacing: 1rem; }");
+            var postprocess = typeof(UssImporterSelection).GetMethod("OnPostprocessAllAssets", BindingFlags.NonPublic | BindingFlags.Static);
+
+            // Act
+            postprocess?.Invoke(null, new object[] { new[] { SheetPath }, new string[0], new string[0], new string[0] });
+
+            // Assert
+            Assert.That(AssetDatabase.GetImporterOverride(SheetPath), Is.EqualTo(typeof(VelvetStyleSheetImporter)));
+        }
+
+        [Test]
+        public void Given_TheSelectionClass_When_ItIsLookedUpAsAPostprocessor_Then_TheEditorRunsIt()
+        {
+            // Arrange
+            // Act
+            var runs = typeof(AssetPostprocessor).IsAssignableFrom(typeof(UssImporterSelection));
+
+            // Assert
+            Assert.That(runs, Is.True);
+        }
+
         private static System.Collections.Generic.IEnumerable<TestCaseData> StockMembers()
             => typeof(StockStyleSheetImport)
                 .GetFields(BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
