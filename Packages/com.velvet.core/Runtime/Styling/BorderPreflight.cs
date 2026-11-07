@@ -122,7 +122,7 @@ namespace Velvet
         // An element is asked when it attaches, and again on a reparent, whether a rule setting a border width names it.
         private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached = (_, element) =>
         {
-            WatchSheets(element.panel);
+            WatchSheets(element);
             LookForRule(element);
         };
 
@@ -321,62 +321,103 @@ namespace Velvet
         // selects it by a class, its name, its type or every element.
         private const long SheetTickMs = 16;
 
+        // An ancestor of an attached element, and the stylesheets it had when last looked at.
+        private sealed class Ancestor
+        {
+            public readonly WeakReference<VisualElement> Element;
+            public int Fingerprint;
+
+            public Ancestor(VisualElement element, int fingerprint)
+                => (Element, Fingerprint) = (new WeakReference<VisualElement>(element), fingerprint);
+        }
+
         private sealed class SheetWatch
         {
-            public int Fingerprint;
+            public readonly System.Collections.Generic.List<Ancestor> Ancestors = new();
+            public readonly ConditionalWeakTable<VisualElement, Ancestor> Known = new();
             public IVisualElementScheduledItem Item = null!;
         }
 
         private static readonly ConditionalWeakTable<IPanel, SheetWatch> s_sheetWatches = new();
 
-        // One scheduled item per panel compares the stylesheets of the panel's root and of the two levels under it; a
-        // change asks every element of the panel again, once. A stylesheet added deeper is found when an element under
-        // it attaches.
-        private static void WatchSheets(IPanel? panel)
+        // One scheduled item per panel compares the stylesheets of the ancestors of the elements that attached on it, and
+        // asks the elements under an ancestor again once its stylesheets change. It runs only while such an ancestor
+        // is alive on the panel.
+        private static void WatchSheets(VisualElement element)
         {
-            if (panel == null || s_sheetWatches.TryGetValue(panel, out _))
+            var panel = element.panel;
+            if (panel == null)
             {
                 return;
             }
-            var watch = new SheetWatch { Fingerprint = SheetFingerprint(panel.visualTree) };
-            watch.Item = panel.visualTree.schedule.Execute(() => TickSheets(panel, watch)).Every(SheetTickMs);
-            s_sheetWatches.Add(panel, watch);
-        }
-
-        private static int SheetFingerprint(VisualElement root)
-        {
-            var fingerprint = SheetsOf(root, 0);
-            for (var i = 0; i < root.hierarchy.childCount; i++)
+            if (!s_sheetWatches.TryGetValue(panel, out var watch))
             {
-                var child = root.hierarchy[i];
-                fingerprint = unchecked((fingerprint * 31) + SheetsOf(child, i + 1));
-                for (var j = 0; j < child.hierarchy.childCount; j++)
-                {
-                    fingerprint = unchecked((fingerprint * 31) + SheetsOf(child.hierarchy[j], j + 1));
-                }
+                watch = new SheetWatch();
+                var created = watch;
+                created.Item = panel.visualTree.schedule.Execute(() => TickSheets(panel, created)).Every(SheetTickMs);
+                s_sheetWatches.Add(panel, created);
             }
-            return fingerprint;
+            for (var ancestor = element.hierarchy.parent; ancestor != null && !watch.Known.TryGetValue(ancestor, out _);
+                 ancestor = ancestor.hierarchy.parent)
+            {
+                var entry = new Ancestor(ancestor, SheetsOf(ancestor));
+                watch.Known.Add(ancestor, entry);
+                watch.Ancestors.Add(entry);
+            }
+            if (!watch.Item.isActive)
+            {
+                watch.Item.Resume();
+            }
         }
 
-        private static int SheetsOf(VisualElement element, int salt)
+        // The stylesheets an element holds, not counting the one Velvet swaps for the panel's scale.
+        private static int SheetsOf(VisualElement element)
         {
-            var hash = salt;
+            var hash = 0;
             for (var i = 0; i < element.styleSheets.count; i++)
             {
-                hash = unchecked((hash * 31) + element.styleSheets[i].GetHashCode());
+                var sheet = element.styleSheets[i];
+                if (!SnappedBorderSheets.IsSnapped(sheet))
+                {
+                    hash = unchecked((hash * 31) + sheet.GetHashCode());
+                }
             }
             return hash;
         }
 
         private static void TickSheets(IPanel panel, SheetWatch watch)
         {
-            var fingerprint = SheetFingerprint(panel.visualTree);
-            if (fingerprint == watch.Fingerprint)
+            System.Collections.Generic.List<VisualElement>? changed = null;
+            for (var i = watch.Ancestors.Count - 1; i >= 0; i--)
             {
-                return;
+                var entry = watch.Ancestors[i];
+                if (!entry.Element.TryGetTarget(out var element) || element.panel != panel)
+                {
+                    watch.Ancestors.RemoveAt(i);
+                    if (element != null)
+                    {
+                        watch.Known.Remove(element);
+                    }
+                    continue;
+                }
+                var fingerprint = SheetsOf(element);
+                if (fingerprint != entry.Fingerprint)
+                {
+                    entry.Fingerprint = fingerprint;
+                    (changed ??= new()).Add(element);
+                }
             }
-            watch.Fingerprint = fingerprint;
-            AskAgain(panel.visualTree);
+            if (watch.Ancestors.Count == 0)
+            {
+                watch.Item.Pause();
+            }
+            if (changed != null)
+            {
+                foreach (var element in changed)
+                {
+                    AskAgain(element);
+                }
+            }
         }
 
         private static void AskAgain(VisualElement element)
@@ -436,6 +477,9 @@ namespace Velvet
             public readonly System.Collections.Generic.HashSet<string> Types = new();
             public bool Wildcard;
             private int _hash;
+            private int _ownHash;
+            private int _checkedAt;
+            private const int ReHashMs = 250;
 
             private static readonly ConditionalWeakTable<StyleSheet, WidthNames> s_names = new();
             private static readonly WidthNames s_none = new();
@@ -457,12 +501,20 @@ namespace Velvet
                 {
                     return s_none;
                 }
-                var hash = HashOf(sheet);
-                if (s_names.TryGetValue(sheet, out var known) && known._hash == hash)
+                var now = Environment.TickCount;
+                var cached = s_names.TryGetValue(sheet, out var known);
+                // The imports are hashed again only after a while: the sheet's own hash is what a reimport changes first.
+                if (cached && known!._ownHash == sheet.contentHash && unchecked(now - known._checkedAt) < ReHashMs)
                 {
                     return known;
                 }
-                var names = new WidthNames { _hash = hash };
+                var hash = HashOf(sheet);
+                if (cached && known!._hash == hash)
+                {
+                    (known._ownHash, known._checkedAt) = (sheet.contentHash, now);
+                    return known;
+                }
+                var names = new WidthNames { _hash = hash, _ownHash = sheet.contentHash, _checkedAt = now };
                 names.Add(sheet);
                 s_names.Remove(sheet);
                 s_names.Add(sheet, names);

@@ -87,8 +87,8 @@ The functions follow CSS Color 4:
   one by a rule of a stylesheet of your own (not a control theme's) with a width other than zero that selects it by a
   class, its name, its type or `*`, or has a width your code wrote inline. An element is asked whether such a rule names
   it when it attaches and when its classes change, and listens for it from then on, following the rule as pseudo-states
-  and ancestors change. A stylesheet added to the panel's root, or to an element one or two levels under it, is noticed
-  within a frame and every element is asked again; one added deeper is noticed when an element under it attaches. A width
+  and ancestors change. A stylesheet added to an ancestor of an element that has attached is noticed within a frame and
+  the elements under that ancestor are asked again. A width
   your code writes inline is seen on an element that is already listening, and gives no preflight colour to any other.
   The border
   follows the text colour. A rule of a stylesheet that is not a control theme's that sets a side's border colour takes
