@@ -119,6 +119,10 @@ utilities of that namespace (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-5
 `shadow-md`, `font-bold`, `sm:`, `@md:`, `animate-spin`, …) then do nothing, and the tokens the project declares itself
 still generate theirs.
 
+A length in a token's value is written in `px`. A USS file that writes a length in `rem` (Tailwind's own `--breakpoint-3xl: 120rem`,
+`--spacing: 0.25rem`) is rejected by Unity's importer (`Unsupported unit`), and none of the file's tokens apply: convert them
+at 16 px to the rem.
+
 Each mount reads the sheets attached to its mount target or one of its ancestors, and the sheets they `@import`, at
 the start of every render pass of the mount and every tenth of a second. A sheet attached, edited or removed moves
 what the mount's classes resolve to: the elements whose class lists name a theme class are configured again. A reader

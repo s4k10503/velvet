@@ -250,7 +250,7 @@ that simulates a viewport re-points them, [as below](#simulating-a-viewport-velv
 
 ### Theme breakpoints, container sizes and animations
 
-Write the lengths of these variables in `px`. `--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` … `2xl:`. A breakpoint a sheet names
+`--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` … `2xl:`. A breakpoint a sheet names
 (`--breakpoint-3xl: 1920px`) makes `3xl:` and `max-3xl:`; `max-*:` and `min-*:` read any breakpoint (`max-md:`,
 `min-3xl:`) and a written length (`max-[600px]:`, `min-[600px]:`). They rank as Tailwind v4 orders them: every `max-*`
 first, a larger ceiling before a smaller, then one group of floors by threshold (the default breakpoints, the ones a
@@ -263,7 +263,7 @@ default scale names (`--container-md`) moves it. `--animate-wiggle: wiggle 1s ea
 `@keyframes`, and a built-in's name with a loop time (`--animate-spin: spin 2s linear infinite`) sets that loop. A
 declared value that changes, or a sheet attached or removed, is followed by the variants (stacked ones included) within
 a tenth of a second. The sheets read, and how a namespace is set to initial, are in
-[styling-colors.md](styling-colors.md#theme-tokens).
+[styling-colors.md](styling-colors.md#theme-tokens), which also says which units a token's length can use.
 
 ### Relational variants (`group-` / `peer-`)
 
