@@ -198,6 +198,13 @@ namespace Velvet
             }
             if (Generates(scope, core, family, name, slash >= 0, property))
             {
+                // An easing function a sheet declares once is written into the class, as read from the sheet.
+                if (family.Namespace == "ease-" && scope.Counts.TryGetValue(property, out var declared) && declared == 1
+                    && scope.Values.TryGetValue(property, out var easing))
+                {
+                    rewritten = family.Prefix + "[" + easing.Trim().Replace(' ', '_') + "]";
+                    return true;
+                }
                 rewritten = sign + family.Prefix + "[" + hint + "var(" + property + ")]" + (slash < 0 ? string.Empty : rest.Substring(slash));
                 return true;
             }

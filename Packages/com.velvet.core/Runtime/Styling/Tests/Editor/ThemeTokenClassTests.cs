@@ -106,7 +106,7 @@ namespace Velvet.Tests
         [TestCase("text-sizetest/7", "text-[length:var(--text-sizetest)]/7")]
         [TestCase("max-w-widetest", "max-w-[length:var(--container-widetest)]")]
         [TestCase("inset-shadow-glowtest", "inset-shadow-[var(--inset-shadow-glowtest)]")]
-        [TestCase("ease-snappytest", "ease-[var(--ease-snappytest)]")]
+        [TestCase("ease-snappytest", "ease-[ease-out]")]
         public void Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(
             string className, string expected)
         {
@@ -215,7 +215,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AProjectRedeclaringTheVariableOfABundledEaseClass_When_ThatClassIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable()
+        public void Given_AProjectRedeclaringTheVariableOfABundledEaseClass_When_ThatClassIsRead_Then_ItIsTheBracketedUtilityOfTheSheetsValue()
         {
             // Arrange
             Attach(EaseSheet);
@@ -224,7 +224,7 @@ namespace Velvet.Tests
             var normalized = Normalize("ease-in");
 
             // Assert
-            Assert.That(normalized, Is.EqualTo("ease-[var(--ease-in)]"));
+            Assert.That(normalized, Is.EqualTo("ease-[ease-out]"));
         }
 
         [Test]
