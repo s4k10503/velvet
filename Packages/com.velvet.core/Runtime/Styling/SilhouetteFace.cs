@@ -492,6 +492,8 @@ namespace Velvet
         // value.
         private readonly bool[] _sideKept = new bool[4];
         private readonly bool[] _sideInline = new bool[4];
+        // The sides whose kept colour is preflight's, which the rules the face reads do not give.
+        private readonly bool[] _sidePreflight = new bool[4];
 
         // A slot's colour carried to what the rules give it, else to captured where they cannot be read; captured
         // alone while this suppresses no element.
@@ -552,14 +554,28 @@ namespace Velvet
         }
 
         // Preflight's colour for side (0 to 3, top to left) moved. It is shown through the element's inline rule, under
-        // the sentinel that stands in the slot, so a face that took the side from the rules takes the new colour here
-        // and carries to it as it carries a colour its rules give.
+        // the sentinel that stands in the slot and out of reach of the rules the face reads, so the face keeps it as
+        // its own colour for the side.
         internal static void NotePreflight(VisualElement element, int side, Color colour)
         {
             if (s_owners.TryGetValue(element, out var stash) && stash.SuppressionApplied && stash.HasStash
-                && !stash._sideKept[(int)s_slotSides[side]] && !SilhouetteFace.Same(stash.BorderColors[(int)s_slotSides[side]], colour))
+                && !stash._sideInline[(int)s_slotSides[side]]
+                && !(stash._sideKept[(int)s_slotSides[side]] && SilhouetteFace.Same(stash.BorderColors[(int)s_slotSides[side]], colour)))
             {
                 stash.BorderColors[(int)s_slotSides[side]] = colour;
+                stash._sideKept[(int)s_slotSides[side]] = true;
+                stash._sidePreflight[(int)s_slotSides[side]] = true;
+                element.MarkDirtyRepaint();
+            }
+        }
+
+        // Preflight let go of side, which the rules the face reads colour again.
+        internal static void NoteLetGo(VisualElement element, int side)
+        {
+            if (s_owners.TryGetValue(element, out var stash) && stash._sidePreflight[(int)s_slotSides[side]])
+            {
+                stash._sidePreflight[(int)s_slotSides[side]] = false;
+                stash._sideKept[(int)s_slotSides[side]] = false;
                 stash._rulesHash = null;
                 element.MarkDirtyRepaint();
             }
@@ -686,7 +702,15 @@ namespace Velvet
                     CaptureFace(inlineStyle, SilhouetteFace.ResolvedBorderColor(element.resolvedStyle, side),
                         ref BorderColors[(int)side], ref fromInline);
                 }
-                _sideKept[(int)side] = fromInline || underDash;
+                // Preflight's colour is shown under the sentinel, where the rules the face reads do not hold it.
+                var shown = default(Color);
+                var preflight = !fromInline && BorderPreflight.TryShown(element, System.Array.IndexOf(s_slotSides, side), out shown);
+                if (preflight)
+                {
+                    BorderColors[(int)side] = shown;
+                }
+                _sidePreflight[(int)side] = preflight;
+                _sideKept[(int)side] = fromInline || underDash || preflight;
                 _sideInline[(int)side] = fromInline;
                 anyInline |= fromInline;
             }
@@ -816,6 +840,7 @@ namespace Velvet
             source.BorderColors.CopyTo(BorderColors, 0);
             source._sideKept.CopyTo(_sideKept, 0);
             source._sideInline.CopyTo(_sideInline, 0);
+            source._sidePreflight.CopyTo(_sidePreflight, 0);
             BorderFromInline = source.BorderFromInline;
             HasStash = true;
         }

@@ -3124,13 +3124,17 @@ namespace Velvet
                 RewriteDriven(element, map, StyleLonghandSet.Of(HeldSlotGroups.LonghandOf(slot)));
                 return;
             }
-            if (TryLayeredWinner(map, slot, out var winner))
+            var found = TryLayeredWinner(map, slot, out var winner, out var rank);
+            if (found && rank != StyleLayerPriority.Preflight)
             {
                 WriteLayered(element, slot, winner);
+                return;
             }
-            else
+            StyleHeldSlots.WriteNull(element.style, slot);
+            // Preflight's colour is shown through the inline rule, which the null above has reverted.
+            if (found)
             {
-                StyleHeldSlots.WriteNull(element.style, slot);
+                BorderPreflight.Place(element, winner);
             }
         }
 

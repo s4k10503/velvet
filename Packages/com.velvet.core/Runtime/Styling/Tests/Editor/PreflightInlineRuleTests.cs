@@ -25,6 +25,12 @@ namespace Velvet.Tests
             _rule = PreflightInlineRule.Attach(_label);
         }
 
+        public override void TearDown()
+        {
+            _rule.Release(_label);
+            base.TearDown();
+        }
+
         [Test]
         public void Given_AShownSide_When_TheElementIsRestyledByAClass_Then_TheSideStaysShown()
         {
@@ -60,6 +66,7 @@ namespace Velvet.Tests
 
             // Act
             _label.style.borderTopColor = new StyleColor(Color.green);
+            _label.AddToClassList("text-red-500");
             ForcePanelUpdate(_label.panel);
 
             // Assert
@@ -101,6 +108,7 @@ namespace Velvet.Tests
 
             // Act
             _rule.Hide(_label, 0);
+            _label.AddToClassList("text-red-500");
             ForcePanelUpdate(_label.panel);
 
             // Assert

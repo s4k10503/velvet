@@ -324,6 +324,14 @@ namespace Velvet
             }
         }
 
+        // The colour the layers show on side (0 to 3, top to left), where no inline value stands over it.
+        internal static bool TryShown(VisualElement element, int side, out Color colour)
+        {
+            colour = default;
+            return s_states.TryGetValue(element, out var state) && state.Rule != null && state.Rule.TryColour(side, out colour)
+                && InlineColor(element, side).keyword == StyleKeyword.Null;
+        }
+
         // Whether the computed style of element has lost a colour its layers show.
         internal static bool Lost(VisualElement element)
             => s_states.TryGetValue(element, out var state) && state.Rule != null && state.Rule.Lost(element);
@@ -741,6 +749,7 @@ namespace Velvet
             StyleArbitraryValueResolver.Withdraw(element, s_sideProperties[i], StyleLayerPriority.Preflight);
             state.Held &= ~(Sides)(1 << i);
             state.Rule?.Hide(element, i);
+            SilhouetteFaceStash.NoteLetGo(element, i);
         }
 
         private static void SyncSide(VisualElement element, State state, int index)

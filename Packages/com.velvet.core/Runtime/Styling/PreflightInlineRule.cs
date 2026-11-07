@@ -67,6 +67,8 @@ namespace Velvet
         private int _shown;
         // Whether the element's inline rule is this one, which a restyle applies again.
         private bool _kept;
+        // Whether an element holds this rule, so that letting go of it twice does not put it in the spare stack twice.
+        private bool _live;
 
         private PreflightInlineRule(UnityEngine.Object sheet, object rule, Array all, Color[] colors)
             => (_sheet, _rule, _all, _colors) = (sheet, rule, all, colors);
@@ -82,7 +84,7 @@ namespace Velvet
             }
             var foreign = s_accessor!.GetValue(element) is { } accessor
                 && s_inlineRuleSheet!.GetValue(s_inlineRule!.GetValue(accessor)) is UnityEngine.Object held
-                && held.name != SheetName;
+                && held != null && held.name != SheetName;
             PreflightInlineRule? rule = null;
             while (rule == null && s_spare.Count > 0)
             {
@@ -91,6 +93,7 @@ namespace Velvet
             }
             rule ??= Build();
             rule._kept = !foreign;
+            rule._live = true;
             if (rule._kept)
             {
                 s_setInlineRule!.Invoke(element, new[] { rule._sheet, rule._rule });
@@ -148,6 +151,13 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
+        // The colour shown on side, for a side in the rule.
+        internal bool TryColour(int side, out Color colour)
+        {
+            colour = _colors[side];
+            return Shows(side);
+        }
+
         // Applies again every colour the computed style has lost, after a restyle that does not apply this rule.
         internal void Reassert(VisualElement element)
         {
@@ -193,6 +203,11 @@ namespace Velvet
         // Lets go of the element's inline rule and keeps this one for the next element.
         internal void Release(VisualElement element)
         {
+            if (!_live)
+            {
+                return;
+            }
+            _live = false;
             for (var side = 0; side < s_properties.Length; side++)
             {
                 Hide(element, side);
