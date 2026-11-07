@@ -3737,6 +3737,22 @@ namespace Velvet
             }
         }
 
+        // The properties written as a transition list rather than through the setter tables.
+        private static bool TryApplyTransitionTiming(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            switch (property)
+            {
+                case ArbitraryProperty.TransitionDuration:
+                    ApplyTransitionDuration(element, map);
+                    return true;
+                case ArbitraryProperty.TransitionTimingFunction:
+                    ApplyTransitionTimingFunction(element, map);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static void ResolveAndApplyCore(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
             if (!IsFilter(property) && property != ArbitraryProperty.FilterCustom
@@ -3765,14 +3781,8 @@ namespace Velvet
                 ApplyCombinedFilter(element, map);
                 return;
             }
-            if (property == ArbitraryProperty.TransitionDuration)
+            if (TryApplyTransitionTiming(element, property, map))
             {
-                ApplyTransitionDuration(element, map);
-                return;
-            }
-            if (property == ArbitraryProperty.TransitionTimingFunction)
-            {
-                ApplyTransitionTimingFunction(element, map);
                 return;
             }
             if (!TryWinningLayer(map, property, out var winner))
