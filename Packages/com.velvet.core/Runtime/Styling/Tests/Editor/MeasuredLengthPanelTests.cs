@@ -71,6 +71,7 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the watch held one reference per element before; the case now discounts the root the snapped sheet follows.
         [Test]
         public void Given_AnElementTrackedAndReleasedRepeatedly_When_TrackedOnceMore_Then_ThePanelWatchHoldsOneReference()
         {

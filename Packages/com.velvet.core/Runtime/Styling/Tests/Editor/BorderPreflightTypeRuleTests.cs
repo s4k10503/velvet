@@ -15,7 +15,11 @@ namespace Velvet.Tests
         {
             var root = _window.rootVisualElement;
             VelvetStyleUtilities.AttachTo(root);
-            root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet));
+            var rules = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(RuleSheet);
+            if (rules != null)
+            {
+                root.styleSheets.Add(rules);
+            }
         }
 
         [Test]

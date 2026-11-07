@@ -25,6 +25,7 @@ namespace Velvet.Tests
                 "Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember("
                 + $"{member.TypeName.Split('.').Last()}.{member.Name.Split('.').Last()})"));
 
+        // GREEN_ON_BASE(characterization): reads every declared member, the new constructor kind among them; the base declares none of those, so every member it does declare is kept there too.
         [TestCaseSource(nameof(Members))]
         public void Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(EngineMember member)
         {
@@ -38,6 +39,7 @@ namespace Velvet.Tests
             Assert.That(keeps, Is.True, $"the link.xml does not keep {member}:\n{EngineMemberLinkerKeep.LinkXml(EngineMember.Declared())}");
         }
 
+        // GREEN_ON_BASE(characterization): the file the build hands the linker equals the keep derived from the declared members; that held before the constructor kind.
         [Test]
         public void Given_ABuild_When_TheLinkerAsksForAdditionalLinkXml_Then_TheFileItGetsHoldsTheKeep()
         {
@@ -53,6 +55,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, EngineMemberLinkerKeep.LinkXml(EngineMember.Declared()).ToString())));
         }
 
+        // GREEN_ON_BASE(characterization): pins how a method member is kept, which this change leaves as it was.
         [Test]
         public void Given_ADeclaredMethod_When_TheLinkXmlIsRead_Then_ItKeepsThatMethod()
         {

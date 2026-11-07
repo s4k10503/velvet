@@ -194,6 +194,7 @@ namespace Velvet.Tests
             Assert.That(box.width == 60f && CountRed(LeftBand(box)) > 0, Is.True, $"box={box}");
         }
 
+        // GREEN_ON_BASE(characterization): the control for the band case above; the base draws no border either, so its interior is no more filled.
         [UnityTest]
         public IEnumerator Given_ABorderWidthAndATextColour_When_Rendered_Then_TheInteriorIsNotInTheTextColour()
         {
@@ -208,6 +209,7 @@ namespace Velvet.Tests
             Assert.That(box.width == 60f ? CountRed(interior) : -1, Is.Zero, $"box={box}");
         }
 
+        // GREEN_ON_BASE(characterization): the control for the band case above; an element without a width drew no band before and still draws none.
         [UnityTest]
         public IEnumerator Given_ATextColourWithoutABorderWidth_When_Rendered_Then_NoBandIsDrawn()
         {
