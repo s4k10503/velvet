@@ -904,6 +904,9 @@ namespace Velvet
             }
             state.Landed = true;
             state.Held |= side;
+            // A face that took the slot's colour before the layer was shown, or whose sentinel a colour of another layer
+            // written over while the layer was applied, takes the colour the slot holds now.
+            SilhouetteFaceStash.Retake(element);
         }
 
         private static StyleColor InlineColor(VisualElement element, int index) => index switch

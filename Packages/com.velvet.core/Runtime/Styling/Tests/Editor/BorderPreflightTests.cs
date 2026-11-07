@@ -399,11 +399,15 @@ namespace Velvet.Tests
             // Arrange
             var expected = TextColourOf("text-red-500");
             var tag = MountLabel("border text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
             tag.style.borderTopColor = new StyleColor(Color.magenta);
             Settled("tag");
 
             // Act
             tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            now += 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
             Settled("tag");
 
             // Assert
