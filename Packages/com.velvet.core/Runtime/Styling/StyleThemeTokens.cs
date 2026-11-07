@@ -526,6 +526,7 @@ namespace Velvet
             if (!wildcard && !name.StartsWith("--breakpoint-", StringComparison.Ordinal)
                 && !name.StartsWith("--container-", StringComparison.Ordinal)
                 && !name.StartsWith("--animate-", StringComparison.Ordinal)
+                && !name.StartsWith("--ease-", StringComparison.Ordinal)
                 && name != "--spacing" && !name.StartsWith("--spacing-", StringComparison.Ordinal)
                 && !(name.StartsWith("--text-", StringComparison.Ordinal) && name.EndsWith("--line-height", StringComparison.Ordinal)))
             {

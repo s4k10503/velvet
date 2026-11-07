@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -13,6 +14,7 @@ namespace Velvet.Tests
     internal sealed class ThemeTokenClassTests : PanelTestBase
     {
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
+        private const string EaseSheetPath = "Assets/VelvetThemeTokenEaseIn.uss";
         private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
         private const string ScopedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenScopedSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
@@ -105,6 +107,7 @@ namespace Velvet.Tests
         [TestCase("text-sizetest/7", "text-[length:var(--text-sizetest)]/7")]
         [TestCase("max-w-widetest", "max-w-[length:var(--container-widetest)]")]
         [TestCase("inset-shadow-glowtest", "inset-shadow-[var(--inset-shadow-glowtest)]")]
+        [TestCase("ease-snappytest", "ease-[ease-out]")]
         public void Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(
             string className, string expected)
         {
@@ -210,6 +213,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { Rgb(leaf.style.borderBottomColor), ColorUtility.ToHtmlStringRGB(leaf.resolvedStyle.borderTopColor) },
                 Is.EqualTo(new[] { "155DFC", "CAD5E2" }));
+        }
+
+        [Test]
+        public void Given_AProjectRedeclaringTheVariableOfABundledEaseClass_When_ThatClassIsRead_Then_ItIsTheBracketedUtilityOfTheSheetsValue()
+        {
+            // Arrange
+            var sheet = RemSheetImport.Import(EaseSheetPath, ".theme-token-host {\n    --ease-in: ease-out;\n}\n");
+            _window.rootVisualElement.styleSheets.Add(sheet);
+
+            // Act
+            var normalized = Normalize("ease-in");
+            AssetDatabase.DeleteAsset(EaseSheetPath);
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo("ease-[ease-out]"));
+        }
+
+        // GREEN_ON_BASE(characterization): without a project token the base reads `ease-in` as no theme class either; this
+        // keeps the new `ease-` family from generating a rewrite for the bundled class unprompted.
+        [Test]
+        public void Given_NoProjectTokenForABundledEaseClass_When_ThatClassIsRead_Then_ItStaysTheBundledClass()
+        {
+            // Arrange
+            AttachSheets(true);
+
+            // Act
+            var normalized = Normalize("ease-in");
+
+            // Assert
+            Assert.That(normalized, Is.Null);
         }
 
         [Test]

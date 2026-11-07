@@ -146,7 +146,8 @@ time, so Velvet's tween runs the change on the mount's clock
 ([motion.md](motion.md#clocks-holding-motion-with-game-time)).
 Anywhere else Velvet's tween runs the change, and a filter write the setter would animate — a tween frame or an
 instant write — is made with transitions suspended, so a list naming `background-size` never animates a filter
-utility's change on its behalf. The tween eases by the same curve a USS transition takes for each `ease-*` value,
+utility's change on its behalf. The tween eases by the curve a transition takes for each `ease-*` value (a cubic-bezier included, as
+[styling-colors.md](styling-colors.md#theme-tokens) describes),
 and a change back to where a running tween started reverses it over the shortened duration and negative delay
 the engine gives a reversed transition.
 

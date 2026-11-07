@@ -129,8 +129,17 @@ The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner a
 (`text-display`, its `--text-display--line-height`, written as a number (a multiple of the font size) or a length, and `text-display/7` with a line height), `--font-*`, `--font-weight-*`, `--tracking-*`, `--leading-*`,
 `--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`, `--blur-*`, `--aspect-*`, `--spacing-*` and `--spacing`
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and `--breakpoint-*`,
-`--container-*` and `--animate-*` ([styling-variants.md](styling-variants.md#theme-breakpoints-container-sizes-and-animations)). `--ease-*` is not read: the native `ease-in`, `ease-out`, `ease-in-out` and `ease-linear` class transitions are UI Toolkit's
-`EasingFunction`, which takes an `EasingMode` keyword and no cubic-bezier. A
+`--container-*` and `--animate-*` ([styling-variants.md](styling-variants.md#theme-breakpoints-container-sizes-and-animations)). `--ease-*` makes `ease-<name>` (`--ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1)` makes `ease-snappy`). The value is a
+`cubic-bezier()` with both x coordinates in 0 to 1, `steps()` (with `jump-start`, `jump-end`, `jump-none` or
+`jump-both`, or `start` or `end`; `step-start` and `step-end` too), or one of CSS's easing keywords, and
+`ease-[cubic-bezier(…)]` and `ease-[steps(…)]` take it in place. `ease-in`, `ease-out` and `ease-in-out`, behind a
+variant or not, run along Tailwind v4's curves (`cubic-bezier(0.4, 0, 1, 1)`, `(0, 0, 0.2, 1)` and `(0.4, 0, 0.2, 1)`),
+as does the `ease-in-out` every `transition-*` utility bundles (`--default-transition-timing-function`); a project's
+`--ease-in`, `--ease-out` or `--ease-in-out` replaces its curve. UI Toolkit's `transition-timing-function` takes an
+`EasingMode` keyword and no cubic-bezier, so the element carries the keyword nearest the function, and Velvet has the
+transition the engine runs ease along the function once the engine reports it running. The engine keeps the duration,
+delay and reversal, per property, a transition running keeps the function it started on, and `transition-filter`'s tween
+eases by the same function. A timing function written inline, as a Motion's is, is the keyword it names. A
 name is a token of its namespace only where a sheet declares it.
 
 A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled
@@ -140,7 +149,7 @@ still generate theirs.
 
 A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--spacing: 0.25rem`,
 `--breakpoint-3xl: 120rem`), and `calc()`, `min()`, `max()` and `clamp()` are evaluated. UI Toolkit's own importer fails
-a whole file on a `rem` it meets in a custom property and drops a math function, so `Velvet.Editor` imports such a file
+a whole file on a `rem` it meets in a custom property and drops a math function, `cubic-bezier()` or `steps()`, so `Velvet.Editor` imports such a file
 itself, storing those custom properties as the text they were written with. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
 file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,

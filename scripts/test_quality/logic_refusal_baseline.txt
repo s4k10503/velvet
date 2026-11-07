@@ -67,7 +67,7 @@ Packages/com.velvet.core/Runtime/Styling/PanelScaleWatch.cs	3
 Packages/com.velvet.core/Runtime/Styling/PreflightInlineRule.cs	4
 Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs	2
 Packages/com.velvet.core/Runtime/Styling/RingOverlay.cs	4
-Packages/com.velvet.core/Runtime/Styling/RunningStyleTransition.cs	2
+Packages/com.velvet.core/Runtime/Styling/RunningStyleTransition.cs	4
 Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleAnimateDriver.cs	1
@@ -86,6 +86,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.Substitution.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleCustomProperties.cs	17
 Packages/com.velvet.core/Runtime/Styling/StyleCustomPropertyClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleDivideManipulator.cs	2
+Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs	5
 Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleFilterValueParser.cs	4
@@ -109,7 +110,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleStackedVariantManipulator.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleTextEffectResolver.cs	4
-Packages/com.velvet.core/Runtime/Styling/StyleThemeClass.cs	6
+Packages/com.velvet.core/Runtime/Styling/StyleThemeClass.cs	8
 Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs	7
 Packages/com.velvet.core/Runtime/Styling/StyleTransformValueParser.cs	6
 Packages/com.velvet.core/Runtime/Styling/StyleUtilityProperties.g.cs	3

@@ -33,6 +33,7 @@ namespace Velvet
             ["outline-color"] = "outline-[color:",
             ["letter-spacing"] = "tracking-", ["opacity"] = "opacity-", ["rotate"] = "rotate-",
             ["aspect-ratio"] = "aspect-", ["transition-duration"] = "duration-",
+            ["transition-timing-function"] = "ease-",
         };
 
         // The shorthand utilities whose bracket may hold one value per side, with the utilities of those sides in

@@ -822,12 +822,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionFilterOnTheBundledEaseInOut_When_TheTweenIsSteppedToItsMidpoint_Then_ItIsWhereTailwindsDefaultCurveStandsThere()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter duration-300");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            var expected = 12f * StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.5f);
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        [Test]
         public void Given_RunningTweenAtMidFrame_When_DetachedWhileMounted_Then_SettlesToTarget()
         {
             // Arrange — a tween running to blur-12, advanced to a mid-frame so the inline value is neither end.
             var element = MountResolved("transition-filter");
             var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
             ApplyBlur(element, 12f);
+            // The curve is not under test here: a linear one puts the half-way frame at half the target.
+            binding.Easing = EasingMode.Linear;
+            binding.Curve = null;
             StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
             Assume.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(6f),
                 "Precondition: the tween is mid-flight at half the target");
@@ -1180,6 +1199,10 @@ namespace Velvet.Tests
             var element = MountResolved("transition-filter duration-300");
             var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
             ApplyBlur(element, 12f);
+            // The curve is not under test here: a linear one puts the half-way frame at half the target, and the tick's
+            // frame 150 ms on at the same place.
+            binding.Easing = EasingMode.Linear;
+            binding.Curve = null;
             StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
             Assume.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(6f),
                 "Precondition: the tween wrote its own midpoint");

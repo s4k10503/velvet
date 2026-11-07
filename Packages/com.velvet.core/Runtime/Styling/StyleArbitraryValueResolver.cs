@@ -289,6 +289,18 @@ namespace Velvet
         {
             result = default;
 
+            // ease-[<easing function>] (transition-timing-function) is a curve, not a length.
+            if (!negate && prefix == "ease-")
+            {
+                if (StyleEaseCurve.TryParse(valueSpan, out var function))
+                {
+                    var (v1, v2, v3, v4) = function.ToLayer();
+                    result = new ArbitraryStyle(ArbitraryProperty.TransitionTimingFunction, v1, v2, v3, v4);
+                    return true;
+                }
+                return false;
+            }
+
             // duration-[<time>] (transition-duration) carries a TIME value, not a length, so it is parsed here
             // before the generic length path and applied out-of-band (a StyleList<TimeValue>, like the filter list).
             if (!negate && prefix == "duration-")
@@ -3730,6 +3742,22 @@ namespace Velvet
             }
         }
 
+        // The properties written as a transition list rather than through the setter tables.
+        private static bool TryApplyTransitionTiming(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            switch (property)
+            {
+                case ArbitraryProperty.TransitionDuration:
+                    ApplyTransitionDuration(element, map);
+                    return true;
+                case ArbitraryProperty.TransitionTimingFunction:
+                    ApplyTransitionTimingFunction(element, map);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static void ResolveAndApplyCore(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
             if (!IsFilter(property) && property != ArbitraryProperty.FilterCustom
@@ -3758,9 +3786,8 @@ namespace Velvet
                 ApplyCombinedFilter(element, map);
                 return;
             }
-            if (property == ArbitraryProperty.TransitionDuration)
+            if (TryApplyTransitionTiming(element, property, map))
             {
-                ApplyTransitionDuration(element, map);
                 return;
             }
             if (!TryWinningLayer(map, property, out var winner))
@@ -4241,6 +4268,31 @@ namespace Velvet
             {
                 box.style.transitionDuration = duration;
             }
+        }
+
+        // transition-timing-function is a StyleList<EasingFunction>, which names a keyword and not a curve: the winning
+        // ease-[..] layer leaves the keyword nearest its curve and hands the curve itself to StyleEaseCurve, which has
+        // the engine ease the transition along it. No winning layer clears both.
+        private static void ApplyTransitionTimingFunction(VisualElement element, LayerMap map)
+        {
+            StyleList<EasingFunction> timing = StyleKeyword.Null;
+            EaseFunction? curve = null;
+            var mode = EasingMode.Ease;
+            if (TryWinningLayer(map, ArbitraryProperty.TransitionTimingFunction, out var winner))
+            {
+                if (winner.Keyword == StyleKeyword.Undefined)
+                {
+                    curve = EaseFunction.FromLayer(winner.Value, winner.Value2, winner.Value3, winner.Value4);
+                    mode = StyleEaseCurve.NearestMode(curve.Value);
+                    timing = new List<EasingFunction> { new EasingFunction(mode) };
+                }
+                else
+                {
+                    timing = new StyleList<EasingFunction>(winner.Keyword);
+                }
+            }
+            element.style.transitionTimingFunction = timing;
+            StyleEaseCurve.SetLayer(element, curve, mode);
         }
 
         private static bool IsFilter(ArbitraryProperty p) => s_filterSet.Contains(p);
@@ -5012,6 +5064,10 @@ namespace Velvet
                 case ArbitraryProperty.TransitionDuration:
                     element.style.transitionDuration = StyleKeyword.Null;
                     return true;
+                case ArbitraryProperty.TransitionTimingFunction:
+                    element.style.transitionTimingFunction = StyleKeyword.Null;
+                    StyleEaseCurve.SetLayer(element, null, EasingMode.Ease);
+                    return true;
                 case ArbitraryProperty.BackgroundRepeat:
                     StyleAnimateDriver.WriteBackgroundRepeat(element, StyleKeyword.Null);
                     // MUTANT_SURVIVES(equivalent): background repeat has no entry in the fallback setter tables ClearInline reads.
@@ -5114,6 +5170,7 @@ namespace Velvet
         internal static bool WritesKeyword(ArbitraryProperty property)
             => property is ArbitraryProperty.Opacity or ArbitraryProperty.Rotate or ArbitraryProperty.TransformOrigin
                     or ArbitraryProperty.AspectRatio or ArbitraryProperty.TransitionDuration
+                    or ArbitraryProperty.TransitionTimingFunction
                     or ArbitraryProperty.TranslateX or ArbitraryProperty.TranslateY or ArbitraryProperty.Translate
                     or ArbitraryProperty.Scale or ArbitraryProperty.ScaleX or ArbitraryProperty.ScaleY
                     or ArbitraryProperty.Flex

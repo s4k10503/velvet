@@ -63,6 +63,7 @@ namespace Velvet
             list.Add(new Family("inset-shadow-", "inset-shadow-", null));
             list.Add(new Family("drop-shadow-", "drop-shadow-", null));
             list.Add(new Family("aspect-", "aspect-", null));
+            list.Add(new Family("ease-", "ease-", null));
             foreach (var prefix in new[]
             {
                 "rounded-tl-", "rounded-tr-", "rounded-br-", "rounded-bl-", "rounded-ss-", "rounded-se-", "rounded-ee-",
@@ -131,6 +132,7 @@ namespace Velvet
             ["tracking-"] = new(StringComparer.Ordinal) { "tighter", "tight", "normal", "wide", "wider", "widest" },
             ["leading-"] = new(StringComparer.Ordinal) { "none", "tight", "snug", "normal", "relaxed", "loose" },
             ["aspect-"] = new(StringComparer.Ordinal) { "square", "video", "auto" },
+            ["ease-"] = new(StringComparer.Ordinal) { "in", "out", "in-out" },
             ["container-"] = new(StringComparer.Ordinal)
                 { "3xs", "2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "7xl" },
             ["animate-"] = new(StringComparer.Ordinal) { "spin", "ping", "pulse", "bounce", "none" },
@@ -196,6 +198,13 @@ namespace Velvet
             }
             if (Generates(scope, core, family, name, slash >= 0, property))
             {
+                // An easing function a sheet declares once is written into the class, as read from the sheet.
+                if (family.Namespace == "ease-" && scope.Counts.TryGetValue(property, out var declared) && declared == 1
+                    && scope.Values.TryGetValue(property, out var easing))
+                {
+                    rewritten = family.Prefix + "[" + easing.Trim().Replace(' ', '_') + "]";
+                    return true;
+                }
                 rewritten = sign + family.Prefix + "[" + hint + "var(" + property + ")]" + (slash < 0 ? string.Empty : rest.Substring(slash));
                 return true;
             }
@@ -210,7 +219,8 @@ namespace Velvet
         {
             if (scope.Project.Contains(property))
             {
-                return modified || family.Namespace == "spacing-" || !StyleUtilityProperties.TryGet(core, out _);
+                return modified || family.Namespace == "spacing-" || family.Namespace == "ease-"
+                    || !StyleUtilityProperties.TryGet(core, out _);
             }
             if (family.Namespace != "color-" || !scope.Bundled.Contains(property))
             {

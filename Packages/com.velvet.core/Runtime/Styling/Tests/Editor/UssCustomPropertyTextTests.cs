@@ -14,6 +14,8 @@ namespace Velvet.Tests
         [TestCase(":root { --radius-card: calc(var(--spacing) * 4); }", ":root { --radius-card: \"calc(var(--spacing) * 4)\"; }")]
         [TestCase(":root { --w: clamp(1rem, 5vw, 2rem); }", ":root { --w: \"clamp(1rem, 5vw, 2rem)\"; }")]
         [TestCase(":root { --spacing: -0.5rem !important; }", ":root { --spacing: \"-0.5rem\" !important; }")]
+        [TestCase(":root { --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1); }", ":root { --ease-snappy: \"cubic-bezier(0.2, 0.8, 0.2, 1)\"; }")]
+        [TestCase(":root { --ease-steps: steps(4, jump-end); }", ":root { --ease-steps: \"steps(4, jump-end)\"; }")]
         [TestCase(":root{--a:1rem;--b:2rem}", ":root{--a: \"1rem\";--b: \"2rem\"}")]
         public void Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(
             string uss, string expected)
@@ -26,8 +28,11 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base's rewrite already leaves every one of these as it found it; the
+        // easing keyword and the step-like name added here are the values the new cubic-bezier() and steps() match must not take.
         [TestCase(":root { --spacing: 4px; }")]
         [TestCase(":root { --a: 50%; --b: 200ms; --c: 1e3px; --d: 90deg; }")]
+        [TestCase(":root { --ease-out: ease-out; --ease-lin: linear; --mysteps: 3px; }")]
         [TestCase(":root { --color-brand: #ff0066; --animate-x: kf 2s linear infinite; }")]
         [TestCase(":root { --spacing-2: var(--spacing-1); --font: \"Inter\"; }")]
         [TestCase(".a { width: 1rem; }")]

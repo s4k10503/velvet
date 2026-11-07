@@ -365,6 +365,9 @@ namespace Velvet
 
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
+        // ease-[cubic-bezier(.2,.8,.2,1)] -> transition-timing-function; Value, Value2, Value3 and Value4 carry the
+        // curve's x1, y1, x2 and y2.
+        TransitionTimingFunction,
 
         #region Nine-slice (the background image's slice insets and their scale)
         // The insets are written as StyleInt, so their values are whole numbers.
