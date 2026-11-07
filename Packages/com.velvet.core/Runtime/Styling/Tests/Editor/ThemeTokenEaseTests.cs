@@ -30,15 +30,15 @@ namespace Velvet.Tests
             }
         }
 
-        [Test]
-        public void Given_AnEaseTokenDeclaredAsCubicBezier_When_AWidthTransitionOfItsClassRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere()
+        // The fraction of its way a width has covered a quarter of a second into a second-long transition, on a leaf
+        // of the class given inside a host of the classes given, under the sheet text given.
+        private float QuarterSecond(string sheetText, string hostClasses, string leafClass)
         {
-            // Arrange
-            var sheet = RemSheetImport.Import(SheetPath, ".theme-token-host {\n    --ease-snappytest: cubic-bezier(0.9, 0, 0.1, 1);\n}\n");
+            var sheet = RemSheetImport.Import(SheetPath, sheetText);
             _window.rootVisualElement.styleSheets.Add(sheet);
-            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "theme-token-host", children: new VNode?[]
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: hostClasses, children: new VNode?[]
             {
-                V.Div(name: "leaf", className: "ease-snappytest"),
+                V.Div(name: "leaf", className: leafClass),
             }));
             var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
             var now = 100.0;
@@ -46,19 +46,61 @@ namespace Velvet.Tests
             leaf.style.transitionProperty = new List<StylePropertyName> { new("width") };
             leaf.style.transitionDuration = new List<TimeValue> { new(1f) };
             leaf.style.width = 0f;
+            // The custom-property pass resolves a token on the element's own style pass, so the layer it writes stands
+            // from the second pass on.
             ForcePanelUpdate(leaf.panel);
-            var expected = StyleEaseCurve.Evaluate(s_curve, 0.25f);
-
-            // Act
+            ForcePanelUpdate(leaf.panel);
             leaf.style.width = 100f;
             ForcePanelUpdate(leaf.panel);
             EditorPanelTestHelpers.DriveAnimationsOnce(leaf.panel);
             now += 0.25;
             EditorPanelTestHelpers.DriveAnimationsOnce(leaf.panel);
             ForcePanelUpdate(leaf.panel);
+            return leaf.resolvedStyle.width / 100f;
+        }
+
+        [Test]
+        public void Given_AnEaseClassNamingACubicBezier_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere()
+        {
+            // Arrange
+            var expected = StyleEaseCurve.Evaluate(s_curve, 0.25f);
+
+            // Act
+            var fraction = QuarterSecond(".unused { width: 1px; }", "theme-token-host", "ease-[cubic-bezier(0.9,0,0.1,1)]");
 
             // Assert
-            Assert.That(leaf.resolvedStyle.width / 100f, Is.EqualTo(expected).Within(0.02f));
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnEaseTokenDeclaredOnceAsCubicBezier_When_AWidthTransitionOfItsClassRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere()
+        {
+            // Arrange
+            var expected = StyleEaseCurve.Evaluate(s_curve, 0.25f);
+
+            // Act
+            var fraction = QuarterSecond(".theme-token-host {\n    --ease-snappytest: cubic-bezier(0.9, 0, 0.1, 1);\n}\n",
+                "theme-token-host", "ease-snappytest");
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnEaseTokenDeclaredDifferentlyUnderAThemeClass_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTheThemeClassCurveStandsThere()
+        {
+            // Arrange
+            var themed = new BezierCurve(0.1f, 0.9f, 0.2f, 1f);
+            var expected = StyleEaseCurve.Evaluate(themed, 0.25f);
+
+            // Act
+            var fraction = QuarterSecond(
+                ".theme-token-host {\n    --ease-snappytest: cubic-bezier(0.9, 0, 0.1, 1);\n}\n"
+                + ".theme-token-host.theme-token-alt {\n    --ease-snappytest: cubic-bezier(0.1, 0.9, 0.2, 1);\n}\n",
+                "theme-token-host theme-token-alt", "ease-snappytest");
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
         }
     }
 }
