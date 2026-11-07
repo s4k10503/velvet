@@ -346,6 +346,7 @@ namespace Velvet
         private static Color OwnColor(VisualElement element, ColorSlot color, int slot)
         {
             if (color.Own.keyword == StyleKeyword.Undefined) return color.Own.value;
+            if (slot > 0 && BorderPreflight.TryShown(element, slot - 1, out var preflight)) return preflight;
             if (StyleCascade.FaceColor(element, slot) is { } cascaded) return cascaded;
             return color.Carry.Target;
         }

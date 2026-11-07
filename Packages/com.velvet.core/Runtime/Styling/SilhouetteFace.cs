@@ -703,9 +703,12 @@ namespace Velvet
                         ref BorderColors[(int)side], ref fromInline);
                 }
                 // Preflight's colour is shown under the sentinel, where the rules the face reads do not hold it.
+                // A standing sentinel hides the slot, so what the face kept for the side stays.
                 var shown = default(Color);
-                var preflight = !fromInline && BorderPreflight.TryShown(element, System.Array.IndexOf(s_slotSides, side), out shown);
-                if (preflight)
+                var preflight = HasStash && SilhouetteFace.IsSentinel(inline)
+                    ? _sidePreflight[(int)side]
+                    : !fromInline && BorderPreflight.TryShown(element, System.Array.IndexOf(s_slotSides, side), out shown);
+                if (preflight && !(HasStash && SilhouetteFace.IsSentinel(inline)))
                 {
                     BorderColors[(int)side] = shown;
                 }

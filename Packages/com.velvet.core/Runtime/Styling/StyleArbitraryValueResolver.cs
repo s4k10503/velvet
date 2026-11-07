@@ -3871,7 +3871,7 @@ namespace Velvet
                 map.ColorWatch = null;
                 return;
             }
-            if (!map.ColorWatch.Moved() && !BorderPreflight.Lost(element))
+            if (!map.ColorWatch.Moved())
             {
                 return;
             }

@@ -573,6 +573,8 @@ namespace Velvet
 
         internal static readonly EngineMember InlineRuleSheet = Field(UIElements, InlineRuleType, "sheet", StyleSheetType);
 
+        internal static readonly EngineMember InlineRuleRule = Field(UIElements, InlineRuleType, "rule", StyleRuleTypeName);
+
         internal static readonly EngineMember InlineStyleAccessApplyValue =
             Method(UIElements, InlineStyleAccessType, "ApplyStyleValue", "System.Void", StyleValueTypeName);
 

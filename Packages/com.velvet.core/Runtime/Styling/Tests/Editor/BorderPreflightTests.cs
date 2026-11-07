@@ -393,6 +393,41 @@ namespace Velvet.Tests
             Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
         }
 
+        [Test]
+        public void Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderIsTheTextColourAgain()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            Settled("tag");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): a move keeps the colour there as well.
+        [Test]
+        public void Given_ABorderedLabel_When_ItIsRemovedAndAddedAgain_Then_TheBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var parent = tag.hierarchy.parent;
+
+            // Act
+            tag.RemoveFromHierarchy();
+            parent.Add(tag);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
         // GREEN_ON_BASE(characterization): the sibling sides are not code's, so they follow the text colour there as here.
         [Test]
         public void Given_ABorderedLabel_When_CodeWritesOneSideInlineEqualToTheTextColourAndTheTextColourChanges_Then_TheOtherSidesFollow()

@@ -155,11 +155,10 @@ namespace Velvet
             _poll = element.schedule.Execute(Poll).Every(StyleAnimateDriver.TickMs);
         }
 
-        // Once per tick, a read only when a colour the watch reads has moved or the element has lost a border colour its
-        // preflight layers show.
+        // Once per tick, a read only when a colour the watch reads has moved.
         private void Poll()
         {
-            if (!_stopped && (Differs() || BorderPreflight.Lost(_element)))
+            if (!_stopped && Differs())
             {
                 Tick();
             }

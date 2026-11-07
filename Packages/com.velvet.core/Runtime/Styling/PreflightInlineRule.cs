@@ -44,6 +44,8 @@ namespace Velvet
         private static readonly FieldInfo? s_accessor = EngineMember.ElementInlineStyleAccess.ResolveField();
         private static readonly PropertyInfo? s_inlineRule = EngineMember.InlineStyleAccessInlineRule.ResolveProperty();
         private static readonly FieldInfo? s_inlineRuleSheet = EngineMember.InlineRuleSheet.ResolveField();
+        private static readonly FieldInfo? s_inlineRuleRule = EngineMember.InlineRuleRule.ResolveField();
+        private static readonly PropertyInfo? s_propertyName = EngineMember.StylePropertyName.ResolveProperty();
         private static readonly MethodInfo? s_applyValue = EngineMember.InlineStyleAccessApplyValue.ResolveMethod();
         private static readonly MethodInfo? s_removeValue = EngineMember.InlineStyleAccessRemoveValue.ResolveMethod();
         private static readonly FieldInfo? s_valueId = EngineMember.StyleValueId.ResolveField();
@@ -53,7 +55,7 @@ namespace Velvet
         private static readonly bool s_usable = s_builderType != null && s_beginRule != null && s_beginProperty != null
             && s_addColor != null && s_endProperty != null && s_endRule != null && s_buildTo != null && s_colors != null
             && s_ruleProperties != null && s_setProperties != null && s_setInlineRule != null && s_accessor != null
-            && s_inlineRule != null && s_inlineRuleSheet != null && s_applyValue != null && s_removeValue != null
+            && s_inlineRule != null && s_inlineRuleSheet != null && s_inlineRuleRule != null && s_propertyName != null && s_applyValue != null && s_removeValue != null
             && s_valueId != null && s_valueColor != null && s_running != null && Array.TrueForAll(s_ids, id => id != null);
 
         // Rules built and let go of, which an element takes again: a sheet is a ScriptableObject, and a pooled element
@@ -69,6 +71,8 @@ namespace Velvet
         private bool _kept;
         // Whether an element holds this rule, so that letting go of it twice does not put it in the spare stack twice.
         private bool _live;
+        // The sides a UXML style attribute's own rule colours, which stand over preflight as any inline colour does.
+        private int _blocked;
 
         private PreflightInlineRule(UnityEngine.Object sheet, object rule, Array all, Color[] colors)
             => (_sheet, _rule, _all, _colors) = (sheet, rule, all, colors);
@@ -82,9 +86,15 @@ namespace Velvet
             {
                 return null;
             }
-            var foreign = s_accessor!.GetValue(element) is { } accessor
+            var foreign = false;
+            var blocked = 0;
+            if (s_accessor!.GetValue(element) is { } accessor
                 && s_inlineRuleSheet!.GetValue(s_inlineRule!.GetValue(accessor)) is UnityEngine.Object held
-                && held != null && held.name != SheetName;
+                && held != null && held.name != SheetName)
+            {
+                foreign = true;
+                blocked = BlockedSides(s_inlineRuleRule!.GetValue(s_inlineRule.GetValue(accessor)));
+            }
             PreflightInlineRule? rule = null;
             while (rule == null && s_spare.Count > 0)
             {
@@ -94,6 +104,7 @@ namespace Velvet
             rule ??= Build();
             rule._kept = !foreign;
             rule._live = true;
+            rule._blocked = blocked;
             if (rule._kept)
             {
                 s_setInlineRule!.Invoke(element, new[] { rule._sheet, rule._rule });
@@ -122,6 +133,27 @@ namespace Velvet
             return made;
         }
 
+        private static int BlockedSides(object? rule)
+        {
+            var blocked = 0;
+            foreach (var property in rule == null ? Array.Empty<object>() : (Array)s_ruleProperties!.GetValue(rule))
+            {
+                blocked |= (string)s_propertyName!.GetValue(property) switch
+                {
+                    "border-color" => 15,
+                    "border-top-color" => 1,
+                    "border-right-color" => 2,
+                    "border-bottom-color" => 4,
+                    "border-left-color" => 8,
+                    _ => 0,
+                };
+            }
+            return blocked;
+        }
+
+        // Whether the element's UXML style attribute colours side, which preflight leaves to it.
+        internal bool Blocked(int side) => (_blocked & (1 << side)) != 0;
+
         // Whether side (0 to 3, top to left) is in the rule.
         internal bool Shows(int side) => (_shown & (1 << side)) != 0;
 
@@ -129,6 +161,10 @@ namespace Velvet
         // (an inline value written over it and cleared again reverts the property to what the rules give) is put back.
         internal void Show(VisualElement element, int side, Color colour)
         {
+            if (Blocked(side))
+            {
+                return;
+            }
             if (Shows(side) && Same(_colors[side], colour) && Holds(element, side, colour))
             {
                 return;
@@ -222,7 +258,7 @@ namespace Velvet
         // Whether the element's computed style shows colour on side where nothing overrides the rule: an inline value
         // or a transition still running toward it leaves a different one there legitimately.
         private static bool Holds(VisualElement element, int side, Color colour)
-            => HasInlineValue(element, side) || Same(ResolvedColor(element, side), colour)
+            => Same(ResolvedColor(element, side), colour) || HasInlineValue(element, side)
                 || (bool)s_running!.Invoke(element, new[] { s_ids[side] });
 
         private static Color ResolvedColor(VisualElement element, int side) => side switch
