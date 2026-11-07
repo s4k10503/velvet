@@ -46,8 +46,6 @@ namespace Velvet.Tests
             leaf.style.transitionProperty = new List<StylePropertyName> { new("width") };
             leaf.style.transitionDuration = new List<TimeValue> { new(1f) };
             leaf.style.width = 0f;
-            // The custom-property pass resolves a token on the element's own style pass, so the layer it writes stands
-            // from the second pass on.
             ForcePanelUpdate(leaf.panel);
             ForcePanelUpdate(leaf.panel);
             leaf.style.width = 100f;
