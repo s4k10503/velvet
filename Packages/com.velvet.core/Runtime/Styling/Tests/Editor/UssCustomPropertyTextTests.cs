@@ -28,10 +28,10 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(expected));
         }
 
-        [TestCase(":root { --spacing: 4px; }")]
-        [TestCase(":root { --a: 50%; --b: 200ms; --c: 1e3px; --d: 90deg; }")]
         // GREEN_ON_BASE(characterization): the base's rewrite already leaves every one of these as it found it; the
         // easing keyword and the step-like name added here are the values the new cubic-bezier() and steps() match must not take.
+        [TestCase(":root { --spacing: 4px; }")]
+        [TestCase(":root { --a: 50%; --b: 200ms; --c: 1e3px; --d: 90deg; }")]
         [TestCase(":root { --ease-out: ease-out; --ease-lin: linear; --mysteps: 3px; }")]
         [TestCase(":root { --color-brand: #ff0066; --animate-x: kf 2s linear infinite; }")]
         [TestCase(":root { --spacing-2: var(--spacing-1); --font: \"Inter\"; }")]
