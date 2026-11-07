@@ -422,6 +422,7 @@ namespace Velvet
             _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
             _appliers.ApplyShadowOnPatch(element, classNames, clipActive);
             _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged);
+            BorderPreflight.OnClassesResolved(element, classNames, classesChanged);
             _appliers.ApplyRingOnPatch(element, classNames, clipActive);
             _appliers.ApplyBackdropOnPatch(element, classNames);
         }

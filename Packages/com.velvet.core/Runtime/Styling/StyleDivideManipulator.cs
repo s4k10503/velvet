@@ -211,6 +211,8 @@ namespace Velvet
                 }
                 var child = ClipPathLayoutBox.InnerOf(flowChild);
                 var isDivider = !ReferenceEquals(flowChild, last);
+                // Ahead of the mask a dashed divider puts on the edge, so the layer is the colour the dash paints.
+                BorderPreflight.SetDivided(child, isDivider);
                 ApplyToChild(child, edge, isDivider);
                 StyleChildOwnership.Claim(_ctx.ChildDividerOwners, child, this);
                 _bordered.Add(child);
@@ -354,7 +356,8 @@ namespace Velvet
             {
                 return null;
             }
-            if (StyleArbitraryValueResolver.ResolveLayered(child, slot) is { } layered && layered.Color == inline.value)
+            if (StyleArbitraryValueResolver.ResolveLayered(child, slot) is { } layered
+                && (layered.Reference != ColorReference.None || layered.Color == inline.value))
             {
                 return null;
             }
@@ -582,6 +585,7 @@ namespace Velvet
             if (StyleChildOwnership.TryRelease(_ctx.ChildDividerOwners, child, this))
             {
                 var carried = DetachDash(child);
+                BorderPreflight.SetDivided(child, false);
                 ResetOwnedEdges(child);
                 WriteColors(child, null, false);
                 RestoreCodeColor(child, carried, divided: false);

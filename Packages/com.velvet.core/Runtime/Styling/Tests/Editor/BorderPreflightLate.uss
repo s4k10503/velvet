@@ -1,0 +1,2 @@
+/* The rule BorderPreflightTests adds to the panel's root after an element attached. */
+.pf-late { border-width: 2px; }

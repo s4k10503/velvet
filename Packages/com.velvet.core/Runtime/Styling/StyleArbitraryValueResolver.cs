@@ -1728,6 +1728,10 @@ namespace Velvet
             return true;
         }
 
+        // The colour a layer comes to on element: its reference read now, or the colour it carries.
+        internal static Color ColorOf(VisualElement element, in ArbitraryStyle layer)
+            => layer.Reference != ColorReference.None && TryReferencedColor(element, layer, 0, out var read) ? read : layer.Color;
+
         private static bool IsBorderColor(ArbitraryProperty property)
             => property != ArbitraryProperty.TextColor && property != ArbitraryProperty.BackgroundColor;
 
@@ -2965,7 +2969,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                if (!TryLayeredWinner(map, slot, out var winner, out var rank)
+                if (!TryLayeredWinner(map, slot, out var winner, out var rank, ignorePreflight: true)
                     || (holds.YieldsOnlyToImportant(slot) && (rank & StyleLayerPriority.Important) == 0))
                 {
                     continue;
@@ -3212,7 +3216,7 @@ namespace Velvet
         // hold giving way to a plain declaration of the element's own (Yield), with no layer of its own over it.
         internal static bool HoldsForContainer(VisualElement element, HeldSlot slot)
             => s_layers.TryGetValue(element, out var map) && map.Holds != null && map.Holds.HoldsForContainer(slot)
-                && !TryLayeredWinner(map, slot, out _);
+                && !TryLayeredWinner(map, slot, out _, out _, ignorePreflight: true);
 
         // Hands slot back when a gap, grid or divide manipulator holds it on element, and leaves it alone
         // otherwise: an inline value nothing here wrote is not this layer's to clear.
@@ -3332,9 +3336,11 @@ namespace Velvet
 
         // The form of ResolveLayered above that answers what a hold yielding on slot gives way to (Yield): with
         // importantOnly, an important layer alone.
-        internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot, bool importantOnly)
+        internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot, bool importantOnly,
+            bool ignorePreflight = false)
         {
-            if (!s_layers.TryGetValue(element, out var map) || !TryLayeredWinner(map, slot, out var winner, out var rank))
+            if (!s_layers.TryGetValue(element, out var map)
+                || !TryLayeredWinner(map, slot, out var winner, out var rank, ignorePreflight))
             {
                 return null;
             }
@@ -3345,6 +3351,12 @@ namespace Velvet
             => TryLayeredWinner(map, slot, out winner, out _);
 
         private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner, out long rank)
+            => TryLayeredWinner(map, slot, out winner, out rank, ignorePreflight: false);
+
+        // ignorePreflight leaves out the layer of Tailwind's preflight, which a hold of a container does not give way to:
+        // it sits below every rule an author writes.
+        private static bool TryLayeredWinner(LayerMap map, HeldSlot slot, out ArbitraryStyle winner, out long rank,
+            bool ignorePreflight)
         {
             winner = default;
             rank = long.MinValue;
@@ -3359,6 +3371,10 @@ namespace Velvet
                 }
                 var layers = map[writer];
                 var priority = layers.Keys[layers.Count - 1];
+                if (ignorePreflight && priority == StyleLayerPriority.Preflight)
+                {
+                    continue;
+                }
                 var arrival = map.ArrivalOf(writer, priority);
                 // MUTANT_SURVIVES(equivalent, boundary): live arrivals are positive and unique, including after compaction; distinct writers cannot tie each other or the initial MinValue sentinel.
                 var isNewerArrival = arrival > latest;
@@ -3638,6 +3654,7 @@ namespace Velvet
         public static void ClearAll(VisualElement element)
         {
             if (element != null) PanelScaleWatch.Untrack(element, s_resnapBorderWidths);
+            if (element != null) BorderPreflight.Forget(element);
             if (element != null) StyleCustomProperties.Release(element);
             if (element != null) StyleThemeTokens.Untrack(element);
             if (element != null) StyleThemeTokens.Unfollow(element);
@@ -3700,6 +3717,15 @@ namespace Velvet
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
         // one inline `translate` / `scale`, so their winners must be composed before that write.
         private static void ResolveAndApply(VisualElement element, ArbitraryProperty property, LayerMap map)
+        {
+            ResolveAndApplyCore(element, property, map);
+            if (property >= ArbitraryProperty.BorderColor && property <= ArbitraryProperty.BorderBlockEndColor)
+            {
+                BorderPreflight.NoteWritten(element, property);
+            }
+        }
+
+        private static void ResolveAndApplyCore(VisualElement element, ArbitraryProperty property, LayerMap map)
         {
             if (!IsFilter(property) && property != ArbitraryProperty.FilterCustom
                 && TryWinningLayer(map, property, out var measured) && measured.Expression != null)
@@ -3849,7 +3875,10 @@ namespace Velvet
             var winners = s_relativeWinners.ToArray();
             foreach (var property in winners)
             {
-                ResolveAndApply(element, property, map);
+                if (!BorderPreflight.YieldsToInline(element, property))
+                {
+                    ResolveAndApply(element, property, map);
+                }
             }
             // A face the element itself holds in these slots has had its sentinel written over.
             SilhouetteFaceStash.Retake(element);

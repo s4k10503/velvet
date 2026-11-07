@@ -457,6 +457,93 @@ namespace Velvet
         internal static readonly EngineMember StyleSheetReadFloat =
             Method(UIElements, StyleSheetType, "ReadFloat", "System.Single", StyleValueHandleType);
 
+        // BorderPreflight's read of the rules that match an element: the matcher the UI Builder's inspector drives,
+        // and the records it leaves.
+        private const string MatchedRulesExtractorType = "UnityEngine.UIElements.MatchedRulesExtractor";
+        private const string SelectorMatchRecordType = "UnityEngine.UIElements.StyleSheets.SelectorMatchRecord";
+
+        // BorderPreflight also reads whether a rule's border width is zero, through StylePropertyValues and these.
+        internal static readonly EngineMember StyleSheetReadDimension = Method(UIElements, StyleSheetType, "ReadDimension",
+            "UnityEngine.UIElements.StyleSheets.Dimension", StyleValueHandleType);
+
+        internal static readonly EngineMember DimensionValue =
+            Field(UIElements, "UnityEngine.UIElements.StyleSheets.Dimension", "value", "System.Single");
+
+        internal static readonly EngineMember StyleSheetReadKeyword = Method(UIElements, StyleSheetType, "ReadKeyword",
+            "enum:UnityEngine.UIElements.StyleValueKeyword", StyleValueHandleType);
+
+        // The name a type selector matches an element by.
+        internal static readonly EngineMember ElementTypeName =
+            ReadProperty(UIElements, VisualElementType, "typeName", "System.String");
+
+        internal static readonly EngineMember MatchedRulesExtractorConstruct = Constructor(UIElements,
+            MatchedRulesExtractorType, "System.Func`2[UnityEngine.UIElements.StyleSheet,System.String]");
+
+        internal static readonly EngineMember MatchedRulesExtractorFind =
+            Method(UIElements, MatchedRulesExtractorType, "FindMatchingRules", "System.Void", VisualElementType);
+
+        internal static readonly EngineMember MatchedRulesExtractorClear =
+            Method(UIElements, MatchedRulesExtractorType, "Clear", "System.Void");
+
+        internal static readonly EngineMember MatchedRulesExtractorRecords = Field(UIElements, MatchedRulesExtractorType,
+            "matchRecords", "System.Collections.Generic.List`1[" + SelectorMatchRecordType + "]");
+
+        internal static readonly EngineMember SelectorMatchRecordSheet =
+            Field(UIElements, SelectorMatchRecordType, "sheet", StyleSheetType);
+
+        internal static readonly EngineMember SelectorMatchRecordSelector = Field(UIElements, SelectorMatchRecordType,
+            "complexSelector", "UnityEngine.UIElements.StyleComplexSelector");
+
+        internal static readonly EngineMember StyleComplexSelectorRule = ReadProperty(UIElements,
+            "UnityEngine.UIElements.StyleComplexSelector", "rule", "UnityEngine.UIElements.StyleRule");
+
+        // The flag that ranks a sheet's rules below those of every sheet without it; a control theme carries it.
+        internal static readonly EngineMember StyleSheetIsDefault =
+            WrittenProperty(UIElements, StyleSheetType, "isDefaultStyleSheet", "System.Boolean");
+
+        // SnappedBorderSheets' build of a stylesheet at run time: the builder the importer drives, with the selector
+        // part and the dimension it takes.
+        private const string StyleSheetBuilderType = "UnityEngine.UIElements.StyleSheets.StyleSheetBuilder";
+        private const string StyleSelectorPartTypeName = "UnityEngine.UIElements.StyleSelectorPart";
+        private const string DimensionType = "UnityEngine.UIElements.StyleSheets.Dimension";
+
+        internal static readonly EngineMember StyleSheetBuilderConstruct =
+            ConstructedType(UIElements, StyleSheetBuilderType, "System.Object");
+
+        internal static readonly EngineMember StyleSheetBuilderBeginRule = Method(UIElements, StyleSheetBuilderType,
+            "BeginRule", "UnityEngine.UIElements.StyleRule", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderBeginComplexSelector = Method(UIElements,
+            StyleSheetBuilderType, "BeginComplexSelector", StyleSheetBuilderType + "+ComplexSelectorScope", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderAddSimpleSelector = Method(UIElements,
+            StyleSheetBuilderType, "AddSimpleSelector", "System.Void", StyleSelectorPartTypeName + "[]",
+            "enum:UnityEngine.UIElements.StyleSelectorRelationship");
+
+        internal static readonly EngineMember StyleSheetBuilderEndComplexSelector =
+            Method(UIElements, StyleSheetBuilderType, "EndComplexSelector", "System.Void");
+
+        internal static readonly EngineMember StyleSheetBuilderBeginProperty = Method(UIElements, StyleSheetBuilderType,
+            "BeginProperty", "UnityEngine.UIElements.StyleProperty", "System.String", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderAddDimension =
+            Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", DimensionType);
+
+        internal static readonly EngineMember StyleSheetBuilderEndProperty =
+            Method(UIElements, StyleSheetBuilderType, "EndProperty", "System.Void");
+
+        internal static readonly EngineMember StyleSheetBuilderEndRule =
+            Method(UIElements, StyleSheetBuilderType, "EndRule", "System.Int32");
+
+        internal static readonly EngineMember StyleSheetBuilderBuildTo =
+            Method(UIElements, StyleSheetBuilderType, "BuildTo", "System.Void", StyleSheetType);
+
+        internal static readonly EngineMember StyleSelectorPartCreateClass = Method(UIElements, StyleSelectorPartTypeName,
+            "CreateClass", StyleSelectorPartTypeName, "System.String");
+
+        internal static readonly EngineMember DimensionUnitPixel =
+            Field(UIElements, DimensionType + "+Unit", "Pixel", "enum:" + DimensionType + "+Unit");
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
@@ -506,6 +593,10 @@ namespace Velvet
         private static string Signature(string returnType, IEnumerable<string> parameterTypes)
             => $"{returnType}({string.Join(",", parameterTypes)})";
 
+        // A constructor taking parameters, for a type that has no parameterless one (ConstructedType).
+        private static EngineMember Constructor(Assembly assembly, string typeName, params string[] parameterTypes)
+            => new(assembly, typeName, MemberTypes.Constructor, typeName, Signature("System.Void", parameterTypes));
+
         private static EngineMember ConstructedType(Assembly assembly, string typeName, string baseType)
             => new(assembly, typeName, MemberTypes.TypeInfo, typeName, baseType);
 
@@ -524,6 +615,8 @@ namespace Velvet
 
         internal MethodInfo? ResolveMethod() => Resolve() as MethodInfo;
 
+        internal ConstructorInfo? ResolveConstructor() => Resolve() as ConstructorInfo;
+
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
         // Null rather than a throw when the member is missing or has changed shape, so a later engine leaves the
@@ -536,6 +629,11 @@ namespace Velvet
             if (Kind == MemberTypes.TypeInfo)
             {
                 return MatchesType(type.BaseType, Shape) && type.GetConstructor(Type.EmptyTypes) != null ? type : null;
+            }
+
+            if (Kind == MemberTypes.Constructor)
+            {
+                return type.GetConstructors(OwnMembers).FirstOrDefault(constructor => MatchesParameters(constructor.GetParameters(), Shape));
             }
 
             if (Kind == MemberTypes.Method)
@@ -553,6 +651,15 @@ namespace Velvet
                    && (!Writable || property.SetMethod != null)
                 ? property
                 : null;
+        }
+
+        private static bool MatchesParameters(ParameterInfo[] actual, string shape)
+        {
+            var opening = shape.IndexOf('(');
+            if (opening < 0 || !shape.EndsWith(")", StringComparison.Ordinal)) return false;
+            var expected = SplitShapes(shape.Substring(opening + 1, shape.Length - opening - 2));
+            return actual.Length == expected.Length
+                && actual.Select((parameter, index) => MatchesType(parameter.ParameterType, expected[index])).All(matches => matches);
         }
 
         private static bool MatchesMethod(MethodInfo method, string shape)
