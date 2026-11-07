@@ -203,8 +203,8 @@ namespace Velvet
             }
         }
 
-        // Records the inline colours of element's sides as Velvet's own, after the resolver wrote one.
-        internal static void NoteWritten(VisualElement element)
+        // Records the inline colours of the sides property writes as Velvet's own, after the resolver wrote them.
+        internal static void NoteWritten(VisualElement element, ArbitraryProperty property)
         {
             if (!s_states.TryGetValue(element, out var state))
             {
@@ -213,12 +213,22 @@ namespace Velvet
             for (var i = 0; i < s_sideProperties.Length; i++)
             {
                 var inline = InlineColor(element, i);
-                if (inline.keyword == StyleKeyword.Undefined)
+                if (WritesSide(property, i) && inline.keyword == StyleKeyword.Undefined)
                 {
                     state.Seen[i] = inline.value;
                 }
             }
         }
+
+        // Whether property is, or contains, the colour of side index (top, right, bottom, left).
+        private static bool WritesSide(ArbitraryProperty property, int index)
+            => property == ArbitraryProperty.BorderColor || property == s_sideProperties[index]
+                || (property == ArbitraryProperty.BorderXColor && index is 1 or 3)
+                || (property == ArbitraryProperty.BorderYColor && index is 0 or 2)
+                || (property == ArbitraryProperty.BorderInlineStartColor && index == 3)
+                || (property == ArbitraryProperty.BorderInlineEndColor && index == 1)
+                || (property == ArbitraryProperty.BorderBlockStartColor && index == 0)
+                || (property == ArbitraryProperty.BorderBlockEndColor && index == 2);
 
         // Whether the inline colour on edge of owner is the preflight layer's, which no other layer outranks.
         internal static bool Writes(VisualElement owner, DivideEdge edge)
@@ -868,7 +878,7 @@ namespace Velvet
             }
             if (rest.Length > 0 && rest[0] == '[')
             {
-                return StyleArbitraryValueResolver.TryParse(core.ToString(), out var style) && IsWidth(style.Property);
+                return StyleArbitraryValueResolver.TryParseLayer(core.ToString(), out var style) && IsWidth(style.Property);
             }
             return IsNonZeroNumber(rest);
         }

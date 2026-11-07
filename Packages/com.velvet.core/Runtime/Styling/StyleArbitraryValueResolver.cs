@@ -3719,7 +3719,7 @@ namespace Velvet
             ResolveAndApplyCore(element, property, map);
             if (property >= ArbitraryProperty.BorderColor && property <= ArbitraryProperty.BorderBlockEndColor)
             {
-                BorderPreflight.NoteWritten(element);
+                BorderPreflight.NoteWritten(element, property);
             }
         }
 

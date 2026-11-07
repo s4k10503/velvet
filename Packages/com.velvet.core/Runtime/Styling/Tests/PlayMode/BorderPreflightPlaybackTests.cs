@@ -72,7 +72,7 @@ namespace Velvet.Tests
             VelvetStyleUtilities.AttachTo(_host.Root);
             yield return Frames(3);
             _mounted = V.Mount(_host.Root, V.Div(name: "button",
-                className: "w-[60px] h-[30px] border transition-colors text-blue-500 hover:text-red-500"));
+                className: "ml-[20px] mt-[20px] w-[60px] h-[30px] border transition-colors text-blue-500 hover:text-red-500"));
             yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
         }
 
@@ -146,7 +146,7 @@ namespace Velvet.Tests
 
             // Act
             _mounted = V.Mount(_host.Root, V.Div(name: "button",
-                className: "w-[60px] h-[30px] border transition-colors duration-1000 text-red-500"));
+                className: "ml-[20px] mt-[20px] w-[60px] h-[30px] border transition-colors duration-1000 text-red-500"));
             yield return Frames(2);
             var button = _host.Root.Q<VisualElement>("button");
 
@@ -163,7 +163,7 @@ namespace Velvet.Tests
             VelvetStyleUtilities.AttachTo(_host.Root);
             yield return Frames(3);
             _mounted = V.Mount(_host.Root, V.Div(name: "button",
-                className: "w-[60px] h-[30px] border transition-colors duration-1000 text-[#ff0000] hover:border-blue-500"));
+                className: "ml-[20px] mt-[20px] w-[60px] h-[30px] border transition-colors duration-1000 text-[#ff0000] hover:border-blue-500"));
             yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
             var button = _host.Root.Q<VisualElement>("button");
             Hover(button, true);

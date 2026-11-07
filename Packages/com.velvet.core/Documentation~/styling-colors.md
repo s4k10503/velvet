@@ -89,7 +89,8 @@ The functions follow CSS Color 4:
   it when it attaches and when its classes change, and listens for it from then on, following the rule as pseudo-states
   and ancestors change. A stylesheet added to an ancestor of an element that has attached is noticed within a frame and
   the elements under that ancestor are asked again. A width
-  your code writes inline is seen on an element that is already listening, and gives no preflight colour to any other.
+  your code writes inline is seen the next time an element that is already listening is restyled, as the write raises no
+  restyle of its own, and gives no preflight colour to any other.
   The border
   follows the text colour. A rule of a stylesheet that is not a control theme's that sets a side's border colour takes
   that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as

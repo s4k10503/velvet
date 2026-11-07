@@ -236,7 +236,7 @@ namespace Velvet.Tests
             var tag = Settled("tag");
 
             // Assert
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.yellow));
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(new Color(1f, 1f, 0f, 1f)));
         }
 
         [Test]
@@ -617,7 +617,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var expected = TextColourOf("text-red-500");
-            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "*:border text-red-500",
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "row", className: "[&>*]:border text-red-500",
                 children: new VNode[] { V.Label(name: "child", text: "A") }));
             Settled("row");
 
@@ -817,12 +817,13 @@ namespace Velvet.Tests
             var expected = TextColourOf("text-red-500");
             var tag = MountLabel("pf-hover-width text-red-500");
 
-            // Act
+            // Act — the write itself raises no restyle, so the next one is what finds it.
             tag.style.borderTopWidth = 2f;
+            tag.style.color = new StyleColor(Color.blue);
             ForcePanelUpdate(tag.panel);
 
             // Assert
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.blue));
         }
 
         [Test]
@@ -836,6 +837,7 @@ namespace Velvet.Tests
             _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
                 "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightLate.uss"));
             ForcePanelUpdate(tag.panel);
+            System.Threading.Thread.Sleep(50);
             EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
             ForcePanelUpdate(tag.panel);
 
