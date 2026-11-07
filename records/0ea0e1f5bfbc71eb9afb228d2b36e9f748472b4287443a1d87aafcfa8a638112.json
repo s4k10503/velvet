@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 42 case(s) that ran the site: Given_AClosedSquareThePatternDoesNotDivide_When_DashesComputed_Then_EachSideHoldsOneWholeDash, Given_AnEdgeThePatternDoesNotDivide_When_DashesComputed_Then_TheLastRunEndsAtTheEdgesEnd",
+ "file": "8ca3caa161aee43a85264eda43b1b120467d504d59fd5afc9481c5129bc4fb44",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AClosedSquareThePatternDoesNotDivide_When_DashesComputed_Then_EachSideHoldsOneWholeDash",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "e06a244e55234f3c293b983f69b6dd18ab35698c0db4a2ce370dd35f17030b4a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderPainterTests.Given_AnEdgeThePatternDoesNotDivide_When_DashesComputed_Then_TheLastRunEndsAtTheEdgesEnd",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderPainterTests.cs": "e06a244e55234f3c293b983f69b6dd18ab35698c0db4a2ce370dd35f17030b4a"
+   }
+  }
+ ],
+ "measured_by": "42271170454",
+ "mutant": {
+  "after": ";",
+  "before": "gap = BestGap(length, dash, gap, closed);",
+  "column": 16,
+  "line": 328,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DashedBorderPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

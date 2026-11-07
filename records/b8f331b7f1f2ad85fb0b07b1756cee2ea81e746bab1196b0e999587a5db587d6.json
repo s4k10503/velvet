@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsKept",
+ "file": "b7441a41f238d7eeec4c7c9cdcd2d951f179ecdecf84acf824e20ea3e466c9d1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WrapperLessPaintOverflowClipPlaybackTests.Given_ADashedDividedChild_When_ItsOwnOverflowIsHidden_Then_TheDividerIsKept",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/WrapperLessPaintOverflowClipPlaybackTests.cs": "94f54fc080359e1cb2888249bc708440843c444109faa12f8813b3e11292998e",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "42271170454",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 97,
+  "line": 115,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/FaceBorderOverlay.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

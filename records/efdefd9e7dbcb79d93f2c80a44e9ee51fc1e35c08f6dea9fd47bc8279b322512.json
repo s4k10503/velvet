@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "8ca3caa161aee43a85264eda43b1b120467d504d59fd5afc9481c5129bc4fb44",
+ "killers": [],
+ "measured_by": "42271170454",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 22,
+  "line": 391,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DashedBorderPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

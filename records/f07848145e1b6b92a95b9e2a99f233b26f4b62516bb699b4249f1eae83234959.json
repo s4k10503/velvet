@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 38 case(s) that ran the site: Given_ABoxWhoseSideWidthsAddUpToMoreThanItsWidth_When_ItsRightSidesPiecesAreComputed_Then_TheyStopAtTheLeftWidth, Given_ASquareBoxWithEveryBorderTwoWide_When_ItsTopSidesPiecesAreComputed_Then_TheFirstStopsAtTheCornerMiter",
+ "file": "8ca3caa161aee43a85264eda43b1b120467d504d59fd5afc9481c5129bc4fb44",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DashedBorderSideTests.Given_ABoxWhoseSideWidthsAddUpToMoreThanItsWidth_When_ItsRightSidesPiecesAreComputed_Then_TheyStopAtTheLeftWidth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderSideTests.cs": "02a4402edf3f769e689f23719d3c3d7e2fb01d0934a3779df7114eebfc016bd2"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DashedBorderSideTests.Given_ASquareBoxWithEveryBorderTwoWide_When_ItsTopSidesPiecesAreComputed_Then_TheFirstStopsAtTheCornerMiter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DashedBorderSideTests.cs": "02a4402edf3f769e689f23719d3c3d7e2fb01d0934a3779df7114eebfc016bd2"
+   }
+  }
+ ],
+ "measured_by": "42271170454",
+ "mutant": {
+  "after": ";",
+  "before": "output.AddRange(subject);",
+  "column": 12,
+  "line": 220,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DashedBorderPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

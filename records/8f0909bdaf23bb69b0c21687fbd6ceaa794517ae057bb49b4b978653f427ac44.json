@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 2 failed among the 76 case(s) that ran the site: Given_ADividedEdgeOfAFacedRow_When_TheDividersColourChanges_Then_AnInheritorFollowsTheDivider, Given_BorderInherit_When_TheParentIsADashedDividerRow_Then_TheChildTakesTheDividersColour",
+ "file": "3b13dfce3e3f887efcc423ac1be8d139c9d7286629809f94f94dee4eb919250a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ColourReferenceWatchTests.Given_ADividedEdgeOfAFacedRow_When_TheDividersColourChanges_Then_AnInheritorFollowsTheDivider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "191420bad426b6a5036464df80605c36b9aa8f54e05d41a26ea14b54cac3d460",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ColourReferenceWatchTests.Given_BorderInherit_When_TheParentIsADashedDividerRow_Then_TheChildTakesTheDividersColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "191420bad426b6a5036464df80605c36b9aa8f54e05d41a26ea14b54cac3d460",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42271170454",
+ "mutant": {
+  "after": ";",
+  "before": "binding.Tick = child.schedule.Execute(child.MarkDirtyRepaint).Every(0);",
+  "column": 12,
+  "line": 85,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DivideDashPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

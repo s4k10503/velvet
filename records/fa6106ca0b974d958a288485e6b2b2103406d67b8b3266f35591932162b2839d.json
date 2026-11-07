@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "3b13dfce3e3f887efcc423ac1be8d139c9d7286629809f94f94dee4eb919250a",
+ "killers": [],
+ "measured_by": "42271170454",
+ "mutant": {
+  "after": ";",
+  "before": "child.RegisterCallback(binding.OnStyleResolved);",
+  "column": 12,
+  "line": 92,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DivideDashPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}
