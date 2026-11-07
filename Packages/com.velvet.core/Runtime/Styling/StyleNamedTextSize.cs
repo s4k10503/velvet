@@ -85,7 +85,14 @@ namespace Velvet
         public static bool TryParseLineHeight(string core, out LeadingValue lineHeight, out int rank)
         {
             lineHeight = default;
-            if (!TryRead(core, out _, out var pairedEm, out rank, out var suffixAt))
+            var read = TryRead(core, out _, out var pairedEm, out rank, out var suffixAt);
+            if (suffixAt == -1 && TryThemedLineHeight(core, out lineHeight))
+            {
+                // A size a sheet declares sets its font size inline, as the slash form does.
+                rank = read ? rank : SlashRank;
+                return true;
+            }
+            if (!read)
             {
                 return false;
             }
@@ -96,6 +103,48 @@ namespace Velvet
             }
             rank = SlashRank;
             return StyleTextEffectClass.TryParseLeading("leading-" + core.Substring(suffixAt), out lineHeight);
+        }
+
+        // The line height a sheet's `--text-<name>--line-height` gives text-<name>: for a size it declares as
+        // `--text-<name>`, and for a built-in whose pairing it redeclares.
+        private static bool TryThemedLineHeight(string core, out LeadingValue lineHeight)
+        {
+            lineHeight = default;
+            if (core == null || !core.StartsWith(Prefix, StringComparison.Ordinal) || core.IndexOf('/') >= 0
+                || core.IndexOf('[') >= 0 || StyleThemeTokens.Current is not { } scope)
+            {
+                return false;
+            }
+            var name = core.Substring(Prefix.Length);
+            if (!scope.Values.TryGetValue("--text-" + name + "--line-height", out var text)
+                || !(scope.Project.Contains("--text-" + name) || IsBuiltIn(name)))
+            {
+                return false;
+            }
+            text = text.Trim();
+            if (float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var multiple))
+            {
+                lineHeight = new LeadingValue(LeadingUnit.Em, multiple);
+                return true;
+            }
+            if (!StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out var px))
+            {
+                return false;
+            }
+            lineHeight = new LeadingValue(LeadingUnit.Pixel, px);
+            return true;
+        }
+
+        private static bool IsBuiltIn(string name)
+        {
+            foreach (var entry in s_sizes)
+            {
+                if (entry.Name == name)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // The font size of a slash token, the form no USS rule writes.

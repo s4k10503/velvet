@@ -95,6 +95,7 @@ Packages/com.velvet.core/Runtime/Styling/StyleInlineSheetOrder.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleInputBoxSurface.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleIntegerUtility.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs	6
+Packages/com.velvet.core/Runtime/Styling/StyleNamedTextSize.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleRelativeLengths.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs	13
 Packages/com.velvet.core/Runtime/Styling/StyleRuleOrder.cs	2

@@ -804,5 +804,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That(smAfterMd, Is.True);
         }
+
+        [TestCase("text-sizetest", 1.5f)]
+        [TestCase("text-sm", 2f)]
+        public void Given_ATextSizeWithALineHeightASheetDeclares_When_ItsLineHeightIsRead_Then_ItIsTheDeclaredMultiple(
+            string className, float expected)
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            float read;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                StyleNamedTextSize.TryParseLineHeight(className, out var lineHeight, out _);
+                read = lineHeight.Value;
+            }
+
+            // Assert
+            Assert.That(read, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABuiltInTextSizeNoSheetRedeclares_When_ItsLineHeightIsRead_Then_ItIsTheTailwindPairing()
+        {
+            // Act
+            StyleNamedTextSize.TryParseLineHeight("text-sm", out var lineHeight, out _);
+
+            // Assert
+            Assert.That(lineHeight.Value, Is.EqualTo(1.25f / 0.875f).Within(1e-5f));
+        }
     }
 }

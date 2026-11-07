@@ -6,6 +6,8 @@
     --spacing-guttertest: 10px;
     --spacing-7: 10px;
     --text-sizetest: 20px;
+    --text-sizetest--line-height: 1.5;
+    --text-sm--line-height: 2;
     --breakpoint-xstest: 30rem;
     --container-widetest: 100rem;
     --breakpoint-sm: 50rem;
