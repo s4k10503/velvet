@@ -34,9 +34,12 @@ namespace Velvet
         // The variable context the engine last gave element, null before its first style pass.
         internal static object? ContextOf(VisualElement element) => s_variableContext?.GetValue(element);
 
-        // Whether the engine has resolved a variable context for element holding at least one variable.
+        // Whether the element has had its style pass: its context holds a variable, or it has been laid out, which
+        // follows the pass and leaves its width a number. An element with neither reads as not yet styled, so an
+        // empty context before the pass is not taken for one the cascade gave it.
         internal static bool HasStylesheetContext(VisualElement element)
-            => TryReadContext(element, out var context) && context.Count > 0;
+            => TryReadContext(element, out var context)
+                && (context.Count > 0 || (element.panel != null && !float.IsNaN(element.layout.width)));
 
         internal static bool TryStylesheetValue(VisualElement element, string name, out string? value)
         {

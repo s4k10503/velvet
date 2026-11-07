@@ -15,6 +15,7 @@ namespace Velvet.Tests
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
         private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
         private const string ScopedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenScopedSheet.uss";
+        private const string CompactSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenCompactSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
 
         private static StateUpdater<string> s_setClass;
@@ -1057,6 +1058,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(new[] { insideValue, outsideValue }, Is.EqualTo(new[] { 3f, 0f }));
+        }
+
+        [TestCase("inside", 480f)]
+        [TestCase("outside", 640f)]
+        public void Given_ABreakpointDeclaredUnderAClassAlone_When_ItIsReadAfterTheStylePass_Then_OnlyTheElementsInTheClassHaveIt(
+            string leafName, float expected)
+        {
+            // Arrange
+            Attach(CompactSheet);
+            _mounted = V.Mount(_window.rootVisualElement, V.Fragment(
+                V.Div(className: "theme-token-alt", children: new VNode?[] { V.Div(name: "inside") }),
+                V.Div(children: new VNode?[] { V.Div(name: "outside") })));
+            var leaf = _window.rootVisualElement.Q<VisualElement>(leafName);
+            ForcePanelUpdate(leaf.panel);
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Use(_mounted.Root.Reconciler.Context, leaf))
+            {
+                px = StyleVariantClass.BreakpointPx(StyleVariantKind.Sm);
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(expected));
         }
     }
 }
