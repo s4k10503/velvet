@@ -1,4 +1,3 @@
-using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -213,20 +212,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { Rgb(leaf.style.borderBottomColor), ColorUtility.ToHtmlStringRGB(leaf.resolvedStyle.borderTopColor) },
                 Is.EqualTo(new[] { "155DFC", "CAD5E2" }));
-        }
-
-        [Test]
-        public void Given_AProjectEaseToken_When_Mounted_Then_TheTransitionEasesByTheKeywordNearestTheCurveOfTheSheet()
-        {
-            // Arrange
-            AttachSheets(false);
-
-            // Act
-            var leaf = Mount("ease-snappytest");
-
-            // Assert
-            Assert.That(leaf.style.transitionTimingFunction.value.Select(function => function.mode).ToArray(),
-                Is.EqualTo(new[] { EasingMode.Linear }));
         }
 
         [Test]

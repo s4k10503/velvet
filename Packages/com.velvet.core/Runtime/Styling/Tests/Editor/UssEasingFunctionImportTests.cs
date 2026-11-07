@@ -22,14 +22,14 @@ namespace Velvet.Tests
             var sheet = ScriptableObject.CreateInstance<StyleSheet>();
             try
             {
-                var impl = StockStyleSheetImport.Constructor!.Invoke(new object?[] { null });
+                var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
                 try
                 {
                     StockStyleSheetImport.Import!.Invoke(impl, new object[] { sheet, uss });
                 }
                 catch (TargetInvocationException)
                 {
-                    // The importer reports through its context, which this call has none of; what it stored before is read.
+                    // The importer reports through its context, which this instance has none of; what it stored is read.
                 }
                 return ValueCount(sheet, Name);
             }

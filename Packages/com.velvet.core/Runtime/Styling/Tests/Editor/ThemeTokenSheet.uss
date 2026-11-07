@@ -12,7 +12,7 @@
     --breakpoint-3xltest: 1920px;
     --animate-wiggletest: kf-theme 2s linear infinite;
     --inset-shadow-glowtest: 0 0 4px rgb(255, 0, 0);
-    --ease-snappytest: cubic-bezier(0, 0, 1, 1);
+    --ease-snappytest: ease-out;
 }
 
 .theme-token-host.theme-token-alt {
