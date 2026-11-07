@@ -292,10 +292,10 @@ namespace Velvet
             // ease-[<easing function>] (transition-timing-function) is a curve, not a length.
             if (!negate && prefix == "ease-")
             {
-                if (StyleEaseCurve.TryParse(valueSpan, out var curve))
+                if (StyleEaseCurve.TryParse(valueSpan, out var function))
                 {
-                    result = new ArbitraryStyle(ArbitraryProperty.TransitionTimingFunction, curve.X1, curve.Y1, curve.X2,
-                        curve.Y2);
+                    var (v1, v2, v3, v4) = function.ToLayer();
+                    result = new ArbitraryStyle(ArbitraryProperty.TransitionTimingFunction, v1, v2, v3, v4);
                     return true;
                 }
                 return false;
@@ -4259,13 +4259,13 @@ namespace Velvet
         private static void ApplyTransitionTimingFunction(VisualElement element, LayerMap map)
         {
             StyleList<EasingFunction> timing = StyleKeyword.Null;
-            BezierCurve? curve = null;
+            EaseFunction? curve = null;
             var mode = EasingMode.Ease;
             if (TryWinningLayer(map, ArbitraryProperty.TransitionTimingFunction, out var winner))
             {
                 if (winner.Keyword == StyleKeyword.Undefined)
                 {
-                    curve = new BezierCurve(winner.Value, winner.Value2, winner.Value3, winner.Value4);
+                    curve = EaseFunction.FromLayer(winner.Value, winner.Value2, winner.Value3, winner.Value4);
                     mode = StyleEaseCurve.NearestMode(curve.Value);
                     timing = new List<EasingFunction> { new EasingFunction(mode) };
                 }

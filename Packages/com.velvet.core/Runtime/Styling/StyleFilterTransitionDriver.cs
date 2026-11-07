@@ -23,8 +23,8 @@ namespace Velvet
         public float DurationSec;
         public float DelaySec;
         public EasingMode Easing;
-        // The cubic-bezier the tween eases by in place of Easing's keyword (StyleEaseCurve.CurveFor).
-        public BezierCurve? Curve;
+        // The easing function the tween eases by in place of Easing's keyword (StyleEaseCurve.CurveFor).
+        public EaseFunction? Curve;
         // The value a change has to return to for it to reverse this tween, and the tween's reversing shortening
         // factor (TryStartOrRedirect).
         public List<FilterFunction>? AdjustedStart;

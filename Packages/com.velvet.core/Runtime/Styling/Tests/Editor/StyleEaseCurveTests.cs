@@ -12,7 +12,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class StyleEaseCurveTests
     {
-        private static BezierCurve? Parse(string text)
+        private static EaseFunction? Parse(string text)
             => StyleEaseCurve.TryParse(text.AsSpan(), out var curve) ? curve : null;
 
         [Test]
@@ -25,7 +25,7 @@ namespace Velvet.Tests
             var curve = Parse(text);
 
             // Assert
-            Assert.That(curve, Is.EqualTo((BezierCurve?)new BezierCurve(0.2f, 0.8f, 0.2f, 1f)));
+            Assert.That(curve, Is.EqualTo((EaseFunction?)new BezierCurve(0.2f, 0.8f, 0.2f, 1f)));
         }
 
         [Test]
@@ -38,7 +38,7 @@ namespace Velvet.Tests
             var curve = Parse(text);
 
             // Assert
-            Assert.That(curve, Is.EqualTo((BezierCurve?)new BezierCurve(0.2f, 0.8f, 0.2f, 1f)));
+            Assert.That(curve, Is.EqualTo((EaseFunction?)new BezierCurve(0.2f, 0.8f, 0.2f, 1f)));
         }
 
         [Test]
@@ -51,16 +51,19 @@ namespace Velvet.Tests
             var curve = Parse(text);
 
             // Assert
-            Assert.That(curve, Is.EqualTo((BezierCurve?)new BezierCurve(0.42f, 0f, 0.58f, 1f)));
+            Assert.That(curve, Is.EqualTo((EaseFunction?)new BezierCurve(0.42f, 0f, 0.58f, 1f)));
         }
 
+        [TestCase("steps(0)")]
+        [TestCase("steps(1, jump-none)")]
+        [TestCase("steps(4, sideways)")]
+        [TestCase("steps(-2)")]
         [TestCase("cubic-bezier(1.2, 0, 0.2, 1)")]
         [TestCase("cubic-bezier(0.2, 0, -0.1, 1)")]
         [TestCase("cubic-bezier(0, 0, 1)")]
         [TestCase("cubic-bezier(0, 0, 1, 1, 1)")]
         [TestCase("cubic-bezier(0, 0, one, 1)")]
         [TestCase("cubic-bezier(NaN, 0, 0.2, 1)")]
-        [TestCase("steps(4)")]
         [TestCase("")]
         public void Given_AValueCssRejects_When_Parsed_Then_ThereIsNoCurve(string text)
         {
@@ -71,6 +74,48 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(curve, Is.Null);
+        }
+
+        [Test]
+        public void Given_StepsWithAJump_When_Parsed_Then_ItIsThatManyStepsJumpingThere()
+        {
+            // Arrange
+            const string text = "steps(4, jump-both)";
+
+            // Act
+            var function = Parse(text);
+
+            // Assert
+            Assert.That(function, Is.EqualTo((EaseFunction?)EaseFunction.OfSteps(4, StepJump.Both)));
+        }
+
+        [TestCase(StepJump.End, 0.3f, 0.25f)]
+        [TestCase(StepJump.Start, 0.3f, 0.5f)]
+        [TestCase(StepJump.None, 0.3f, 1f / 3f)]
+        [TestCase(StepJump.Both, 0.3f, 0.4f)]
+        public void Given_FourSteps_When_EvaluatedPartWayThrough_Then_TheJumpPlacesTheStep(StepJump jump, float t, float expected)
+        {
+            // Arrange
+            var steps = EaseFunction.OfSteps(4, jump);
+
+            // Act
+            var eased = StyleEaseCurve.Evaluate(steps, t);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(expected).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AStepsClass_When_Parsed_Then_TheLayerCarriesTheCountAndAnX2NoCurveHolds()
+        {
+            // Arrange
+            const string className = "ease-[steps(3,_jump-start)]";
+
+            // Act
+            var parsed = StyleArbitraryValueResolver.TryParse(className, out var layer);
+
+            // Assert
+            Assert.That(parsed ? layer.Value3 : float.NaN, Is.EqualTo(-1f));
         }
 
         [Test]
