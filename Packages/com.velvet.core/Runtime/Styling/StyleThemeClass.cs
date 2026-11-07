@@ -104,6 +104,10 @@ namespace Velvet
             return dash > 0 && s_heads.Contains(core.Substring(core[0] == '-' ? 1 : 0, dash - (core[0] == '-' ? 1 : 0)));
         }
 
+        // Whether a class with none of the special characters is one a theme variable makes or a namespace's initial
+        // removes, which the custom-property pass owns rather than the class list.
+        internal static bool OwnsPlainToken(string core) => Normalize(core) != null || IsClearedBundled(core);
+
         // Whether the class is one a theme variable makes, or one with the shape of such a class that nothing else
         // gives a meaning to (so a sheet declaring its variable later would make it one).
         internal static bool MayBecomeThemeClass(string core)

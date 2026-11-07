@@ -6,10 +6,10 @@
     --text-scopedtest: 20px;
     --text-sizetest--line-height: 1.5;
     --text-sm--line-height: 2;
-    --breakpoint-xstest: 30rem;
-    --container-widetest: 100rem;
-    --breakpoint-sm: 50rem;
-    --breakpoint-3xltest: 120rem;
+    --breakpoint-xstest: 480px;
+    --container-widetest: 1600px;
+    --breakpoint-sm: 800px;
+    --breakpoint-3xltest: 1920px;
     --animate-wiggletest: kf-theme 2s linear infinite;
     --inset-shadow-glowtest: 0 0 4px rgb(255, 0, 0);
 }

@@ -63,6 +63,11 @@ namespace Velvet
             public bool TryGetText(string property, out string text)
             {
                 string? found = null;
+                if (!Values.ContainsKey(property))
+                {
+                    text = string.Empty;
+                    return false;
+                }
                 var cascade = s_element != null && StyleCustomProperties.HasStylesheetContext(s_element);
                 if (cascade ? !StyleCustomProperties.TryStylesheetValue(s_element!, property, out found)
                     : !Values.TryGetValue(property, out found))
@@ -463,7 +468,7 @@ namespace Velvet
                 for (var i = 0; i < element.styleSheets.count; i++)
                 {
                     var sheet = element.styleSheets[i];
-                    hash = unchecked(hash * 31 + (sheet == null ? 0 : sheet.GetInstanceID()) * 7 + (sheet == null ? 0 : sheet.contentHash));
+                    hash = unchecked(hash * 31 + (sheet == null ? 0 : RuntimeHelpers.GetHashCode(sheet)) * 7 + (sheet == null ? 0 : sheet.contentHash));
                 }
             }
             return hash;

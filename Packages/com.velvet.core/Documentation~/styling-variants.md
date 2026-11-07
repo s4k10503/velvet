@@ -250,12 +250,12 @@ that simulates a viewport re-points them, [as below](#simulating-a-viewport-velv
 
 ### Theme breakpoints, container sizes and animations
 
-`--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` … `2xl:`. A breakpoint a sheet names
-(`--breakpoint-3xl: 120rem`) makes `3xl:` and `max-3xl:`; `max-*:` and `min-*:` read any breakpoint (`max-md:`,
+Write the lengths of these variables in `px`. `--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` … `2xl:`. A breakpoint a sheet names
+(`--breakpoint-3xl: 1920px`) makes `3xl:` and `max-3xl:`; `max-*:` and `min-*:` read any breakpoint (`max-md:`,
 `min-3xl:`) and a written length (`max-[600px]:`, `min-[600px]:`). They rank as Tailwind v4 orders them: every `max-*`
 first, a larger ceiling before a smaller, then one group of floors by threshold (the default breakpoints, the ones a
 sheet names and `min-*`), then the container queries. A value is read as the cascade gives it to the element, so
-a theme class (`.compact { --breakpoint-sm: 30rem }`) moves it for its subtree.
+a theme class (`.compact { --breakpoint-sm: 480px }`) moves it for its subtree.
 
 `--container-*` declares container sizes: `@widetest:` and `max-w-widetest` read `--container-widetest`, and a size the
 default scale names (`--container-md`) moves it. `--animate-wiggle: wiggle 1s ease-in-out infinite` makes
