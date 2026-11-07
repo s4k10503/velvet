@@ -32,6 +32,7 @@ namespace Velvet
     internal sealed class StyleContainerVariantManipulator : Manipulator
     {
         private readonly ReconcilerContext _ctx;
+        private StyleThemeTokens.Follower? _themeFollower;
         private ContainerBinding[] _bindings;
         private bool[] _on;
         // Keyed by container name, "" for the nearest container of any name.
@@ -85,8 +86,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
-            StyleThemeTokens.ScopeChanged += OnThemeChanged;
-            ListenForStyle();
+            (_themeFollower ??= new StyleThemeTokens.Follower(_ctx, () => target, Evaluate)).Attach();
             _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
             _watch.Start();
 
@@ -103,8 +103,7 @@ namespace Velvet
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
-            StyleThemeTokens.ScopeChanged -= OnThemeChanged;
-            StopListeningForStyle();
+            _themeFollower?.Detach();
             _watch?.Stop();
             UnhookSources();
             foreach (var owner in _owners.Values)
@@ -123,29 +122,6 @@ namespace Velvet
         {
             ResetApplied();
             UnhookSources();
-        }
-
-        private StyleThemeTokens.ContextWatch? _contextWatch;
-
-        // The cascade an element reads a declared threshold from changes with a class toggled above it and with its
-        // first style pass; the watch notices the engine handing the element another variable context.
-        private void ListenForStyle()
-        {
-            if (target != null && StyleThemeTokens.ReadsValues(_ctx))
-            {
-                (_contextWatch ??= new StyleThemeTokens.ContextWatch(target, Evaluate)).Start();
-            }
-        }
-
-        private void StopListeningForStyle() => _contextWatch?.Stop();
-
-        private void OnThemeChanged(ReconcilerContext ctx)
-        {
-            if (ReferenceEquals(ctx, _ctx))
-            {
-                ListenForStyle();
-                target?.schedule.Execute(Evaluate);
-            }
         }
 
         private void OnScopesChanged()

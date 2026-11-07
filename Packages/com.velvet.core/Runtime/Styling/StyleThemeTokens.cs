@@ -1,9 +1,9 @@
-#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
+#nullable enable
 
 namespace Velvet
 {
@@ -154,38 +154,77 @@ namespace Velvet
         internal sealed class ContextWatch
         {
             private readonly VisualElement _target;
-            private readonly Action _tick;
+            private readonly StyleResponsiveScope.ScopeWatch _watch;
             private object? _seen;
-            private IVisualElementScheduledItem? _item;
 
             public ContextWatch(VisualElement target, Action evaluate)
             {
                 _target = target;
                 Evaluate = evaluate;
-                _tick = Tick;
+                _watch = new StyleResponsiveScope.ScopeWatch(target, Moved, () => Evaluate());
             }
 
             public Action Evaluate { get; set; }
 
-            public void Start()
-            {
-                if (_item == null)
-                {
-                    _item = _target.schedule.Execute(_tick).Every(StyleAnimateDriver.TickMs);
-                    return;
-                }
-                _item.Resume();
-            }
+            public void Start() => _watch.Start();
 
-            public void Stop() => _item?.Pause();
+            public void Stop() => _watch.Stop();
 
-            private void Tick()
+            private bool Moved()
             {
                 var context = StyleCustomProperties.ContextOf(_target);
-                if (_target.panel != null && !ReferenceEquals(context, _seen))
+                if (ReferenceEquals(context, _seen))
                 {
-                    _seen = context;
-                    Evaluate();
+                    return false;
+                }
+                _seen = context;
+                return true;
+            }
+        }
+
+        // What a width-driven variant manipulator does to follow the theme values it reads: watch its element's
+        // variable context while the mount declares a breakpoint or container size, and evaluate again when the mount's
+        // sheets change.
+        internal sealed class Follower
+        {
+            private readonly ReconcilerContext _ctx;
+            private readonly Func<VisualElement?> _target;
+            private readonly Action _evaluate;
+            private ContextWatch? _watch;
+
+            public Follower(ReconcilerContext ctx, Func<VisualElement?> target, Action evaluate)
+            {
+                _ctx = ctx;
+                _target = target;
+                _evaluate = evaluate;
+            }
+
+            public void Attach()
+            {
+                ScopeChanged += OnChanged;
+                Listen();
+            }
+
+            public void Detach()
+            {
+                ScopeChanged -= OnChanged;
+                _watch?.Stop();
+            }
+
+            private void Listen()
+            {
+                if (_target() is { } target && ReadsValues(_ctx))
+                {
+                    (_watch ??= new ContextWatch(target, _evaluate)).Start();
+                }
+            }
+
+            private void OnChanged(ReconcilerContext ctx)
+            {
+                if (ReferenceEquals(ctx, _ctx))
+                {
+                    Listen();
+                    _target()?.schedule.Execute(_evaluate);
                 }
             }
         }
