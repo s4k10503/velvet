@@ -203,6 +203,29 @@ namespace Velvet
             }
         }
 
+        // Whether the colour watch is about to rewrite a side over an inline colour that is not Velvet's, which then keeps
+        // it and the layer lets go. Asked before the watch writes: after it has, the value cannot be told from its own.
+        internal static bool YieldsToInline(VisualElement element, ArbitraryProperty property)
+        {
+            for (var i = 0; i < s_sideProperties.Length; i++)
+            {
+                if (s_sideProperties[i] != property || !s_states.TryGetValue(element, out var state)
+                    || (state.Held & (Sides)(1 << i)) == 0)
+                {
+                    continue;
+                }
+                var inline = InlineColor(element, i);
+                if (inline.keyword != StyleKeyword.Undefined || SilhouetteFace.IsSentinel(inline.value) || inline.value == state.Seen[i])
+                {
+                    return false;
+                }
+                StyleArbitraryValueResolver.Withdraw(element, property, StyleLayerPriority.Preflight);
+                state.Held &= ~(Sides)(1 << i);
+                return true;
+            }
+            return false;
+        }
+
         // Records the inline colours of the sides property writes as Velvet's own, after the resolver wrote them.
         internal static void NoteWritten(VisualElement element, ArbitraryProperty property)
         {
@@ -878,7 +901,8 @@ namespace Velvet
             }
             if (rest.Length > 0 && rest[0] == '[')
             {
-                return StyleArbitraryValueResolver.TryParseLayer(core.ToString(), out var style) && IsWidth(style.Property);
+                return StyleArbitraryValueResolver.TryParseLayer(core.ToString(), out var style) ? IsWidth(style.Property)
+                    : rest.Length > 1 && (char.IsDigit(rest[1]) || rest[1] == '.');
             }
             return IsNonZeroNumber(rest);
         }

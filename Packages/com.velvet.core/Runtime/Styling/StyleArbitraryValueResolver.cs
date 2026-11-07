@@ -3873,7 +3873,10 @@ namespace Velvet
             var winners = s_relativeWinners.ToArray();
             foreach (var property in winners)
             {
-                ResolveAndApply(element, property, map);
+                if (!BorderPreflight.YieldsToInline(element, property))
+                {
+                    ResolveAndApply(element, property, map);
+                }
             }
             // A face the element itself holds in these slots has had its sentinel written over.
             SilhouetteFaceStash.Retake(element);
