@@ -176,9 +176,10 @@ namespace Velvet
         }
 
         // Has every transition the panel runs for the element ease along curve, in place of the curve its
-        // transition-timing-function named. A member that does not resolve leaves the transitions on the curve they
-        // started with. StyleEaseCurveTransitionTests fails when the swap stops reaching the transition.
-        public static void Retime(VisualElement element, Func<float, float> curve)
+        // transition-timing-function named, except one that keepsCurve says already runs on a curve it was given. A member
+        // that does not resolve leaves the transitions on the curve they started with.
+        // StyleEaseCurveTransitionTests fails when the swap stops reaching the transition.
+        public static void Retime(VisualElement element, Func<float, float> curve, Predicate<Func<float, float>> keepsCurve)
         {
             if (!s_readable || s_valuesByProperty == null || s_elements == null || s_count == null || element.panel == null)
             {
@@ -192,8 +193,13 @@ namespace Velvet
                 {
                     return;
                 }
+                var seen = new System.Collections.Generic.HashSet<object>();
                 foreach (var values in byProperty.Values)
                 {
+                    if (!seen.Add(values))
+                    {
+                        continue;
+                    }
                     var running = Read(s_running!, values);
                     var elements = (VisualElement[])Read(s_elements, running);
                     var timings = (Array)Read(s_timings!, running);
@@ -206,7 +212,7 @@ namespace Velvet
                         }
                         var timing = timings.GetValue(i)!;
                         var field = (FieldInfo)Close(s_curve!, timing.GetType());
-                        if (!Equals(field.GetValue(timing), curve))
+                        if (field.GetValue(timing) is Func<float, float> current && !keepsCurve(current))
                         {
                             field.SetValue(timing, curve);
                             timings.SetValue(timing, i);

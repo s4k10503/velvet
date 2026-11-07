@@ -76,6 +76,10 @@ namespace Velvet
 
         private static readonly EventCallback<TransitionRunEvent> s_onRun = OnRun;
 
+        // The curves this class has given a transition: a transition running on one keeps it, as a CSS transition keeps
+        // its timing function until another replaces it.
+        private static readonly ConditionalWeakTable<Func<float, float>, object> s_given = new();
+
         // The curve the winning ease-[...] layer gives the element, or none; mode is the keyword left on the element
         // beside it.
         internal static void SetLayer(VisualElement element, BezierCurve? curve, EasingMode mode)
@@ -211,8 +215,9 @@ namespace Velvet
                 var shaped = curve;
                 binding.ShapedFor = curve;
                 binding.Shaped = t => Evaluate(shaped, t);
+                s_given.Add(binding.Shaped, binding);
             }
-            RunningStyleTransition.Retime(element, binding.Shaped);
+            RunningStyleTransition.Retime(element, binding.Shaped, static current => s_given.TryGetValue(current, out _));
         }
 
         // Whether every transition the element resolves eases by the keyword.
