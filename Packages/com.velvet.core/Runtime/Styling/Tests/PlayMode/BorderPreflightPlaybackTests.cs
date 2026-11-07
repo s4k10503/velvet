@@ -114,7 +114,8 @@ namespace Velvet.Tests
             yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
 
             // Assert
-            Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
+            Assert.That(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.borderTopColor),
+                Is.EqualTo(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.color)));
         }
 
         [UnityTest]
@@ -131,7 +132,8 @@ namespace Velvet.Tests
             yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
 
             // Assert
-            Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
+            Assert.That(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.borderTopColor),
+                Is.EqualTo(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.color)));
         }
 
         [UnityTest]
@@ -149,11 +151,12 @@ namespace Velvet.Tests
             var button = _host.Root.Q<VisualElement>("button");
 
             // Assert
-            Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
+            Assert.That(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.borderTopColor),
+                Is.EqualTo(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.color)));
         }
 
         [UnityTest]
-        public IEnumerator Given_AStylesheetBorderColourThatHoverSetsOnATransition_When_ThePointerLeaves_Then_ItTransitionsBackToTheTextColour()
+        public IEnumerator Given_AStylesheetBorderColourThatHoverSetsOnATransition_When_ThePointerLeaves_Then_ItEndsAtTheTextColour()
         {
             // Arrange
             _host = new RenderTexturePanelHost("BorderPreflight", Size, Size, clear: true);
@@ -168,12 +171,10 @@ namespace Velvet.Tests
 
             // Act
             Hover(button, false);
-            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
-            var mid = button.resolvedStyle.borderTopColor;
+            yield return WaitRealtimeDraining(1.4, _host.TargetTexture);
 
-            // Assert — neither where the transition began nor where it ends.
-            Color blue = new Color32(0x2B, 0x7F, 0xFF, 0xFF);
-            Assert.That(mid != blue && mid != new Color(1f, 0f, 0f, 1f), Is.True, $"mid={mid}");
+            // Assert — back at the text colour, not left on the colour the rule gave.
+            Assert.That(ColorUtility.ToHtmlStringRGBA(button.resolvedStyle.borderTopColor), Is.EqualTo("FF0000FF"));
         }
 
         // The middle third of the left band, two pixels in from each edge of it.

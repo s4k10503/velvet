@@ -113,11 +113,20 @@ namespace Velvet
         // style pass, and the restyle event that follows the attach is what asks.
         private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onAttached = (_, element) =>
         {
-            if (s_states.TryGetValue(element, out var state) && (state.Reasons & Reasons.Classes) != 0)
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                return;
+            }
+            if ((state.Reasons & Reasons.Classes) != 0)
             {
                 SnappedBorderSheets.FollowRootOf(element);
             }
+            // A panel without the bundled stylesheet sends no restyle event (the marker class has no rule there), so the
+            // element is asked once after its first style pass.
+            element.schedule.Execute(() => Resync(element, ask: true)).ExecuteLater(FirstPassMs);
         };
+
+        private const long FirstPassMs = 32;
 
         // An element is asked when it attaches, and again on a reparent, whether a rule setting a border width names it.
         private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached = (_, element) =>
@@ -214,13 +223,7 @@ namespace Velvet
         // Whether the inline colour on edge of owner is the preflight layer's, which no other layer outranks.
         internal static bool Writes(VisualElement owner, DivideEdge edge)
         {
-            var property = edge switch
-            {
-                DivideEdge.Top => ArbitraryProperty.BorderTopColor,
-                DivideEdge.Right => ArbitraryProperty.BorderRightColor,
-                DivideEdge.Bottom => ArbitraryProperty.BorderBottomColor,
-                _ => ArbitraryProperty.BorderLeftColor,
-            };
+            var property = s_sideProperties[edge == DivideEdge.Top ? 0 : edge == DivideEdge.Right ? 1 : edge == DivideEdge.Bottom ? 2 : 3];
             var shared = edge is DivideEdge.Left or DivideEdge.Right ? ArbitraryProperty.BorderXColor : ArbitraryProperty.BorderYColor;
             return StyleArbitraryValueResolver.TryRestingLayer(owner, property, s_noSwap, out _, out var key)
                 && key == StyleLayerPriority.Preflight
@@ -267,7 +270,6 @@ namespace Velvet
         // Stops listening, for a teardown that drops the layer map itself.
         internal static void Forget(VisualElement element)
         {
-            element.UnregisterCallback(s_onCandidateAttached);
             if (!s_states.Remove(element))
             {
                 return;
@@ -456,9 +458,9 @@ namespace Velvet
                     {
                         return true;
                     }
-                    foreach (var cls in element.GetClasses())
+                    foreach (var cls in names.Classes)
                     {
-                        if (names.Classes.Contains(cls))
+                        if (element.ClassListContains(cls))
                         {
                             return true;
                         }

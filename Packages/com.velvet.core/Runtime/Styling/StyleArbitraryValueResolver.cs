@@ -3336,9 +3336,11 @@ namespace Velvet
 
         // The form of ResolveLayered above that answers what a hold yielding on slot gives way to (Yield): with
         // importantOnly, an important layer alone.
-        internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot, bool importantOnly)
+        internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot, bool importantOnly,
+            bool ignorePreflight = false)
         {
-            if (!s_layers.TryGetValue(element, out var map) || !TryLayeredWinner(map, slot, out var winner, out var rank))
+            if (!s_layers.TryGetValue(element, out var map)
+                || !TryLayeredWinner(map, slot, out var winner, out var rank, ignorePreflight))
             {
                 return null;
             }

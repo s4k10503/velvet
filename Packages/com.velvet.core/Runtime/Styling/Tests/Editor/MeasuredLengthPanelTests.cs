@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor.UIElements.TestFramework;
@@ -73,7 +74,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnElementTrackedAndReleasedRepeatedly_When_TrackedOnceMore_Then_ThePanelWatchHoldsOneReference()
         {
-            // Arrange
+            // Arrange — the root the bundled utilities sit on may be watched already, for the scale its snapped sheet follows.
+            var others = Math.Max(WatchedOn(_sim.rootVisualElement.panel), 0);
             var element = new VisualElement();
             _sim.rootVisualElement.Add(element);
             var owner = new object();
@@ -87,7 +89,7 @@ namespace Velvet.Tests
             PanelScaleWatch.Track(element, owner, _ => { });
 
             // Assert
-            Assert.That(WatchedOn(element.panel), Is.EqualTo(1));
+            Assert.That(WatchedOn(element.panel) - others, Is.EqualTo(1));
         }
 
         // The references the panel's watch holds, read from the private table.

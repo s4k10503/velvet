@@ -83,8 +83,6 @@ namespace Velvet
             }
         }
 
-        internal static void Stop(VisualElement root) => PanelScaleWatch.Untrack(root, s_owner);
-
         internal static bool IsSnapped(StyleSheet sheet) => sheet != null && sheet.name == SheetName;
 
         // The sheet for a panel scale, or none where every bundled width is already a whole number of device pixels.

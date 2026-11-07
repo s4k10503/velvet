@@ -280,7 +280,7 @@ namespace Velvet
             }
             if (binding.Divider is { } divider && divides)
             {
-                return StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot, binding.DividerImportant) is { } over
+                return StyleArbitraryValueResolver.ResolveLayered(binding.Child, slot, binding.DividerImportant, ignorePreflight: true) is { } over
                     ? StyleArbitraryValueResolver.ColorOf(binding.Child, over)
                     : divider;
             }
