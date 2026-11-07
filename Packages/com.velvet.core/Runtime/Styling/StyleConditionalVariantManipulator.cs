@@ -72,29 +72,19 @@ namespace Velvet
         }
 
         // A sheet moving a --breakpoint-* threshold changes what the width answers without the width changing.
-        private bool _listening;
+        private StyleThemeTokens.ContextWatch? _contextWatch;
 
-        // The element's custom styles resolving again (a theme class toggled above it) changes the cascade the
-        // thresholds are read from.
+        // The cascade an element reads a declared threshold from changes with a class toggled above it and with its
+        // first style pass; the watch notices the engine handing the element another variable context.
         private void ListenForStyle()
         {
-            if (!_listening && target != null && StyleThemeTokens.ReadsValues(_ctx))
+            if (target != null && StyleThemeTokens.ReadsValues(_ctx))
             {
-                _listening = true;
-                target.RegisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+                (_contextWatch ??= new StyleThemeTokens.ContextWatch(target, EvaluateResponsive)).Start();
             }
         }
 
-        private void StopListeningForStyle()
-        {
-            if (_listening && target != null)
-            {
-                _listening = false;
-                target.UnregisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
-            }
-        }
-
-        private void OnStyleResolved(CustomStyleResolvedEvent evt) => target?.schedule.Execute(EvaluateResponsive);
+        private void StopListeningForStyle() => _contextWatch?.Stop();
 
         private void OnThemeChanged(ReconcilerContext ctx)
         {

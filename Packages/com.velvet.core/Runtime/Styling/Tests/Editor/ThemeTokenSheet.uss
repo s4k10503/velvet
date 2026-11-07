@@ -2,10 +2,9 @@
 .theme-token-host {
     --color-brandtest: rgb(255, 0, 102);
     --radius-pilltest: 40px;
-    --spacing: 3px;
-    --spacing-guttertest: 10px;
-    --spacing-7: 10px;
     --text-sizetest: 20px;
+    --text-ratiotest: 24px;
+    --text-ratiotest--line-height: calc(2.5 / 2);
     --text-sizetest--line-height: 1.5;
     --text-sm--line-height: 2;
     --breakpoint-xstest: 30rem;
@@ -18,4 +17,10 @@
 
 .theme-token-host.theme-token-alt {
     --color-brandtest: rgb(0, 255, 0);
+}
+
+:root {
+    --spacing: 3px;
+    --spacing-guttertest: 10px;
+    --spacing-7: 10px;
 }

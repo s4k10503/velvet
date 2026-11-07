@@ -110,9 +110,8 @@ The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner a
 (`text-display`, its `--text-display--line-height`, and `text-display/7` with a line height), `--font-*`, `--font-weight-*`, `--tracking-*`, `--leading-*`,
 `--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`, `--blur-*`, `--aspect-*`, `--spacing-*` and `--spacing`
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and `--breakpoint-*`,
-`--container-*` and `--animate-*` ([styling-variants.md](styling-variants.md#theme-breakpoints-container-sizes-and-animations)). `--ease-*` is not read: UI Toolkit's `EasingFunction` takes an `EasingMode` keyword and has no cubic-bezier form, so
-Tailwind's `cubic-bezier()` easings cannot be expressed, and `ease-in`, `ease-out`, `ease-in-out` and `ease-linear` are the bundled
-classes. A
+`--container-*` and `--animate-*` ([styling-variants.md](styling-variants.md#theme-breakpoints-container-sizes-and-animations)). `--ease-*` is not read: the native `ease-in`, `ease-out`, `ease-in-out` and `ease-linear` class transitions are UI Toolkit's
+`EasingFunction`, which takes an `EasingMode` keyword and no cubic-bezier. A
 name is a token of its namespace only where a sheet declares it.
 
 A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled

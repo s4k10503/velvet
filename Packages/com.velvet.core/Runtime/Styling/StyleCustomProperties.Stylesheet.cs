@@ -31,6 +31,13 @@ namespace Velvet
 
         // The text of the custom property name as a stylesheet gives it to element, inherited declarations included,
         // by the cascade the engine resolved for it. False where none declares it or its value cannot be spelled.
+        // The variable context the engine last gave element, null before its first style pass.
+        internal static object? ContextOf(VisualElement element) => s_variableContext?.GetValue(element);
+
+        // Whether the engine has resolved a variable context for element holding at least one variable.
+        internal static bool HasStylesheetContext(VisualElement element)
+            => TryReadContext(element, out var context) && context.Count > 0;
+
         internal static bool TryStylesheetValue(VisualElement element, string name, out string? value)
         {
             value = null;

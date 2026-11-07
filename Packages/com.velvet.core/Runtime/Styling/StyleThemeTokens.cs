@@ -19,6 +19,11 @@ namespace Velvet
         private static readonly PropertyInfo? s_properties = EngineMember.StyleRuleProperties.ResolveProperty();
         private static readonly PropertyInfo? s_name = EngineMember.StylePropertyName.ResolveProperty();
         private static readonly PropertyInfo? s_values = EngineMember.StylePropertyValues.ResolveProperty();
+        private static readonly PropertyInfo? s_complex = EngineMember.StyleRuleComplexSelectors.ResolveProperty();
+        private static readonly PropertyInfo? s_selectors = EngineMember.StyleComplexSelectorSelectors.ResolveProperty();
+        private static readonly PropertyInfo? s_parts = EngineMember.StyleSelectorParts.ResolveProperty();
+        private static readonly PropertyInfo? s_value = EngineMember.StyleSelectorPartValue.ResolveProperty();
+        private static readonly PropertyInfo? s_type = EngineMember.StyleSelectorPartType.ResolveProperty();
 
         internal sealed class Scope
         {
@@ -40,13 +45,14 @@ namespace Velvet
 
             // How many declarations the project sheets make of each name in Values.
             public readonly Dictionary<string, int> Counts = new(StringComparer.Ordinal);
+            public readonly Dictionary<string, int> RootCounts = new(StringComparer.Ordinal);
 
             // The length the one declaration of the variable gives, where a single rule declares it: every element
             // reads that value, so a utility can be written with the literal.
             public bool TryGetSinglePx(string property, out float px)
             {
                 px = 0f;
-                return Counts.TryGetValue(property, out var count) && count == 1 && Values.TryGetValue(property, out var text)
+                return Counts.TryGetValue(property, out var count) && count == 1 && RootCounts.TryGetValue(property, out var root) && root == 1 && Values.TryGetValue(property, out var text)
                     && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
             }
 
@@ -59,7 +65,8 @@ namespace Velvet
                 // An element reads what the cascade gives it and nothing else: a value declared under a selector it
                 // does not match is not its own. A reader holding no element (a class being parsed) reads the last
                 // value any rule declares.
-                if (s_element != null ? !StyleCustomProperties.TryStylesheetValue(s_element, property, out text)
+                var cascade = s_element != null && StyleCustomProperties.HasStylesheetContext(s_element);
+                if (cascade ? !StyleCustomProperties.TryStylesheetValue(s_element!, property, out text)
                     : !Values.TryGetValue(property, out text))
                 {
                     return false;
@@ -87,6 +94,7 @@ namespace Velvet
             public string[] Names = Array.Empty<string>();
             public readonly List<string> Cleared = new();
             public readonly Dictionary<string, int> Counts = new(StringComparer.Ordinal);
+            public readonly Dictionary<string, int> RootCounts = new(StringComparer.Ordinal);
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
         }
 
@@ -100,6 +108,46 @@ namespace Velvet
         internal static bool ReadsValues(ReconcilerContext ctx)
             => s_scopes.TryGetValue(ctx, out var scope) && scope.Values.Count > 0;
 
+        // Calls evaluate when the engine hands target another variable context, which is how a value its cascade holds
+        // changes (a class toggled on an ancestor, the first style pass).
+        internal sealed class ContextWatch
+        {
+            private readonly VisualElement _target;
+            private readonly Action _evaluate;
+            private readonly Action _tick;
+            private object? _seen;
+            private IVisualElementScheduledItem? _item;
+
+            public ContextWatch(VisualElement target, Action evaluate)
+            {
+                _target = target;
+                _evaluate = evaluate;
+                _tick = Tick;
+            }
+
+            public void Start()
+            {
+                if (_item == null)
+                {
+                    _item = _target.schedule.Execute(_tick).Every(StyleAnimateDriver.TickMs);
+                    return;
+                }
+                _item.Resume();
+            }
+
+            public void Stop() => _item?.Pause();
+
+            private void Tick()
+            {
+                var context = StyleCustomProperties.ContextOf(_target);
+                if (_target.panel != null && !ReferenceEquals(context, _seen))
+                {
+                    _seen = context;
+                    _evaluate();
+                }
+            }
+        }
+
         // Raised after a rebuild finds the sheets a mount reads changed; readers re-evaluate what they took from them.
         internal static event Action<ReconcilerContext>? ScopeChanged;
 
@@ -110,19 +158,20 @@ namespace Velvet
             public readonly List<WeakReference<VisualElement>> Elements = new();
             public readonly ConditionalWeakTable<VisualElement, string[]> Classes = new();
             public int PruneAt = 64;
+            public readonly ConditionalWeakTable<VisualElement, object> Listed = new();
         }
 
         private static readonly ConditionalWeakTable<ReconcilerContext, Themed> s_themed = new();
 
-        // Remembers an element whose class list holds a class a theme variable could make, so it is configured again
-        // when the sheets change what the variables declare.
         // The context an element is tracked under, so its record goes with the element (Untrack).
         private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_trackedBy = new();
 
+        // Remembers an element whose class list holds a class a theme variable could make, so it is configured again
+        // when the sheets change what the variables declare.
         internal static void Track(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
             var themed = s_themed.GetValue(ctx, static _ => new Themed());
-            if (!themed.Classes.TryGetValue(element, out _))
+            if (!themed.Listed.TryGetValue(element, out _))
             {
                 if (themed.Elements.Count >= themed.PruneAt)
                 {
@@ -130,6 +179,7 @@ namespace Velvet
                     themed.PruneAt = Math.Max(64, themed.Elements.Count * 2);
                 }
                 themed.Elements.Add(new WeakReference<VisualElement>(element));
+                themed.Listed.Add(element, element);
             }
             themed.Classes.Remove(element);
             themed.Classes.Add(element, classNames);
@@ -300,6 +350,7 @@ namespace Velvet
                 scope.Cleared.Clear();
                 scope.Values.Clear();
                 scope.Counts.Clear();
+                scope.RootCounts.Clear();
                 for (var element = ctx.ThemeRoot; element != null; element = element.hierarchy.parent)
                 {
                     for (var i = 0; i < element.styleSheets.count; i++)
@@ -356,6 +407,10 @@ namespace Velvet
                 {
                     scope.Counts[count.Key] = (scope.Counts.TryGetValue(count.Key, out var before) ? before : 0) + count.Value;
                 }
+                foreach (var count in read.RootCounts)
+                {
+                    scope.RootCounts[count.Key] = (scope.RootCounts.TryGetValue(count.Key, out var before) ? before : 0) + count.Value;
+                }
             }
             foreach (var name in read.Names)
             {
@@ -374,7 +429,7 @@ namespace Velvet
             }
         }
 
-        private static void ReadDeclaration(StyleSheet sheet, object property, List<string> names, Read read)
+        private static void ReadDeclaration(StyleSheet sheet, object property, bool rootRule, List<string> names, Read read)
         {
             if (s_name?.GetValue(property) is not string name || !name.StartsWith("--", StringComparison.Ordinal))
             {
@@ -398,12 +453,37 @@ namespace Velvet
             {
                 read.Values[name] = text;
                 read.Counts[name] = read.Counts.TryGetValue(name, out var seen) ? seen + 1 : 1;
+                if (rootRule)
+                {
+                    read.RootCounts[name] = read.RootCounts.TryGetValue(name, out var roots) ? roots + 1 : 1;
+                }
             }
             else if (text.Trim() == "initial")
             {
                 // `--color-*: initial` clears the namespace, `--*: initial` every one.
                 read.Cleared.Add(name == "--*" ? "all-" : name.Substring(2, name.Length - 3));
             }
+        }
+
+        // Whether every selector of the rule is `:root`, the declarations of which every element of the mount reads.
+        private static bool IsRootRule(object rule)
+        {
+            var complex = s_complex?.GetValue(rule) as Array;
+            if (complex == null || complex.Length == 0 || s_selectors == null || s_parts == null || s_value == null || s_type == null)
+            {
+                return false;
+            }
+            foreach (var selector in complex)
+            {
+                var selectors = s_selectors.GetValue(selector) as Array;
+                var parts = selectors == null || selectors.Length != 1 ? null : s_parts.GetValue(selectors.GetValue(0)) as Array;
+                if (parts == null || parts.Length != 1 || s_value.GetValue(parts.GetValue(0)) as string != "root"
+                    || s_type.GetValue(parts.GetValue(0))?.ToString().IndexOf("Pseudo", StringComparison.Ordinal) < 0)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static Read ReadOf(StyleSheet sheet)
@@ -419,9 +499,10 @@ namespace Velvet
             {
                 foreach (var rule in (Array?)s_rules.GetValue(sheet) ?? Array.Empty<object>())
                 {
+                    var rootRule = IsRootRule(rule);
                     foreach (var property in (Array?)s_properties.GetValue(rule) ?? Array.Empty<object>())
                     {
-                        ReadDeclaration(sheet, property, names, read);
+                        ReadDeclaration(sheet, property, rootRule, names, read);
                     }
                 }
             }

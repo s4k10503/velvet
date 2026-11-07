@@ -122,9 +122,9 @@ namespace Velvet
                 return false;
             }
             text = text.Trim();
-            if (float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var multiple))
+            if (TryRatio(text, out var ratio) || float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ratio))
             {
-                lineHeight = new LeadingValue(LeadingUnit.Em, multiple);
+                lineHeight = new LeadingValue(LeadingUnit.Em, ratio);
                 return true;
             }
             if (!StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out var px))
@@ -133,6 +133,21 @@ namespace Velvet
             }
             lineHeight = new LeadingValue(LeadingUnit.Pixel, px);
             return true;
+        }
+
+        // `calc(2.5 / 2.25)`, the spelling Tailwind writes a size's line height in.
+        private static bool TryRatio(string text, out float ratio)
+        {
+            ratio = 0f;
+            if (!text.StartsWith("calc(", StringComparison.Ordinal) || !text.EndsWith(")", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var parts = text.Substring(5, text.Length - 6).Split('/');
+            return parts.Length == 2
+                && float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var numerator)
+                && float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var denominator)
+                && denominator != 0f && (ratio = numerator / denominator) > 0f;
         }
 
         private static bool IsBuiltIn(string name)

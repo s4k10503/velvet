@@ -14,7 +14,25 @@ namespace Velvet.Tests
     {
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
         private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
+        private const string ScopedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenScopedSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
+
+        private static StateUpdater<string> s_setClass;
+
+        [Component]
+        private static VNode RenderSwitchable()
+        {
+            var (className, setClass) = Hooks.UseState("bg-brandtest");
+            s_setClass = setClass;
+            return V.Div(className: "theme-token-host", children: new VNode?[]
+            {
+                V.Div(name: "leaf", className: className),
+            });
+        }
+
+        private static object PrivateStatic(string field)
+            => typeof(StyleThemeTokens).GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .GetValue(null);
 
         private void Attach(string path)
             => _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(path));
@@ -753,25 +771,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AClassListThatStoppedNamingAThemeClass_When_TheSheetsChange_Then_ItIsNotConfiguredAgain()
-        {
-            // Arrange
-            AttachSheets(false);
-            var leaf = Mount("bg-brandtest");
-            var context = _mounted.Root.Reconciler.Context;
-            var patcher = new FiberNodePatcher(context);
-            patcher.ApplyVariantManipulators(leaf, new[] { "flex" });
-
-            // Act
-            StyleThemeTokens.Untrack(leaf);
-            patcher.ReleaseCustomPropertyTokens(leaf);
-            patcher.ApplyVariantManipulators(leaf, new[] { "flex" });
-
-            // Assert
-            Assert.That(context.CustomPropertyClasses.ContainsKey(leaf), Is.False);
-        }
-
-        [Test]
         public void Given_AMountDisposedAndMountedAgainOnTheSameRoot_When_TheSheetsAreRead_Then_TheNewMountReadsThem()
         {
             // Arrange
@@ -834,6 +833,188 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(lineHeight.Value, Is.EqualTo(1.25f / 0.875f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AClassListRenderedWithoutAThemeClass_When_TheSheetsChange_Then_ItIsNotConfiguredAgain()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderSwitchable));
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            var context = _mounted.Root.Reconciler.Context;
+            s_setClass.Invoke("flex");
+            context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(leaf.panel);
+
+            // Act
+            Attach(ClearedSheet);
+            EditorPanelTestHelpers.DriveSchedulerOnce(leaf.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(leaf.panel);
+
+            // Assert
+            Assert.That(context.CustomPropertyClasses.ContainsKey(leaf), Is.False);
+        }
+
+        [Test]
+        public void Given_ATrackedElementCleanedUp_When_ItsTrackingIsAsked_Then_NoContextHoldsIt()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("bg-brandtest");
+            var table = PrivateStatic("s_trackedBy");
+            var args = new object[] { leaf, null };
+
+            // Act
+            StyleArbitraryValueResolver.ClearAll(leaf);
+            var tracked = (bool)table.GetType().GetMethod("TryGetValue").Invoke(table, args);
+
+            // Assert
+            Assert.That(tracked, Is.False);
+        }
+
+        [Test]
+        public void Given_AnElementTrackedAndUntrackedRepeatedly_When_TheTrackedListIsCounted_Then_ItHoldsItOnce()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("flex");
+            var context = _mounted.Root.Reconciler.Context;
+
+            // Act
+            for (var i = 0; i < 5; i++)
+            {
+                StyleThemeTokens.Track(context, leaf, new[] { "p-13" });
+                StyleThemeTokens.Untrack(leaf);
+            }
+            StyleThemeTokens.Track(context, leaf, new[] { "p-13" });
+            var table = PrivateStatic("s_themed");
+            var args = new object[] { context, null };
+            table.GetType().GetMethod("TryGetValue").Invoke(table, args);
+            var elements = (System.Collections.ICollection)args[1].GetType().GetField("Elements").GetValue(args[1]);
+
+            // Assert
+            Assert.That(elements.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AMountDisposed_When_ItsScopePollIsObserved_Then_ItIsNoLongerActive()
+        {
+            // Arrange
+            AttachSheets(false);
+            var mounted = V.Mount(_window.rootVisualElement, V.Div());
+            StyleThemeTokens.Scope scope;
+            using (StyleThemeTokens.Pass(mounted.Root.Reconciler.Context))
+            {
+                scope = StyleThemeTokens.Current;
+            }
+            var poll = scope.PollItem;
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(poll.isActive, Is.False);
+        }
+
+        [Test]
+        public void Given_ADeclaredBreakpointOnAFreshElement_When_ItsThresholdIsReadBeforeItsFirstStylePass_Then_ItIsTheDeclaredLength()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+            var fresh = new VisualElement();
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Use(_mounted.Root.Reconciler.Context, fresh))
+            {
+                px = StyleVariantClass.BreakpointPx(StyleVariantKind.Sm);
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(800f));
+        }
+
+        [Test]
+        public void Given_ADeclaredBreakpointOnAnElementInTheMount_When_ItsThresholdIsReadAfterTheStylePass_Then_ItIsTheDeclaredLength()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("flex");
+
+            // Act
+            float px;
+            using (StyleThemeTokens.Use(_mounted.Root.Reconciler.Context, leaf))
+            {
+                px = StyleVariantClass.BreakpointPx(StyleVariantKind.Sm);
+            }
+
+            // Assert
+            Assert.That(px, Is.EqualTo(800f));
+        }
+
+        [Test]
+        public void Given_ALineHeightWrittenAsTailwindWritesIt_When_ItIsRead_Then_ItIsTheRatio()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            float read;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                StyleNamedTextSize.TryParseLineHeight("text-ratiotest", out var lineHeight, out _);
+                read = lineHeight.Value;
+            }
+
+            // Assert
+            Assert.That(read, Is.EqualTo(1.25f).Within(1e-5f));
+        }
+
+        [TestCase("p-4", "p-[length:12px]")]
+        public void Given_ASpacingUnitDeclaredOnTheRoot_When_AStepIsRead_Then_ItIsWrittenWithTheLiteral(string className, string expected)
+        {
+            // Arrange
+            AttachSheets(false);
+
+            // Act
+            var normalized = Normalize(className);
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ASpacingUnitDeclaredUnderAClass_When_AStepIsRead_Then_ItReadsTheVariable()
+        {
+            // Arrange
+            Attach(ScopedSheet);
+
+            // Act
+            var normalized = Normalize("p-4");
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo("p-[length:calc(var(--spacing)*4)]"));
+        }
+
+        [Test]
+        public void Given_AWatchOnAnElementAttached_When_ItsFirstStylePassHasRun_Then_TheWatchEvaluates()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("flex");
+            var evaluations = 0;
+            var watch = new StyleThemeTokens.ContextWatch(leaf, () => evaluations++);
+
+            // Act
+            watch.Start();
+            EditorPanelTestHelpers.DriveSchedulerOnce(leaf.panel);
+            watch.Stop();
+
+            // Assert
+            Assert.That(evaluations, Is.EqualTo(1));
         }
     }
 }
