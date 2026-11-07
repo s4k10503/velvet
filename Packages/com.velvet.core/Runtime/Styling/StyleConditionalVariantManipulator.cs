@@ -31,6 +31,7 @@ namespace Velvet
         private readonly ResponsiveWidthSource _widthSource;
 
         private readonly ReconcilerContext _ctx;
+        private StyleThemeTokens.Follower? _themeFollower;
 
         public StyleConditionalVariantManipulator(ReconcilerContext ctx, string[][] responsive, string[] dark,
             int[][] responsiveDeclarations, int[] darkDeclarations)
@@ -61,6 +62,8 @@ namespace Velvet
             VelvetTheme.DarkModeChanged += OnDarkChanged;
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
 
+            (_themeFollower ??= new StyleThemeTokens.Follower(_ctx, () => target, EvaluateResponsive)).Attach();
+
             if (target.panel != null)
             {
                 _widthSource.Hook(StyleResponsiveScope.ResolveWidthSource(target, target.panel.visualTree));
@@ -68,6 +71,7 @@ namespace Velvet
             }
         }
 
+        // A sheet moving a --breakpoint-* threshold changes what the width answers without the width changing.
         protected override void UnregisterCallbacksFromTarget()
         {
             ResetApplied();
@@ -75,6 +79,7 @@ namespace Velvet
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             VelvetTheme.DarkModeChanged -= OnDarkChanged;
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+            _themeFollower?.Detach();
             _widthSource.Unhook();
         }
 
@@ -106,6 +111,7 @@ namespace Velvet
 
         private void EvaluateResponsive()
         {
+            using var themeScope = StyleThemeTokens.Use(_ctx, target);
             if (target == null)
             {
                 return;

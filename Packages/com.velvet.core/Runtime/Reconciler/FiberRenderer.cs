@@ -238,6 +238,11 @@ namespace Velvet
                 ? new Reconciler(parentCtx)
                 : new Reconciler();
             fiber.IsMounted = true;
+            if (fiber.Reconciler.Context.ThemeRoot == null)
+            {
+                fiber.Reconciler.Context.ThemeRoot = mountPoint;
+                StyleThemeTokens.RegisterMount(mountPoint, fiber.Reconciler.Context);
+            }
 
             // The batch scheduler registers its single drain callback on a tree-stable anchor: the
             // root mount element. A descendant's MountPoint may detach from the panel (route change /
@@ -467,6 +472,8 @@ namespace Velvet
                     "FiberRenderer: Do not invoke UseState setters etc. from within Render().");
             }
 
+            // Read before the pass so a stylesheet attached since the last one declares its tokens to this one.
+            using var themeScope = StyleThemeTokens.Pass(fiber.Reconciler?.Context);
             // Hooks.cs (the function-component path) resolves the fiber from FiberAmbientStack.Current and uses
             // Fiber.IsRendering to determine the Render() context, so set it here.
             fiber.IsRendering = true;

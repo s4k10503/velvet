@@ -103,6 +103,9 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyName =
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "name", "System.String");
 
+        internal static readonly EngineMember StylePropertyValues =
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
+
         internal static readonly EngineMember StyleComplexSelectorSelectors = ReadProperty(UIElements,
             "UnityEngine.UIElements.StyleComplexSelector", "selectors", "UnityEngine.UIElements.StyleSelector[]");
 

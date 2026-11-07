@@ -148,7 +148,8 @@ namespace Velvet
         private static readonly char[] s_specialTokenMarkers = { ':', '[', '(', '_', '!' };
 
         internal static bool IsPlainClassToken(string className)
-            => !string.IsNullOrEmpty(className) && className.IndexOfAny(s_specialTokenMarkers) < 0;
+            => !string.IsNullOrEmpty(className) && className.IndexOfAny(s_specialTokenMarkers) < 0
+                && !StyleThemeClass.OwnsPlainToken(className);
 
         internal static void ApplyClassNames(VisualElement element, string[] classNames)
         {

@@ -1,0 +1,26 @@
+/* Variables ThemeTokenClassTests reads: tokens a project sheet declares, and a theme class redeclaring one. */
+.theme-token-host {
+    --color-brandtest: rgb(255, 0, 102);
+    --radius-pilltest: 40px;
+    --text-sizetest: 20px;
+    --text-scopedtest: 20px;
+    --text-sizetest--line-height: 1.5;
+    --text-sm--line-height: 2;
+    --breakpoint-xstest: 480px;
+    --container-widetest: 1600px;
+    --breakpoint-sm: 800px;
+    --breakpoint-3xltest: 1920px;
+    --animate-wiggletest: kf-theme 2s linear infinite;
+    --inset-shadow-glowtest: 0 0 4px rgb(255, 0, 0);
+}
+
+.theme-token-host.theme-token-alt {
+    --color-brandtest: rgb(0, 255, 0);
+    --text-scopedtest--line-height: 3;
+}
+
+:root {
+    --spacing: 3px;
+    --spacing-guttertest: 10px;
+    --spacing-7: 10px;
+}

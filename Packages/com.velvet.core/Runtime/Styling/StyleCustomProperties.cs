@@ -41,6 +41,9 @@ namespace Velvet
 
         private static readonly Dictionary<string, string?> s_probes = new(StringComparer.Ordinal);
 
+        // The utility a theme class last bound as, which it leaves as once its token is gone.
+        private static readonly Dictionary<string, string> s_themeUtilities = new(StringComparer.Ordinal);
+
         private sealed class Consumers
         {
             public readonly List<Consumer> Entries = new();
@@ -74,6 +77,8 @@ namespace Velvet
             public readonly string[]? Sides;
             // Whether a modifier bracket reads a var(), whose value is a color-mix() percentage.
             public readonly bool ModifierReadsVariable;
+            // Whether the utility reads a var(); one that does not applies a fixed payload and has nothing to watch.
+            public readonly bool ReadsVariable;
             // A z-* reader, whose value restacks the element (TryVariableZ) rather than being applied as a payload.
             public readonly bool StacksZ;
             // An order-* reader, whose value reorders the element among its siblings (TryVariableOrder) the same way.
@@ -101,6 +106,7 @@ namespace Velvet
                 StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
                 StacksOrder = StyleOrderClass.VariableUtility(utility) != null;
                 var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
+                ReadsVariable = readsVariable;
                 ModifierReadsVariable = Shape.HasModifier
                     && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
                 if (readsVariable)
@@ -144,17 +150,16 @@ namespace Velvet
                 return;
             }
             var utility = StyleCustomPropertyClass.Consumer(core);
-            if (utility == null)
+            if (utility != null && on)
             {
-                return;
-            }
-            if (on)
-            {
+                s_themeUtilities[core] = utility;
                 Bind(target, new Consumer(utility, priority, declaration, order, context));
             }
-            else
+            else if (!on && (utility ?? (s_themeUtilities.TryGetValue(core, out var last) ? last : null)) is { } leaving)
             {
-                Unbind(target, utility, priority, declaration);
+                // A theme class whose token a sheet stopped declaring no longer reads as a consumer, and leaves as the
+                // utility it was bound as.
+                Unbind(target, leaving, priority, declaration);
             }
         }
 
@@ -183,7 +188,10 @@ namespace Velvet
             s_classes.Remove(element);
             if (s_consumers.TryGetValue(element, out var consumers))
             {
-                Unwatch(element, consumers);
+                if (consumers.Poll != null)
+                {
+                    Unwatch(element, consumers);
+                }
                 s_consumers.Remove(element);
             }
         }
@@ -283,7 +291,7 @@ namespace Velvet
         {
             var consumers = s_consumers.GetValue(target, static _ => new Consumers());
             consumers.Entries.Add(consumer);
-            if (consumers.Entries.Count == 1)
+            if (consumer.ReadsVariable && consumers.Poll == null)
             {
                 Watch(target, consumers);
             }
@@ -309,7 +317,10 @@ namespace Velvet
             }
             if (entries.Count == 0)
             {
-                Unwatch(target, consumers);
+                if (consumers.Poll != null)
+                {
+                    Unwatch(target, consumers);
+                }
                 s_consumers.Remove(target);
             }
         }
@@ -466,6 +477,7 @@ namespace Velvet
 
         private static void Reresolve(VisualElement target, Consumer consumer)
         {
+            using var themeScope = StyleThemeTokens.Use(consumer.Context, target);
             s_built.Clear();
             var resolved = TryBuild(target, consumer, s_built);
             if (consumer.Resolved && (resolved ? consumer.Source != null && Matches(s_built, consumer.Source) : consumer.Source == null))

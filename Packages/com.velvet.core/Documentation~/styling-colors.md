@@ -81,6 +81,53 @@ The functions follow CSS Color 4:
   an `inherit` there passes on. Both follow their source as it changes, through a transition included: an element reading one through `text-`, `bg-` or `border-`, and its parent, carry the `velvet-color-reference` class while it does, whose rule in the bundled stylesheet is what makes UI Toolkit report their restyles. `inherit` takes no modifier, which `color-mix()`
   cannot hold.
 
+## Theme tokens
+
+A custom property a stylesheet declares in one of Tailwind v4's theme namespaces
+([the namespace table](https://tailwindcss.com/docs/theme#theme-variable-namespaces)) generates the utilities of that
+namespace, as a variable in an `@theme` block does. The declaration is a USS rule; its selector may be `:root`, a
+theme class or any other:
+
+```css
+:root { --color-brand: #ff0066; --radius-pill: 999px; }
+.dark { --color-brand: #ff6699; }
+```
+
+`bg-brand`, `text-brand`, `border-brand`, `border-b-brand` (and the other per-side `border-t-` … `border-be-`),
+`ring-brand`, `ring-offset-brand`, `outline-brand`, `divide-brand`, `shadow-brand`, `drop-shadow-brand`,
+`from-brand` / `via-brand` / `to-brand` and `caret-brand` then resolve, with the opacity modifier (`bg-brand/50`) and
+every variant. A class is the bracketed utility reading the variable (`bg-[color:var(--color-brand)]`), so the value
+is the one the element computes: the `.dark` rule above changes what `bg-brand` draws, and the bundled semantic
+colours (`primary`, `surface`, `text-subtle`, …), which are declared the same way in the bundled sheet, take the
+families the palette names do (`border-b-primary`, `ring-primary`, `bg-primary/50`). Utilities rank among the
+element's classes as the bracketed form does ([styling-variants.md](styling-variants.md)).
+
+A project token with the name of a built-in overrides it in the forms the palette resolves from its own table: with
+`--color-red-500` redeclared, `border-b-red-500`, `ring-red-500`, `bg-red-500/50` and the shadow and gradient forms
+read the variable.
+
+The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner and logical forms), `--text-*`
+(`text-display`, its `--text-display--line-height`, written as a number (a multiple of the font size) or a length, and `text-display/7` with a line height), `--font-*`, `--font-weight-*`, `--tracking-*`, `--leading-*`,
+`--shadow-*`, `--inset-shadow-*`, `--drop-shadow-*`, `--blur-*`, `--aspect-*`, `--spacing-*` and `--spacing`
+([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md#bare-spacing-steps)), and `--breakpoint-*`,
+`--container-*` and `--animate-*` ([styling-variants.md](styling-variants.md#theme-breakpoints-container-sizes-and-animations)). `--ease-*` is not read: the native `ease-in`, `ease-out`, `ease-in-out` and `ease-linear` class transitions are UI Toolkit's
+`EasingFunction`, which takes an `EasingMode` keyword and no cubic-bezier. A
+name is a token of its namespace only where a sheet declares it.
+
+A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled
+utilities of that namespace (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`,
+`shadow-md`, `font-bold`, `sm:`, `@md:`, `animate-spin`, …) then do nothing, and the tokens the project declares itself
+still generate theirs.
+
+A length in a token's value is written in `px`. A USS file that writes a length in `rem` (Tailwind's own `--breakpoint-3xl: 120rem`,
+`--spacing: 0.25rem`) is rejected by Unity's importer (`Unsupported unit`), and none of the file's tokens apply: convert them
+at 16 px to the rem.
+
+Each mount reads the sheets attached to its mount target or one of its ancestors, and the sheets they `@import`, at
+the start of every render pass of the mount and every tenth of a second. A sheet attached, edited or removed moves
+what the mount's classes resolve to: the elements whose class lists name a theme class are configured again. A reader
+outside a pass finds the scope of the mount its element sits in.
+
 ## Where Velvet differs from CSS
 
 - **Named colours** are the ones `ColorUtility.TryParseHtmlString` reads, not the full CSS list.

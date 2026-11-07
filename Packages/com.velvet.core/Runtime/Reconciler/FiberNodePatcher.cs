@@ -2789,11 +2789,34 @@ namespace Velvet
         private static string[] ToPayloadArray(List<string> payloads)
             => payloads?.ToArray() ?? Array.Empty<string>();
 
+        // Remembers the element when a class of its list has the shape of one a theme variable makes, which
+        // StyleThemeTokens configures again once the sheets declare other variables.
+        private void TrackThemed(VisualElement element, string[] classNames)
+        {
+            foreach (var className in classNames ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBecomeThemeClass(
+                    StyleArbitraryValueResolver.StripImportant(className, out _)))
+                {
+                    StyleThemeTokens.Track(_ctx, element, classNames!);
+                    return;
+                }
+            }
+            StyleThemeTokens.Untrack(element);
+        }
+
+        // Withdraws the element's custom-property tokens, so a configure that follows binds them again against the
+        // variables the sheets declare now.
+        internal void ReleaseCustomPropertyTokens(VisualElement element)
+            => ApplyCustomPropertyConfig(element, Array.Empty<string>());
+
         // Applies the className-driven variant manipulators (pseudo-class hover:/focus:/
         // active:, conditional dark:/sm:…, container @md:…, relational group-/peer-) in one
         // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
+            using var themeScope = StyleThemeTokens.Use(_ctx);
+            TrackThemed(element, classNames);
             RecordVariantGateSource(element, classNames);
             if (!MayDeclareVariantState(classNames) && !HoldsVariantState(element))
             {
@@ -2812,8 +2835,8 @@ namespace Velvet
         }
 
         // Every token the passes of ApplyVariantManipulators read is a variant (its prefix ends in ':') or a
-        // custom-property token (StyleCustomPropertyClass.IsCustomPropertyToken: leading '[', or a '(' or '_'),
-        // so a list with none of those characters configures nothing. The '[' covers the arbitrary-property form.
+        // custom-property token (StyleCustomPropertyClass.IsCustomPropertyToken: leading '[', or a '(' or '_') or a theme class
+        // (StyleThemeClass), so a list with none of those characters and no theme class configures nothing. The '[' covers the arbitrary-property form.
         private static bool MayDeclareVariantState(string[] classNames)
         {
             if (classNames == null)
@@ -2822,7 +2845,8 @@ namespace Velvet
             }
             foreach (var className in classNames)
             {
-                if (className != null && className.IndexOfAny(s_variantStateChars) >= 0)
+                if (className != null && (className.IndexOfAny(s_variantStateChars) >= 0
+                    || StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null))
                 {
                     return true;
                 }

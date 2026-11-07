@@ -182,6 +182,11 @@ namespace Velvet
                 return TryParseContainer(token, out kind, out name, out payload);
             }
 
+            if (TryParseArbitraryBreakpoint(token, out kind, out name, out payload))
+            {
+                return true;
+            }
+
             var colon = token.IndexOf(':');
             if (colon <= 0 || colon == token.Length - 1)
             {
@@ -214,6 +219,22 @@ namespace Velvet
 
             if (!s_kinds.TryGetValue(prefix, out kind))
             {
+                // A breakpoint a sheet declares (`3xl:`), or a ceiling or floor on any breakpoint (`max-md:`,
+                // `min-3xl:`), is a query on the viewport's width.
+                if (name == null && TryBreakpointQuery(prefix, out var spelling))
+                {
+                    kind = StyleVariantKind.Container;
+                    name = spelling;
+                    payload = token.Substring(colon + 1);
+                    return payload.Length > 0;
+                }
+                name = null;
+                return false;
+            }
+
+            // A default breakpoint a project sheet set to initial (`--breakpoint-*: initial`) is no variant.
+            if (IsResponsive(kind) && StyleThemeTokens.Current?.ClearsBundled("breakpoint-", prefix) == true)
+            {
                 name = null;
                 return false;
             }
@@ -233,6 +254,100 @@ namespace Velvet
             }
             return true;
         }
+
+        // `max-[600px]:p-2` and `min-[600px]:p-2`: a query on the viewport's width at a written length.
+        private static bool TryParseArbitraryBreakpoint(string token, out StyleVariantKind kind, out string? name,
+            out string? payload)
+        {
+            kind = default;
+            name = payload = null;
+            if (!token.StartsWith("max-[", StringComparison.Ordinal) && !token.StartsWith("min-[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var close = token.IndexOf("]:", StringComparison.Ordinal);
+            if (close < 0 || close + 2 >= token.Length)
+            {
+                return false;
+            }
+            var spelling = "@" + token.Substring(0, close + 1) + "/" + StyleContainerQuery.ViewportName;
+            if (!StyleContainerQuery.TryParse(spelling, out _))
+            {
+                return false;
+            }
+            kind = StyleVariantKind.Container;
+            name = spelling;
+            payload = token.Substring(close + 2);
+            return true;
+        }
+
+        private static bool TryBreakpointQuery(string prefix, out string spelling)
+        {
+            spelling = string.Empty;
+            var bound = prefix.StartsWith("max-", StringComparison.Ordinal) ? "max-"
+                : prefix.StartsWith("min-", StringComparison.Ordinal) ? "min-" : string.Empty;
+            var bp = prefix.Substring(bound.Length);
+            var custom = bound.Length > 0 || !s_kinds.ContainsKey(bp);
+            var candidate = "@" + (bound.Length == 0 ? "min-" : bound) + bp + "/" + StyleContainerQuery.ViewportName;
+            if (bp.Length == 0 || !custom || !StyleContainerQuery.TryParse(candidate, out _))
+            {
+                return false;
+            }
+            spelling = candidate;
+            return true;
+        }
+
+        private static readonly StyleVariantKind[] s_breakpointOrder =
+        {
+            StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg, StyleVariantKind.Xl, StyleVariantKind.Xxl,
+        };
+
+        private static readonly long[] s_breakpointBits =
+        {
+            StyleLayerPriority.ResponsiveSm, StyleLayerPriority.ResponsiveMd, StyleLayerPriority.ResponsiveLg,
+            StyleLayerPriority.ResponsiveXl, StyleLayerPriority.Responsive2xl,
+        };
+
+        /// <summary>
+        /// The rank of a default breakpoint: Tailwind sorts the min-width group by value, so the five default
+        /// breakpoints take the five ranks in the order of their thresholds, which are the kinds' own order until a sheet
+        /// moves one.
+        /// </summary>
+        internal static long BreakpointRank(StyleVariantKind kind)
+        {
+            var own = Array.IndexOf(s_breakpointOrder, kind);
+            var position = 0;
+            var px = BreakpointPx(kind);
+            for (var i = 0; i < s_breakpointOrder.Length; i++)
+            {
+                var other = BreakpointPx(s_breakpointOrder[i]);
+                if (other < px || (other == px && i < own))
+                {
+                    position++;
+                }
+            }
+            return s_breakpointBits[position];
+        }
+
+        /// <summary>The ranks of the default breakpoints in order of threshold, each with its threshold.</summary>
+        internal static (long Rank, float Px)[] BreakpointsByValue()
+        {
+            var sorted = new (long Rank, float Px)[s_breakpointOrder.Length];
+            var px = new float[s_breakpointOrder.Length];
+            for (var i = 0; i < px.Length; i++)
+            {
+                px[i] = BreakpointPx(s_breakpointOrder[i]);
+            }
+            Array.Sort(px);
+            for (var i = 0; i < px.Length; i++)
+            {
+                sorted[i] = (s_breakpointBits[i], px[i]);
+            }
+            return sorted;
+        }
+
+        /// <summary>The name a default breakpoint is written with: <c>sm</c>, <c>md</c>, <c>lg</c>, <c>xl</c>, <c>2xl</c>.</summary>
+        internal static string? NameOfBreakpoint(StyleVariantKind kind) => s_themeNames.TryGetValue(kind, out var name) ? name : null;
 
         // `@md:p-2`, `@max-lg/main:p-2`, `@min-[475px]:p-2`: the prefix runs to the first ':'. The prefix, `@`
         // included, is returned as the name, which is how a stacked variant tells one container query from another.
@@ -333,11 +448,23 @@ namespace Velvet
 
         /// <summary>
         /// Min-width (px) at which a responsive variant activates. The default breakpoints:
-        /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536. Returns 0 for every other named kind, and throws
+        /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536, or the value a project sheet declares as
+        /// <c>--breakpoint-sm</c> and the like. Returns 0 for every other named kind, and throws
         /// for a value that names no kind — a cast outside the enum's range is a caller error, and a
         /// silent 0 is how one survives to produce a wrong layout instead of a stack trace.
         /// </summary>
-        public static float BreakpointPx(StyleVariantKind kind) => s_breakpointPx[kind];
+        public static float BreakpointPx(StyleVariantKind kind)
+            => StyleThemeTokens.Current is { } scope && s_themeNames.TryGetValue(kind, out var name)
+                && scope.TryGetPx("--breakpoint-" + name, out var themed)
+                    ? themed
+                    : s_breakpointPx[kind];
+
+        // The --breakpoint-* names a project sheet may redeclare to move a default breakpoint.
+        private static readonly Dictionary<StyleVariantKind, string> s_themeNames = new()
+        {
+            [StyleVariantKind.Sm] = "sm", [StyleVariantKind.Md] = "md", [StyleVariantKind.Lg] = "lg",
+            [StyleVariantKind.Xl] = "xl", [StyleVariantKind.Xxl] = "2xl",
+        };
 
         private static readonly VariantKindTable<float> s_breakpointPx = new(
             (StyleVariantKind.Sm, 640f),

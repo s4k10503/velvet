@@ -15,6 +15,10 @@ namespace Velvet
         // value grammar (StyleArbitraryValueResolver.TryParseValue).
         private const float PxPerRem = 16f;
 
+        // The container name of a query that asks for the viewport's width: the thresholds of a breakpoint named in a
+        // sheet (`3xl:`, `max-md:`), which StyleVariantClass spells as `@min-3xl/*viewport`. No class can carry it.
+        internal const string ViewportName = "*viewport";
+
         private static readonly Dictionary<string, float> s_scaleRem = new(StringComparer.Ordinal)
         {
             ["3xs"] = 16f,
@@ -58,7 +62,27 @@ namespace Velvet
         public bool Matches(float width) => IsMax ? width < Px : width >= Px;
 
         // A ceiling ranks below a floor, so where both are on the floor's declaration wins.
-        public long Rank => IsMax ? StyleLayerPriority.ContainerMax : StyleLayerPriority.ContainerMin;
+        public long Rank => Name == ViewportName ? ViewportRank() : IsMax ? StyleLayerPriority.ContainerMax : StyleLayerPriority.ContainerMin;
+
+        // Tailwind registers the max group, then one min group holding every breakpoint by value, then the container
+        // queries: a ceiling ranks below every floor, and a floor ranks as the largest default breakpoint at or under
+        // its threshold (below the first, ViewportMin), ordering after it by value (OrderKey).
+        private long ViewportRank()
+        {
+            if (IsMax)
+            {
+                return StyleLayerPriority.ViewportMax;
+            }
+            var rank = StyleLayerPriority.ViewportMin;
+            foreach (var (bandRank, bandPx) in StyleVariantClass.BreakpointsByValue())
+            {
+                if (bandPx <= Px)
+                {
+                    rank = bandRank;
+                }
+            }
+            return rank;
+        }
 
         // Where a query sits among the others of its rank, as a string that compares ordinally: by unit name, then a
         // floor ascending and a ceiling descending, then a named container ahead of the unnamed one and names
@@ -69,6 +93,10 @@ namespace Velvet
             {
                 var scaled = (long)Math.Round(Math.Min(Px, OrderCapPx) * 100d);
                 var ordered = IsMax ? OrderCeiling - scaled : scaled;
+                if (Name == ViewportName)
+                {
+                    return ordered.ToString("D16", CultureInfo.InvariantCulture);
+                }
                 var nameKey = Name.Length == 0 ? "~" : "!" + Name;
                 return _unit + "|" + ordered.ToString("D16", CultureInfo.InvariantCulture) + "|" + nameKey;
             }
@@ -132,7 +160,27 @@ namespace Velvet
             var isMax = body.StartsWith("max-", StringComparison.Ordinal);
             var rest = isMax || body.StartsWith("min-", StringComparison.Ordinal) ? body.Substring(4) : body;
 
-            if (s_scaleRem.TryGetValue(rest, out var rem))
+            if (name == ViewportName)
+            {
+                var arbitrary = rest.Length > 0 && rest[0] == '[';
+                float breakpoint = 0f;
+                if (arbitrary
+                    ? !StyleArbitraryValueResolver.TryParseArbitraryPixels(rest.AsSpan(), out breakpoint) || IsUnitless(rest)
+                    : !TryBreakpointPx(rest, out breakpoint))
+                {
+                    return false;
+                }
+                query = new StyleContainerQuery(breakpoint, isMax, name, "px");
+                return true;
+            }
+
+            if (StyleThemeTokens.Current is { } scope && scope.TryGetPx("--container-" + rest, out var themed))
+            {
+                query = new StyleContainerQuery(themed, isMax, name, "rem");
+                return true;
+            }
+
+            if (s_scaleRem.TryGetValue(rest, out var rem) && StyleThemeTokens.Current?.ClearsBundled("container-", rest) != true)
             {
                 query = new StyleContainerQuery(rem * PxPerRem, isMax, name, "rem");
                 return true;
@@ -145,6 +193,28 @@ namespace Velvet
             query = new StyleContainerQuery(px, isMax, name, UnitOf(rest));
             return true;
         }
+
+        // The threshold of the breakpoint named name: a default one (sm to 2xl, as a sheet may have moved it) or one a
+        // sheet declares.
+        internal static bool TryBreakpointPx(string name, out float px)
+        {
+            px = 0f;
+            foreach (var kind in s_breakpointKinds)
+            {
+                if (StyleVariantClass.NameOfBreakpoint(kind) == name
+                    && StyleThemeTokens.Current?.ClearsBundled("breakpoint-", name) != true)
+                {
+                    px = StyleVariantClass.BreakpointPx(kind);
+                    return true;
+                }
+            }
+            return StyleThemeTokens.Current is { } scope && scope.TryGetPx("--breakpoint-" + name, out px);
+        }
+
+        private static readonly StyleVariantKind[] s_breakpointKinds =
+        {
+            StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg, StyleVariantKind.Xl, StyleVariantKind.Xxl,
+        };
 
         // The shared length grammar reads a bare 0 as a length; a container threshold is declined without a unit, 0
         // included.
