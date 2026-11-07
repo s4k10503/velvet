@@ -444,6 +444,20 @@ namespace Velvet.Tests
             Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(Color.blue));
         }
 
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClassAndAColourTransition_When_TheClassIsRemoved_Then_TheBorderIsAtOnceTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            MountSwitchable("border border-blue-500 transition-colors duration-1000 text-red-500");
+
+            // Act
+            var tag = Patch("border transition-colors duration-1000 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
         // GREEN_ON_BASE(characterization): the class's inline write is cleared for the text colour to show, as the
         // preflight write replaced it there.
         [Test]

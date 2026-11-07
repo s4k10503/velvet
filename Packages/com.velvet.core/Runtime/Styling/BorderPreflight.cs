@@ -79,6 +79,9 @@ namespace Velvet
             public bool Detached;
         }
 
+        // Whether Place is clearing a slot of its own, which it shows the colour on next.
+        private static bool s_placing;
+
         private static readonly Color NoColour = new(float.NaN, float.NaN, float.NaN, float.NaN);
 
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
@@ -372,7 +375,7 @@ namespace Velvet
         // Shows again a colour the computed style of element has lost, for a write of Velvet's that cleared the slot.
         internal static void Reassert(VisualElement element)
         {
-            if (s_states.TryGetValue(element, out var state))
+            if (!s_placing && s_states.TryGetValue(element, out var state))
             {
                 state.Rule?.Reassert(element);
             }
@@ -386,14 +389,30 @@ namespace Velvet
             {
                 return;
             }
-            // A colour a layer of Velvet's wrote there and has since given the side up from is not the element's own.
+            // A colour a layer of Velvet's wrote there and has since given the side up from is not the element's own. It goes
+            // straight to the text colour: cleared on its own it would run a transition to what the rules give, and the
+            // colour shown would run another from there.
             var inline = InlineColor(element, side);
+            var colour = StyleArbitraryValueResolver.ColorOf(element, layer);
             if (inline.keyword == StyleKeyword.Undefined && !SilhouetteFace.IsSentinel(inline.value) && inline.value == state.Seen[side])
             {
-                StyleArbitraryValueResolver.ClearInline(element, layer.Property);
+                var hold = new StyleRelativeLengths.TransitionHold(element);
+                s_placing = true;
+                try
+                {
+                    StyleArbitraryValueResolver.ClearInline(element, layer.Property);
+                    state.Seen[side] = NoColour;
+                    state.Rule.Show(element, side, colour);
+                }
+                finally
+                {
+                    s_placing = false;
+                    hold.Release();
+                }
+                SilhouetteFaceStash.NotePreflight(element, side, colour);
+                return;
             }
             state.Seen[side] = NoColour;
-            var colour = StyleArbitraryValueResolver.ColorOf(element, layer);
             state.Rule.Show(element, side, colour);
             SilhouetteFaceStash.NotePreflight(element, side, colour);
         }

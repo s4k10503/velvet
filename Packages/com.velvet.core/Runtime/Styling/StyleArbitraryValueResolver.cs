@@ -4916,7 +4916,10 @@ namespace Velvet
                 {
                     setter(cs, nullColor);
                 }
-                BorderPreflight.Reassert(element);
+                if (property >= ArbitraryProperty.BorderColor && property <= ArbitraryProperty.BorderBlockEndColor)
+                {
+                    BorderPreflight.Reassert(element);
+                }
                 ColorReferenceWatch.NotifyWritten(element);
                 return;
             }
