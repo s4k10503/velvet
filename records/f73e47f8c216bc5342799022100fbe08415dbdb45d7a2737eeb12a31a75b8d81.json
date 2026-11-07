@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 10 case(s) that ran the site: Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Width\")",
+ "file": "c5f2abea8c9de079eae24514bdf841825965494227eb2996253e93230f99d97d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionVelocityHandOverTests.Given_ABezierPlayMovingEveryChannel_When_ASpringInterruptsIt_Then_TheChannelStartsWithTheCurvesSlope(\"Width\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionVelocityHandOverTests.cs": "86431680b2814cc2191228325bbcb1d55f52cf738ae9f6a1557ce868aacb657f"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": ";",
+  "before": "drawn.Lengths = lengths.ConvertAll(drawnLength.Invoke);",
+  "column": 16,
+  "line": 67,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionDrawnValues.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

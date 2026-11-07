@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 27 case(s) that ran the site: 0f), 0f)",
+ "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_ADrivenMotionMidwayToItsLabel_When_TheLabelFlipsBack_Then_ItContinuesFromTheValueItWasDrawnAt(Bezier,\"w-[0px]\",\"w-[100px]\",\"width\",0.0f,100.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionDriverInterruptionTests.Given_ADrivenMotionMidwayToItsLabel_When_TheLabelFlipsBack_Then_ItContinuesFromTheValueItWasDrawnAt(Spring,\"w-[0px]\",\"w-[100px]\",\"width\",0.0f,100.0f)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionDriverInterruptionTests.cs": "84fbe3b6a7cb44f279c864069df3e7a078e3fc76e9b676d2c3bf3139a676d759",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 33,
+  "line": 97,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GestureChannelMask.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

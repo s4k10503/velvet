@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 33 case(s) that ran the site: Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger, Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpringAndItsStaggerRuns_Then_ItLands",
+ "file": "c5f2abea8c9de079eae24514bdf841825965494227eb2996253e93230f99d97d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InstantSpringStaggerTests.Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpringAndItsStaggerRuns_Then_ItLands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InstantSpringStaggerTests.cs": "c4e4f1a76802c72b5348b1cf5028ae5f0503c05cdde82bf90412aae00d6d5486",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InstantSpringStaggerTests.Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InstantSpringStaggerTests.cs": "c4e4f1a76802c72b5348b1cf5028ae5f0503c05cdde82bf90412aae00d6d5486",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 22,
+  "line": 61,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionDrawnValues.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

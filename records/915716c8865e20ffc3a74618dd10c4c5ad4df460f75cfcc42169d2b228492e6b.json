@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "c5f2abea8c9de079eae24514bdf841825965494227eb2996253e93230f99d97d",
+ "killers": [],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": ";",
+  "before": "drawn.Colors = colors.ConvertAll(drawnColor.Invoke);",
+  "column": 16,
+  "line": 63,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionDrawnValues.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

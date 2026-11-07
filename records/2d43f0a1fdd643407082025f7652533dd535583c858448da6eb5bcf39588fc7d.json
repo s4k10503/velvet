@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 119 case(s) that ran the site: Given_ACircleToTheFarthestSide_When_RadiiAreRead_Then_BothAreTheFarthestSide, Given_ADefaultRadial_When_RadiiAreRead_Then_ItIsTheFarthestCornerEllipse",
+ "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientBoxAspectTests.Given_ACircleToTheFarthestSide_When_RadiiAreRead_Then_BothAreTheFarthestSide",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientBoxAspectTests.cs": "0858ee219feb6d13414801eee168513deeaf86e35bf5bc175c96dd41aabc4467"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientBoxAspectTests.Given_ADefaultRadial_When_RadiiAreRead_Then_ItIsTheFarthestCornerEllipse",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientBoxAspectTests.cs": "0858ee219feb6d13414801eee168513deeaf86e35bf5bc175c96dd41aabc4467"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 38,
+  "line": 615,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

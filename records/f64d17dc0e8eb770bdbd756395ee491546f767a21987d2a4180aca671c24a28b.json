@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
+ "killers": [],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": ";",
+  "before": "SyncGeometryWatch(element, binding);",
+  "column": 12,
+  "line": 380,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

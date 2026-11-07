@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 515 case(s) that ran the site: Given_ADrivenOpacityTweenBesideAColorTransition_When_ItsPlaybackCancelsIt_Then_TheTransitionsAreNoLongerSuspended",
+ "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionPlaybackTests.Given_ADrivenOpacityTweenBesideAColorTransition_When_ItsPlaybackCancelsIt_Then_TheTransitionsAreNoLongerSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionPlaybackTests.cs": "97337d81c8f9af10e0e2aae7bf8e6c140e642d0367e625c2ff86970c7e4576d2",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 59,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GestureChannelMask.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

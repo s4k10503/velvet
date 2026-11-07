@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_AnEllipseRadiusOfAFoldedPercentage_When_Extracted_Then_ItIsHalfTheBox",
+ "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ArbitraryMathFunctionTests.Given_AnEllipseRadiusOfAFoldedPercentage_When_Extracted_Then_ItIsHalfTheBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryMathFunctionTests.cs": "a1f4a80cb2c74d7a68b4b4d8df5b958d14b53d52ec43eb719cabe9463be406a0"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 17,
+  "line": 651,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

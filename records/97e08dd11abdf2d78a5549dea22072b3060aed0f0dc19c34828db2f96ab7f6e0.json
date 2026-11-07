@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "3ea61f672c5b27502a13640a8d0a1788d5b034400e138358ecd9642cd20efd3e",
+ "killers": [],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 69,
+  "line": 177,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

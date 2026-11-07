@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed: Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+ "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UncalledRuntimeMemberTests.Given_TheShippedAssemblies_When_TheirCallGraphIsRead_Then_NoAssemblyVisibleMethodIsUnreachable",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/UncalledRuntimeMemberTests.cs": "60bd57285e73ac27e4ef7dc25ca75ad041d9a148e352a1e585eb23e774bb9665"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": ";",
+  "before": "MotionNativeTransitionGuard.SyncNarrowing(element, state, DrivenSlots(state), lengths);",
+  "column": 12,
+  "line": 102,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GestureChannelMask.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

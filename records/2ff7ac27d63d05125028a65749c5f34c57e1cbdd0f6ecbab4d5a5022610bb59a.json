@@ -1,0 +1,92 @@
+{
+ "detail": "EditMode: 7 failed in Velvet.Tests.Styling.Editor: Given_ABounceOnACardMidMove_When_TheLoopIsAtTheTopOfItsLiftThenAtTheBottom_Then_TheCardIsHigherAtTheTop, Given_ALayoutIdSpringOnATransitionColorsElement_When_ItStartsUnderAPendingSwap_Then_TheSpringsFrameIsPaintedAsWritten, Given_ALayoutIdSpringOnATransitionTransformElement_When_TheSwapBesideItEnds_Then_TheSpringsFrameIsStillPaintedAsWritten",
+ "file": "047962229baaa445bff88ab6bd23bb7147c024e59464f29939925bc3d91bbd2e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateLayoutIdCooperationTests.Given_ABounceOnACardMidMove_When_TheLoopIsAtTheTopOfItsLiftThenAtTheBottom_Then_TheCardIsHigherAtTheTop",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateLayoutIdCooperationTests.cs": "b403b1c9a9f4c3e694b15cfd1e88905e31bc8e31e702451fd75bc19ba85d5f0c",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ALayoutIdSpringOnATransitionColorsElement_When_ItStartsUnderAPendingSwap_Then_TheSpringsFrameIsPaintedAsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ALayoutIdSpringOnATransitionTransformElement_When_TheSwapBesideItEnds_Then_TheSpringsFrameIsStillPaintedAsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ALayoutIdSpringStartingUnderAPendingSwap_When_ThePanelPaints_Then_TheSpringsFrameIsPaintedAsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ALayoutIdSpringStartingUnderAPendingSwap_When_TheSwapFires_Then_TheSwapStillTweens",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ASwapMidTween_When_ALayoutIdSpringStartsUnderIt_Then_TheSwapKeepsTweening",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ASwapWithPerPropertyTransitions_When_ALayoutIdSpringStartsUnderIt_Then_BothLandAsTheirOwn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 45,
+  "line": 70,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/LayoutIdLook.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

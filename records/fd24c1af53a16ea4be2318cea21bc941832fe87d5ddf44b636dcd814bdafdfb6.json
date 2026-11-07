@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 4 failed among the 9 case(s) that ran the site: Given_AHintInPixels_When_BakedForAKnownWidth_Then_TheMidMixIsAtIt, Given_ANegativePixelStop_When_BakedForAKnownWidth_Then_TheLineRunsOnBeforeTheBox, Given_RadialStopsInPixels_When_Baked_Then_TheyAreFractionsOfTheRay",
+ "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientStopListTests.Given_AHintInPixels_When_BakedForAKnownWidth_Then_TheMidMixIsAtIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientStopListTests.cs": "a7104840d9dc91d0b6edb6af83ecffcb9302183b8e54b35094b2750453bce5aa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientStopListTests.Given_ANegativePixelStop_When_BakedForAKnownWidth_Then_TheLineRunsOnBeforeTheBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientStopListTests.cs": "a7104840d9dc91d0b6edb6af83ecffcb9302183b8e54b35094b2750453bce5aa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientStopListTests.Given_RadialStopsInPixels_When_Baked_Then_TheyAreFractionsOfTheRay",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientStopListTests.cs": "a7104840d9dc91d0b6edb6af83ecffcb9302183b8e54b35094b2750453bce5aa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.GradientStopListTests.Given_StopsInPixels_When_BakedForAKnownWidth_Then_TheyAreFractionsOfTheLine",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientStopListTests.cs": "a7104840d9dc91d0b6edb6af83ecffcb9302183b8e54b35094b2750453bce5aa"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 86,
+  "line": 706,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

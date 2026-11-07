@@ -1,0 +1,88 @@
+{
+ "detail": "EditMode: 7 failed in Velvet.Tests.Styling.Editor: Given_APulseLoop_When_ABezierWritesItsOpacityChannel_Then_TheBeziersOpacityStands, Given_APulseLoop_When_ASpringWritesItsOpacityChannel_Then_TheSpringsOpacityStands, Given_APulseLoopOnAPanelUnderASpringsOpacity_When_TheLoopTicks_Then_TheSpringsOpacityStands",
+ "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionLoopPrecedenceTests.Given_APulseLoopOnAPanelUnderASpringsOpacity_When_TheLoopTicks_Then_TheSpringsOpacityStands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionLoopPrecedenceTests.cs": "130bc98bd920642395b3c956de23484b60bedc31e9b2fb8e7574f420b4f779c1",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionLoopPrecedenceTests.Given_APulseLoop_When_ABezierWritesItsOpacityChannel_Then_TheBeziersOpacityStands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionLoopPrecedenceTests.cs": "130bc98bd920642395b3c956de23484b60bedc31e9b2fb8e7574f420b4f779c1",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionLoopPrecedenceTests.Given_APulseLoop_When_ASpringWritesItsOpacityChannel_Then_TheSpringsOpacityStands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionLoopPrecedenceTests.cs": "130bc98bd920642395b3c956de23484b60bedc31e9b2fb8e7574f420b4f779c1",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ABareDurationUtility_When_APlayDrivesTheElement_Then_TheNativeTransitionIsSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ATransformOnlyPlayOnATransitionAllElement_When_Started_Then_TheNativeTransitionIsSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ATransformOnlyPlayOnATransitionTransformElement_When_Started_Then_TheNativeTransitionIsSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_AnElementOnAPanelTransitioningEverything_When_APlayDrivesItsTranslate_Then_OnlyTheTranslateIsTakenOutOfItsTransitions",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 86,
+  "line": 53,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GestureChannelMask.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

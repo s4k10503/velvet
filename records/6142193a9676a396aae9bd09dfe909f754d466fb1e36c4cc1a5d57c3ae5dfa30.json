@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 88 case(s) that ran the site: Given_ARadialCircleOfFixedRadius_When_TheWidthChangesAtTheSameAspect_Then_ItIsBakedAgain",
+ "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientBoxWatchTests.Given_ARadialCircleOfFixedRadius_When_TheWidthChangesAtTheSameAspect_Then_ItIsBakedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/GradientBoxWatchTests.cs": "e0cf067e822d835b26b130183948b1235739f3cb77d91c2aeedec5b88f1f184a",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 29,
+  "line": 159,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs",
+  "shadowed": [
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

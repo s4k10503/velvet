@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1940f1c44a5c1217b3260b8f8eac5b1285e22defcc584f1b6b661a78bc1f0bc3",
+ "killers": [],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 183,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/GestureChannelMask.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

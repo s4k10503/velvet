@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 185 case(s) that ran the site: Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(\"\",\"\"), Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(\"transition-all duration-1000 ease-linear\",\"translate-y-[40px]\")",
+ "file": "047962229baaa445bff88ab6bd23bb7147c024e59464f29939925bc3d91bbd2e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdLookAcrossParentsTests.Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(\"\",\"\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdLookAcrossParentsTests.cs": "bbaee835ae5eca51cad09c29d9cf85c786e3d98c6b0a090fbc77c163c346a7f9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LayoutIdLookAcrossParentsTests.Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(\"transition-all duration-1000 ease-linear\",\"translate-y-[40px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdLookAcrossParentsTests.cs": "bbaee835ae5eca51cad09c29d9cf85c786e3d98c6b0a090fbc77c163c346a7f9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42317740368",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 39,
+  "line": 223,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/LayoutIdLook.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
