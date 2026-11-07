@@ -52,11 +52,17 @@ namespace Velvet
         private static readonly FieldInfo? s_valueColor = EngineMember.StyleValueColor.ResolveField();
         private static readonly MethodInfo? s_running = EngineMember.HasRunningStyleAnimation.ResolveMethod();
 
-        private static readonly bool s_usable = s_builderType != null && s_beginRule != null && s_beginProperty != null
-            && s_addColor != null && s_endProperty != null && s_endRule != null && s_buildTo != null && s_colors != null
-            && s_ruleProperties != null && s_setProperties != null && s_setInlineRule != null && s_accessor != null
-            && s_inlineRule != null && s_inlineRuleSheet != null && s_inlineRuleRule != null && s_propertyName != null && s_applyValue != null && s_removeValue != null
-            && s_valueId != null && s_valueColor != null && s_running != null && Array.TrueForAll(s_ids, id => id != null);
+        private static readonly bool s_buildable = s_builderType != null && s_beginRule != null && s_beginProperty != null
+            && s_addColor != null && s_endProperty != null && s_endRule != null && s_buildTo != null && s_colors != null;
+
+        private static readonly bool s_installable = s_ruleProperties != null && s_setProperties != null && s_setInlineRule != null
+            && s_accessor != null && s_inlineRule != null && s_inlineRuleSheet != null && s_inlineRuleRule != null
+            && s_propertyName != null;
+
+        private static readonly bool s_appliable = s_applyValue != null && s_removeValue != null && s_valueId != null
+            && s_valueColor != null && s_running != null && Array.TrueForAll(s_ids, id => id != null);
+
+        private static readonly bool s_usable = s_buildable && s_installable && s_appliable;
 
         // Rules built and let go of, which an element takes again: a sheet is a ScriptableObject, and a pooled element
         // lets go of its own as often as it is reused.

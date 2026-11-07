@@ -49,7 +49,7 @@ Packages/com.velvet.core/Runtime/Routing/Router.cs	1
 Packages/com.velvet.core/Runtime/Routing/SearchParams.cs	2
 Packages/com.velvet.core/Runtime/Styling/BackdropFilterLayer.cs	5
 Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs	2
-Packages/com.velvet.core/Runtime/Styling/BorderPreflight.cs	4
+Packages/com.velvet.core/Runtime/Styling/BorderPreflight.cs	6
 Packages/com.velvet.core/Runtime/Styling/BundledClassTransform.cs	2
 Packages/com.velvet.core/Runtime/Styling/DivideDashPainter.cs	8
 Packages/com.velvet.core/Runtime/Styling/GradientBackground.cs	2
@@ -64,7 +64,8 @@ Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs	3
 Packages/com.velvet.core/Runtime/Styling/NativeTransitionVelocity.cs	2
 Packages/com.velvet.core/Runtime/Styling/OutlineHosting.cs	9
 Packages/com.velvet.core/Runtime/Styling/PanelScaleWatch.cs	3
-Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs	1
+Packages/com.velvet.core/Runtime/Styling/PreflightInlineRule.cs	4
+Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs	2
 Packages/com.velvet.core/Runtime/Styling/RingOverlay.cs	4
 Packages/com.velvet.core/Runtime/Styling/RunningStyleTransition.cs	2
 Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs	2
