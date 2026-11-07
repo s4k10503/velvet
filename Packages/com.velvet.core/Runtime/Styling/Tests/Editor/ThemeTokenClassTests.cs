@@ -15,7 +15,6 @@ namespace Velvet.Tests
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
         private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
         private const string ScopedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenScopedSheet.uss";
-        private const string CompactSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenCompactSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
 
         private static StateUpdater<string> s_setClass;
@@ -1060,28 +1059,40 @@ namespace Velvet.Tests
             Assert.That(new[] { insideValue, outsideValue }, Is.EqualTo(new[] { 3f, 0f }));
         }
 
-        [TestCase("inside", 480f)]
-        [TestCase("outside", 640f)]
-        public void Given_ABreakpointDeclaredUnderAClassAlone_When_ItIsReadAfterTheStylePass_Then_OnlyTheElementsInTheClassHaveIt(
-            string leafName, float expected)
+        [Test]
+        public void Given_ASizeWithALineHeightDeclaredUnderAThemeClass_When_AnElementOutsideItHasHadItsStylePass_Then_ItHasNoThemedLineHeight()
         {
             // Arrange
-            Attach(CompactSheet);
+            AttachSheets(false);
             _mounted = V.Mount(_window.rootVisualElement, V.Fragment(
-                V.Div(className: "theme-token-alt", children: new VNode?[] { V.Div(name: "inside") }),
-                V.Div(children: new VNode?[] { V.Div(name: "outside") })));
-            var leaf = _window.rootVisualElement.Q<VisualElement>(leafName);
-            ForcePanelUpdate(leaf.panel);
+                V.Div(className: "theme-token-host theme-token-alt", children: new VNode?[] { V.Label(name: "inside", className: "text-scopedtest", text: "hi") }),
+                V.Div(className: "theme-token-host", children: new VNode?[] { V.Label(name: "outside", className: "text-scopedtest", text: "hi") })));
+            var outside = _window.rootVisualElement.Q<Label>("outside");
+            ForcePanelUpdate(outside.panel);
 
             // Act
-            float px;
-            using (StyleThemeTokens.Use(_mounted.Root.Reconciler.Context, leaf))
-            {
-                px = StyleVariantClass.BreakpointPx(StyleVariantKind.Sm);
-            }
+            DriveTicks(outside.panel);
 
             // Assert
-            Assert.That(px, Is.EqualTo(expected));
+            Assert.That(RenderedTextProbe.Of(outside), Is.EqualTo("hi"));
+        }
+
+        [Test]
+        public void Given_ASizeWithALineHeightDeclaredUnderAThemeClass_When_AnElementInsideItHasHadItsStylePass_Then_ItHasTheCascadeValue()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Fragment(
+                V.Div(className: "theme-token-host theme-token-alt", children: new VNode?[] { V.Label(name: "inside", className: "text-scopedtest", text: "hi") }),
+                V.Div(className: "theme-token-host", children: new VNode?[] { V.Label(name: "outside", className: "text-scopedtest", text: "hi") })));
+            var inside = _window.rootVisualElement.Q<Label>("inside");
+            ForcePanelUpdate(inside.panel);
+
+            // Act
+            DriveTicks(inside.panel);
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(inside), Does.Contain("line-height"));
         }
     }
 }
