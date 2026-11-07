@@ -95,9 +95,10 @@ The functions follow CSS Color 4:
   follows the text colour. A rule of a stylesheet that is not a control theme's that sets a side's border colour takes
   that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as
   `hover:border-blue-500`, and your own USS class, id, type, descendant or `:hover` rule. So does a colour your code
-  writes inline (`element.style.borderTopColor`) unless it is the colour Velvet last wrote to that side. A control
-  theme's rule does not take a side, as preflight outranks a browser's default styles. The colour is written to the
-  element inline below every other Velvet layer.
+  writes inline (`element.style.borderTopColor`), whatever its value: the text colour included, which the border then
+  keeps when the text colour changes. A control theme's rule does not take a side, as preflight outranks a browser's
+  default styles. The colour is held in the element's inline rule (the slot a UXML `style` attribute fills), not in an
+  inline value, so no inline value of yours shares its slot.
 
 ## Theme tokens
 

@@ -378,6 +378,110 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABorderedLabel_When_CodeWritesAnInlineBorderColourEqualToTheTextColourAndTheTextColourChanges_Then_TheInlineColourStands()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(expected);
+            tag.style.color = new StyleColor(Color.blue);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderIsTheTextColourAgain()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            Settled("tag");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            now += 1.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): a move keeps the colour there as well.
+        [Test]
+        public void Given_ABorderedLabel_When_ItIsRemovedAndAddedAgain_Then_TheBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var parent = tag.hierarchy.parent;
+
+            // Act
+            tag.RemoveFromHierarchy();
+            parent.Add(tag);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the sibling sides are not code's, so they follow the text colour there as here.
+        [Test]
+        public void Given_ABorderedLabel_When_CodeWritesOneSideInlineEqualToTheTextColourAndTheTextColourChanges_Then_TheOtherSidesFollow()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(tag.resolvedStyle.color);
+            tag.style.color = new StyleColor(Color.blue);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the base replaces the class's inline colour with one write of the text colour. Here
+        // the colour is cleared and shown in two steps, and without the held transition the clear runs a transition away
+        // from the class's colour, which this reads before it ends.
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClassAndAColourTransition_When_TheClassIsRemoved_Then_TheBorderIsAtOnceTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            MountSwitchable("border border-blue-500 transition-colors duration-1000 text-red-500");
+
+            // Act
+            var tag = Patch("border transition-colors duration-1000 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the class's inline write is cleared for the text colour to show, as the
+        // preflight write replaced it there.
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClass_When_TheClassIsRemoved_Then_TheBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            MountSwitchable("border border-blue-500 text-red-500");
+
+            // Act
+            var tag = Patch("border text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Given_ALabelWhoseCodeWroteOneSideInline_When_Mounted_Then_TheOtherSidesAreTheTextColour()
         {
             // Arrange

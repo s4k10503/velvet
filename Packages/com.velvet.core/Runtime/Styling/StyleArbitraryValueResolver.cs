@@ -3124,13 +3124,17 @@ namespace Velvet
                 RewriteDriven(element, map, StyleLonghandSet.Of(HeldSlotGroups.LonghandOf(slot)));
                 return;
             }
-            if (TryLayeredWinner(map, slot, out var winner))
+            var found = TryLayeredWinner(map, slot, out var winner, out var rank);
+            if (found && rank != StyleLayerPriority.Preflight)
             {
                 WriteLayered(element, slot, winner);
+                return;
             }
-            else
+            StyleHeldSlots.WriteNull(element.style, slot);
+            // Preflight's colour is shown through the inline rule, which the null above has reverted.
+            if (found)
             {
-                StyleHeldSlots.WriteNull(element.style, slot);
+                BorderPreflight.Place(element, winner);
             }
         }
 
@@ -3197,6 +3201,7 @@ namespace Velvet
             }
             ReassertHolds(element, map, s_colorSlots);
             RewriteDriven(element, map, StyleArbitraryLonghands.Of(ArbitraryProperty.BorderColor));
+            BorderPreflight.Reassert(element);
         }
 
         // The color a hold keeps on slot, or null where none is held there.
@@ -3867,7 +3872,7 @@ namespace Velvet
                 map.ColorWatch = null;
                 return;
             }
-            if (!map.ColorWatch.Moved())
+            if (!map.ColorWatch.Moved() && !BorderPreflight.Lost(element))
             {
                 return;
             }
@@ -3895,11 +3900,11 @@ namespace Velvet
             if (writers == null)
             {
                 // Nothing else writes what this property writes, the common case: only its own winner is left.
-                if (!TryWinningLayer(map, property, out var own))
+                if (!TryWinningKey(map, property, out var own, out var ownKey))
                 {
                     return 0;
                 }
-                ApplyInline(element, own);
+                ApplyWinner(element, own, ownKey);
                 ClearClaimedLonghands(element, map, own.Property, map[property].Keys[map[property].Count - 1]);
                 return 0;
             }
@@ -3916,9 +3921,9 @@ namespace Velvet
                     .CompareTo(map.ArrivalOf(z.Style.Property, z.Key));
             });
             var slots = 0;
-            foreach (var (_, style) in writers)
+            foreach (var (key, style) in writers)
             {
-                ApplyInline(element, style);
+                ApplyWinner(element, style, key);
                 slots |= HeldSlotGroups.SlotsOf(style.Property);
                 written = written.Union(StyleArbitraryLonghands.Of(style.Property));
             }
@@ -3927,6 +3932,18 @@ namespace Velvet
                 ClearClaimedLonghands(element, map, style.Property, key, writers);
             }
             return slots;
+        }
+
+        // Writes the layer that won a property at key. Preflight's is shown through the element's inline rule, which an
+        // inline value stands over, and no inline value of the element's own is written over.
+        private static void ApplyWinner(VisualElement element, in ArbitraryStyle style, long key)
+        {
+            if (key == StyleLayerPriority.Preflight)
+            {
+                BorderPreflight.Place(element, style);
+                return;
+            }
+            ApplyInline(element, style);
         }
 
         // The winning layer of every property connected to property through a shared longhand, however many
@@ -4898,6 +4915,10 @@ namespace Velvet
                 foreach (var setter in colorSetters)
                 {
                     setter(cs, nullColor);
+                }
+                if (property >= ArbitraryProperty.BorderColor && property <= ArbitraryProperty.BorderBlockEndColor)
+                {
+                    BorderPreflight.Reassert(element);
                 }
                 ColorReferenceWatch.NotifyWritten(element);
                 return;

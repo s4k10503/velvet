@@ -15,10 +15,12 @@ namespace Velvet
     // rule of a non-default stylesheet that sets one, which an element with a class or a name of its own listens for
     // and any other element is asked about on attach.
     //
-    // A layer is written inline, which outranks every stylesheet rule, so a side is held back while a rule of a
-    // stylesheet that is not a default one (control themes are, and CSS preflight overrides user-agent styles) matches
-    // the element and sets that side's border colour, whatever the rule's selector, and while an inline colour that
-    // is not Velvet's stands on it, as an inline style outranks preflight in CSS. The rules that match are asked of
+    // A layer's colour is shown through the element's inline rule (PreflightInlineRule), which outranks every
+    // stylesheet rule and not an inline value, so a side is held back while a rule of a stylesheet that is not a
+    // default one (control themes are, and CSS preflight overrides user-agent styles) matches the element and sets
+    // that side's border colour, whatever the rule's selector. An inline colour of the element's own stands over the
+    // layer whatever its value, as an inline style outranks preflight in CSS, and the layer then lets go of the side so
+    // that what reads the layers sees a side the layer does not colour. The rules that match are asked of
     // the engine's own matcher (MatchedRulesExtractor) when the element's classes are applied and each time the
     // element is restyled with a different set of matched rules, which is what a class, a pseudo-state or a
     // stylesheet changing does. The restyle event reaches the element through the marker class ColorReferenceWatch
@@ -64,9 +66,23 @@ namespace Velvet
             public System.Collections.Generic.HashSet<object>? ScopedBy;
             // The key the engine cached the element's matched rules under when they were last asked.
             public long? Matched;
-            // The colour each side's inline value last had while it was Velvet's, to tell a write that is not.
-            public readonly Color[] Seen = new Color[4];
+            // The colour each side's inline value last had while a layer of Velvet's other than preflight's wrote it, to
+            // tell a write that is not; NaN while preflight's layer is the one standing, which writes no inline value.
+            public readonly Color[] Seen = { NoColour, NoColour, NoColour, NoColour };
+            // The inline rule the layers' colours are shown through.
+            public PreflightInlineRule? Rule;
+            // The sides an inline colour of the element's own stands on, which the guard waits to see cleared.
+            public Sides Yielded;
+            // Checks every frame that the colours shown are still there and that a yielded side has not been cleared.
+            public IVisualElementScheduledItem? Guard;
+            // Whether the element has left the panel with its layers and rule let go.
+            public bool Detached;
         }
+
+        // Whether Place is clearing a slot of its own, which it shows the colour on next.
+        private static bool s_placing;
+
+        private static readonly Color NoColour = new(float.NaN, float.NaN, float.NaN, float.NaN);
 
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
 
@@ -121,9 +137,27 @@ namespace Velvet
             {
                 SnappedBorderSheets.FollowRootOf(element);
             }
+            // An element that left the panel and came back (a keyed move) shows its colours again at once.
+            if (state.Detached)
+            {
+                state.Detached = false;
+                Resync(element, ask: true);
+            }
             // A panel without the bundled stylesheet sends no restyle event (the marker class has no rule there), so the
             // element is asked once after its first style pass.
             element.schedule.Execute(() => Resync(element, ask: true)).ExecuteLater(FirstPassMs);
+        };
+
+        // The layers and the inline rule are let go with the panel, so a sheet of an element nothing tears down is not kept.
+        private static readonly EventCallback<DetachFromPanelEvent, VisualElement> s_onDetached = (_, element) =>
+        {
+            if (s_states.TryGetValue(element, out var state))
+            {
+                state.Detached = true;
+                DropLayers(element, state);
+                state.Rule?.Release(element);
+                state.Rule = null;
+            }
         };
 
         private const long FirstPassMs = 32;
@@ -203,8 +237,8 @@ namespace Velvet
             }
         }
 
-        // Whether the colour watch is about to rewrite a side over an inline colour that is not Velvet's, which then keeps
-        // it and the layer lets go. Asked before the watch writes: after it has, the value cannot be told from its own.
+        // Whether an inline colour stands on a side the layer holds, which the layer then lets go of. Asked before the
+        // colour watch writes the side again, which it leaves alone when it is.
         internal static bool YieldsToInline(VisualElement element, ArbitraryProperty property)
         {
             for (var i = 0; i < s_sideProperties.Length; i++)
@@ -219,14 +253,16 @@ namespace Velvet
                 {
                     return false;
                 }
-                StyleArbitraryValueResolver.Withdraw(element, property, StyleLayerPriority.Preflight);
-                state.Held &= ~(Sides)(1 << i);
+                LetGo(element, state, i);
+                state.Yielded |= (Sides)(1 << i);
+                WatchOver(element, state);
                 return true;
             }
             return false;
         }
 
-        // Records the inline colours of the sides property writes as Velvet's own, after the resolver wrote them.
+        // Records the inline colours of the sides property writes that a layer other than preflight's wrote, after the
+        // resolver wrote them; where preflight's layer is the one standing, no inline value is Velvet's.
         internal static void NoteWritten(VisualElement element, ArbitraryProperty property)
         {
             if (!s_states.TryGetValue(element, out var state))
@@ -235,11 +271,13 @@ namespace Velvet
             }
             for (var i = 0; i < s_sideProperties.Length; i++)
             {
-                var inline = InlineColor(element, i);
-                if (WritesSide(property, i) && inline.keyword == StyleKeyword.Undefined)
+                if (!WritesSide(property, i))
                 {
-                    state.Seen[i] = inline.value;
+                    continue;
                 }
+                var inline = InlineColor(element, i);
+                state.Seen[i] = RestsOnPreflight(element, i) ? NoColour
+                    : inline.keyword == StyleKeyword.Undefined ? inline.value : state.Seen[i];
             }
         }
 
@@ -253,12 +291,11 @@ namespace Velvet
                 || (property == ArbitraryProperty.BorderBlockStartColor && index == 0)
                 || (property == ArbitraryProperty.BorderBlockEndColor && index == 2);
 
-        // Whether the inline colour on edge of owner is the preflight layer's, which no other layer outranks.
-        internal static bool Writes(VisualElement owner, DivideEdge edge)
+        // Whether the layer standing on side, which no other layer outranks, is preflight's.
+        private static bool RestsOnPreflight(VisualElement owner, int side)
         {
-            var property = s_sideProperties[edge == DivideEdge.Top ? 0 : edge == DivideEdge.Right ? 1 : edge == DivideEdge.Bottom ? 2 : 3];
-            var shared = edge is DivideEdge.Left or DivideEdge.Right ? ArbitraryProperty.BorderXColor : ArbitraryProperty.BorderYColor;
-            return StyleArbitraryValueResolver.TryRestingLayer(owner, property, s_noSwap, out _, out var key)
+            var shared = side is 1 or 3 ? ArbitraryProperty.BorderXColor : ArbitraryProperty.BorderYColor;
+            return StyleArbitraryValueResolver.TryRestingLayer(owner, s_sideProperties[side], s_noSwap, out _, out var key)
                 && key == StyleLayerPriority.Preflight
                 && !StyleArbitraryValueResolver.HasLayer(owner, ArbitraryProperty.BorderColor)
                 && !StyleArbitraryValueResolver.HasLayer(owner, shared);
@@ -290,26 +327,94 @@ namespace Velvet
             {
                 return;
             }
-            Forget(element);
+            var held = state.Held;
+            state.Held = Sides.None;
             for (var i = 0; i < s_sideProperties.Length; i++)
             {
-                if ((state.Held & (Sides)(1 << i)) != 0)
+                if ((held & (Sides)(1 << i)) != 0)
                 {
-                    StyleArbitraryValueResolver.Clear(element, s_sideProperties[i], StyleLayerPriority.Preflight);
+                    StyleArbitraryValueResolver.Withdraw(element, s_sideProperties[i], StyleLayerPriority.Preflight);
                 }
+            }
+            Forget(element);
+        }
+
+        // Stops listening and lets go of the inline rule, for a teardown that drops the layer map itself.
+        internal static void Forget(VisualElement element)
+        {
+            if (s_states.TryGetValue(element, out var state))
+            {
+                s_states.Remove(element);
+                element.UnregisterCallback(s_onAttached);
+                element.UnregisterCallback(s_onDetached);
+                element.UnregisterCallback(s_onResolved);
+                ColorReferenceWatch.Unmark(element);
+                state.Guard?.Pause();
+                state.Guard = null;
+                for (var i = 0; i < s_sideProperties.Length; i++)
+                {
+                    SilhouetteFaceStash.NoteLetGo(element, i);
+                }
+                state.Rule?.Release(element);
+                state.Rule = null;
             }
         }
 
-        // Stops listening, for a teardown that drops the layer map itself.
-        internal static void Forget(VisualElement element)
+        // The colour the layers show on side (0 to 3, top to left), where no inline value stands over it.
+        internal static bool TryShown(VisualElement element, int side, out Color colour)
         {
-            if (!s_states.Remove(element))
+            colour = default;
+            return s_states.TryGetValue(element, out var state) && state.Rule != null && state.Rule.TryColour(side, out colour)
+                && InlineColor(element, side).keyword == StyleKeyword.Null;
+        }
+
+        // Whether the computed style of element has lost a colour its layers show.
+        internal static bool Lost(VisualElement element)
+            => s_states.TryGetValue(element, out var state) && state.Rule != null && state.Rule.Lost(element);
+
+        // Shows again a colour the computed style of element has lost, for a write of Velvet's that cleared the slot.
+        internal static void Reassert(VisualElement element)
+        {
+            if (!s_placing && s_states.TryGetValue(element, out var state))
+            {
+                state.Rule?.Reassert(element);
+            }
+        }
+
+        // Shows the colour of the layer on side of element, which the resolver has just decided the side comes to.
+        internal static void Place(VisualElement element, in ArbitraryStyle layer)
+        {
+            var side = Array.IndexOf(s_sideProperties, layer.Property);
+            if (side < 0 || !s_states.TryGetValue(element, out var state) || state.Rule == null)
             {
                 return;
             }
-            element.UnregisterCallback(s_onAttached);
-            element.UnregisterCallback(s_onResolved);
-            ColorReferenceWatch.Unmark(element);
+            // A colour a layer of Velvet's wrote there and has since given the side up from is not the element's own. It goes
+            // straight to the text colour: cleared on its own it would run a transition to what the rules give, and the
+            // colour shown would run another from there.
+            var inline = InlineColor(element, side);
+            var colour = StyleArbitraryValueResolver.ColorOf(element, layer);
+            if (inline.keyword == StyleKeyword.Undefined && !SilhouetteFace.IsSentinel(inline.value) && inline.value == state.Seen[side])
+            {
+                var hold = new StyleRelativeLengths.TransitionHold(element);
+                s_placing = true;
+                try
+                {
+                    StyleArbitraryValueResolver.ClearInline(element, layer.Property);
+                    state.Seen[side] = NoColour;
+                    state.Rule.Show(element, side, colour);
+                }
+                finally
+                {
+                    s_placing = false;
+                    hold.Release();
+                }
+                SilhouetteFaceStash.NotePreflight(element, side, colour);
+                return;
+            }
+            state.Seen[side] = NoColour;
+            state.Rule.Show(element, side, colour);
+            SilhouetteFaceStash.NotePreflight(element, side, colour);
         }
 
         // Whether the element was asked for its rules in doing so.
@@ -321,6 +426,7 @@ namespace Velvet
                 s_states.Add(element, state);
                 ColorReferenceWatch.Mark(element);
                 element.RegisterCallback(s_onAttached, element);
+                element.RegisterCallback(s_onDetached, element);
                 element.RegisterCallback(s_onResolved, element);
                 state.Reasons = reason;
                 Resync(element, ask: true);
@@ -659,6 +765,8 @@ namespace Velvet
                 if ((state.Reasons & Reasons.Layered) == 0)
                 {
                     DropLayers(element, state);
+                    state.Yielded = Sides.None;
+                    WatchOver(element, state);
                     if (state.Reasons == Reasons.None)
                     {
                         Forget(element);
@@ -669,10 +777,51 @@ namespace Velvet
                 {
                     SyncSide(element, state, i);
                 }
+                state.Rule?.Reassert(element);
+                WatchOver(element, state);
             }
             finally
             {
                 state.Resyncing = false;
+            }
+        }
+
+        // Watches the sides an inline colour of the element's own stands on for its being cleared, which raises no event
+        // and shows the layer again. Runs only while such a side exists; the colours shown are kept by the colour watch
+        // (Lost) and by the writes of Velvet's that clear them (Reassert).
+        private static void WatchOver(VisualElement element, State state)
+        {
+            if (state.Yielded == Sides.None)
+            {
+                state.Guard?.Pause();
+                return;
+            }
+            var guard = state.Guard ??= element.schedule.Execute(() => Guard(element)).Every(StyleAnimateDriver.TickMs);
+            if (!guard.isActive)
+            {
+                guard.Resume();
+            }
+        }
+
+        private static void Guard(VisualElement element)
+        {
+            if (!s_states.TryGetValue(element, out var state) || state.Resyncing)
+            {
+                return;
+            }
+            var cleared = false;
+            for (var i = 0; i < s_sideProperties.Length; i++)
+            {
+                var side = (Sides)(1 << i);
+                if ((state.Yielded & side) != 0 && InlineColor(element, i).keyword == StyleKeyword.Null)
+                {
+                    state.Yielded &= ~side;
+                    cleared = true;
+                }
+            }
+            if (cleared)
+            {
+                Resync(element, ask: false);
             }
         }
 
@@ -691,11 +840,20 @@ namespace Velvet
             {
                 if ((state.Held & (Sides)(1 << i)) != 0)
                 {
-                    StyleArbitraryValueResolver.Clear(element, s_sideProperties[i], StyleLayerPriority.Preflight);
+                    LetGo(element, state, i);
                 }
             }
-            state.Held = Sides.None;
             state.Landed = false;
+        }
+
+        // Takes the layer off side i, and the colour out of the inline rule. The layer is the lowest one, so no other
+        // layer's winner changes with it.
+        private static void LetGo(VisualElement element, State state, int i)
+        {
+            StyleArbitraryValueResolver.Withdraw(element, s_sideProperties[i], StyleLayerPriority.Preflight);
+            state.Held &= ~(Sides)(1 << i);
+            state.Rule?.Hide(element, i);
+            SilhouetteFaceStash.NoteLetGo(element, i);
         }
 
         private static void SyncSide(VisualElement element, State state, int index)
@@ -706,24 +864,33 @@ namespace Velvet
             var foreign = inline.keyword == StyleKeyword.Undefined && !SilhouetteFace.IsSentinel(inline.value);
             if ((state.Held & side) != 0)
             {
-                // Every write Velvet makes to the slot is recorded (NoteWritten), so a different value is another writer's.
-                if (foreign && inline.value != state.Seen[index])
+                // Every write of a layer of Velvet's is recorded (NoteWritten), so a different value is another writer's.
+                if ((foreign && inline.value != state.Seen[index]) || (state.Claimed & side) != 0)
                 {
-                    StyleArbitraryValueResolver.Withdraw(element, s_sideProperties[index], StyleLayerPriority.Preflight);
-                    state.Held &= ~side;
-                    return;
-                }
-                if ((state.Claimed & side) != 0)
-                {
-                    StyleArbitraryValueResolver.Clear(element, s_sideProperties[index], StyleLayerPriority.Preflight);
-                    state.Held &= ~side;
+                    LetGo(element, state, index);
+                    if ((state.Claimed & side) == 0)
+                    {
+                        state.Yielded |= side;
+                    }
                 }
                 return;
             }
-            if ((state.Claimed & side) != 0 || foreign)
+            if ((state.Claimed & side) != 0)
+            {
+                state.Yielded &= ~side;
+                return;
+            }
+            if (foreign)
+            {
+                state.Yielded |= side;
+                return;
+            }
+            var rule = state.Rule ??= PreflightInlineRule.Attach(element);
+            if (rule == null || rule.Blocked(index))
             {
                 return;
             }
+            state.Yielded &= ~side;
             // CSS runs no transition from a colour the element never showed; one it has shown transitions back to it.
             var hold = state.Landed ? default(StyleRelativeLengths.TransitionHold?) : new StyleRelativeLengths.TransitionHold(element);
             try
@@ -737,7 +904,8 @@ namespace Velvet
             }
             state.Landed = true;
             state.Held |= side;
-            // A face that took the slot's colour before the layer wrote it takes the layer's.
+            // A face that took the slot's colour before the layer was shown, or whose sentinel a colour of another layer
+            // written over while the layer was applied, takes the colour the slot holds now.
             SilhouetteFaceStash.Retake(element);
         }
 
