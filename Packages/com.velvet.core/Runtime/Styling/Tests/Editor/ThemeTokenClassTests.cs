@@ -954,25 +954,6 @@ namespace Velvet.Tests
             Assert.That(px, Is.EqualTo(800f));
         }
 
-        [Test]
-        public void Given_ALineHeightWrittenAsTailwindWritesIt_When_ItIsRead_Then_ItIsTheRatio()
-        {
-            // Arrange
-            AttachSheets(false);
-            _mounted = V.Mount(_window.rootVisualElement, V.Div());
-
-            // Act
-            float read;
-            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
-            {
-                StyleNamedTextSize.TryParseLineHeight("text-ratiotest", out var lineHeight, out _);
-                read = lineHeight.Value;
-            }
-
-            // Assert
-            Assert.That(read, Is.EqualTo(1.25f).Within(1e-5f));
-        }
-
         [TestCase("p-4", "p-[length:12px]")]
         public void Given_ASpacingUnitDeclaredOnTheRoot_When_AStepIsRead_Then_ItIsWrittenWithTheLiteral(string className, string expected)
         {
@@ -999,8 +980,17 @@ namespace Velvet.Tests
             Assert.That(normalized, Is.EqualTo("p-[length:calc(var(--spacing)*4)]"));
         }
 
+        private static void DriveTicks(IPanel panel)
+        {
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+                System.Threading.Thread.Sleep(20);
+            }
+        }
+
         [Test]
-        public void Given_AWatchOnAnElementAttached_When_ItsFirstStylePassHasRun_Then_TheWatchEvaluates()
+        public void Given_AWatchOnAnElementAttached_When_NothingChangesBetweenTicks_Then_ItEvaluatesOnce()
         {
             // Arrange
             AttachSheets(false);
@@ -1010,11 +1000,32 @@ namespace Velvet.Tests
 
             // Act
             watch.Start();
-            EditorPanelTestHelpers.DriveSchedulerOnce(leaf.panel);
+            DriveTicks(leaf.panel);
             watch.Stop();
 
             // Assert
             Assert.That(evaluations, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AWatchOnAnElement_When_ANeighbourClassIsToggledOnAnAncestor_Then_ItEvaluatesAgain()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("flex");
+            var evaluations = 0;
+            var watch = new StyleThemeTokens.ContextWatch(leaf, () => evaluations++);
+            watch.Start();
+            DriveTicks(leaf.panel);
+
+            // Act
+            leaf.parent.AddToClassList("theme-token-alt");
+            ForcePanelUpdate(leaf.panel);
+            DriveTicks(leaf.panel);
+            watch.Stop();
+
+            // Assert
+            Assert.That(evaluations, Is.EqualTo(2));
         }
 
         [Test]

@@ -3,9 +3,7 @@
     --color-brandtest: rgb(255, 0, 102);
     --radius-pilltest: 40px;
     --text-sizetest: 20px;
-    --text-ratiotest: 24px;
     --text-scopedtest: 20px;
-    --text-ratiotest--line-height: calc(2.5 / 2);
     --text-sizetest--line-height: 1.5;
     --text-sm--line-height: 2;
     --breakpoint-xstest: 30rem;

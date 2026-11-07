@@ -3640,6 +3640,7 @@ namespace Velvet
             if (element != null) PanelScaleWatch.Untrack(element, s_resnapBorderWidths);
             if (element != null) StyleCustomProperties.Release(element);
             if (element != null) StyleThemeTokens.Untrack(element);
+            if (element != null) StyleThemeTokens.Unfollow(element);
             if (element != null && s_layers.TryGetValue(element, out var map))
             {
                 map.RelativePoll?.Stop();

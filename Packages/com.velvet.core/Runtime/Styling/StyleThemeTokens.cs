@@ -110,14 +110,50 @@ namespace Velvet
         // Whether the mount's sheets declare a value a width-driven variant reads, so its variants listen for the
         // element's custom styles resolving (a theme class toggled above it changes what it reads).
         internal static bool ReadsValues(ReconcilerContext ctx)
-            => s_scopes.TryGetValue(ctx, out var scope) && scope.Values.Count > 0;
+        {
+            if (!s_scopes.TryGetValue(ctx, out var scope))
+            {
+                return false;
+            }
+            foreach (var name in scope.Values.Keys)
+            {
+                if (name.StartsWith("--breakpoint-", StringComparison.Ordinal)
+                    || name.StartsWith("--container-", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, ContextWatch> s_followed = new();
+
+        // Calls evaluate whenever the engine hands element another variable context, for as long as it is followed.
+        internal static void Follow(VisualElement element, Action evaluate)
+        {
+            if (!s_followed.TryGetValue(element, out var watch))
+            {
+                watch = new ContextWatch(element, evaluate);
+                s_followed.Add(element, watch);
+            }
+            watch.Evaluate = evaluate;
+            watch.Start();
+        }
+
+        internal static void Unfollow(VisualElement element)
+        {
+            if (s_followed.TryGetValue(element, out var watch))
+            {
+                watch.Stop();
+                s_followed.Remove(element);
+            }
+        }
 
         // Calls evaluate when the engine hands target another variable context, which is how a value its cascade holds
         // changes (a class toggled on an ancestor, the first style pass).
         internal sealed class ContextWatch
         {
             private readonly VisualElement _target;
-            private readonly Action _evaluate;
             private readonly Action _tick;
             private object? _seen;
             private IVisualElementScheduledItem? _item;
@@ -125,9 +161,11 @@ namespace Velvet
             public ContextWatch(VisualElement target, Action evaluate)
             {
                 _target = target;
-                _evaluate = evaluate;
+                Evaluate = evaluate;
                 _tick = Tick;
             }
+
+            public Action Evaluate { get; set; }
 
             public void Start()
             {
@@ -147,7 +185,7 @@ namespace Velvet
                 if (_target.panel != null && !ReferenceEquals(context, _seen))
                 {
                     _seen = context;
-                    _evaluate();
+                    Evaluate();
                 }
             }
         }
