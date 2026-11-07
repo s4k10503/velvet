@@ -134,6 +134,24 @@ namespace Velvet.Tests
             Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
         }
 
+        [UnityTest]
+        public IEnumerator Given_AnElementWithAColourTransition_When_ItMountsWithABorderWidth_Then_ItsBorderIsNotFadingIn()
+        {
+            // Arrange
+            _host = new RenderTexturePanelHost("BorderPreflight", Size, Size, clear: true);
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            yield return Frames(3);
+
+            // Act
+            _mounted = V.Mount(_host.Root, V.Div(name: "button",
+                className: "w-[60px] h-[30px] border transition-colors duration-1000 text-red-500"));
+            yield return Frames(2);
+            var button = _host.Root.Q<VisualElement>("button");
+
+            // Assert
+            Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
+        }
+
         // The middle third of the left band, two pixels in from each edge of it.
         private static Rect LeftBand(Rect box)
             => new(box.xMin + 2f, box.yMin + (box.height / 3f), BandWidth - 4f, box.height / 3f);

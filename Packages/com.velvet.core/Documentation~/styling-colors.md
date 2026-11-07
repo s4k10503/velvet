@@ -83,10 +83,13 @@ The functions follow CSS Color 4:
 - **A border width draws in the text colour** unless a rule says otherwise, as Tailwind v4's preflight
   `border-color: currentcolor` does. The element carries a border-width utility (`border`, `border-2`, `border-t-4`,
   `border-s-2`, `border-[3px]`, under any variant), is given one by a child-scoped variant (`*:border`, or `border` on a
-  field, which goes to its input box), is a child of a `divide-*` parent (a dashed divider's dashes included), or is
-  given one by a rule of a stylesheet of your own that names one of its classes or its name, in a stylesheet reaching
-  it when it attaches or its classes change; the rule is then followed as pseudo-states and ancestors change. A rule that
-  selects the element by its type alone, and a width your code writes inline, give it no preflight colour. The border
+  field, which goes to its input box), is a child of a `divide-*` parent (a dashed divider's dashes included), is given
+  one by a rule of a stylesheet of your own (not a control theme's) that selects it by a class, its name, its type or
+  `*`, or has a width your code wrote inline. A rule is looked for when the element attaches and when its classes change,
+  and then followed as pseudo-states and ancestors change; a width your code writes inline is seen on an element that is
+  already listening. A width your code writes inline on any other element, and a stylesheet added to an ancestor after
+  the element attached (for an element not already listening for a rule), give no preflight colour until the element's
+  classes change or it attaches again. The border
   follows the text colour. A rule of a stylesheet that is not a control theme's that sets a side's border colour takes
   that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as
   `hover:border-blue-500`, and your own USS class, id, type, descendant or `:hover` rule. So does a colour your code

@@ -700,6 +700,121 @@ namespace Velvet.Tests
             Assert.That(held, Is.False);
         }
 
+        private static StateUpdater<string> s_setRow;
+        private static string s_rowClass;
+
+        [Component]
+        private static VNode RenderRow()
+        {
+            var (className, setClass) = Hooks.UseState(s_rowClass);
+            s_setRow = setClass;
+            return V.Div(name: "row", className: className, children: new VNode[]
+            {
+                V.Label(name: "first", text: "A"),
+                V.Label(name: "second", text: "B"),
+            });
+        }
+
+        private VisualElement MountRow(string className)
+        {
+            s_rowClass = className;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderRow));
+            Settled("row");
+            return Settled("first");
+        }
+
+        [Test]
+        public void Given_ADividedRowWithoutADivideColour_When_ADivideColourIsPatchedIn_Then_TheDivideColourHoldsTheDivider()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+            MountRow("flex flex-row divide-x-2 text-red-500");
+
+            // Act
+            s_setRow.Invoke("flex flex-row divide-x-2 divide-blue-500 text-red-500");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            var first = Settled("first");
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ADividedRowWithoutADivideColour_When_ItsHoverDivideColourLights_Then_TheDivideColourHoldsTheDivider()
+        {
+            // Arrange
+            var expected = TextColourOf("text-blue-500");
+            var first = MountRow("flex flex-row divide-x-2 hover:divide-blue-500 text-red-500");
+            var row = _window.rootVisualElement.Q<VisualElement>("row");
+
+            // Act
+            SetPseudo(row, "Hover", true);
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                row.SimulateEvent(over);
+            }
+            ForcePanelUpdate(first.panel);
+
+            // Assert
+            Assert.That(first.resolvedStyle.borderRightColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWhoseBracketColourIsPatchedIn_When_AMotionSlotAsksForAnInlineHolder_Then_TheBracketColourIsOne()
+        {
+            // Arrange
+            MountSwitchable("border text-red-500");
+            var tag = Patch("border border-[#ff0000] text-red-500");
+
+            // Act
+            var held = MotionSlotContext.Read(tag, null, null, _ => false).HoldsInlineOutsideSwap(ArbitraryProperty.BorderColor);
+
+            // Assert
+            Assert.That(held, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoOwnersGivingAChildAWidth_When_OneOfThemTakesItBack_Then_TheOtherStillHoldsItsPreflight()
+        {
+            // Arrange
+            var child = MountLabel("text-red-500");
+            var first = new object();
+            var second = new object();
+            BorderPreflight.SetScoped(child, first, true);
+            BorderPreflight.SetScoped(child, second, true);
+
+            // Act
+            BorderPreflight.SetScoped(child, first, false);
+
+            // Assert
+            Assert.That(child.ClassListContains(ColorReferenceWatch.MarkerClass), Is.True);
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassIsWidenedByADefaultStylesheetOnly_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-theme-width text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        [Test]
+        public void Given_ALabelListeningForARuleWidth_When_CodeWritesABorderWidthInline_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("pf-hover-width text-red-500");
+
+            // Act
+            tag.style.borderTopWidth = 2f;
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
         [Test]
         public void Given_APreflightLayer_When_ItsKeyIsAskedWhetherItIsUnderAVariant_Then_ItIsNot()
         {

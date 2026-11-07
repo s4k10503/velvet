@@ -459,6 +459,10 @@ namespace Velvet
         private const string MatchedRulesExtractorType = "UnityEngine.UIElements.MatchedRulesExtractor";
         private const string SelectorMatchRecordType = "UnityEngine.UIElements.StyleSheets.SelectorMatchRecord";
 
+        // The name a type selector matches an element by.
+        internal static readonly EngineMember ElementTypeName =
+            ReadProperty(UIElements, VisualElementType, "typeName", "System.String");
+
         internal static readonly EngineMember MatchedRulesExtractorConstruct = Constructor(UIElements,
             MatchedRulesExtractorType, "System.Func`2[UnityEngine.UIElements.StyleSheet,System.String]");
 

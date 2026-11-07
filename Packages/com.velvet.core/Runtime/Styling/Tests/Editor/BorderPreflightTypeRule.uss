@@ -1,0 +1,2 @@
+/* The rule BorderPreflightTypeRuleTests reads: a border width given by a type selector alone. */
+Toggle { border-width: 1px; }
