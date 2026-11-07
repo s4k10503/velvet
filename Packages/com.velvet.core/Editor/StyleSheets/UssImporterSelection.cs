@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 
 namespace Velvet.Editor
@@ -37,7 +36,7 @@ namespace Velvet.Editor
         }
 
         private static bool IsImmutable(string path)
-            => PackageInfo.FindForAssetPath(path)?.source is PackageSource.Registry or PackageSource.BuiltIn or PackageSource.Git or PackageSource.LocalTarball;
+            => UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path)?.source is UnityEditor.PackageManager.PackageSource.Registry or UnityEditor.PackageManager.PackageSource.BuiltIn or UnityEditor.PackageManager.PackageSource.Git or UnityEditor.PackageManager.PackageSource.LocalTarball;
 
         private static string? ReadOrNull(string path)
         {
