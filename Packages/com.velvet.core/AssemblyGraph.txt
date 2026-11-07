@@ -19,5 +19,5 @@ Velvet.Tests.Reconciler.PlayMode refs Unity.PerformanceTesting,UnityEditor.TestR
 Velvet.Tests.Routing.Editor refs UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.TestUtilities platforms Editor
 Velvet.Tests.Routing.PlayMode refs Unity.PerformanceTesting,UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.TestUtilities platforms all
 Velvet.Tests.Store.Editor refs UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.TestUtilities platforms Editor
-Velvet.Tests.Styling.Editor refs Unity.UI.TestFramework.Editor,Unity.UI.TestFramework.Runtime,UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.TestUtilities platforms Editor
+Velvet.Tests.Styling.Editor refs Unity.UI.TestFramework.Editor,Unity.UI.TestFramework.Runtime,UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.Editor,Velvet.TestUtilities platforms Editor
 Velvet.Tests.Styling.PlayMode refs UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.TestUtilities platforms all
