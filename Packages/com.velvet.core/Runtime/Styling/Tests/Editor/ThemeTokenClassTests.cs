@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -13,6 +14,7 @@ namespace Velvet.Tests
     internal sealed class ThemeTokenClassTests : PanelTestBase
     {
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
+        private const string EaseSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenEaseSheet.uss";
         private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
         private const string ScopedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenScopedSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
@@ -105,6 +107,7 @@ namespace Velvet.Tests
         [TestCase("text-sizetest/7", "text-[length:var(--text-sizetest)]/7")]
         [TestCase("max-w-widetest", "max-w-[length:var(--container-widetest)]")]
         [TestCase("inset-shadow-glowtest", "inset-shadow-[var(--inset-shadow-glowtest)]")]
+        [TestCase("ease-snappytest", "ease-[var(--ease-snappytest)]")]
         public void Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(
             string className, string expected)
         {
@@ -210,6 +213,46 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { Rgb(leaf.style.borderBottomColor), ColorUtility.ToHtmlStringRGB(leaf.resolvedStyle.borderTopColor) },
                 Is.EqualTo(new[] { "155DFC", "CAD5E2" }));
+        }
+
+        [Test]
+        public void Given_AProjectEaseToken_When_Mounted_Then_TheTransitionEasesByTheKeywordNearestItsCurve()
+        {
+            // Arrange
+            AttachSheets(false);
+
+            // Act
+            var leaf = Mount("ease-snappytest");
+
+            // Assert
+            Assert.That(leaf.style.transitionTimingFunction.value.Select(function => function.mode).ToArray(),
+                Is.EqualTo(new[] { StyleEaseCurve.NearestMode(new BezierCurve(0.2f, 0.8f, 0.2f, 1f)) }));
+        }
+
+        [Test]
+        public void Given_AProjectRedeclaringTheVariableOfABundledEaseClass_When_ThatClassIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable()
+        {
+            // Arrange
+            Attach(EaseSheet);
+
+            // Act
+            var normalized = Normalize("ease-in");
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo("ease-[var(--ease-in)]"));
+        }
+
+        [Test]
+        public void Given_NoProjectTokenForABundledEaseClass_When_ThatClassIsRead_Then_ItStaysTheBundledClass()
+        {
+            // Arrange
+            AttachSheets(true);
+
+            // Act
+            var normalized = Normalize("ease-in");
+
+            // Assert
+            Assert.That(normalized, Is.Null);
         }
 
         [Test]

@@ -140,6 +140,8 @@ namespace Velvet
 
             // A filter tween still ticking would write its frames and its target onto the next consumer.
             StyleFilterTransitionDriver.Release(element);
+            // A curve held for the last consumer's ease-* classes would otherwise ease the next consumer's transitions.
+            StyleEaseCurve.Release(element);
             // The clock its last mount recorded would otherwise answer for the next consumer's filter tweens.
             MotionClock.Forget(element);
             // A skew composed into the rotate and scale would otherwise outlive the element's last use.

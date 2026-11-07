@@ -129,6 +129,7 @@ namespace Velvet
             Set(sets, ArbitraryProperty.Opacity, StyleLonghand.Opacity);
             Set(sets, ArbitraryProperty.AspectRatio, StyleLonghand.AspectRatio);
             Set(sets, ArbitraryProperty.TransitionDuration, StyleLonghand.TransitionDuration);
+            Set(sets, ArbitraryProperty.TransitionTimingFunction, StyleLonghand.TransitionTimingFunction);
 
             Set(sets, ArbitraryProperty.Slice, StyleLonghand.UnitySliceTop, StyleLonghand.UnitySliceRight,
                 StyleLonghand.UnitySliceBottom, StyleLonghand.UnitySliceLeft);

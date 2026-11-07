@@ -202,6 +202,7 @@ namespace Velvet
             _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
             // transition-filter: bind the filter tween so teardown can pause its tick (FiberFilterTransitionApplier).
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
+            _patcher.Appliers.ApplyEaseCurveOnCreate(element, paintClasses);
             // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
             // element's own content, bleeding outside the box) — a non-structural paint like CSS
             // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
@@ -352,6 +353,7 @@ namespace Velvet
             _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
             // transition-filter on a Motion host, as on a plain element above.
             _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
+            _patcher.Appliers.ApplyEaseCurveOnCreate(element, motionPaintClasses);
             // A clip-path-* class wraps the element in the stencil container, as an element's does; the shadow and the
             // ring then stand down for the clip.
             var motionOuter = _patcher.Appliers.ApplyClipPathOnCreate(element, writtenClasses);

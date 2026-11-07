@@ -418,6 +418,7 @@ namespace Velvet
             _appliers.ApplyGradientOnPatch(element, classNames);
             _appliers.ApplyAnimateOnPatch(element, classNames);
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
+            _appliers.ApplyEaseCurveOnPatch(element, classNames);
             _appliers.ApplyParticlesSpacer(element, classNames);
             _appliers.ApplySkewOnPatch(element, classNames, classesChanged);
             _appliers.ApplyShadowOnPatch(element, classNames, clipActive);

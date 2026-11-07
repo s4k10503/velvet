@@ -23,6 +23,8 @@ namespace Velvet
         public float DurationSec;
         public float DelaySec;
         public EasingMode Easing;
+        // The cubic-bezier the tween eases by in place of Easing's keyword (StyleEaseCurve.CurveFor).
+        public BezierCurve? Curve;
         // The value a change has to return to for it to reverse this tween, and the tween's reversing shortening
         // factor (TryStartOrRedirect).
         public List<FilterFunction>? AdjustedStart;
@@ -167,7 +169,7 @@ namespace Velvet
             var adjustedStart = element.style.filter.value;
             if (bound?.Scheduled != null && SameList(bound.AdjustedStart, to))
             {
-                var eased = UssEasing.Evaluate(bound.Easing, Progress(bound));
+                var eased = Eased(bound, Progress(bound));
                 factor = Mathf.Clamp01(Mathf.Abs(eased * bound.ReversingFactor + 1f - bound.ReversingFactor));
                 adjustedStart = bound.Target;
             }
@@ -180,6 +182,7 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             b.DelaySec = delayMs < 0 ? delayMs / 1000f * factor : delayMs / 1000f;
             b.Easing = easing;
+            b.Curve = StyleEaseCurve.CurveFor(element, easing);
             b.Clock = clock;
             b.StartTime = clock.NowSec;
             // Write the start frame now so there is no one-frame flash of the pre-change value.
@@ -278,6 +281,11 @@ namespace Velvet
         // not a list.
         private static IList<T> AsList<T>(IEnumerable<T> resolved) => resolved as IList<T> ?? resolved.ToList();
 
+        // The eased output of the tween at pre-easing progress t: the element's cubic-bezier where it holds one for the
+        // keyword the entry resolved, else that keyword's curve.
+        private static float Eased(StyleFilterTransitionBinding b, float t)
+            => b.Curve is { } curve ? StyleEaseCurve.Evaluate(curve, Mathf.Clamp01(t)) : UssEasing.Evaluate(b.Easing, t);
+
         // The pre-easing progress at this moment, 0 through the delay and 1 from the end of the run: a zero duration
         // jumps to the end once the delay has passed, as a USS transition does.
         private static float Progress(StyleFilterTransitionBinding b)
@@ -292,7 +300,7 @@ namespace Velvet
         // without the runtime scheduler.
         public static void ApplyFrame(VisualElement element, StyleFilterTransitionBinding b, float t)
         {
-            var e = UssEasing.Evaluate(b.Easing, t);
+            var e = Eased(b, t);
             var list = new List<FilterFunction>(b.Channels.Length);
             foreach (var channel in b.Channels)
             {

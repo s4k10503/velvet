@@ -82,6 +82,13 @@ namespace Velvet
         internal void ApplyFilterTransitionOnPatch(VisualElement element, string[] classNames)
             => _filterTransition.ApplyFilterTransitionOnPatch(element, classNames);
 
+        // ease-in, ease-out and ease-in-out run their transition along Tailwind's curve (StyleEaseCurve).
+        internal void ApplyEaseCurveOnCreate(VisualElement element, string[] classNames)
+            => StyleEaseCurve.NoteClasses(element, classNames);
+
+        internal void ApplyEaseCurveOnPatch(VisualElement element, string[] classNames)
+            => StyleEaseCurve.NoteClasses(element, classNames);
+
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
             => _boxShadow.ApplyShadowOnCreate(element, classNames);
 
