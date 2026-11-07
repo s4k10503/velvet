@@ -365,6 +365,19 @@ namespace Velvet
                 && InlineColor(element, side).keyword == StyleKeyword.Null;
         }
 
+        // Whether the computed style of element has lost a colour its layers show.
+        internal static bool Lost(VisualElement element)
+            => s_states.TryGetValue(element, out var state) && state.Rule != null && state.Rule.Lost(element);
+
+        // Shows again a colour the computed style of element has lost, for a write of Velvet's that cleared the slot.
+        internal static void Reassert(VisualElement element)
+        {
+            if (s_states.TryGetValue(element, out var state))
+            {
+                state.Rule?.Reassert(element);
+            }
+        }
+
         // Shows the colour of the layer on side of element, which the resolver has just decided the side comes to.
         internal static void Place(VisualElement element, in ArbitraryStyle layer)
         {
@@ -754,16 +767,17 @@ namespace Velvet
             }
         }
 
-        // Runs the guard while a side is shown or yielded. The clear of an inline value reverts the property to what the
-        // rules give, which hides the rule's colour until something shows it again, and nothing raises an event for it.
+        // Watches the sides an inline colour of the element's own stands on for its being cleared, which raises no event
+        // and shows the layer again. Runs only while such a side exists; the colours shown are kept by the colour watch
+        // (Lost) and by the writes of Velvet's that clear them (Reassert).
         private static void WatchOver(VisualElement element, State state)
         {
-            if (state.Held == Sides.None && state.Yielded == Sides.None)
+            if (state.Yielded == Sides.None)
             {
                 state.Guard?.Pause();
                 return;
             }
-            var guard = state.Guard ??= element.schedule.Execute(() => Guard(element)).Every(0);
+            var guard = state.Guard ??= element.schedule.Execute(() => Guard(element)).Every(StyleAnimateDriver.TickMs);
             if (!guard.isActive)
             {
                 guard.Resume();
@@ -789,10 +803,6 @@ namespace Velvet
             if (cleared)
             {
                 Resync(element, ask: false);
-            }
-            else
-            {
-                state.Rule?.Reassert(element);
             }
         }
 
@@ -846,19 +856,19 @@ namespace Velvet
                 }
                 return;
             }
-            var rule = state.Rule ??= PreflightInlineRule.Attach(element);
-            if (rule == null)
-            {
-                return;
-            }
             if ((state.Claimed & side) != 0)
             {
                 state.Yielded &= ~side;
                 return;
             }
-            if (foreign || rule.Blocked(index))
+            if (foreign)
             {
                 state.Yielded |= side;
+                return;
+            }
+            var rule = state.Rule ??= PreflightInlineRule.Attach(element);
+            if (rule == null || rule.Blocked(index))
+            {
                 return;
             }
             state.Yielded &= ~side;

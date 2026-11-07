@@ -3201,6 +3201,7 @@ namespace Velvet
             }
             ReassertHolds(element, map, s_colorSlots);
             RewriteDriven(element, map, StyleArbitraryLonghands.Of(ArbitraryProperty.BorderColor));
+            BorderPreflight.Reassert(element);
         }
 
         // The color a hold keeps on slot, or null where none is held there.
@@ -3871,7 +3872,7 @@ namespace Velvet
                 map.ColorWatch = null;
                 return;
             }
-            if (!map.ColorWatch.Moved())
+            if (!map.ColorWatch.Moved() && !BorderPreflight.Lost(element))
             {
                 return;
             }
@@ -4915,6 +4916,7 @@ namespace Velvet
                 {
                     setter(cs, nullColor);
                 }
+                BorderPreflight.Reassert(element);
                 ColorReferenceWatch.NotifyWritten(element);
                 return;
             }
