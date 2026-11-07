@@ -169,13 +169,13 @@ namespace Velvet.Tests
         public void Given_ABottomBorderColouredByAProjectToken_When_Mounted_Then_OnlyTheBottomEdgeTakesIt()
         {
             // Arrange
-            AttachSheets(false);
+            AttachSheets(true);
 
             // Act
             var leaf = Mount("border-2 border-slate-300 border-b-brandtest");
 
             // Assert
-            Assert.That(new[] { Rgb(leaf.style.borderBottomColor), Rgb(leaf.style.borderTopColor) },
+            Assert.That(new[] { Rgb(leaf.style.borderBottomColor), ColorUtility.ToHtmlStringRGB(leaf.resolvedStyle.borderTopColor) },
                 Is.EqualTo(new[] { "FF0066", "CAD5E2" }));
         }
 
@@ -208,7 +208,7 @@ namespace Velvet.Tests
             var leaf = Mount("border-2 border-slate-300 border-b-primary");
 
             // Assert
-            Assert.That(new[] { Rgb(leaf.style.borderBottomColor), Rgb(leaf.style.borderTopColor) },
+            Assert.That(new[] { Rgb(leaf.style.borderBottomColor), ColorUtility.ToHtmlStringRGB(leaf.resolvedStyle.borderTopColor) },
                 Is.EqualTo(new[] { "155DFC", "CAD5E2" }));
         }
 
