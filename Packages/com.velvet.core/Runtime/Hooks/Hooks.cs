@@ -2885,7 +2885,7 @@ namespace Velvet
                 return null;
             }));
 
-            return observer.Read(queryClient.Peek<TQueryFnData>(options.QueryKey), settings);
+            return observer.Read(queryClient.PeekById<TQueryFnData>(settings.KeyId), settings);
         }
 
         #endregion
@@ -3181,6 +3181,34 @@ namespace Velvet
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static void StoreScope(int firstSlot, int scope, object?[]? deps, VNode result)
             => MemoScopeCache.Store(firstSlot, scope, deps, result, nameof(StoreScope));
+
+        /// <summary>
+        /// Gate of one memoization scope that caches a computed value rather than a VNode, woven in ahead of the
+        /// code that computes it. Returns the cached value when the scope's previous deps are equal. A call made
+        /// with a <paramref name="firstSlot"/> of <c>-1</c> reports a miss and stages nothing. Do not call by hand.
+        /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values of this scope. Must not be null.</param>
+        /// <param name="cached">Outputs the cached value on a hit; undefined on a miss.</param>
+        /// <returns>True when the previous deps are equal and the cached value was returned.</returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static bool TryGetValueScope(int firstSlot, int scope, object?[]? deps, out object? cached)
+            => MemoScopeCache.TryGetValue(firstSlot, scope, deps, out cached);
+
+        /// <summary>
+        /// Slot writer API woven in after the code that computes a value scope's result on the miss path of
+        /// <see cref="TryGetValueScope"/>. A call made with a <paramref name="firstSlot"/> of <c>-1</c> stages
+        /// nothing. Do not call by hand.
+        /// </summary>
+        /// <param name="firstSlot">The value <see cref="ReserveScopes"/> returned.</param>
+        /// <param name="scope">The scope's position among those <see cref="ReserveScopes"/> granted.</param>
+        /// <param name="deps">Dependency values to record for this scope. Must not be null.</param>
+        /// <param name="result">Value to cache for subsequent hits.</param>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static void StoreValueScope(int firstSlot, int scope, object?[]? deps, object? result)
+            => MemoScopeCache.StoreValue(firstSlot, scope, deps, result, nameof(StoreValueScope));
 
         #endregion
 

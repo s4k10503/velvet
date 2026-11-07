@@ -17,7 +17,7 @@ namespace Velvet
 
         // The prefix as written. Two spellings of one threshold (`@md`, `@min-md`) are two bindings.
         public string Spelling { get; }
-        public StyleContainerQuery Query { get; }
+        public StyleContainerQuery Query { get; set; }
         public string[] Payloads { get; }
         public int[] Declarations { get; }
     }
@@ -32,6 +32,7 @@ namespace Velvet
     internal sealed class StyleContainerVariantManipulator : Manipulator
     {
         private readonly ReconcilerContext _ctx;
+        private StyleThemeTokens.Follower? _themeFollower;
         private ContainerBinding[] _bindings;
         private bool[] _on;
         // Keyed by container name, "" for the nearest container of any name.
@@ -85,6 +86,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+            (_themeFollower ??= new StyleThemeTokens.Follower(_ctx, () => target, Evaluate)).Attach();
             _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
             _watch.Start();
 
@@ -101,6 +103,7 @@ namespace Velvet
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+            _themeFollower?.Detach();
             _watch?.Stop();
             UnhookSources();
             foreach (var owner in _owners.Values)
@@ -163,10 +166,18 @@ namespace Velvet
                 return;
             }
 
+            using var themeScope = StyleThemeTokens.Use(_ctx, target);
             for (var i = 0; i < _bindings.Length; i++)
             {
                 var query = _bindings[i].Query;
-                var on = _sources.TryGetValue(query.Name, out var source) && source.Satisfies(query);
+                var reads = StyleContainerQuery.TryParse(_bindings[i].Spelling, out var current);
+                if (reads && current.Px != query.Px)
+                {
+                    // A threshold a sheet declares moved: the binding answers for the value it reads now.
+                    query = _bindings[i].Query = current;
+                }
+                // A query whose value the element's cascade no longer gives it matches nothing.
+                var on = reads && _sources.TryGetValue(query.Name, out var source) && source.Satisfies(query);
                 if (on != _on[i])
                 {
                     _on[i] = on;

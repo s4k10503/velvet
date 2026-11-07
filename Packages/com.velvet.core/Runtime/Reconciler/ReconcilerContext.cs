@@ -1649,6 +1649,9 @@ namespace Velvet
         // app author notices and refocuses something manually.
         internal VisualElement? MainPanelRoot { get; set; }
 
+        // The element whose own and ancestors' stylesheets declare the theme tokens this mount reads (StyleThemeTokens).
+        internal VisualElement? ThemeRoot { get; set; }
+
         internal System.Action<System.Exception, ErrorInfo> OnCaughtError { get; set; } = FiberErrorBoundary.LogCaughtError;
 
         internal System.Action<System.Exception, ErrorInfo> OnUncaughtError { get; set; } = FiberErrorBoundary.LogUncaughtError;

@@ -51,9 +51,13 @@ namespace Velvet
         FailureReason = 1 << 9,
         /// <summary><see cref="QueryResult{T}.IsPlaceholderData"/>.</summary>
         IsPlaceholderData = 1 << 10,
+        /// <summary><see cref="QueryResult{T}.FetchStatus"/>.</summary>
+        FetchStatus = 1 << 11,
+        /// <summary><see cref="QueryResult{T}.IsPaused"/>.</summary>
+        IsPaused = 1 << 12,
         /// <summary>Every property, TanStack Query's <c>'all'</c>.</summary>
         All = Status | IsPending | IsSuccess | IsError | Data | Error | IsFetching | IsStale | FailureCount | FailureReason
-            | IsPlaceholderData,
+            | IsPlaceholderData | FetchStatus | IsPaused,
     }
 
     /// <summary>
@@ -80,13 +84,13 @@ namespace Velvet
     /// </summary>
     public readonly struct QueryInfo
     {
-        internal QueryInfo(QueryKey queryKey, QueryStatus status, object? data, Exception? error, bool isFetching)
+        internal QueryInfo(QueryKey queryKey, QueryStatus status, object? data, Exception? error, QueryFetchStatus fetchStatus)
         {
             QueryKey = queryKey;
             Status = status;
             Data = data;
             Error = error;
-            IsFetching = isFetching;
+            FetchStatus = fetchStatus;
         }
 
         /// <summary>The entry's key.</summary>
@@ -103,8 +107,11 @@ namespace Velvet
         /// otherwise.</summary>
         public Exception? Error { get; }
 
-        /// <summary>Whether a request for the entry is in flight.</summary>
-        public bool IsFetching { get; }
+        /// <summary>Whether a request for the entry is in flight and running; false while it is paused.</summary>
+        public bool IsFetching => FetchStatus == QueryFetchStatus.Fetching;
+
+        /// <summary>Whether a request for the entry is in flight, and whether it is paused.</summary>
+        public QueryFetchStatus FetchStatus { get; }
     }
 
     /// <summary>
@@ -200,6 +207,24 @@ namespace Velvet
         /// next request, from the number of failures before this one and this failure's exception, TanStack
         /// Query's <c>retryDelay</c>.</summary>
         public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
+
+        /// <summary>
+        /// Overrides <see cref="QueryClient.DefaultNetworkMode"/> for this query: TanStack Query's
+        /// <c>networkMode</c>. Under <see cref="Velvet.NetworkMode.Online"/> a request does not start while the
+        /// device reads as offline and the query reports <see cref="QueryFetchStatus.Paused"/> until it does;
+        /// <see cref="Velvet.NetworkMode.OfflineFirst"/> makes the first request whatever the connection and
+        /// pauses only before a retry; <see cref="Velvet.NetworkMode.Always"/> never pauses for the
+        /// connection. A retry also waits for the application to be visible. <see cref="NetworkSignals"/> owns
+        /// the readings.
+        /// </summary>
+        public NetworkMode? NetworkMode { get; init; }
+
+        /// <summary>
+        /// Overrides <see cref="QueryClient.DefaultQueryKeyHashFn"/> for this query: TanStack Query's
+        /// <c>queryKeyHashFn</c>. Queries whose keys it maps to one string read one entry, and a query that
+        /// sets none reads a different entry from one that does, as <see cref="QueryClient"/> describes.
+        /// </summary>
+        public Func<QueryKey, string>? QueryKeyHashFn { get; init; }
 
         /// <summary>
         /// Chooses the data an entry holds when a request lands, from the data it held, null when it held
@@ -374,10 +399,17 @@ namespace Velvet
         public T? Data => Read(QueryProperties.Data, _snapshot.Data);
         /// <summary>The last request's failure, under <see cref="QueryStatus.Error"/>; null otherwise.</summary>
         public Exception? Error => Read(QueryProperties.Error, _snapshot.Error);
-        /// <summary>True while a request for the entry is in flight, retries waiting out their delay
-        /// included, or is about to start because this component is mounting over, or has just changed its
-        /// key to, an entry with no data or stale data.</summary>
-        public bool IsFetching => Read(QueryProperties.IsFetching, _snapshot.IsFetching);
+        /// <summary>True while a request for the entry is in flight and not paused, retries waiting out their
+        /// delay included, or is about to start because this component is mounting over, or has just changed
+        /// its key to, an entry with no data or stale data.</summary>
+        public bool IsFetching => Read(QueryProperties.IsFetching, _snapshot.FetchStatus == QueryFetchStatus.Fetching);
+        /// <summary>True while a request for the entry waits, for the connection or, between two attempts,
+        /// for the application to be visible, TanStack Query's <c>isPaused</c>. A paused query is not
+        /// <see cref="IsFetching"/>.</summary>
+        public bool IsPaused => Read(QueryProperties.IsPaused, _snapshot.FetchStatus == QueryFetchStatus.Paused);
+        /// <summary>Whether a request for the entry is in flight and whether it waits, TanStack Query's
+        /// <c>fetchStatus</c>.</summary>
+        public QueryFetchStatus FetchStatus => Read(QueryProperties.FetchStatus, _snapshot.FetchStatus);
         /// <summary>True when the query is enabled and the entry has no data, has been invalidated, or holds
         /// data at least as old as the query's stale time.</summary>
         public bool IsStale => Read(QueryProperties.IsStale, _snapshot.IsStale);
@@ -422,7 +454,7 @@ namespace Velvet
         internal bool HasData { get; init; }
         internal T? Data { get; init; }
         internal Exception? Error { get; init; }
-        internal bool IsFetching { get; init; }
+        internal QueryFetchStatus FetchStatus { get; init; }
         internal bool IsStale { get; init; }
         internal int FailureCount { get; init; }
         internal Exception? FailureReason { get; init; }
@@ -437,7 +469,9 @@ namespace Velvet
             if ((Status == QueryStatus.Error) != (other.Status == QueryStatus.Error)) changed |= QueryProperties.IsError;
             if (!QueryData.Same(Data, other.Data)) changed |= QueryProperties.Data;
             if (!ReferenceEquals(Error, other.Error)) changed |= QueryProperties.Error;
-            if (IsFetching != other.IsFetching) changed |= QueryProperties.IsFetching;
+            if (FetchStatus != other.FetchStatus) changed |= QueryProperties.FetchStatus;
+            if ((FetchStatus == QueryFetchStatus.Fetching) != (other.FetchStatus == QueryFetchStatus.Fetching)) changed |= QueryProperties.IsFetching;
+            if ((FetchStatus == QueryFetchStatus.Paused) != (other.FetchStatus == QueryFetchStatus.Paused)) changed |= QueryProperties.IsPaused;
             if (IsStale != other.IsStale) changed |= QueryProperties.IsStale;
             if (FailureCount != other.FailureCount) changed |= QueryProperties.FailureCount;
             if (!ReferenceEquals(FailureReason, other.FailureReason)) changed |= QueryProperties.FailureReason;
@@ -477,6 +511,9 @@ namespace Velvet
                 options.RefetchOnReconnect, options.RefetchOnReconnectFn,
                 client.DefaultRefetchOnReconnect, client.DefaultRefetchOnReconnectFn);
             RefetchInterval = QueryClient.ValidInterval(options.RefetchInterval);
+            NetworkMode = options.NetworkMode ?? client.DefaultNetworkMode;
+            KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;
+            KeyId = QueryClient.Identify(options.QueryKey, KeyHashFn);
         }
 
         internal QueryOptions<TQueryFnData, TData> Options { get; }
@@ -487,6 +524,10 @@ namespace Velvet
         internal QueryRefetchRule RefetchOnWindowFocus { get; }
         internal QueryRefetchRule RefetchOnReconnect { get; }
         internal TimeSpan? RefetchInterval { get; }
+        internal NetworkMode NetworkMode { get; }
+        internal Func<QueryKey, string>? KeyHashFn { get; }
+        // What names the entry in the client's cache; see QueryClient.Identify.
+        internal QueryKey KeyId { get; }
         internal Func<TQueryFnData, TData>? Select => Options.Select;
     }
 
@@ -538,9 +579,13 @@ namespace Velvet
         internal Func<int, Exception, TimeSpan> RetryDelay { get; private set; } = null!;
         internal Func<object?, object, object>? StructuralSharing { get; private set; }
         internal bool TakesToken { get; private set; }
+        internal NetworkMode NetworkMode { get; private set; }
+        internal Func<QueryKey, string>? KeyHashFn { get; private set; }
 
         internal QueryFetchOptions<T> Assign<TData>(QueryOptions<T, TData> options, QueryClient client)
         {
+            KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;
+            NetworkMode = options.NetworkMode ?? client.DefaultNetworkMode;
             QueryFn = options.QueryFn;
             TakesToken = options.TakesToken;
             MaxRetries = options.Retry ?? client.DefaultRetry;
@@ -641,7 +686,7 @@ namespace Velvet
             var options = settings.Options;
             var key = options.QueryKey;
             var current = Entry;
-            var staying = current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Key.Equals(key);
+            var staying = current != null && !current.IsRemoved && ReferenceEquals(current.Client, client) && current.Id.Equals(settings.KeyId);
             // Leaving before the options below are rewritten in place lets the entry left keep the ones it was
             // handed: QueryEntry.Unsubscribe copies them.
             if (!staying) Unsubscribe();
@@ -674,7 +719,7 @@ namespace Velvet
             WarnOnReprintedKey(current, key);
 #endif
 
-            var entry = client.Build<TQueryFnData>(key, settings.GcTime);
+            var entry = client.Build<TQueryFnData>(key, settings.KeyId, settings.KeyHashFn, settings.GcTime);
             Entry = entry;
             entry.SetOptions(FetchOptions);
             entry.Subscribe(this);
@@ -700,8 +745,8 @@ namespace Velvet
             _warnedReprintedKey = true;
             FiberLogger.LogWarning("UseQuery",
                 $"UseQuery<{typeof(TQueryFnData).Name}>: query key {key} is not equal to the previous commit's though it prints " +
-                "the same, so each commit reads a new entry and fetches it. A record or tuple compares a collection " +
-                "it holds by reference; give the collection a key part of its own (react-migration.md §1-2b).");
+                "the same, so each commit reads a new entry and fetches it. A class that defines no equality compares " +
+                "by reference; make it a record, or build the key from its fields (react-migration.md §1-2b).");
         }
 #endif
 
@@ -890,7 +935,7 @@ namespace Velvet
             var hasSource = false;
             TQueryFnData source = default!;
             Exception? error = null;
-            var isFetching = false;
+            var fetchStatus = QueryFetchStatus.Idle;
             var failureCount = 0;
             Exception? failureReason = null;
             var staleByTime = true;
@@ -900,7 +945,7 @@ namespace Velvet
                 hasSource = entry.HasData;
                 source = entry.HasData ? entry.Data : default!;
                 error = entry.Error;
-                isFetching = entry.IsFetching;
+                fetchStatus = entry.FetchStatus;
                 failureCount = entry.FailureCount;
                 failureReason = entry.FailureReason;
                 staleByTime = entry.IsStaleFor(settings.StaleTime);
@@ -912,7 +957,8 @@ namespace Velvet
             var willFetch = settings.Enabled && staleByTime && (!ReferenceEquals(entry, Entry) || !Enabled);
             if (willFetch)
             {
-                isFetching = true;
+                // TanStack's fetchState: the fetch about to start is paused when it cannot start yet.
+                fetchStatus = QueryClientSignals.CanFetch(settings.NetworkMode) ? QueryFetchStatus.Fetching : QueryFetchStatus.Paused;
                 failureCount = 0;
                 failureReason = null;
                 if (!hasSource)
@@ -957,7 +1003,7 @@ namespace Velvet
                 HasData = hasData,
                 Data = hasData ? data : default,
                 Error = error,
-                IsFetching = isFetching,
+                FetchStatus = fetchStatus,
                 IsStale = settings.Enabled && staleByTime,
                 FailureCount = failureCount,
                 FailureReason = failureReason,

@@ -184,9 +184,9 @@ namespace Velvet.Tests
             return V.Div("setter-only", V.Label(text: Describe(0, bump)));
         }
 
-        // GREEN_ON_BASE(characterization): the base refuses a body whose only hook has its value never read, when the compiler stores the tuple whole.
+        // GREEN_ON_BASE(characterization): the base reports the hook's value as never read too, as the reason it refuses the component.
         // Removing the `scan.UnreadValue ??= UnreadMessage;` that `TryCaptureTupleTemp` writes for a tuple without
-        // its first element leaves the body with a hook the gate cannot key on, and reddens it.
+        // its first element leaves the report without the note, and reddens it.
         [Test]
         public void Given_OnlyTheSetterOfAStateReadByACapturingLambda_When_Compiled_Then_TheReportSaysTheValueIsNeverRead()
         {
@@ -195,6 +195,37 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(report.Bailouts.Any(note => note.Contains("a hook's value is never read")), Is.True);
+        }
+
+        [Test]
+        public void Given_OnlyTheSetterOfAStateReadByACapturingLambda_When_Compiled_Then_TheReportDoesNotRefuseTheComponent()
+        {
+            // Act
+            var report = ReportOf(nameof(OnlyTheSetterOfAStateIsRead));
+
+            // Assert
+            Assert.That(report.Bailouts.Any(note => note.StartsWith("The component is not cached", StringComparison.Ordinal)), Is.False);
+        }
+
+        [Test]
+        public void Given_OnlyTheSetterOfAStateReadByACapturingLambda_When_Compiled_Then_TheTreeIsACachedScope()
+        {
+            // Act
+            var report = ReportOf(nameof(OnlyTheSetterOfAStateIsRead));
+
+            // Assert
+            Assert.That(report.Scopes, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base places no gate on this body either.
+        [Test]
+        public void Given_OnlyTheSetterOfAStateReadByACapturingLambda_When_Compiled_Then_TheBodyAsAWholeIsNotKeyed()
+        {
+            // Act
+            var report = ReportOf(nameof(OnlyTheSetterOfAStateIsRead));
+
+            // Assert
+            Assert.That(report.BodyGate, Is.False);
         }
 
         #endregion

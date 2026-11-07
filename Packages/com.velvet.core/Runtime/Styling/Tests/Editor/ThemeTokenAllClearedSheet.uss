@@ -1,0 +1,4 @@
+/* Every namespace set to initial. */
+.theme-token-host {
+    --*: initial;
+}

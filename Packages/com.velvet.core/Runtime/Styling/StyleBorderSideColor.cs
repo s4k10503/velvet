@@ -6,7 +6,8 @@ namespace Velvet
     //
     // They resolve inline for the reason StyleLogicalUtilities gives for its own families, so a palette name
     // comes from VelvetPalette rather than from the --color-* token border-{color} reads.
-    // PaletteStyleSheetMirrorTests holds the two tables to one value.
+    // PaletteStyleSheetMirrorTests holds the two tables to one value. A semantic or project token
+    // (border-b-primary) is read from the variable by StyleThemeClass before this parser is asked.
     internal static class StyleBorderSideColor
     {
         private readonly struct Family

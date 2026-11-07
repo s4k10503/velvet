@@ -1,0 +1,4 @@
+/* A breakpoint declared under a class alone, which only the elements the class matches read. */
+.theme-token-alt {
+    --breakpoint-sm: 480px;
+}

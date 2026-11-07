@@ -1035,6 +1035,8 @@ namespace Velvet
                 slot.CachedResult = null;
                 slot.NextDeps = null;
                 slot.NextCachedResult = null;
+                slot.CachedValue = null;
+                slot.NextCachedValue = null;
             }
         }
 

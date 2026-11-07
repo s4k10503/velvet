@@ -30,7 +30,8 @@ namespace Velvet.CodeGen
         public MemberReference? Member { get; init; }
     }
 
-    // A run of instructions that builds one VNode from a fixed set of outside values and changes nothing outside.
+    // A run of instructions that builds one VNode, or one value a local is then given, from a fixed set of outside
+    // values and changes nothing outside.
     internal sealed class ScopeRegion
     {
         public ScopeRegion(int start, int end, Instruction first, Instruction last, TypeReference result)
@@ -57,6 +58,11 @@ namespace Velvet.CodeGen
         public List<ScopeDependency> Dependencies { get; } = new();
 
         public bool ReturnsFromMethod { get; init; }
+
+        // The local a run that computes a value is stored into by the instruction after it; null for a run that builds a VNode.
+        public VariableDefinition? ValueLocal { get; init; }
+
+        public bool IsValue => ValueLocal != null;
 
         public ScopeRegion? Parent { get; set; }
 
@@ -102,6 +108,9 @@ namespace Velvet.CodeGen
 
         // Why each candidate that was not cached was left alone.
         public List<string> Declined { get; } = new();
+
+        // Why a run that computes the value of a local was left alone, by the key a scope reading that local is keyed on.
+        public Dictionary<string, string> DeclinedValues { get; } = new();
 
         public List<ScopeRegion> Find()
         {
@@ -171,19 +180,31 @@ namespace Velvet.CodeGen
             return false;
         }
 
-        private ScopeRegion? TryBuild(int end)
+        // `stored` is the local the instruction after `end` stores the run's value into, for a run that computes a value.
+        private ScopeRegion? TryBuild(int end, VariableDefinition? stored = null)
         {
-            var plain = ExtendOverEntries(OperandStart(end), end);
+            var first = stored == null ? OperandStart(end) : _flow.Popped[end + 1][0].Start;
+            var plain = ExtendOverEntries(first, end);
             var absorbed = AbsorbSetup(plain, end);
             string? reason = null;
             foreach (var start in absorbed == plain ? new[] { plain } : new[] { absorbed, plain })
             {
                 if (start < _tailStart) continue;
-                var region = TryBuildFrom(start, end, out reason);
+                var region = TryBuildFrom(start, end, stored, out reason);
                 if (region != null) return region;
             }
-            if (reason != null) Declined.Add($"the call to {CalleeName(end)} is not cached: {reason}");
+            if (reason != null) NoteDeclined(end, stored, reason);
             return null;
+        }
+
+        private void NoteDeclined(int end, VariableDefinition? stored, string reason)
+        {
+            if (stored == null)
+            {
+                Declined.Add($"the call to {CalleeName(end)} is not cached: {reason}");
+                return;
+            }
+            DeclinedValues["L" + stored.Index] = $"the value stored in local {stored.Index} (IL_{_flow.Instructions[end + 1].Offset:X4}) is not cached: {reason}";
         }
 
         private string CalleeName(int end)
@@ -193,16 +214,22 @@ namespace Velvet.CodeGen
         }
 
         // The run is the instructions from `start` to the call at `end`; null, with the reason, where it cannot be cut out.
-        private ScopeRegion? TryBuildFrom(int start, int end, out string? reason)
+        private ScopeRegion? TryBuildFrom(int start, int end, VariableDefinition? stored, out string? reason)
         {
-            var callee = (MethodReference)_flow.Instructions[end].Operand;
             _internalLocals = new HashSet<int>();
-            reason = Check(start, end);
-            var region = new ScopeRegion(start, end, _flow.Instructions[start], _flow.Instructions[end], callee.ReturnType)
-            {
-                Callee = CalleeName(end),
-                ReturnsFromMethod = FlowsToReturn(end),
-            };
+            reason = Check(start, end)
+                ?? (stored == null ? null : NodeHolderProblem(stored.VariableType) ?? ValueMutatedAfter(stored, start, end));
+            var region = stored == null
+                ? new ScopeRegion(start, end, _flow.Instructions[start], _flow.Instructions[end], ((MethodReference)_flow.Instructions[end].Operand).ReturnType)
+                {
+                    Callee = CalleeName(end),
+                    ReturnsFromMethod = FlowsToReturn(end),
+                }
+                : new ScopeRegion(start, end, _flow.Instructions[start], _flow.Instructions[end], stored.VariableType)
+                {
+                    Callee = "local " + stored.Index,
+                    ValueLocal = stored,
+                };
             reason ??= CollectDependencies(region);
             return reason == null ? region : null;
         }

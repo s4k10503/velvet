@@ -13,21 +13,49 @@ namespace Velvet.CodeGen
         // that run does not. One that depends on exactly the values the run around it does is rebuilt exactly when
         // that run is, and caches nothing the run around it does not. A run that is the whole result of the method is
         // already covered by the gate on the method when there is one.
-        public static List<ScopeRegion> Select(List<ScopeRegion> found, bool bodyGate, List<string> notes)
+        public static List<ScopeRegion> Select(List<ScopeRegion> found, List<ScopeRegion> values, bool bodyGate,
+            List<string> notes)
         {
             found.Sort(CompareOuterFirst);
             AssignParents(found);
             var kept = new List<ScopeRegion>();
+            var reads = new HashSet<string>();
             foreach (var region in found)
             {
-                if (Earns(region, bodyGate)) kept.Add(region);
+                if (!Earns(region, bodyGate)) continue;
+                kept.Add(region);
+                AddKeys(reads, region);
             }
+            kept.AddRange(KeepValues(values, reads));
+            kept.Sort(CompareOuterFirst);
             if (kept.Count > MaxScopes)
             {
                 notes.Add($"{kept.Count - MaxScopes} further scopes were left uncached to keep the cost of the cache bounded");
                 kept.RemoveRange(MaxScopes, kept.Count - MaxScopes);
             }
             return kept;
+        }
+
+        // A value is cached where code that is itself cached reads it as a whole: that code would otherwise be keyed on
+        // an object rebuilt on every render. The last run is settled first: a value that is kept makes the values it
+        // reads worth keeping, and those come before it.
+        private static List<ScopeRegion> KeepValues(List<ScopeRegion> values, HashSet<string> reads)
+        {
+            var kept = new List<ScopeRegion>();
+            values.Sort(CompareOuterFirst);
+            for (var i = values.Count - 1; i >= 0; i--)
+            {
+                var value = values[i];
+                if (!reads.Contains("L" + value.ValueLocal!.Index)) continue;
+                kept.Add(value);
+                AddKeys(reads, value);
+            }
+            return kept;
+        }
+
+        private static void AddKeys(HashSet<string> reads, ScopeRegion region)
+        {
+            foreach (var each in region.Dependencies) reads.Add(each.Key);
         }
 
         public static void Number(List<ScopeRegion> kept, int firstSlot)

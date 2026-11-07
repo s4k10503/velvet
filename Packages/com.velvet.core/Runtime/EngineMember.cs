@@ -103,6 +103,9 @@ namespace Velvet
         internal static readonly EngineMember StylePropertyName =
             ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "name", "System.String");
 
+        internal static readonly EngineMember StylePropertyValues =
+            ReadProperty(UIElements, "UnityEngine.UIElements.StyleProperty", "values", "UnityEngine.UIElements.StyleValueHandle[]");
+
         internal static readonly EngineMember StyleComplexSelectorSelectors = ReadProperty(UIElements,
             "UnityEngine.UIElements.StyleComplexSelector", "selectors", "UnityEngine.UIElements.StyleSelector[]");
 
@@ -459,10 +462,7 @@ namespace Velvet
         private const string MatchedRulesExtractorType = "UnityEngine.UIElements.MatchedRulesExtractor";
         private const string SelectorMatchRecordType = "UnityEngine.UIElements.StyleSheets.SelectorMatchRecord";
 
-        // BorderPreflight's read of whether a rule's border width is zero: the values of the property and what each reads as.
-        internal static readonly EngineMember StylePropertyValues = ReadProperty(UIElements,
-            "UnityEngine.UIElements.StyleProperty", "values", StyleValueHandleType + "[]");
-
+        // BorderPreflight also reads whether a rule's border width is zero, through StylePropertyValues and these.
         internal static readonly EngineMember StyleSheetReadDimension = Method(UIElements, StyleSheetType, "ReadDimension",
             "UnityEngine.UIElements.StyleSheets.Dimension", StyleValueHandleType);
 

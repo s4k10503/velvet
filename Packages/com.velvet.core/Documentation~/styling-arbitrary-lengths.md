@@ -277,6 +277,14 @@ The steps the bundled stylesheets declare — `0`, `px`, `0-5` … `3-5`, `4` �
 twin of the `p-1-5` class, both 6px. A stylesheet of your own that declares a class named like a step it does
 not (`.w-100`, `.p-30`) is shadowed by the inline value.
 
+### A project's spacing scale
+
+A sheet that declares `--spacing` makes a bare step its multiple, as Tailwind v4 does for the utilities that take
+one (`p-4`, `max-h-4`, `basis-4`, `inset-x-4`, `space-x-4`, `translate-x-4`, `ps-4`, `start-4`, `scroll-m-4`, `-mt-2`): with `--spacing: 3px`, `p-4` is 12px and `-mt-2` is -6px. A `--spacing-<name>` key is read first, so
+`--spacing-4: 10px` makes `p-4` 10px and `--spacing-gutter` makes `p-gutter` and `-mt-gutter`. Without `--spacing`
+the bundled `--space-N` scale gives the step. `--*: initial` removes the numeric scale unless the project declares
+`--spacing`.
+
 ### A shorthand and its longhand
 
 Where a shorthand and a longhand of one family meet in one `className`, the longhand holds its side whichever

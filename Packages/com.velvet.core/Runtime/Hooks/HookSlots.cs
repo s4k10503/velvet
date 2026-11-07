@@ -399,6 +399,9 @@ namespace Velvet
         public VNode? CachedResult { get; set; }
         public object?[]? NextDeps { get; set; }
         public VNode? NextCachedResult { get; set; }
+        // What a scope that caches a value rather than a VNode keeps; a slot holds one kind or the other.
+        public object? CachedValue { get; set; }
+        public object? NextCachedValue { get; set; }
         public int HookCallCountAtGate { get; set; }
         // Set once and never cleared: no hit is served after a hook has run past the gate.
         public bool RunsHooksPastGate { get; set; }

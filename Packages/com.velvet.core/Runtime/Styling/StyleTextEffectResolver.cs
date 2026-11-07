@@ -160,12 +160,29 @@ namespace Velvet
             Apply(ctx, element, classNames);
         }
 
+        // A line height a sheet declares under a selector is the cascade's to give once the element's style pass has run,
+        // so the element is applied again when the engine hands it another variable context.
+        private static void FollowThemedLineHeight(ReconcilerContext ctx, VisualElement element, string[] classNames)
+        {
+            foreach (var cls in classNames ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrEmpty(cls) && StyleNamedTextSize.HasThemedLineHeight(StyleArbitraryValueResolver.StripImportant(cls, out _)))
+                {
+                    StyleThemeTokens.Follow(element, () => Apply(ctx, element, classNames));
+                    return;
+                }
+            }
+            StyleThemeTokens.Unfollow(element);
+        }
+
         // Syncs an element's OWN effect from its class list and applies the (cascade-resolved) effect to its own
         // text and — when it carries an effect (now OR before this call) — its descendant text. Called from the
         // post-children hook on create and patch, so it runs after the element's text, its classes, and its
         // children are all in place.
         public static void Apply(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
+            using var themeScope = StyleThemeTokens.Use(ctx, element);
+            FollowThemedLineHeight(ctx, element, classNames);
             ctx.TextEffects.TryGetValue(element, out var previous);
             var own = StyleTextEffectClass.Parse(classNames);
             LeadingLengthProbe.Sync(ctx, element, own.Leading);

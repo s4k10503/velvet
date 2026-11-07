@@ -121,8 +121,7 @@ namespace Velvet.Tests
             LogAssert.ignoreFailingMessages = false;
             if (_onLog != null) UnityEngine.Application.logMessageReceived -= _onLog;
             _onLog = null;
-            NetworkSignals.IsVisible = null;
-            NetworkSignals.IsOnline = null;
+            MutationNetworkFixture.Reset();
         }
 
         #region Interval
@@ -593,16 +592,17 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "A query that sets nothing takes the client's reconnect default");
         });
 
+        // GREEN_ON_BASE(characterization): the base takes a failing first reading as online too; this change only moves which read the test makes fail.
         [UnityTest]
         public IEnumerator Given_AnOnlineReadingThatThrowsWhenTheClientStartsWatching_When_AFramePasses_Then_NothingIsFetched()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var throws = true;
+            // The render's own read comes first and the client's first reading on starting to watch second.
+            var reads = 0;
             NetworkSignals.IsOnline = () =>
             {
-                if (!throws) return s_online;
-                throws = false;
+                if (++reads != 2) return s_online;
                 throw new InvalidOperationException("online-failed");
             };
             ContainedFailureLog.Expect<InvalidOperationException>(nameof(NetworkSignals), "online-failed");

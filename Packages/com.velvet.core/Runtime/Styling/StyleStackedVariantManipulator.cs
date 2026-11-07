@@ -26,13 +26,14 @@ namespace Velvet
     internal sealed class StyleStackedVariantManipulator : Manipulator, IVariantSettleTarget, IRelationalSettleTarget
     {
         private readonly ReconcilerContext _ctx;
+        private StyleThemeTokens.Follower? _themeFollower;
         private readonly StyleVariantKind _innerKind;
         private readonly StackedInnerSource _source;
         // Non-null exactly for a relational inner: the source it resolves and the state it reacts to.
         private readonly (bool IsPeer, StyleVariantClass.RelationalState State)? _relational;
         private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
         // The condition of a Container inner, read from its spelling (_innerName); meaningful for that kind alone.
-        private readonly StyleContainerQuery _query;
+        private StyleContainerQuery _query;
         private readonly string[] _leaf;
         private readonly long _priority;
         // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
@@ -182,6 +183,7 @@ namespace Velvet
                 if (TracksWidth)
                 {
                     StyleResponsiveScope.ScopesChanged += OnScopesChanged;
+                    (_themeFollower ??= new StyleThemeTokens.Follower(_ctx, () => target, EvaluateResponsive)).Attach();
                 }
                 if (_source == StackedInnerSource.Container)
                 {
@@ -225,6 +227,7 @@ namespace Velvet
                 target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
                 target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
                 StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
+                _themeFollower?.Detach();
                 _watch?.Stop();
                 _widthSource?.Unhook();
                 UnhookRelational();
@@ -304,9 +307,16 @@ namespace Velvet
 
         private void EvaluateResponsive()
         {
+            using var themeScope = StyleThemeTokens.Use(_ctx, target);
             if (_source == StackedInnerSource.Container)
             {
-                SetInner(_widthSource?.Satisfies(_query) == true);
+                // A threshold a sheet declares may have moved since the class was parsed.
+                var reads = StyleContainerQuery.TryParse(_innerName, out var current);
+                if (reads)
+                {
+                    _query = current;
+                }
+                SetInner(reads && _widthSource?.Satisfies(_query) == true);
                 return;
             }
 

@@ -18,11 +18,14 @@ namespace Velvet.CodeGen
     // on just the values it reads. When the gate on the body misses, a scope whose own keys did not change returns the
     // VNode it built before, and the reconciler skips that subtree by instance. ReactiveScopeFlow,
     // ReactiveScopeVolatility and ReactiveScopeRegions find the scopes, ReactiveScopePlan chooses among them and
-    // ReactiveScopeInjector writes the gates.
+    // ReactiveScopeInjector writes the gates. The code that computes what a local is then given, a derived array or a
+    // filtered list, is a scope of its own when a cached scope reads that local whole (ReactiveScopeRegions.FindValues).
     // Both compare their keys with Object.is, the same strictness the reconciler and Provider use to drive a
     // re-render, so a fresh record prop or a changed context value is treated as a miss rather than a stale hit.
     //
     // Whether the body has a gate depends on its shape:
+    //   No hook's value is left unread: a hook whose value nothing reads, such as a state kept to force a render,
+    //   causes renders the gate would serve from the cache. Its scopes are still cached.
     //   Static, returns Velvet.VNode, and carries [Component]. Parameters (props) are allowed: each is prepended to
     //   the deps array so a prop change is detected like any other input. At least one parameter or value-returning
     //   hook call, so the deps array is not empty.
@@ -513,7 +516,7 @@ namespace Velvet.CodeGen
 
         // A callee's signature names its own generic parameters; the copy's local needs the arguments the call
         // site bound them to. Null where a part of the type is not one this substitutes.
-        private static TypeReference? InCallerTerms(TypeReference type, GenericInstanceMethod? method,
+        internal static TypeReference? InCallerTerms(TypeReference type, GenericInstanceMethod? method,
             GenericInstanceType? declaring)
         {
             switch (type)
@@ -1346,9 +1349,13 @@ namespace Velvet.CodeGen
         public MethodReference? ReserveScopes { get; init; }
         public MethodReference? TryGetScope { get; init; }
         public MethodReference? StoreScope { get; init; }
+        public MethodReference? TryGetValueScope { get; init; }
+        public MethodReference? StoreValueScope { get; init; }
         public MethodReference? ReportConstructor { get; init; }
 
         public bool HasScopes => ReserveScopes != null && TryGetScope != null && StoreScope != null;
+
+        public bool HasValueScopes => HasScopes && TryGetValueScope != null && StoreValueScope != null;
 
         // Marks a method with what the weaver made of it, for a test or a tool to read back. True where it did, since
         // the module then differs from the one that was read.
@@ -1407,6 +1414,8 @@ namespace Velvet.CodeGen
                 ReserveScopes = ImportOptional(module, hooksType, nameof(Velvet.Hooks.ReserveScopes), 2),
                 TryGetScope = ImportOptional(module, hooksType, nameof(Velvet.Hooks.TryGetScope), 4),
                 StoreScope = ImportOptional(module, hooksType, nameof(Velvet.Hooks.StoreScope), 4),
+                TryGetValueScope = ImportOptional(module, hooksType, nameof(Velvet.Hooks.TryGetValueScope), 4),
+                StoreValueScope = ImportOptional(module, hooksType, nameof(Velvet.Hooks.StoreValueScope), 4),
                 ReportConstructor = ImportReportConstructor(module),
             };
         }

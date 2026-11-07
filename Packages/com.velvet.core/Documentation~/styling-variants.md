@@ -203,7 +203,7 @@ before `data-[state=open]:`, `group-hover:` before `group-hover/card:`, `[&:firs
 | | Specificity | Layer |
 |---|---|---|
 | 1 | (0,1,0) | The base utility |
-| 2 | (0,1,0) | `supports-[…]:` < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < container queries — every `@max-*:` < every `@sm:` … `@7xl:` and `@min-*:` |
+| 2 | (0,1,0) | `supports-[…]:` < `max-*:` (a larger ceiling first) < responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:`, with a breakpoint a sheet names and `min-*:` placed among them by threshold < container queries — every `@max-*:` < every `@sm:` … `@7xl:` and `@min-*:` |
 | 3 | (0,1,0) | Theme — `dark:` |
 | 4 | (0,1,0) | `[&>*]:` — the container's rule, on each child |
 | 5 | (0,2,0) | Relational — the `group-*` states < the `peer-*` states |
@@ -247,6 +247,23 @@ the panel the portal was declared on. Nothing a component writes changes that, a
 included: a component that answers its own width writes the `@`-prefixed [container
 variants](#container-queries--container) instead, and one element can carry both (`sm:p-2 @md:p-4`). Only tooling
 that simulates a viewport re-points them, [as below](#simulating-a-viewport-velvet-viewport).
+
+### Theme breakpoints, container sizes and animations
+
+`--breakpoint-sm` … `--breakpoint-2xl` move the thresholds of `sm:` … `2xl:`. A breakpoint a sheet names
+(`--breakpoint-3xl: 1920px`) makes `3xl:` and `max-3xl:`; `max-*:` and `min-*:` read any breakpoint (`max-md:`,
+`min-3xl:`) and a written length (`max-[600px]:`, `min-[600px]:`). They rank as Tailwind v4 orders them: every `max-*`
+first, a larger ceiling before a smaller, then one group of floors by threshold (the default breakpoints, the ones a
+sheet names and `min-*`), then the container queries. A value is read as the cascade gives it to the element, so
+a theme class (`.compact { --breakpoint-sm: 480px }`) moves it for its subtree.
+
+`--container-*` declares container sizes: `@widetest:` and `max-w-widetest` read `--container-widetest`, and a size the
+default scale names (`--container-md`) moves it. `--animate-wiggle: wiggle 1s ease-in-out infinite` makes
+`animate-wiggle` the bracketed form it spells; the keyframes are registered with `VelvetKeyframes`, since USS has no
+`@keyframes`, and a built-in's name with a loop time (`--animate-spin: spin 2s linear infinite`) sets that loop. A
+declared value that changes, or a sheet attached or removed, is followed by the variants (stacked ones included) within
+a tenth of a second. The sheets read, and how a namespace is set to initial, are in
+[styling-colors.md](styling-colors.md#theme-tokens), which also says which units a token's length can use.
 
 ### Relational variants (`group-` / `peer-`)
 

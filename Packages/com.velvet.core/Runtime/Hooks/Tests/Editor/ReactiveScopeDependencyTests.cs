@@ -108,9 +108,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base keys the label on the property the compiler wrote, so an equal property keeps the label.
-        // Reading `!=` as `==` where `IsAutomaticGetter` tests the parameter count, `==` as `!=` where it tests the
-        // definition against null, or `==` as `!=` where it tests an attribute's name makes the getter no member at
-        // all, which keys the label on the object and builds it again.
+        // Reading `!=` as `==` where `IsKeyableGetter` tests the parameter count, or `==` as `!=` where it tests the
+        // definition against null, makes the getter no member at all, which keys the label on the object and builds
+        // it again.
         [Test]
         public void Given_AnAutomaticPropertyOfAStateObject_When_AnObjectWithAnEqualPropertyIsSet_Then_TheLabelIsNotBuiltAgain()
         {
@@ -135,17 +135,14 @@ namespace Velvet.Tests
                 V.Label(text: Describe(1, other)));
         }
 
-        // GREEN_ON_BASE(characterization): the base runs a getter its author wrote once for each time the label is built, and not in the key.
-        // Reading the `return false` that ends `IsAutomaticGetter` as `true` reads the getter as a member, which runs
-        // it in the key as well and counts a second call on the first render.
         [Test]
-        public void Given_AGetterTheAuthorWrote_When_TheLabelReadingItIsMounted_Then_TheGetterRunsOnce()
+        public void Given_AGetterTheAuthorWrote_When_TheLabelReadingItIsMounted_Then_TheGetterRunsInTheKeyAndForTheLabel()
         {
             // Act
             using var mounted = V.Mount(_root, V.Component(ReadsAComputedPropertyOfAStateObject, key: "computed"));
 
             // Assert
-            Assert.That(s_calls[2], Is.EqualTo(1));
+            Assert.That(s_calls[2], Is.EqualTo(2));
         }
 
         [Component]
@@ -184,7 +181,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base keys a label on the object when the property it reads has a type the caller cannot name.
-        // The component renders. Removing the `IsStorable` clause from `IsAutomaticGetter` keys it on a value of the
+        // The component renders. Removing the `IsStorable` clause from `IsKeyableGetter` keys it on a value of the
         // generic parameter, and mounting throws a BadImageFormatException.
         [Test]
         public void Given_APropertyOfAGenericClassReadByALabel_When_Mounted_Then_TheLabelShowsTheValue()

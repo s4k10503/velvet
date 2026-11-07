@@ -335,6 +335,10 @@ namespace Velvet
                     {
                         visitRoot(slot.NextCachedResult);
                     }
+                    var value = HookSlotRecycleProbe.Probe(slot.CachedValue);
+                    if (value != null) visitRoot(value);
+                    var nextValue = HookSlotRecycleProbe.Probe(slot.NextCachedValue);
+                    if (nextValue != null && !ReferenceEquals(nextValue, value)) visitRoot(nextValue);
                 }
             }
 
