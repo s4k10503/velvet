@@ -164,18 +164,26 @@ namespace Velvet.CodeGen
                 return IsStorable(field.FieldType) ? field : null;
             }
             if (next.OpCode.Code != Code.Call && next.OpCode.Code != Code.Callvirt) return null;
-            return next.Operand is MethodReference getter && IsAutomaticGetter(getter) ? getter : null;
+            return next.Operand is MethodReference getter && IsKeyableGetter(getter) ? getter : null;
         }
 
         private static bool IsStorable(TypeReference type)
             => !type.IsByReference && !type.IsPointer && !type.ContainsGenericParameter && !IsByRefLike(type);
 
-        private static bool IsAutomaticGetter(MethodReference getter)
+        // A getter its author wrote is keyed by what it returns, as React Compiler keys a property path: the scope reads the
+        // member, so it is built again when the result changes whatever the object it was read from.
+        private static bool IsFrameworkType(string fullName)
+            => fullName.StartsWith("System.", System.StringComparison.Ordinal)
+                || fullName.StartsWith("Unity", System.StringComparison.Ordinal)
+                || fullName.StartsWith("Mono.", System.StringComparison.Ordinal);
+
+        private static bool IsKeyableGetter(MethodReference getter)
         {
             if (!getter.HasThis || getter.Parameters.Count != 0 || getter.HasGenericParameters) return false;
             if (!getter.Name.StartsWith("get_", System.StringComparison.Ordinal) || !IsStorable(getter.ReturnType)) return false;
             var definition = ScopeResolution.Method(getter);
             if (definition == null || definition.IsVirtual) return false;
+            if (!IsFrameworkType(definition.DeclaringType.FullName)) return true;
             foreach (var attribute in definition.CustomAttributes)
             {
                 if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute") return true;

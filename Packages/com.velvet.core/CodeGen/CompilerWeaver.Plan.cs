@@ -53,7 +53,7 @@ namespace Velvet.CodeGen
 
             public bool AnyValueHook { get; set; }
 
-            // Set where a hook's value is never read, so the render it causes has nothing to be keyed on.
+            // Set where a hook's value is never read, so a render it causes is one the gate on the body would serve from the cache.
             public string? UnreadValue { get; set; }
 
             // The instruction after which every hook has run and its value is held.
@@ -97,7 +97,7 @@ namespace Velvet.CodeGen
             var findings = AnalyzeHooks(method, reach, nonSafe, report);
             if (findings.Unweavable) return null;
             var scopes = context.HasScopes
-                ? PlanScopes(method, findings, new CallClassifier(reach, nonSafe), report)
+                ? PlanScopes(method, findings, new CallClassifier(reach, nonSafe), context, report)
                 : new List<ScopeRegion>();
             if (findings.Gate == null && scopes.Count == 0) return null;
             return new WeavePlan(findings.Gate, scopes);
@@ -110,7 +110,7 @@ namespace Velvet.CodeGen
             var findings = new HookFindings();
             ScanHooks(body, reach, findings.Scan);
             var returns = CollectReturns(body.Instructions);
-            var refusal = Refusal(method, findings.Scan, returns) ?? findings.Scan.UnreadValue;
+            var refusal = Refusal(method, findings.Scan, returns);
             if (refusal != null)
             {
                 report.Add($"The component is not cached: {refusal}.");
@@ -178,6 +178,7 @@ namespace Velvet.CodeGen
             var unsafeHook = FirstNonSafeHook(instructions, nonSafe);
             if (unsafeHook != null) blockers.Add($"it reaches {unsafeHook}, whose result a dependency comparison does not represent");
             if (scan.CaptureFailure != null) blockers.Add(scan.CaptureFailure);
+            if (scan.UnreadValue != null && scan.CaptureFailure == null) blockers.Add(scan.UnreadValue);
             var end = scan.End;
             if (end != null && HasOpaqueCallAhead(instructions, end, reach))
             {
@@ -269,10 +270,10 @@ namespace Velvet.CodeGen
 
         private const string FirstTupleItem = "Item1";
 
-        // A hook whose value the body never reads leaves the render it causes with nothing to key on, so no part of
-        // the body is cached.
+        // A render that hook causes changes nothing the gate on the body is keyed on, so the gate would serve the tree
+        // it already holds. Each scope is keyed on what it reads and so is not affected.
         private const string UnreadMessage =
-            "a hook's value is never read, so a render it causes has nothing to be keyed on";
+            "a hook's value is never read, so the gate would serve the cached tree to a render that hook causes";
 
         // `Hooks.UseState(0).Item2`: an element other than the first read straight off the returned tuple.
         private static bool ReadsLaterElementOnly(Instruction next)
@@ -355,7 +356,7 @@ namespace Velvet.CodeGen
         // The tail of a body is what runs after its last hook has returned its value: only there can a part of
         // the body be skipped without skipping a hook.
         private static List<ScopeRegion> PlanScopes(MethodDefinition method, HookFindings hooks, CallClassifier calls,
-            WeaveReport report)
+            WeaverContext context, WeaveReport report)
         {
             var body = method.Body;
             body.SimplifyMacros();
@@ -371,12 +372,28 @@ namespace Velvet.CodeGen
             var tailStart = end == null ? 0 : flow.IndexOf(end) + 1;
             var regions = new ReactiveScopeRegions(body, flow, volatility, tailStart, VNodeFullName);
             var found = regions.Find();
+            var values = context.HasValueScopes ? regions.FindValues() : new List<ScopeRegion>();
             report.AddRange(regions.Declined);
             var notes = new List<string>();
-            var kept = ReactiveScopePlan.Select(found, hooks.Gate != null, notes);
+            var kept = ReactiveScopePlan.Select(found, values, hooks.Gate != null, notes);
             ReactiveScopePlan.Number(kept, hooks.Gate != null ? 1 : 0);
             report.AddRange(notes);
+            report.AddRange(DeclinedValuesRead(regions, kept));
             return kept;
+        }
+
+        // A note is written for a value only where a cached scope reads it, since a local nothing keys on is not one a developer is waiting on.
+        private static List<string> DeclinedValuesRead(ReactiveScopeRegions regions, List<ScopeRegion> kept)
+        {
+            var notes = new List<string>();
+            foreach (var scope in kept)
+            {
+                foreach (var dependency in scope.Dependencies)
+                {
+                    if (regions.DeclinedValues.Remove(dependency.Key, out var note)) notes.Add(note);
+                }
+            }
+            return notes;
         }
 
         private static void InjectPlan(MethodDefinition method, WeavePlan plan, WeaverContext context)

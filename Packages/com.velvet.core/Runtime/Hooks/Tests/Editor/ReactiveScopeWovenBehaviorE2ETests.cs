@@ -44,8 +44,9 @@ namespace Velvet.Tests
             Array.Clear(s_calls, 0, s_calls.Length);
             s_setFirst = null!;
             s_setSecond = null!;
-            s_source.Set("first");
+            s_text = "first";
             s_force = null!;
+            s_bodyRuns = 0;
         }
 
         private static string Describe(int slot, object value)
@@ -440,18 +441,10 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region A render that stands for something the body reads some other way
+        #region A state whose value is never read
 
-        private sealed class TextSource
-        {
-            private string _text = "first";
-
-            public string Text => _text;
-
-            public void Set(string text) => _text = text;
-        }
-
-        private static readonly TextSource s_source = new();
+        private static string s_text = "first";
+        private static int s_bodyRuns;
         private static Action<int> s_force = null!;
 
         [Component]
@@ -459,22 +452,81 @@ namespace Velvet.Tests
         {
             var (_, force) = Hooks.UseState(0);
             s_force = force;
-            return V.Label(text: s_source.Text);
+            return V.Label(text: s_text);
         }
 
         [Component]
         private static VNode ForcedRenderOffTheStack()
         {
             s_force = Hooks.UseState(0).Item2;
-            return V.Label(text: s_source.Text);
+            return V.Label(text: s_text);
         }
 
+        private sealed class Model
+        {
+            public string First = "a";
+
+            public string Display => First + "!";
+        }
+
+        private static readonly Model s_model = new();
+
+        [Component]
+        private static VNode ForcedRenderOverAGetterOfAStateObject()
+        {
+            var (model, _) = Hooks.UseState(s_model);
+            var (_, force) = Hooks.UseState(0);
+            s_force = force;
+            return V.Label(text: model.Display);
+        }
+
+        // GREEN_ON_BASE(characterization): the base refuses a body whose state value is never read, so it builds the label on every render.
         [Test]
-        public void Given_AStateWhoseValueIsNeverRead_When_TheSourceChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
+        public void Given_AStateWhoseValueIsNeverRead_When_AnObjectsGetterTheLabelReadsChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
+        {
+            // Arrange
+            s_model.First = "a";
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderOverAGetterOfAStateObject, key: "forced"));
+            s_model.First = "b";
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "b!" }));
+        }
+
+        [Component]
+        private static VNode ForcedRenderOverLabelsThatReadNothing()
+        {
+            var (_, force) = Hooks.UseState(0);
+            s_force = force;
+            s_bodyRuns++;
+            return V.Div("forced-constant",
+                V.Label(text: Describe(5, "a")),
+                V.Label(text: Describe(6, "b")));
+        }
+
+        [Component]
+        private static VNode ForcedRenderBesideAState()
+        {
+            var (_, force) = Hooks.UseState(0);
+            var (count, setCount) = Hooks.UseState(0);
+            s_force = force;
+            s_setFirst = setCount;
+            return V.Div("forced-beside",
+                V.Label(text: Describe(5, "a")),
+                V.Label(text: Describe(6, count)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the label on every render, so it shows the static it reads as it stands.
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_AStaticItsLabelReadsChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ForcedRenderKeptInALocal, key: "forced"));
-            s_source.Set("second");
+            s_text = "second";
 
             // Act
             s_force(1);
@@ -484,12 +536,13 @@ namespace Velvet.Tests
             Assert.That(LabelTexts(), Is.EqualTo(new[] { "second" }));
         }
 
+        // GREEN_ON_BASE(characterization): the base builds the label on every render, so it shows the static it reads as it stands.
         [Test]
-        public void Given_OnlyTheSetterReadOffTheReturnedTuple_When_TheSourceChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
+        public void Given_OnlyTheSetterReadOffTheReturnedTuple_When_AStaticItsLabelReadsChangesAndItsSetterRuns_Then_TheLabelShowsTheNewText()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ForcedRenderOffTheStack, key: "forced"));
-            s_source.Set("second");
+            s_text = "second";
 
             // Act
             s_force(1);
@@ -497,6 +550,78 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(LabelTexts(), Is.EqualTo(new[] { "second" }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs this body, which has no gate, on the render the state causes.
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_ItsSetterRuns_Then_TheBodyRunsAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderOverLabelsThatReadNothing, key: "forced"));
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_bodyRuns, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_ItsSetterRuns_Then_TheLabelsThatReadNothingAreNotBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderOverLabelsThatReadNothing, key: "forced"));
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(new[] { s_calls[5], s_calls[6] }, Is.EqualTo(new[] { 1, 1 }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds both labels on every render and shows the same texts.
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_ItsSetterRuns_Then_EveryLabelStillShowsItsText()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderOverLabelsThatReadNothing, key: "forced"));
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(LabelTexts(), Is.EqualTo(new[] { "5:a", "6:b" }));
+        }
+
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_ASecondStateChanges_Then_OnlyTheLabelReadingItIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderBesideAState, key: "forced"));
+
+            // Act
+            s_setFirst(4);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(new[] { s_calls[5], s_calls[6] }, Is.EqualTo(new[] { 1, 2 }));
+        }
+
+        [Test]
+        public void Given_AStateWhoseValueIsNeverRead_When_ItsSetterRunsBesideAnotherState_Then_NoLabelIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ForcedRenderBesideAState, key: "forced"));
+
+            // Act
+            s_force(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(new[] { s_calls[5], s_calls[6] }, Is.EqualTo(new[] { 1, 1 }));
         }
 
         #endregion
