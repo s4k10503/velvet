@@ -592,6 +592,7 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "A query that sets nothing takes the client's reconnect default");
         });
 
+        // GREEN_ON_BASE(characterization): the base takes a failing first reading as online too; this change only moves which read the test makes fail.
         [UnityTest]
         public IEnumerator Given_AnOnlineReadingThatThrowsWhenTheClientStartsWatching_When_AFramePasses_Then_NothingIsFetched()
             => VelvetTask.ToCoroutine(async () =>
