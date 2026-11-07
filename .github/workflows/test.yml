@@ -153,7 +153,7 @@ jobs:
         if: always()
         run: python3 scripts/test_quality/assert_results_from_this_tree.py "${{ matrix.testMode }}-results"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: Test results (${{ matrix.testMode }})
@@ -169,7 +169,7 @@ jobs:
       # game-ci passes -enableCodeCoverage on every run whatever this workflow asks for, so the
       # recorder's cost is paid either way; what the manifest's com.unity.testtools.codecoverage
       # adds is the directory this output names.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: Code coverage (${{ matrix.testMode }})
@@ -263,7 +263,7 @@ jobs:
         if: success() && steps.base-red-initial.outputs.fixtures != ''
         run: python3 scripts/test_quality/base_red_check.py --verdict plan.json --results base-results
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && github.event_name == 'pull_request' && steps.base-red-initial.outputs.fixtures != ''
         with:
           name: Base results (${{ matrix.testMode }})
