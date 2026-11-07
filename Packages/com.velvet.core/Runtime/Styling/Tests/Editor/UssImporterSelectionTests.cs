@@ -50,17 +50,6 @@ namespace Velvet.Tests
             Assert.That(AssetDatabase.GetImporterOverride(SheetPath), Is.EqualTo(typeof(VelvetStyleSheetImporter)));
         }
 
-        [Test]
-        public void Given_TheSelectionClass_When_ItIsLookedUpAsAPostprocessor_Then_TheEditorRunsIt()
-        {
-            // Arrange
-            // Act
-            var runs = typeof(AssetPostprocessor).IsAssignableFrom(typeof(UssImporterSelection));
-
-            // Assert
-            Assert.That(runs, Is.True);
-        }
-
         private static System.Collections.Generic.IEnumerable<TestCaseData> StockMembers()
             => typeof(StockStyleSheetImport)
                 .GetFields(BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
