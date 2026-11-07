@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AMemberReadOnlyWhenAFlagIsSet_When_TheObjectIsNullAndTheFlagIsNot_Then_TheLabelShowsTheOtherBranch",
+ "file": "0d60ec5e56dae19cd12d896876884d6a231a3d7e62ae481ac8dd3f76284e3758",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AMemberReadOnlyWhenAFlagIsSet_When_TheObjectIsNullAndTheFlagIsNot_Then_TheLabelShowsTheOtherBranch",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": ";",
+  "before": "load.Add(Instruction.Create(OpCodes.Br, done));",
+  "column": 12,
+  "line": 124,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeInjector.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

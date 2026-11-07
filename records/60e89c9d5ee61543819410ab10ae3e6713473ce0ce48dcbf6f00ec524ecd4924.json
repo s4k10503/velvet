@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode: the runner wrote no result",
+ "file": "b7d460264e567166f36c859e138585856c9185f0c444fe66073154f1dcbb8fd8",
+ "killers": [],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": ";",
+  "before": "attribute.ConstructorArguments.Add(new CustomAttributeArgument(types.Int32, report.Scopes));",
+  "column": 12,
+  "line": 1368,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "uncompilable"
+}

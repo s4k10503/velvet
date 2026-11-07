@@ -1,0 +1,92 @@
+{
+ "detail": "EditMode: 170 failed: Given_PropsComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName, Given_AnArrayFromACustomHookIndexedOffTheStack_When_TheParentReRendersWithItUnchanged_Then_TheBodyDoesNotRun, Given_AnArrayFromACustomHookIndexedOffTheStack_When_TheStoreChanges_Then_TheLabelShowsItsNewValue",
+ "file": "b7d460264e567166f36c859e138585856c9185f0c444fe66073154f1dcbb8fd8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthAmongTenClassesUnderATransition_When_SwappedForANarrowerOne_Then_ItIsStillMostOfTheWayFromTheOldWidthThreeFramesLater",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedAndTheTransitionFinishes_Then_ItIsTheNewWidth(\"!w-[300px]\",\"w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedAndTheTransitionFinishes_Then_ItIsTheNewWidth(\"w-[300px]\",\"!w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedAndTheTransitionFinishes_Then_ItIsTheNewWidth(\"w-[300px]\",\"w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedForANarrowerOne_Then_ItIsStillMostOfTheWayFromTheOldWidthThreeFramesLater(\"!w-[300px]\",\"w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedForANarrowerOne_Then_ItIsStillMostOfTheWayFromTheOldWidthThreeFramesLater(\"w-[300px]\",\"!w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedForANarrowerOne_Then_ItIsStillMostOfTheWayFromTheOldWidthThreeFramesLater(\"w-[300px]\",\"w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedForANarrowerOne_Then_ItIsStillMostOfTheWayFromTheOldWidthThreeFramesLater(\"w-[50vw]\",\"w-[10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AWidthUnderATransition_When_SwappedForAWiderOne_Then_ItIsStillNearTheOldWidthThreeFramesLater",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryWidthSwapTransitionTests.Given_AnInlineWidthAmongTenClasses_When_SwappedForNoWidth_Then_NoInlineWidthRemains",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryWidthSwapTransitionTests.cs": "81bf3d3c819f5db524b27d865c7b7c4ccbfd55e6585439527cef293a58890509",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": ";",
+  "before": "injected.Add(Instruction.Create(OpCodes.Pop));",
+  "column": 16,
+  "line": 1106,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

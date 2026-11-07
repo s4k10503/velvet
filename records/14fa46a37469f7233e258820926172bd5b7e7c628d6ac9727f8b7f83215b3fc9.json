@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AVoidHookAfterAState_When_Compiled_Then_TheGateOnTheBodyFollowsEveryHookCall",
+ "file": "75c02a872ca0a3504bef9f0488374fda41df2ddfb4c86b00b1a01c3d5ec5c612",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeHookScanTests.Given_AVoidHookAfterAState_When_Compiled_Then_TheGateOnTheBodyFollowsEveryHookCall",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeHookScanTests.cs": "bed0138886b8b696e614be761838cbb1bf6272306d4e6c7cc8765e59f88756cc",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": ";",
+  "before": "scan.Boundary = instr;",
+  "column": 20,
+  "line": 229,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ABodyWithNeitherAGateNorAScope_When_Compiled_Then_ItKeepsTheShortInstructionFormsTheCompilerWrote",
+ "file": "b7d460264e567166f36c859e138585856c9185f0c444fe66073154f1dcbb8fd8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeInjectionTests.Given_ABodyWithNeitherAGateNorAScope_When_Compiled_Then_ItKeepsTheShortInstructionFormsTheCompilerWrote",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeInjectionTests.cs": "5fc160362eff72e6f4451d96c958d2b9512102ad219bdee50cd6fdb6f52666a1",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": ";",
+  "before": "snapshot.Restore();",
+  "column": 20,
+  "line": 284,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

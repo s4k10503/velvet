@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnAssemblyAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_ItIsAlsoABuildWarningNamingTheMethod",
+ "file": "75c02a872ca0a3504bef9f0488374fda41df2ddfb4c86b00b1a01c3d5ec5c612",
+ "killers": [
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AnAssemblyAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_ItIsAlsoABuildWarningNamingTheMethod",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 34,
+  "line": 451,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

@@ -1,0 +1,110 @@
+{
+ "detail": "EditMode: 835 failed: Given_ChangedDependency_When_PropsRenderRepeats_Then_UseCallbackRebuilds, Given_InitialProps_When_FirstRender_Then_ChildObservesPropValue, Given_InitialProps_When_FirstRender_Then_ChildRendersExactlyOnce",
+ "file": "75c02a872ca0a3504bef9f0488374fda41df2ddfb4c86b00b1a01c3d5ec5c612",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AsyncResourceCompletionSettleTests.Given_AMemoizedChildThatOnceHeldTransitionWork_When_ItSuspendsWithAnUpdateQueuedAndItsResourceResolves_Then_ItRendersOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AsyncResourceCompletionSettleTests.cs": "b482ab3c738c3a1aec2a794eec6aa8ae5e6569a89a1440d53809e260a898b5de",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AsyncResourceCompletionSettleTests.Given_TransitionWorkQueuedOnASuspendedChild_When_OneOfItsTwoReadsResolves_Then_IsPendingStaysUp",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AsyncResourceCompletionSettleTests.cs": "b482ab3c738c3a1aec2a794eec6aa8ae5e6569a89a1440d53809e260a898b5de",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_Batched_Then_EachLaneSitsOnItsOwnTier",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_Batched_Then_TheTransitionLaneFiberAlsoSitsOnTheDelayedTier",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_DelayedDrained_Then_TheClearedPendingStateRendersAfterThePendingRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_DelayedDrained_Then_TransitionLaneFiberFlushes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheNormalLaneFiberRenders",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheTransitionContentIsStillPending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_MixedNormalAndTransition_When_ImmediateDrained_Then_TheTransitionLaneFiberRendersItsPendingState",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AutoBatchingTests.Given_SameFiberSetTwice_When_Batched_Then_EnqueuedOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AutoBatchingTests.cs": "00bd974d006b9c8a58073f9c7f0077334d3211c6c2e802ea3822d5f4828e5a3d",
+    "Packages/com.velvet.core/TestUtilities/BoundedAwait.cs": "ae178c714cee6e186879f5df772786a10a30eacb66dd88a93cf5762dc9c05c42",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 53,
+  "line": 379,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

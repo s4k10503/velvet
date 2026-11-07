@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 3 failed: Given_ABodyOpeningWithATryCatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun, Given_AHooklessBodyWhoseTryOpensAtItsFirstInstruction_When_CompilerWeaverRuns_Then_TheGatePrecedesTheTry, Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+ "file": "75c02a872ca0a3504bef9f0488374fda41df2ddfb4c86b00b1a01c3d5ec5c612",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HooklessWovenBehaviorE2ETests.Given_ABodyOpeningWithATryCatch_When_TheHostReRendersWithTheSameProp_Then_TheBodyDoesNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HooklessWovenBehaviorE2ETests.cs": "a3cee27cf124b2e28d76a02d09568ffaeeccaa8edefc5664fafba00fda397f9f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHooklessBodyWhoseTryOpensAtItsFirstInstruction_When_CompilerWeaverRuns_Then_TheGatePrecedesTheTry",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 19,
+  "line": 187,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}

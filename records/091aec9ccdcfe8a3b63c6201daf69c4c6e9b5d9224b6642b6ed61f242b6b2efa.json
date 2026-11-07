@@ -1,0 +1,86 @@
+{
+ "detail": "EditMode: 19 failed: Given_HookNestedInArgumentList_When_Woven_Then_HitPathPopsTheOperandUnderTheGate, Given_UseMemoAfterValueHook_When_Woven_Then_GateIsInjectedAfterTheUseMemoCall, Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsWovenWithoutFailing",
+ "file": "75c02a872ca0a3504bef9f0488374fda41df2ddfb4c86b00b1a01c3d5ec5c612",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_HookNestedInArgumentList_When_Woven_Then_HitPathPopsTheOperandUnderTheGate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CompilerILPostProcessorE2ETests.Given_UseMemoAfterValueHook_When_Woven_Then_GateIsInjectedAfterTheUseMemoCall",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_ACallToAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsWovenWithoutFailing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHookValueLeftOnTheStack_When_CompilerWeaverRuns_Then_ItIsCopiedWithADupBeforeTheNextStore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHookValueStoredToALocal_When_CompilerWeaverRuns_Then_ItIsCopiedFromThatLocal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHooklessBodyCallingAnUnresolvableMethod_When_CompilerWeaverRuns_Then_MethodIsWoven",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHooklessBodyCallingAnUnresolvableSystemMethod_When_CompilerWeaverRuns_Then_MethodIsWoven",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHooklessBodyWhoseTryOpensAtItsFirstInstruction_When_CompilerWeaverRuns_Then_TheGatePrecedesTheTry",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHooksMemberCallingAMethodInAnAssemblyNoResolverFinds_When_CompilerWeaverRuns_Then_MethodIsWoven",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AHooksMemberCallingAMethodItsTypeDoesNotDeclare_When_CompilerWeaverRuns_Then_MethodIsWoven",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+   }
+  }
+ ],
+ "measured_by": "42366599905",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 33,
+  "line": 404,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "verdict": "killed"
+}
