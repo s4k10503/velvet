@@ -492,13 +492,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALabelWhoseClassRuleSetsNoBorderWidth_When_Resolved_Then_ItIsNotMarked()
+        public void Given_ALabelWhoseClassRuleSetsNoBorderWidth_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
         {
             // Act
             var tag = MountLabel("pf-plain text-red-500");
 
             // Assert
-            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
         }
 
         [Test]
@@ -678,13 +678,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALabelWithAGapUtility_When_Resolved_Then_ItIsNotMarked()
+        public void Given_ALabelWithAGapUtility_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
         {
             // Act
             var tag = MountLabel("gap-4 text-red-500");
 
             // Assert
-            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
         }
 
         [Test]
@@ -791,13 +791,23 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALabelWhoseClassIsWidenedByADefaultStylesheetOnly_When_Resolved_Then_ItIsNotMarked()
+        public void Given_ALabelWhoseClassIsWidenedByADefaultStylesheetOnly_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
         {
             // Act
             var tag = MountLabel("pf-theme-width text-red-500");
 
             // Assert
-            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsAZeroBorderWidth_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
+        {
+            // Act
+            var tag = MountLabel("pf-zero text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
         }
 
         [Test]

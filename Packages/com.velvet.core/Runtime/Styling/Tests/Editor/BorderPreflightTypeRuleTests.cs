@@ -34,5 +34,22 @@ namespace Velvet.Tests
             // Assert
             Assert.That(toggle.resolvedStyle.borderTopColor, Is.EqualTo(toggle.resolvedStyle.color));
         }
+
+        [Test]
+        public void Given_AnUnnamedToggleWhoseTypeRuleSetsABorderWidth_When_Resolved_Then_ItsBorderIsItsTextColour()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode[] { V.Toggle(), V.Toggle() }));
+            var toggle = _window.rootVisualElement.Q<Toggle>();
+
+            // Act
+            for (var i = 0; i < 3; i++)
+            {
+                ForcePanelUpdate(toggle.panel);
+            }
+
+            // Assert
+            Assert.That(toggle.resolvedStyle.borderTopColor, Is.EqualTo(toggle.resolvedStyle.color));
+        }
     }
 }

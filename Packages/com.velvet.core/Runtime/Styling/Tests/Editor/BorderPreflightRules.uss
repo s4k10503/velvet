@@ -21,3 +21,5 @@
 .pf-hover-width:hover { border-width: 2px; }
 
 .pf-open .pf-item { border-bottom-width: 1px; }
+
+.pf-zero { border-width: 0; }

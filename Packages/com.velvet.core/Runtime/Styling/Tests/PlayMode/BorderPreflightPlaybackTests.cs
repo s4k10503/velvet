@@ -152,6 +152,29 @@ namespace Velvet.Tests
             Assert.That(button.resolvedStyle.borderTopColor, Is.EqualTo(button.resolvedStyle.color));
         }
 
+        [UnityTest]
+        public IEnumerator Given_ABorderColourThatHoverSetsOnATransition_When_ThePointerLeaves_Then_ItTransitionsBackToTheTextColour()
+        {
+            // Arrange
+            _host = new RenderTexturePanelHost("BorderPreflight", Size, Size, clear: true);
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            yield return Frames(3);
+            _mounted = V.Mount(_host.Root, V.Div(name: "button",
+                className: "w-[60px] h-[30px] border transition-colors duration-1000 text-[#ff0000] hover:border-[#0000ff]"));
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+            var button = _host.Root.Q<VisualElement>("button");
+            Hover(button, true);
+            yield return WaitRealtimeDraining(1.4, _host.TargetTexture);
+
+            // Act
+            Hover(button, false);
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+            var mid = button.resolvedStyle.borderTopColor;
+
+            // Assert — neither where the transition began nor where it ends.
+            Assert.That(mid != new Color(0f, 0f, 1f, 1f) && mid != new Color(1f, 0f, 0f, 1f), Is.True, $"mid={mid}");
+        }
+
         // The middle third of the left band, two pixels in from each edge of it.
         private static Rect LeftBand(Rect box)
             => new(box.xMin + 2f, box.yMin + (box.height / 3f), BandWidth - 4f, box.height / 3f);

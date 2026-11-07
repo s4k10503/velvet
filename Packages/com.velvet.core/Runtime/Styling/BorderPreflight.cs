@@ -12,8 +12,8 @@ namespace Velvet
     // element with a border width therefore holds a currentcolor layer per side in its layer map at
     // StyleLayerPriority.Preflight, which every other layer outranks and whose colour ColorReferenceWatch follows.
     // The width comes from a border-width utility in its classes, from a divide on its parent (SetDivided), or from a
-    // rule of a non-default stylesheet that sets one, which is looked for on an element carrying a class or a name of
-    // its own when it attaches.
+    // rule of a non-default stylesheet that sets one, which an element with a class or a name of its own listens for
+    // and any other element is asked about on attach.
     //
     // A layer is written inline, which outranks every stylesheet rule, so a side is held back while a rule of a
     // stylesheet that is not a default one (control themes are, and CSS preflight overrides user-agent styles) matches
@@ -58,6 +58,8 @@ namespace Velvet
             public Sides Held;
             public Sides Claimed;
             public bool Resyncing;
+            // Whether a colour has landed on the element yet; only the first lands without a transition.
+            public bool Landed;
             // The child-variant manipulators that give this element a width.
             public System.Collections.Generic.HashSet<object>? ScopedBy;
             // The key the engine cached the element's matched rules under when they were last asked.
@@ -69,6 +71,12 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, State> s_states = new();
 
         private static readonly ConstructorInfo? s_construct = EngineMember.MatchedRulesExtractorConstruct.ResolveConstructor();
+        private static readonly PropertyInfo? s_values = EngineMember.StylePropertyValues.ResolveProperty();
+        private static readonly PropertyInfo? s_valueKind = EngineMember.StyleValueHandleKind.ResolveProperty();
+        private static readonly MethodInfo? s_readFloat = EngineMember.StyleSheetReadFloat.ResolveMethod();
+        private static readonly MethodInfo? s_readDimension = EngineMember.StyleSheetReadDimension.ResolveMethod();
+        private static readonly FieldInfo? s_dimensionValue = EngineMember.DimensionValue.ResolveField();
+        private static readonly MethodInfo? s_readKeyword = EngineMember.StyleSheetReadKeyword.ResolveMethod();
         private static readonly PropertyInfo? s_typeName = EngineMember.ElementTypeName.ResolveProperty();
         private static readonly MethodInfo? s_find = EngineMember.MatchedRulesExtractorFind.ResolveMethod();
         private static readonly MethodInfo? s_clear = EngineMember.MatchedRulesExtractorClear.ResolveMethod();
@@ -111,6 +119,12 @@ namespace Velvet
             }
         };
 
+        // An element with a class of its own or a name listens at once, whatever the stylesheets say now: a stylesheet
+        // added later changes what it matches, and the restyle that causes is what answers.
+        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onNamedAttached =
+            (_, element) => Add(element, Reasons.Candidate);
+
+        // Any other element is looked at when it attaches, for a rule selecting its type or every element.
         private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached =
             (_, element) => LookForRule(element);
 
@@ -153,21 +167,19 @@ namespace Velvet
             var named = IsNamedOrClassed(element, classNames);
             if (named)
             {
-                // Asked again on every attach: a reparent can bring a stylesheet with it.
-                element.RegisterCallback(s_onCandidateAttached, element);
-            }
-            else
-            {
                 element.UnregisterCallback(s_onCandidateAttached);
-            }
-            if (element.panel == null)
-            {
-                if (!named)
+                element.RegisterCallback(s_onNamedAttached, element);
+                if (element.panel != null)
                 {
-                    element.RegisterCallbackOnce(s_onCandidateAttached, element);
+                    Add(element, Reasons.Candidate);
                 }
+                return;
             }
-            else if (named || s_typeRulesSeen)
+            element.UnregisterCallback(s_onNamedAttached);
+            Remove(element, Reasons.Candidate);
+            // Asked again on every attach: a reparent can bring a stylesheet with it.
+            element.RegisterCallback(s_onCandidateAttached, element);
+            if (element.panel != null && s_typeRulesSeen)
             {
                 LookForRule(element);
             }
@@ -272,6 +284,7 @@ namespace Velvet
         internal static void Forget(VisualElement element)
         {
             element.UnregisterCallback(s_onCandidateAttached);
+            element.UnregisterCallback(s_onNamedAttached);
             if (!s_states.Remove(element))
             {
                 return;
@@ -322,8 +335,8 @@ namespace Velvet
         }
 
         // Whether a rule naming the element's class or its name could give it a width: it has a name, or a class no
-        // bundled utility stylesheet declares. Elements without either are asked once, on attach, for a rule that
-        // selects their type or every element, and again when a stylesheet with such a rule has been seen.
+        // bundled utility stylesheet declares. Such an element listens once attached; any other is asked, on every attach,
+        // for a rule that selects its type or every element.
         private static bool IsNamedOrClassed(VisualElement element, string[] classNames)
         {
             if (!string.IsNullOrEmpty(element.name))
@@ -396,10 +409,10 @@ namespace Velvet
 
             private static readonly ConditionalWeakTable<StyleSheet, WidthNames> s_names = new();
 
-            // Read again once the sheet or a sheet it imports has a different content hash, as a reimport gives it.
+            // Read again once the sheet has a different content hash, as a reimport gives it.
             public static WidthNames Of(StyleSheet sheet)
             {
-                var hash = HashOf(sheet);
+                var hash = sheet.contentHash;
                 if (s_names.TryGetValue(sheet, out var known) && known._hash == hash)
                 {
                     return known;
@@ -410,16 +423,6 @@ namespace Velvet
                 s_names.Remove(sheet);
                 s_names.Add(sheet, names);
                 return names;
-            }
-
-            private static int HashOf(StyleSheet sheet)
-            {
-                var hash = sheet.contentHash;
-                foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
-                {
-                    hash = unchecked((hash * 31) + HashOf(imported));
-                }
-                return hash;
             }
 
             private static readonly PropertyInfo? s_rules = EngineMember.StyleSheetRules.ResolveProperty();
@@ -444,18 +447,18 @@ namespace Velvet
                 }
                 foreach (var rule in (Array)s_rules.GetValue(sheet))
                 {
-                    if (SetsWidth(rule))
+                    if (SetsWidth(sheet, rule))
                     {
                         AddNames(rule);
                     }
                 }
             }
 
-            private static bool SetsWidth(object rule)
+            private static bool SetsWidth(StyleSheet sheet, object rule)
             {
                 foreach (var property in (Array)s_properties!.GetValue(rule))
                 {
-                    if (IsWidth((string)s_propertyName!.GetValue(property)))
+                    if (IsWidth((string)s_propertyName!.GetValue(property)) && !IsZero(sheet, property))
                     {
                         return true;
                     }
@@ -589,8 +592,8 @@ namespace Velvet
             {
                 return;
             }
-            // CSS runs no transition from a colour the element never showed.
-            var hold = new StyleRelativeLengths.TransitionHold(element);
+            // CSS runs no transition from a colour the element never showed; one it has shown transitions back to it.
+            var hold = state.Landed ? default(StyleRelativeLengths.TransitionHold?) : new StyleRelativeLengths.TransitionHold(element);
             try
             {
                 StyleArbitraryValueResolver.Apply(element,
@@ -598,8 +601,9 @@ namespace Velvet
             }
             finally
             {
-                hold.Release();
+                hold?.Release();
             }
+            state.Landed = true;
             state.Held |= side;
             // A face that took the slot's colour before the layer wrote it takes the layer's.
             SilhouetteFaceStash.Retake(element);
@@ -640,11 +644,50 @@ namespace Velvet
                 {
                     var name = (string)s_propertyName!.GetValue(property);
                     claimed |= SidesOf(name);
-                    width |= IsWidth(name);
+                    width |= IsWidth(name) && !IsZero(s_recordSheet.GetValue(record), property);
                 }
             }
             s_clear.Invoke(s_extractor, null);
             return new Match(claimed, width);
+        }
+
+        // Whether every value of property reads as zero or initial, which draws no border.
+        private static bool IsZero(object? sheet, object property)
+        {
+            if (s_values == null || s_valueKind == null || s_readFloat == null || s_readDimension == null
+                || s_dimensionValue == null || s_readKeyword == null || sheet == null)
+            {
+                return false;
+            }
+            var values = (Array)s_values.GetValue(property);
+            if (values.Length == 0)
+            {
+                return false;
+            }
+            foreach (var handle in values)
+            {
+                if (!IsZeroValue(sheet, handle))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool IsZeroValue(object sheet, object handle)
+        {
+            var args = new[] { handle };
+            switch (s_valueKind!.GetValue(handle).ToString())
+            {
+                case "Float":
+                    return (float)s_readFloat!.Invoke(sheet, args) == 0f;
+                case "Dimension":
+                    return (float)s_dimensionValue!.GetValue(s_readDimension!.Invoke(sheet, args)) == 0f;
+                case "Keyword":
+                    return s_readKeyword!.Invoke(sheet, args).ToString() == "Initial";
+                default:
+                    return false;
+            }
         }
 
         private static bool IsWidth(string property)
