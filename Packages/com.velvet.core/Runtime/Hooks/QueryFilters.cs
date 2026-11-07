@@ -17,13 +17,19 @@ namespace Velvet
         Inactive,
     }
 
-    /// <summary>Whether an entry has a request in flight: TanStack Query's filter <c>fetchStatus</c>.</summary>
+    /// <summary>
+    /// Whether an entry has a request in flight and whether it is running: TanStack Query's <c>fetchStatus</c>,
+    /// which is also its filter of that name.
+    /// </summary>
     public enum QueryFetchStatus
     {
-        /// <summary>A request is in flight.</summary>
+        /// <summary>A request is in flight and running.</summary>
         Fetching,
         /// <summary>No request is in flight.</summary>
         Idle,
+        /// <summary>A request is in flight but waits, for the connection its <see cref="NetworkMode"/> asks for or,
+        /// between two attempts, for the application to be visible. It is not <see cref="Fetching"/>.</summary>
+        Paused,
     }
 
     /// <summary>
@@ -52,7 +58,7 @@ namespace Velvet
         /// or an invalidated one is stale for an entry nothing reads. Null selects both.</summary>
         public bool? Stale { get; init; }
 
-        /// <summary>Selects by whether a request is in flight; null selects both.</summary>
+        /// <summary>Selects by the entry's <see cref="QueryFetchStatus"/>; null selects every entry.</summary>
         public QueryFetchStatus? FetchStatus { get; init; }
 
         /// <summary>Accepts or declines each entry the other properties select, handed its
@@ -102,8 +108,11 @@ namespace Velvet
         /// <summary>Whether the entry was invalidated, or its last request failed, since its data landed.</summary>
         public bool IsInvalidated { get; internal init; }
 
-        /// <summary>Whether a request for the entry is in flight.</summary>
-        public bool IsFetching { get; internal init; }
+        /// <summary>Whether a request for the entry is in flight and running; false while it is paused.</summary>
+        public bool IsFetching => FetchStatus == QueryFetchStatus.Fetching;
+
+        /// <summary>Whether a request is in flight, and whether it is paused.</summary>
+        public QueryFetchStatus FetchStatus { get; internal init; }
 
         /// <summary>When the entry's data landed, on the client's clock; zero while it holds none.</summary>
         public TimeSpan DataUpdatedAt { get; internal init; }

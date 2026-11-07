@@ -105,13 +105,16 @@ namespace Velvet
             return true;
         }
 
+        // The instance fields one class in a hierarchy declares itself, of every visibility.
+        internal static FieldInfo[] FieldsDeclaredBy(Type level) => level.GetFields(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+
         private static FieldInfo[] DeclaredFields(Type type)
         {
             var fields = new List<FieldInfo>();
             for (var level = type; level != null && level != typeof(object); level = level.BaseType)
             {
-                fields.AddRange(level.GetFields(
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly));
+                fields.AddRange(FieldsDeclaredBy(level));
             }
             return fields.ToArray();
         }
