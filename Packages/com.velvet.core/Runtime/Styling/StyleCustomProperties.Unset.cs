@@ -99,7 +99,7 @@ namespace Velvet
 
         // The property an inline utility writes, read by parsing it with a value of the type Tailwind gives it in
         // place of its own: a colour where DefaultHint adds one or the bracket's hint names one, else the bracket
-        // with each var() read as 0, else a length, a number or an angle; a var() in a modifier is read as 50%.
+        // with each var() read as 0, else a length, a number, an angle or an easing keyword; a var() in a modifier is read as 50%.
         // Null when none parses to a layer the unset value can be written to, or where keywordOnly is false, to any
         // layer at all. probe is the utility that parsed.
         private static ArbitraryProperty? WrittenProperty(string utility, UtilityShape shape, string? addedHint,
@@ -124,7 +124,7 @@ namespace Velvet
                     : new[]
                     {
                         head + hint + WithVarsAs(body, "0") + tail, head + hint + "0px" + tail, head + hint + "0" + tail,
-                        head + hint + "0deg" + tail,
+                        head + hint + "0deg" + tail, head + hint + "linear" + tail,
                     };
             }
             foreach (var candidate in candidates)
