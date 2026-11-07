@@ -86,7 +86,8 @@ namespace Velvet.CodeGen
         {
             var definition = ScopeResolution.Type(type);
             if (definition == null) return true;
-            return definition.Fields.Any(field => !field.IsStatic && ReachesNodes(field.FieldType, seen, depth + 1));
+            if (definition.Fields.Any(field => !field.IsStatic && ReachesNodes(field.FieldType, seen, depth + 1))) return true;
+            return definition.BaseType is { } baseType && baseType.FullName != "System.Object" && ReachesNodes(baseType, seen, depth + 1);
         }
 
         // The run's value is cached, so the one object is handed to the code after it on every render that hits. That is

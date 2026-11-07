@@ -155,6 +155,7 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base weaves the nested screen without a value scope, and the hand-back holds there.
         [Test]
         public void Given_AButtonInANestedDivReturnedToThePool_When_AnotherButtonRentsIt_Then_TheOldHandlerDoesNotRun()
         {

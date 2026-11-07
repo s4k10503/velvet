@@ -404,6 +404,7 @@ namespace Velvet.Tests
                 V.Label(text: Describe(4, second)));
         }
 
+        // GREEN_ON_BASE(characterization): the base builds the list whenever the gate on the body misses.
         [Test]
         public void Given_AListWhoseElementTheBodySelectsByIndex_When_AnotherStateChanges_Then_TheListIsBuiltAgain()
         {
@@ -418,11 +419,54 @@ namespace Velvet.Tests
             Assert.That(s_calls[Builds], Is.EqualTo(4));
         }
 
+        // GREEN_ON_BASE(characterization): the base builds the list whenever the gate on the body misses.
         [Test]
         public void Given_AListWhoseElementTheBodyFindsWithFirst_When_AnotherStateChanges_Then_TheListIsBuiltAgain()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(ElementTakenByFirst, key: "first"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_calls[Builds], Is.EqualTo(4));
+        }
+
+        #endregion
+
+        #region A value whose node sits in a base class
+
+        private class CardBase
+        {
+            public VNode Body = null!;
+        }
+
+        private sealed class Card : CardBase
+        {
+            public Card(VNode body) => Body = body;
+        }
+
+        [Component]
+        private static VNode CardsWithNodesInTheBase()
+        {
+            var (first, setFirst) = Hooks.UseState(0);
+            var (second, setSecond) = Hooks.UseState(0);
+            Capture(setFirst, setSecond);
+            var cards = new[] { first, first + 1 }.Select(id => { s_calls[Builds]++; return new Card(V.Label(text: "card" + id)); }).ToArray();
+            return V.Div("cards",
+                V.Div("a", cards[0].Body),
+                V.Label(text: Describe(Counts, cards.Length)),
+                V.Label(text: Describe(4, second)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the cards whenever the gate on the body misses.
+        [Test]
+        public void Given_AnArrayOfCardsWhoseBaseClassHoldsANode_When_AnotherStateChanges_Then_TheCardsAreBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(CardsWithNodesInTheBase, key: "cards"));
 
             // Act
             s_setSecond(5);
@@ -449,6 +493,7 @@ namespace Velvet.Tests
                 V.Label(text: Describe(4, second)));
         }
 
+        // GREEN_ON_BASE(characterization): the base builds the list whenever the gate on the body misses.
         [Test]
         public void Given_AListOfObjectsHoldingNodes_When_AnotherStateChanges_Then_TheListIsBuiltAgain()
         {
