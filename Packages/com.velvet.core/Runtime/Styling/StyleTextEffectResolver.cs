@@ -166,6 +166,7 @@ namespace Velvet
         // children are all in place.
         public static void Apply(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
+            using var themeScope = StyleThemeTokens.Use(ctx, element);
             ctx.TextEffects.TryGetValue(element, out var previous);
             var own = StyleTextEffectClass.Parse(classNames);
             LeadingLengthProbe.Sync(ctx, element, own.Leading);

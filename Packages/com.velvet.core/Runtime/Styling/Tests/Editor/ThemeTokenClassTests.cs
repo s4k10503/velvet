@@ -1016,5 +1016,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That(evaluations, Is.EqualTo(1));
         }
+
+        [Test]
+        public void Given_ALineHeightDeclaredUnderAThemeClass_When_ItIsReadForAnElementInAndOutsideThatClass_Then_OnlyTheInsideOneHasIt()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Fragment(
+                V.Div(className: "theme-token-host theme-token-alt", children: new VNode?[] { V.Div(name: "inside") }),
+                V.Div(className: "theme-token-host", children: new VNode?[] { V.Div(name: "outside") })));
+            var inside = _window.rootVisualElement.Q<VisualElement>("inside");
+            var outside = _window.rootVisualElement.Q<VisualElement>("outside");
+            ForcePanelUpdate(inside.panel);
+            var context = _mounted.Root.Reconciler.Context;
+
+            // Act
+            float insideValue;
+            float outsideValue;
+            using (StyleThemeTokens.Use(context, inside))
+            {
+                StyleNamedTextSize.TryParseLineHeight("text-scopedtest", out var lineHeight, out _);
+                insideValue = lineHeight.Value;
+            }
+            using (StyleThemeTokens.Use(context, outside))
+            {
+                StyleNamedTextSize.TryParseLineHeight("text-scopedtest", out var lineHeight, out _);
+                outsideValue = lineHeight.Value;
+            }
+
+            // Assert
+            Assert.That(new[] { insideValue, outsideValue }, Is.EqualTo(new[] { 3f, 0f }));
+        }
     }
 }

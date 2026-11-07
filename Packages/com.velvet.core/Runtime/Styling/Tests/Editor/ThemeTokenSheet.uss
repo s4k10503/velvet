@@ -4,6 +4,7 @@
     --radius-pilltest: 40px;
     --text-sizetest: 20px;
     --text-ratiotest: 24px;
+    --text-scopedtest: 20px;
     --text-ratiotest--line-height: calc(2.5 / 2);
     --text-sizetest--line-height: 1.5;
     --text-sm--line-height: 2;
@@ -17,6 +18,7 @@
 
 .theme-token-host.theme-token-alt {
     --color-brandtest: rgb(0, 255, 0);
+    --text-scopedtest--line-height: 3;
 }
 
 :root {

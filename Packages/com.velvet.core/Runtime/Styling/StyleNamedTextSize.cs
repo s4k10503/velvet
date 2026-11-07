@@ -116,7 +116,7 @@ namespace Velvet
                 return false;
             }
             var name = core.Substring(Prefix.Length);
-            if (!scope.Values.TryGetValue("--text-" + name + "--line-height", out var text)
+            if (!scope.TryGetText("--text-" + name + "--line-height", out var text)
                 || !(scope.Project.Contains("--text-" + name) || IsBuiltIn(name)))
             {
                 return false;

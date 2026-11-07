@@ -56,26 +56,30 @@ namespace Velvet
                     && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
             }
 
-            // A length the variable holds: the one the cascade gives the element being read for (Use), else the last a
-            // project sheet declared.
+            // The value of the variable as the reading in progress gets it. An element reads what the cascade gives it and
+            // nothing else: a value declared under a selector it does not match is not its own. A reader holding no
+            // element (a class being parsed), and an element whose style pass has not run, reads the last value any rule
+            // declares.
+            public bool TryGetText(string property, out string text)
+            {
+                string? found = null;
+                var cascade = s_element != null && StyleCustomProperties.HasStylesheetContext(s_element);
+                if (cascade ? !StyleCustomProperties.TryStylesheetValue(s_element!, property, out found)
+                    : !Values.TryGetValue(property, out found))
+                {
+                    text = string.Empty;
+                    return false;
+                }
+                text = found ?? string.Empty;
+                return found != null;
+            }
+
+            // A length the variable holds, in px.
             public bool TryGetPx(string property, out float px)
             {
                 px = 0f;
-                string? text = null;
-                // An element reads what the cascade gives it and nothing else: a value declared under a selector it
-                // does not match is not its own. A reader holding no element (a class being parsed) reads the last
-                // value any rule declares.
-                var cascade = s_element != null && StyleCustomProperties.HasStylesheetContext(s_element);
-                if (cascade ? !StyleCustomProperties.TryStylesheetValue(s_element!, property, out text)
-                    : !Values.TryGetValue(property, out text))
-                {
-                    return false;
-                }
-                if (text == null)
-                {
-                    return false;
-                }
-                return StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
+                return TryGetText(property, out var text)
+                    && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
             }
 
             public bool ClearsNamespace(string ns) => Cleared.Contains(ns) || Cleared.Contains("all-");
