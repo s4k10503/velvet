@@ -226,7 +226,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(leaf.style.transitionTimingFunction.value.Select(function => function.mode).ToArray(),
-                Is.EqualTo(new[] { StyleEaseCurve.NearestMode(new BezierCurve(0.2f, 0.8f, 0.2f, 1f)) }));
+                Is.EqualTo(new[] { StyleEaseCurve.NearestMode(new BezierCurve(0f, 0f, 0.58f, 1f)) }));
         }
 
         [Test]
