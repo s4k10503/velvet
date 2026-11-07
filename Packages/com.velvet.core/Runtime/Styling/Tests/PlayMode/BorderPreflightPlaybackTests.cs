@@ -153,14 +153,14 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_ABorderColourThatHoverSetsOnATransition_When_ThePointerLeaves_Then_ItTransitionsBackToTheTextColour()
+        public IEnumerator Given_AStylesheetBorderColourThatHoverSetsOnATransition_When_ThePointerLeaves_Then_ItTransitionsBackToTheTextColour()
         {
             // Arrange
             _host = new RenderTexturePanelHost("BorderPreflight", Size, Size, clear: true);
             VelvetStyleUtilities.AttachTo(_host.Root);
             yield return Frames(3);
             _mounted = V.Mount(_host.Root, V.Div(name: "button",
-                className: "w-[60px] h-[30px] border transition-colors duration-1000 text-[#ff0000] hover:border-[#0000ff]"));
+                className: "w-[60px] h-[30px] border transition-colors duration-1000 text-[#ff0000] hover:border-blue-500"));
             yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
             var button = _host.Root.Q<VisualElement>("button");
             Hover(button, true);
@@ -172,7 +172,8 @@ namespace Velvet.Tests
             var mid = button.resolvedStyle.borderTopColor;
 
             // Assert — neither where the transition began nor where it ends.
-            Assert.That(mid != new Color(0f, 0f, 1f, 1f) && mid != new Color(1f, 0f, 0f, 1f), Is.True, $"mid={mid}");
+            Color blue = new Color32(0x2B, 0x7F, 0xFF, 0xFF);
+            Assert.That(mid != blue && mid != new Color(1f, 0f, 0f, 1f), Is.True, $"mid={mid}");
         }
 
         // The middle third of the left band, two pixels in from each edge of it.

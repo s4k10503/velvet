@@ -85,11 +85,12 @@ The functions follow CSS Color 4:
   `border-s-2`, `border-[3px]`, under any variant), is given one by a child-scoped variant (`*:border`, or `border` on a
   field, which goes to its input box), is a child of a `divide-*` parent (a dashed divider's dashes included), is given
   one by a rule of a stylesheet of your own (not a control theme's) with a width other than zero that selects it by a
-  class, its name, its type or `*`, or has a width your code wrote inline. An element with a class of its own that is not
-  a Velvet utility, or a name, listens for such a rule once attached, and follows it as stylesheets, pseudo-states and
-  ancestors change; any other element is asked when it attaches, so a rule that selects it by its type or `*` and a
-  stylesheet added to an ancestor after it attached reach it when it attaches again. A width your code writes inline is
-  seen on an element that is already listening, and gives no preflight colour to any other. The border
+  class, its name, its type or `*`, or has a width your code wrote inline. An element is asked whether such a rule names
+  it when it attaches and when its classes change, and listens for it from then on, following the rule as pseudo-states
+  and ancestors change. A stylesheet added to the panel's root, or to an element one or two levels under it, is noticed
+  within a frame and every element is asked again; one added deeper is noticed when an element under it attaches. A width
+  your code writes inline is seen on an element that is already listening, and gives no preflight colour to any other.
+  The border
   follows the text colour. A rule of a stylesheet that is not a control theme's that sets a side's border colour takes
   that side from it, whatever its selector or state: `border-red-500`, `border-transparent`, a variant such as
   `hover:border-blue-500`, and your own USS class, id, type, descendant or `:hover` rule. So does a colour your code

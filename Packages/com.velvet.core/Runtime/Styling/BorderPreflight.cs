@@ -119,14 +119,12 @@ namespace Velvet
             }
         };
 
-        // An element with a class of its own or a name listens at once, whatever the stylesheets say now: a stylesheet
-        // added later changes what it matches, and the restyle that causes is what answers.
-        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onNamedAttached =
-            (_, element) => Add(element, Reasons.Candidate);
-
-        // Any other element is looked at when it attaches, for a rule selecting its type or every element.
-        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached =
-            (_, element) => LookForRule(element);
+        // An element is asked when it attaches, and again on a reparent, whether a rule setting a border width names it.
+        private static readonly EventCallback<AttachToPanelEvent, VisualElement> s_onCandidateAttached = (_, element) =>
+        {
+            WatchSheets(element.panel);
+            LookForRule(element);
+        };
 
         private static readonly EventCallback<CustomStyleResolvedEvent, VisualElement> s_onResolved = (_, element) =>
         {
@@ -164,22 +162,8 @@ namespace Velvet
             {
                 return;
             }
-            var named = IsNamedOrClassed(element, classNames);
-            if (named)
-            {
-                element.UnregisterCallback(s_onCandidateAttached);
-                element.RegisterCallback(s_onNamedAttached, element);
-                if (element.panel != null)
-                {
-                    Add(element, Reasons.Candidate);
-                }
-                return;
-            }
-            element.UnregisterCallback(s_onNamedAttached);
-            Remove(element, Reasons.Candidate);
-            // Asked again on every attach: a reparent can bring a stylesheet with it.
             element.RegisterCallback(s_onCandidateAttached, element);
-            if (element.panel != null && s_typeRulesSeen)
+            if (element.panel != null)
             {
                 LookForRule(element);
             }
@@ -284,7 +268,6 @@ namespace Velvet
         internal static void Forget(VisualElement element)
         {
             element.UnregisterCallback(s_onCandidateAttached);
-            element.UnregisterCallback(s_onNamedAttached);
             if (!s_states.Remove(element))
             {
                 return;
@@ -334,30 +317,77 @@ namespace Velvet
             }
         }
 
-        // Whether a rule naming the element's class or its name could give it a width: it has a name, or a class no
-        // bundled utility stylesheet declares. Such an element listens once attached; any other is asked, on every attach,
-        // for a rule that selects its type or every element.
-        private static bool IsNamedOrClassed(VisualElement element, string[] classNames)
+        // Starts listening on an attached element when a stylesheet reaching it has a rule setting a border width that
+        // selects it by a class, its name, its type or every element.
+        private const long SheetTickMs = 16;
+
+        private sealed class SheetWatch
         {
-            if (!string.IsNullOrEmpty(element.name))
-            {
-                return true;
-            }
-            for (var i = 0; i < classNames.Length; i++)
-            {
-                if (FiberElementFactory.IsPlainClassToken(classNames[i]) && !StyleUtilityProperties.TryGet(classNames[i], out _))
-                {
-                    return true;
-                }
-            }
-            return false;
+            public int Fingerprint;
+            public IVisualElementScheduledItem Item = null!;
         }
 
-        // Set once a scanned stylesheet has a width rule selecting a type or every element.
-        private static bool s_typeRulesSeen;
+        private static readonly ConditionalWeakTable<IPanel, SheetWatch> s_sheetWatches = new();
 
-        // Starts listening on an attached candidate when a stylesheet reaching it has a rule setting a border width
-        // that names one of its classes or its name.
+        // One scheduled item per panel compares the stylesheets of the panel's root and of the two levels under it; a
+        // change asks every element of the panel again, once. A stylesheet added deeper is found when an element under
+        // it attaches.
+        private static void WatchSheets(IPanel? panel)
+        {
+            if (panel == null || s_sheetWatches.TryGetValue(panel, out _))
+            {
+                return;
+            }
+            var watch = new SheetWatch { Fingerprint = SheetFingerprint(panel.visualTree) };
+            watch.Item = panel.visualTree.schedule.Execute(() => TickSheets(panel, watch)).Every(SheetTickMs);
+            s_sheetWatches.Add(panel, watch);
+        }
+
+        private static int SheetFingerprint(VisualElement root)
+        {
+            var fingerprint = SheetsOf(root, 0);
+            for (var i = 0; i < root.hierarchy.childCount; i++)
+            {
+                var child = root.hierarchy[i];
+                fingerprint = unchecked((fingerprint * 31) + SheetsOf(child, i + 1));
+                for (var j = 0; j < child.hierarchy.childCount; j++)
+                {
+                    fingerprint = unchecked((fingerprint * 31) + SheetsOf(child.hierarchy[j], j + 1));
+                }
+            }
+            return fingerprint;
+        }
+
+        private static int SheetsOf(VisualElement element, int salt)
+        {
+            var hash = salt;
+            for (var i = 0; i < element.styleSheets.count; i++)
+            {
+                hash = unchecked((hash * 31) + element.styleSheets[i].GetHashCode());
+            }
+            return hash;
+        }
+
+        private static void TickSheets(IPanel panel, SheetWatch watch)
+        {
+            var fingerprint = SheetFingerprint(panel.visualTree);
+            if (fingerprint == watch.Fingerprint)
+            {
+                return;
+            }
+            watch.Fingerprint = fingerprint;
+            AskAgain(panel.visualTree);
+        }
+
+        private static void AskAgain(VisualElement element)
+        {
+            LookForRule(element);
+            for (var i = 0; i < element.hierarchy.childCount; i++)
+            {
+                AskAgain(element.hierarchy[i]);
+            }
+        }
+
         private static void LookForRule(VisualElement element)
         {
             if (element.panel == null)
@@ -408,18 +438,32 @@ namespace Velvet
             private int _hash;
 
             private static readonly ConditionalWeakTable<StyleSheet, WidthNames> s_names = new();
+            private static readonly WidthNames s_none = new();
 
-            // Read again once the sheet has a different content hash, as a reimport gives it.
-            public static WidthNames Of(StyleSheet sheet)
+            private static int HashOf(StyleSheet sheet)
             {
                 var hash = sheet.contentHash;
+                foreach (var imported in VelvetStyleUtilities.ImportsOf(sheet))
+                {
+                    hash = unchecked((hash * 31) + HashOf(imported));
+                }
+                return hash;
+            }
+
+            // Read again once the sheet or a sheet it imports has a different content hash, as a reimport gives it.
+            public static WidthNames Of(StyleSheet sheet)
+            {
+                if (VelvetStyleUtilities.IsUtilities(sheet))
+                {
+                    return s_none;
+                }
+                var hash = HashOf(sheet);
                 if (s_names.TryGetValue(sheet, out var known) && known._hash == hash)
                 {
                     return known;
                 }
                 var names = new WidthNames { _hash = hash };
                 names.Add(sheet);
-                s_typeRulesSeen |= names.Wildcard || names.Types.Count > 0;
                 s_names.Remove(sheet);
                 s_names.Add(sheet, names);
                 return names;
@@ -564,6 +608,7 @@ namespace Velvet
                 }
             }
             state.Held = Sides.None;
+            state.Landed = false;
         }
 
         private static void SyncSide(VisualElement element, State state, int index)

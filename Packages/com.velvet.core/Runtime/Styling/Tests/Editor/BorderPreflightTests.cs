@@ -492,13 +492,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALabelWhoseClassRuleSetsNoBorderWidth_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
+        public void Given_ALabelWhoseClassRuleSetsNoBorderWidth_When_Resolved_Then_ItIsNotMarked()
         {
             // Act
             var tag = MountLabel("pf-plain text-red-500");
 
             // Assert
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
         }
 
         [Test]
@@ -678,13 +678,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALabelWithAGapUtility_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
+        public void Given_ALabelWithAGapUtility_When_Resolved_Then_ItIsNotMarked()
         {
             // Act
             var tag = MountLabel("gap-4 text-red-500");
 
             // Assert
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
         }
 
         [Test]
@@ -791,23 +791,23 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALabelWhoseClassIsWidenedByADefaultStylesheetOnly_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
+        public void Given_ALabelWhoseClassIsWidenedByADefaultStylesheetOnly_When_Resolved_Then_ItIsNotMarked()
         {
             // Act
             var tag = MountLabel("pf-theme-width text-red-500");
 
             // Assert
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
         }
 
         [Test]
-        public void Given_ALabelWhoseClassRuleSetsAZeroBorderWidth_When_Resolved_Then_ItsBorderIsLeftToTheEngine()
+        public void Given_ALabelWhoseClassRuleSetsAZeroBorderWidth_When_Resolved_Then_ItIsNotMarked()
         {
             // Act
             var tag = MountLabel("pf-zero text-red-500");
 
             // Assert
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(Color.clear));
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
         }
 
         [Test]
@@ -819,6 +819,24 @@ namespace Velvet.Tests
 
             // Act
             tag.style.borderTopWidth = 2f;
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ALabelWhoseClassARuleAddedLaterNames_When_TheStylesheetIsAddedToTheRoot_Then_ItsBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("pf-late text-red-500");
+
+            // Act
+            _window.rootVisualElement.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightLate.uss"));
+            ForcePanelUpdate(tag.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
             ForcePanelUpdate(tag.panel);
 
             // Assert
