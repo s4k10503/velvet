@@ -137,5 +137,45 @@ namespace Velvet.Tests
             // handler to leave behind.
             Assert.That((ReferenceEquals(first, second), string.Join(",", s_log)), Is.EqualTo((true, "second")));
         }
+
+        // The same three phases with the switch one div down, so the arms are read by a scope that is itself cached.
+        [Component]
+        private static VNode NestedScreen()
+        {
+            var phase = Hooks.UseStore(s_store, s => s.Phase);
+            return V.Div(children: new VNode[]
+            {
+                V.Div(children: phase switch
+                {
+                    0 => new VNode[] { V.Button(name: "first", events: new FiberEventBinding[] { Logs("first") }) },
+                    1 => Array.Empty<VNode>(),
+                    _ => new VNode[] { V.Button(name: "second", events: new FiberEventBinding[] { Logs("second") }) },
+                }),
+                V.Label(text: "beside"),
+            });
+        }
+
+        [Test]
+        public void Given_AButtonInANestedDivReturnedToThePool_When_AnotherButtonRentsIt_Then_TheOldHandlerDoesNotRun()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var store = new PhaseStore();
+            s_store = store;
+            using var mounted = V.Mount(root, V.Component(NestedScreen, key: "nested-screen"));
+            var scheduler = mounted.GetSchedulerForTest();
+            var first = root.Q<Button>("first");
+            store.Set(1);
+            scheduler.DrainImmediateForTest();
+            store.Set(2);
+            scheduler.DrainImmediateForTest();
+            var second = root.Q<Button>("second");
+
+            // Act
+            second.SimulateClick();
+
+            // Assert
+            Assert.That(ReferenceEquals(first, second) ? string.Join(",", s_log) : "not handed back", Is.EqualTo("second"));
+        }
     }
 }

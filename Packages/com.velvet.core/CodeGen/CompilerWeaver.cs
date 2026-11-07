@@ -516,7 +516,7 @@ namespace Velvet.CodeGen
 
         // A callee's signature names its own generic parameters; the copy's local needs the arguments the call
         // site bound them to. Null where a part of the type is not one this substitutes.
-        private static TypeReference? InCallerTerms(TypeReference type, GenericInstanceMethod? method,
+        internal static TypeReference? InCallerTerms(TypeReference type, GenericInstanceMethod? method,
             GenericInstanceType? declaring)
         {
             switch (type)

@@ -364,5 +364,105 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region An element taken out of a derived list
+
+        private sealed class SelectableRow
+        {
+            public readonly int Id;
+            public bool Selected;
+
+            public SelectableRow(int id) => Id = id;
+        }
+
+
+        [Component]
+        private static VNode ElementTakenByIndexer()
+        {
+            var (first, setFirst) = Hooks.UseState(0);
+            var (second, setSecond) = Hooks.UseState(0);
+            Capture(setFirst, setSecond);
+            var rows = new[] { 0, 1 }.Select(id => { s_calls[Builds]++; return new SelectableRow(id); }).ToList();
+            rows[first].Selected = true;
+            return V.Div("indexer",
+                V.Label(text: Describe(Joins, string.Join(",", rows.Select(row => row.Selected ? "*" : "-")))),
+                V.Label(text: Describe(3, first)),
+                V.Label(text: Describe(4, second)));
+        }
+
+        [Component]
+        private static VNode ElementTakenByFirst()
+        {
+            var (first, setFirst) = Hooks.UseState(0);
+            var (second, setSecond) = Hooks.UseState(0);
+            Capture(setFirst, setSecond);
+            var rows = new[] { 0, 1 }.Select(id => { s_calls[Builds]++; return new SelectableRow(id); }).ToList();
+            rows.First(row => row.Id == first).Selected = true;
+            return V.Div("first",
+                V.Label(text: Describe(Joins, string.Join(",", rows.Select(row => row.Selected ? "*" : "-")))),
+                V.Label(text: Describe(3, first)),
+                V.Label(text: Describe(4, second)));
+        }
+
+        [Test]
+        public void Given_AListWhoseElementTheBodySelectsByIndex_When_AnotherStateChanges_Then_TheListIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ElementTakenByIndexer, key: "indexer"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_calls[Builds], Is.EqualTo(4));
+        }
+
+        [Test]
+        public void Given_AListWhoseElementTheBodyFindsWithFirst_When_AnotherStateChanges_Then_TheListIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ElementTakenByFirst, key: "first"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_calls[Builds], Is.EqualTo(4));
+        }
+
+        #endregion
+
+        #region A list of objects that holds nodes
+
+        [Component]
+        private static VNode ObjectListHoldingNodes()
+        {
+            var (first, setFirst) = Hooks.UseState(0);
+            var (second, setSecond) = Hooks.UseState(0);
+            Capture(setFirst, setSecond);
+            var items = new[] { first, first + 1 }.Select(id => { s_calls[Builds]++; return (object)V.Label(text: "item" + id); }).ToList();
+            return V.Div("objects",
+                V.Div("a", (VNode)items[0]),
+                V.Div("b", (VNode)items[1]),
+                V.Label(text: Describe(4, second)));
+        }
+
+        [Test]
+        public void Given_AListOfObjectsHoldingNodes_When_AnotherStateChanges_Then_TheListIsBuiltAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ObjectListHoldingNodes, key: "objects"));
+
+            // Act
+            s_setSecond(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_calls[Builds], Is.EqualTo(4));
+        }
+
+        #endregion
     }
 }

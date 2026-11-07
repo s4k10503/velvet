@@ -71,7 +71,7 @@ namespace Velvet.CodeGen
         private bool ReachesNodes(TypeReference type, HashSet<string> seen, int depth)
         {
             if (type.IsGenericParameter || type.IsPrimitive || type.FullName == "System.String") return false;
-            if (IsNode(type)) return true;
+            if (IsNode(type) || type.FullName == "System.Object") return true;
             if (depth >= MaxAliasDepth) return true;
             if (!seen.Add(type.FullName)) return false;
             if (type is ArrayType array) return ReachesNodes(array.ElementType, seen, depth + 1);
@@ -162,8 +162,9 @@ namespace Velvet.CodeGen
             }
             var construction = _flow.Instructions[call].OpCode.Code == Code.Newobj;
             var callee = (MethodReference)_flow.Instructions[call].Operand;
-            var result = construction ? callee.DeclaringType : callee.ReturnType;
-            if (!CachesAsValue(result)) return null;
+            var declared = construction ? callee.DeclaringType : callee.ReturnType;
+            var result = CompilerWeaver.InCallerTerms(declared, callee as GenericInstanceMethod, callee.DeclaringType as GenericInstanceType);
+            if (result != null && !CachesAsValue(result)) return null;
             if (depth >= MaxAliasDepth) return $"local {origin} is passed on too deeply to follow";
             return ConsumerProblem(_flow.Pushed[call]!, call, seen, depth + 1, origin);
         }
