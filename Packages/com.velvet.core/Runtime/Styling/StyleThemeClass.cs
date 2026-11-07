@@ -25,6 +25,17 @@ namespace Velvet
             }
         }
 
+        // The utilities Tailwind derives from --spacing, longest prefix first within a family.
+        private static readonly string[] SpacingPrefixes =
+        {
+            "inset-x-", "inset-y-", "space-x-", "space-y-", "translate-x-", "translate-y-", "gap-x-", "gap-y-", "min-w-",
+            "min-h-", "max-w-", "max-h-", "scroll-px-", "scroll-py-", "scroll-pt-", "scroll-pr-", "scroll-pb-", "scroll-pl-",
+            "scroll-ps-", "scroll-pe-", "scroll-mx-", "scroll-my-", "scroll-mt-", "scroll-mr-", "scroll-mb-", "scroll-ml-",
+            "scroll-ms-", "scroll-me-", "scroll-p-", "scroll-m-", "basis-", "size-", "ps-", "pe-", "ms-", "me-", "px-", "py-",
+            "pt-", "pr-", "pb-", "pl-", "p-", "mx-", "my-", "mt-", "mr-", "mb-", "ml-", "m-", "gap-", "start-", "end-", "top-",
+            "right-", "bottom-", "left-", "inset-", "w-", "h-",
+        };
+
         // Longest prefix first, so border-b-primary reads the colour of the bottom side before border- could take
         // `b-primary` as a name. A prefix two namespaces share (text-, shadow-, font-) lists the colour or the
         // first-declared namespace first, and the first whose variable is declared wins.
@@ -72,17 +83,6 @@ namespace Velvet
             }
             return list.ToArray();
         }
-
-        // The utilities Tailwind derives from --spacing, longest prefix first within a family.
-        private static readonly string[] SpacingPrefixes =
-        {
-            "inset-x-", "inset-y-", "space-x-", "space-y-", "translate-x-", "translate-y-", "gap-x-", "gap-y-", "min-w-",
-            "min-h-", "max-w-", "max-h-", "scroll-px-", "scroll-py-", "scroll-pt-", "scroll-pr-", "scroll-pb-", "scroll-pl-",
-            "scroll-ps-", "scroll-pe-", "scroll-mx-", "scroll-my-", "scroll-mt-", "scroll-mr-", "scroll-mb-", "scroll-ml-",
-            "scroll-ms-", "scroll-me-", "scroll-p-", "scroll-m-", "basis-", "size-", "ps-", "pe-", "ms-", "me-", "px-", "py-",
-            "pt-", "pr-", "pb-", "pl-", "p-", "mx-", "my-", "mt-", "mr-", "mb-", "ml-", "m-", "gap-", "start-", "end-", "top-",
-            "right-", "bottom-", "left-", "inset-", "w-", "h-",
-        };
 
         private static readonly HashSet<string> s_heads = BuildHeads();
 
