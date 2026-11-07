@@ -116,7 +116,7 @@ namespace Velvet
         internal static bool IsSentinel(Color c)
             => Same(c, SuppressedColor) || Same(c, ProjectedCornerFace.Cleared);
 
-        private static bool Same(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        internal static bool Same(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 
         internal static bool IsUnset(Color c) => c.r == 0f && c.g == 0f && c.b == 0f && c.a == 0f;
 
@@ -548,6 +548,20 @@ namespace Velvet
                 stash.WriteSentinels(element);
                 element.MarkDirtyRepaint();
                 ColorReferenceWatch.NotifyWritten(element);
+            }
+        }
+
+        // Preflight's colour for side (0 to 3, top to left) moved. It is shown through the element's inline rule, under
+        // the sentinel that stands in the slot, so a face that took the side from the rules takes the new colour here
+        // and carries to it as it carries a colour its rules give.
+        internal static void NotePreflight(VisualElement element, int side, Color colour)
+        {
+            if (s_owners.TryGetValue(element, out var stash) && stash.SuppressionApplied && stash.HasStash
+                && !stash._sideKept[(int)s_slotSides[side]] && !SilhouetteFace.Same(stash.BorderColors[(int)s_slotSides[side]], colour))
+            {
+                stash.BorderColors[(int)s_slotSides[side]] = colour;
+                stash._rulesHash = null;
+                element.MarkDirtyRepaint();
             }
         }
 

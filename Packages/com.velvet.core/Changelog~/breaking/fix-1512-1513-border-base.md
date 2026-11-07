@@ -6,8 +6,8 @@
   (`*:border`, a field's input box), and an element a USS rule of a stylesheet that is not a control theme's gives a border width when the rule selects it by a
   class, its name, its type or `*`. It gives way, side by side, to any rule of a stylesheet that is not a control theme's that sets
   that side's border colour (a `border-*` colour utility or variant, a USS rule of any selector, `:hover` and
-  `border-color: transparent` included) and to a colour your code writes inline, unless that is the colour Velvet last
-  wrote to the side. A control theme's border does not hold it back, as preflight outranks a browser's default styles.
+  `border-color: transparent` included) and to a colour your code writes inline, whatever its value, the text colour
+  included. A control theme's border does not hold it back, as preflight outranks a browser's default styles.
   A width written inline by code gives no preflight colour to an element no rule selects. A stylesheet added to an
   ancestor of an element that has attached is noticed within a frame, and the elements under it are asked again.
 - Bundled border widths (`border`, `border-2`, `border-x`, `border-t-4`, …) are snapped to device pixels at a panel

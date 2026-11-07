@@ -153,11 +153,9 @@ namespace Velvet
         private static bool HoldsBorderEdge(VisualElement owner, DivideEdge edge, StyleColor inline)
         {
             var longhand = StyleLonghandOf(edge);
-            // Preflight's inline colour is no holder: every class and layer of the element outranks it.
             return (SilhouetteFaceStash.TryReadFace(owner, edge, out _, out var faceInline)
                     ? faceInline
                     : inline.keyword == StyleKeyword.Undefined)
-                && !BorderPreflight.Writes(owner, edge)
                 && !HasRunningNativeTransition(owner, longhand) && OwnsInline(owner, StyleLonghandSet.Of(longhand));
         }
 

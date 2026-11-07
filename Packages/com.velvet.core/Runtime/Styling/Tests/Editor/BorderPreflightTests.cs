@@ -378,6 +378,54 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABorderedLabel_When_CodeWritesAnInlineBorderColourEqualToTheTextColourAndTheTextColourChanges_Then_TheInlineColourStands()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(expected);
+            tag.style.color = new StyleColor(Color.blue);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the sibling sides are not code's, so they follow the text colour there as here.
+        [Test]
+        public void Given_ABorderedLabel_When_CodeWritesOneSideInlineEqualToTheTextColourAndTheTextColourChanges_Then_TheOtherSidesFollow()
+        {
+            // Arrange
+            var tag = MountLabel("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(tag.resolvedStyle.color);
+            tag.style.color = new StyleColor(Color.blue);
+            Settled("tag");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(Color.blue));
+        }
+
+        // GREEN_ON_BASE(characterization): the class's inline write is cleared for the text colour to show, as the
+        // preflight write replaced it there.
+        [Test]
+        public void Given_ABorderedLabelWithABorderColourClass_When_TheClassIsRemoved_Then_TheBorderIsTheTextColour()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            MountSwitchable("border border-blue-500 text-red-500");
+
+            // Act
+            var tag = Patch("border text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Given_ALabelWhoseCodeWroteOneSideInline_When_Mounted_Then_TheOtherSidesAreTheTextColour()
         {
             // Arrange

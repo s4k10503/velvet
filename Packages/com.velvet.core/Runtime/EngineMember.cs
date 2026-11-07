@@ -544,6 +544,57 @@ namespace Velvet
         internal static readonly EngineMember DimensionUnitPixel =
             Field(UIElements, DimensionType + "+Unit", "Pixel", "enum:" + DimensionType + "+Unit");
 
+        // PreflightInlineRule's colours: the rule an element's inline style holds below its inline values (the one a UXML
+        // style attribute fills), built with the same builder and given the colour the builder takes, and the inline
+        // style's own per-property write and revert.
+        private const string StyleRuleTypeName = "UnityEngine.UIElements.StyleRule";
+        private const string StylePropertyTypeName = "UnityEngine.UIElements.StyleProperty";
+        private const string InlineStyleAccessType = "UnityEngine.UIElements.InlineStyleAccess";
+        private const string InlineRuleType = InlineStyleAccessType + "+InlineRule";
+        private const string StyleValueTypeName = "UnityEngine.UIElements.StyleSheets.StyleValue";
+        private const string ColorType = "UnityEngine.Color";
+
+        internal static readonly EngineMember StyleSheetBuilderAddColor =
+            Method(UIElements, StyleSheetBuilderType, "AddValue", "System.Void", ColorType);
+
+        internal static readonly EngineMember StyleSheetColors = Field(UIElements, StyleSheetType, "colors", ColorType + "[]");
+
+        internal static readonly EngineMember StyleRuleSetProperties =
+            Method(UIElements, StyleRuleTypeName, "SetProperties", "System.Void", StylePropertyTypeName + "[]");
+
+        internal static readonly EngineMember ElementSetInlineRule =
+            Method(UIElements, VisualElementType, "SetInlineRule", "System.Void", StyleSheetType, StyleRuleTypeName);
+
+        internal static readonly EngineMember ElementInlineStyleAccess =
+            Field(UIElements, VisualElementType, "inlineStyleAccess", InlineStyleAccessType);
+
+        internal static readonly EngineMember InlineStyleAccessInlineRule =
+            ReadProperty(UIElements, InlineStyleAccessType, "inlineRule", InlineRuleType);
+
+        internal static readonly EngineMember InlineRuleSheet = Field(UIElements, InlineRuleType, "sheet", StyleSheetType);
+
+        internal static readonly EngineMember InlineStyleAccessApplyValue =
+            Method(UIElements, InlineStyleAccessType, "ApplyStyleValue", "System.Void", StyleValueTypeName);
+
+        internal static readonly EngineMember InlineStyleAccessRemoveValue =
+            Method(UIElements, InlineStyleAccessType, "RemoveInlineStyle", "System.Boolean", StylePropertyIdShape);
+
+        internal static readonly EngineMember StyleValueId = Field(UIElements, StyleValueTypeName, "id", StylePropertyIdShape);
+
+        internal static readonly EngineMember StyleValueColor = Field(UIElements, StyleValueTypeName, "color", ColorType);
+
+        internal static readonly EngineMember BorderTopColorPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderTopColor", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderRightColorPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderRightColor", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderBottomColorPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderBottomColor", StylePropertyIdShape);
+
+        internal static readonly EngineMember BorderLeftColorPropertyId =
+            Field(UIElements, StylePropertyIdType, "BorderLeftColor", StylePropertyIdShape);
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
