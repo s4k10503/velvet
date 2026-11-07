@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -13,7 +14,7 @@ namespace Velvet.Tests
     internal sealed class ThemeTokenClassTests : PanelTestBase
     {
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
-        private const string EaseSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenEaseSheet.uss";
+        private const string EaseSheetPath = "Assets/VelvetThemeTokenEaseIn.uss";
         private const string AllClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenAllClearedSheet.uss";
         private const string ScopedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenScopedSheet.uss";
         private const string ClearedSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClearedSheet.uss";
@@ -218,15 +219,19 @@ namespace Velvet.Tests
         public void Given_AProjectRedeclaringTheVariableOfABundledEaseClass_When_ThatClassIsRead_Then_ItIsTheBracketedUtilityOfTheSheetsValue()
         {
             // Arrange
-            Attach(EaseSheet);
+            var sheet = RemSheetImport.Import(EaseSheetPath, ".theme-token-host {\n    --ease-in: ease-out;\n}\n");
+            _window.rootVisualElement.styleSheets.Add(sheet);
 
             // Act
             var normalized = Normalize("ease-in");
+            AssetDatabase.DeleteAsset(EaseSheetPath);
 
             // Assert
             Assert.That(normalized, Is.EqualTo("ease-[ease-out]"));
         }
 
+        // GREEN_ON_BASE(characterization): without a project token the base reads `ease-in` as no theme class either; this
+        // keeps the new `ease-` family from generating a rewrite for the bundled class unprompted.
         [Test]
         public void Given_NoProjectTokenForABundledEaseClass_When_ThatClassIsRead_Then_ItStaysTheBundledClass()
         {

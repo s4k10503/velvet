@@ -56,6 +56,8 @@ namespace Velvet.Tests
             return -1;
         }
 
+        // GREEN_ON_BASE(characterization): the stock importer's handling of a raw cubic-bezier() custom property is an
+        // engine fact the base meets as well; it is the cause UssCustomPropertyText's rewrite exists for.
         [Test]
         public void Given_ACustomPropertyHoldingCubicBezier_When_TheStockImporterReadsTheRawSheet_Then_ItStoresNoValue()
         {

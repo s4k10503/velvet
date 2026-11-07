@@ -114,8 +114,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the vocabulary reaches every inline slot one-to-one on the base as well.
-        // The case reads no ArbitraryProperty member, so the ScaleBoth member this branch adds, like the both-axis
-        // Translate before it, leaves it as it was; it keeps a later gap or a mis-aimed accessor from reading as
+        // The case reads no ArbitraryProperty member, so the TransitionTimingFunction member this branch adds, like the
+        // ScaleBoth member and the both-axis Translate before it, leaves it as it was; it keeps a later gap or a mis-aimed accessor from reading as
         // agreement.
         [Test]
         public void Given_EveryInlineStyleSlot_When_ReachedThroughTheLonghandVocabulary_Then_ExactlyOneLonghandReachesEach()
