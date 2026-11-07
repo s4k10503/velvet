@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794064190593,
+  "lastUpdate": 1794069498654,
   "repoUrl": "https://github.com/s4k10503/velvet",
   "entries": {
     "Velvet benchmarks": [
@@ -66566,6 +66566,635 @@ window.BENCHMARK_DATA = {
           {
             "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
             "value": 0.20804999999984375,
+            "unit": "ms"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "50241623+s4k10503@users.noreply.github.com",
+            "name": "0y0",
+            "username": "s4k10503"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0f643927e9dcc88147954df4a95e894e61fb8b18",
+          "message": "fix(velvet): show border preflight colours through the inline rule so an inline border colour always stands (#1529)\n\nCloses #1526.\n\nA border colour that code writes inline now always stands, whatever its value, as an inline style overrides `@layer base` in CSS. Before, a code write equal to the colour border preflight had last written could not be told from preflight's own, because UI Toolkit stores nothing for an unchanged inline value, so the side kept following the text colour.\n\n**Mechanism.** Preflight no longer writes the inline value slot. Its colours live in the element's inline rule (`PreflightInlineRule`, the slot a UXML `style` attribute fills), which the engine applies beneath code-written inline values. Each side is applied to the computed style through the engine's own per-property write and reverted with its inline-style removal, both reached by reflection through new `EngineMember` entries that fail soft. The preflight layer stays in the resolver's layer map, so divide edges, silhouette faces, dashed borders, Motion and `StyleOverrides` read it as before; only the engine write is diverted (`StyleArbitraryValueResolver` hands it to `BorderPreflight.Place`).\n\n- An element that already carries a UXML inline rule keeps its UXML colours: sides that rule colours are left to it.\n- A side code pins and later clears with `StyleKeyword.Null` shows the text colour again on the colour watch's tick; Velvet's own clears re-show it synchronously.\n- Removing a class that coloured the border goes straight to the text colour, without fading through the engine default, under a colour transition.\n- Leaving the panel releases the rule and its sheet; re-attaching re-syncs.\n\n**Breaking:** folded into the unreleased `Changelog~/breaking/fix-1512-1513-border-base.md`, whose \"unless it is the colour Velvet last wrote\" exception this removes.\n\n**Docs:** `styling-colors.md` drops the same exception.\n\n**Tests:** `PreflightInlineRuleTests` and new `BorderPreflightTests` cases (an inline colour equal to the text colour surviving a text-colour change, a cleared pin, class removal under a transition, remove and re-add), plus the existing border preflight suites. Verified by this PR's CI run.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "timestamp": "2026-11-08T01:22:15+09:00",
+          "tree_id": "9ddff435880d24f03921c9f9ee54aa8f8fa5ec1a",
+          "url": "https://github.com/s4k10503/velvet/commit/0f643927e9dcc88147954df4a95e894e61fb8b18"
+        },
+        "date": 1794069497459,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time.GC()",
+            "value": 0,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time",
+            "value": 0.014549999999871943,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
+            "value": 1,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
+            "value": 0.024699999999484135,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
+            "value": 1,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
+            "value": 0.01700000000005275,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
+            "value": 1,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
+            "value": 0.024549999999862848,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
+            "value": 53,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
+            "value": 0.41039999999998145,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
+            "value": 4606,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
+            "value": 15.922499999999786,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 129.35045000000002,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 1236992,
+            "unit": "b"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 129.3445,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.006200000000000001,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 11.2515,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 11.247300000000001,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.0041,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 1.24655,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 1.24265,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.0039000000000000003,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
+            "value": 1.6138500000000002,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GC",
+            "value": 80,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
+            "value": 11006,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
+            "value": 7.444800000000214,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
+            "value": 11007,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
+            "value": 7.87360000000001,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
+            "value": 11006,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
+            "value": 7.416699999999992,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
+            "value": 11018,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
+            "value": 9.080349999999953,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
+            "value": 11018,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
+            "value": 8.87945000000002,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
+            "value": 27360,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
+            "value": 53.816499999999905,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
+            "value": 24018,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
+            "value": 31.786599999999908,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
+            "value": 1,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
+            "value": 0.007949999999937063,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
+            "value": 0.13445000000000001,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.Time",
+            "value": 321.9241,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.GC",
+            "value": 184955,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.Time",
+            "value": 44.22645,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.GC",
+            "value": 13055,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.Time",
+            "value": 3030.4456,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.GC",
+            "value": 1796555,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.Time",
+            "value": 278.96475,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.GC",
+            "value": 180122,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.Time",
+            "value": 32.06725,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.GC",
+            "value": 10571,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.Time",
+            "value": 13.9909,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.GC",
+            "value": 5085,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.Time",
+            "value": 328.47235,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.GC",
+            "value": 193076,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.Time",
+            "value": 13.11785,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.GC",
+            "value": 5178,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.Time",
+            "value": 17.7106,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.GC",
+            "value": 5159,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
+            "value": 2406,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
+            "value": 37.915250000000015,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
+            "value": 11106,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
+            "value": 49.92175000000009,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / Time",
+            "value": 38.0977,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / Time",
+            "value": 45.35875000000004,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
+            "value": 25019,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
+            "value": 32.28275000000008,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
+            "value": 2113,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
+            "value": 3.310899999999947,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
+            "value": 222,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
+            "value": 0.5725000000001046,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
+            "value": 166,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
+            "value": 9.161550000000261,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
+            "value": 106,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
+            "value": 9.117450000000417,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
+            "value": 406,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
+            "value": 137.55899999999974,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
+            "value": 2262,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
+            "value": 134.12580000000003,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
+            "value": 408,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
+            "value": 108.2632500000002,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
+            "value": 7010,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
+            "value": 32.80439999999999,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
+            "value": 2616,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
+            "value": 13.67114999999967,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
+            "value": 206,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
+            "value": 11.079999999999927,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
+            "value": 0.32200000000057116,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
+            "value": 1034,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
+            "value": 37.452749999999924,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
+            "value": 0,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
+            "value": 0.20279999999957,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
+            "value": 130197,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
+            "value": 231.96495000000004,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
+            "value": 105006,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
+            "value": 161.99715000000037,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
+            "value": 154587,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
+            "value": 349.17199999999957,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
+            "value": 15506,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
+            "value": 69.75014999999985,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
+            "value": 408,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
+            "value": 64.9341000000004,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
+            "value": 1208,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
+            "value": 69.60539999999992,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
+            "value": 406,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
+            "value": 80.36810000000014,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
+            "value": 806,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
+            "value": 86.51240000000007,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
+            "value": 7208,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
+            "value": 519.8600500000002,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
+            "value": 16408,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
+            "value": 532.5258000000003,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
+            "value": 14,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
+            "value": 0.04989999999997963,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
+            "value": 0.33165,
+            "unit": "ms"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GC",
+            "value": 9,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
+            "value": 107,
+            "unit": ""
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
+            "value": 0.2221999999997024,
             "unit": "ms"
           }
         ]
