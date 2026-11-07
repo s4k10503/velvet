@@ -74,11 +74,11 @@ namespace Velvet
                 return StyleLayerPriority.ViewportMax;
             }
             var rank = StyleLayerPriority.ViewportMin;
-            foreach (var kind in s_breakpointKinds)
+            foreach (var (bandRank, bandPx) in StyleVariantClass.BreakpointsByValue())
             {
-                if (StyleVariantClass.BreakpointPx(kind) <= Px)
+                if (bandPx <= Px)
                 {
-                    rank = StyleLayerPriority.ForVariant(kind);
+                    rank = bandRank;
                 }
             }
             return rank;

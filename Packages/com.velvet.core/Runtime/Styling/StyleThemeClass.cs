@@ -186,17 +186,13 @@ namespace Velvet
             var property = "--" + family.Namespace + name;
             var sign = negative ? "-" : string.Empty;
             var core = family.Prefix + rest;
+            if (family.Namespace == "spacing-" && TryRewriteSpacing(scope, family, name, sign, Generates(scope, core, family, name, false, property), out rewritten))
+            {
+                return true;
+            }
             if (Generates(scope, core, family, name, slash >= 0, property))
             {
                 rewritten = sign + family.Prefix + "[" + hint + "var(" + property + ")]" + (slash < 0 ? string.Empty : rest.Substring(slash));
-                return true;
-            }
-            // Tailwind's spacing scale: a number is that many of the one --spacing unit, where the theme keys no
-            // --spacing-<number> of its own.
-            if (family.Namespace == "spacing-" && scope.Project.Contains("--spacing") && !scope.Project.Contains(property)
-                && IsMultiple(name))
-            {
-                rewritten = sign + family.Prefix + "[" + hint + "calc(var(--spacing)*" + name + ")]";
                 return true;
             }
             return false;
@@ -218,6 +214,33 @@ namespace Velvet
             }
             return !VelvetPalette.TryGet(name, out _) && (modified || !StyleUtilityProperties.TryGet(core, out _));
         }
+
+        // Tailwind's spacing scale: a named --spacing-<name> key is read first, and a number is that many of the one
+        // --spacing unit. Written with the literal where one rule declares the variable, so the class is a fixed value
+        // that nothing watches; otherwise as a var() the element reads.
+        private static bool TryRewriteSpacing(StyleThemeTokens.Scope scope, in Family family, string name, string sign,
+            bool keyed, out string rewritten)
+        {
+            rewritten = string.Empty;
+            var hint = family.Hint + ":";
+            var property = "--spacing-" + name;
+            if (keyed && scope.TryGetSinglePx(property, out var named))
+            {
+                rewritten = sign + family.Prefix + "[" + hint + Px(named) + "]";
+                return true;
+            }
+            if (keyed || !scope.Project.Contains("--spacing") || scope.Project.Contains(property) || !IsMultiple(name))
+            {
+                return false;
+            }
+            var literal = scope.TryGetSinglePx("--spacing", out var unit)
+                ? Px(unit * (float)double.Parse(name, System.Globalization.CultureInfo.InvariantCulture))
+                : "calc(var(--spacing)*" + name + ")";
+            rewritten = sign + family.Prefix + "[" + hint + literal + "]";
+            return true;
+        }
+
+        private static string Px(float value) => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "px";
 
         private static bool IsMultiple(string name)
             => double.TryParse(name, System.Globalization.NumberStyles.AllowDecimalPoint,

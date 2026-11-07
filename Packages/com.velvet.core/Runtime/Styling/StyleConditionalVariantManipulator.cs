@@ -62,6 +62,7 @@ namespace Velvet
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
 
             StyleThemeTokens.ScopeChanged += OnThemeChanged;
+            ListenForStyle();
 
             if (target.panel != null)
             {
@@ -71,10 +72,35 @@ namespace Velvet
         }
 
         // A sheet moving a --breakpoint-* threshold changes what the width answers without the width changing.
+        private bool _listening;
+
+        // The element's custom styles resolving again (a theme class toggled above it) changes the cascade the
+        // thresholds are read from.
+        private void ListenForStyle()
+        {
+            if (!_listening && target != null && StyleThemeTokens.ReadsValues(_ctx))
+            {
+                _listening = true;
+                target.RegisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+            }
+        }
+
+        private void StopListeningForStyle()
+        {
+            if (_listening && target != null)
+            {
+                _listening = false;
+                target.UnregisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+            }
+        }
+
+        private void OnStyleResolved(CustomStyleResolvedEvent evt) => target?.schedule.Execute(EvaluateResponsive);
+
         private void OnThemeChanged(ReconcilerContext ctx)
         {
             if (ReferenceEquals(ctx, _ctx))
             {
+                ListenForStyle();
                 target?.schedule.Execute(EvaluateResponsive);
             }
         }
@@ -87,6 +113,7 @@ namespace Velvet
             VelvetTheme.DarkModeChanged -= OnDarkChanged;
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
             StyleThemeTokens.ScopeChanged -= OnThemeChanged;
+            StopListeningForStyle();
             _widthSource.Unhook();
         }
 

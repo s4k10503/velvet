@@ -74,15 +74,15 @@ namespace Velvet.Tests
         [TestCase("caret-brandtest", "caret-[color:var(--color-brandtest)]")]
         [TestCase("rounded-pilltest", "rounded-[var(--radius-pilltest)]")]
         [TestCase("rounded-tl-pilltest", "rounded-tl-[var(--radius-pilltest)]")]
-        [TestCase("p-guttertest", "p-[length:var(--spacing-guttertest)]")]
-        [TestCase("p-4", "p-[length:calc(var(--spacing)*4)]")]
-        [TestCase("w-1.5", "w-[length:calc(var(--spacing)*1.5)]")]
-        [TestCase("-mt-2", "-mt-[length:calc(var(--spacing)*2)]")]
-        [TestCase("p-7", "p-[length:var(--spacing-7)]")]
-        [TestCase("-mt-guttertest", "-mt-[length:var(--spacing-guttertest)]")]
-        [TestCase("max-h-4", "max-h-[length:calc(var(--spacing)*4)]")]
-        [TestCase("max-w-guttertest", "max-w-[length:var(--spacing-guttertest)]")]
-        [TestCase("translate-x-2", "translate-x-[length:calc(var(--spacing)*2)]")]
+        [TestCase("p-guttertest", "p-[length:10px]")]
+        [TestCase("p-4", "p-[length:12px]")]
+        [TestCase("w-1.5", "w-[length:4.5px]")]
+        [TestCase("-mt-2", "-mt-[length:6px]")]
+        [TestCase("p-7", "p-[length:10px]")]
+        [TestCase("-mt-guttertest", "-mt-[length:10px]")]
+        [TestCase("max-h-4", "max-h-[length:12px]")]
+        [TestCase("max-w-guttertest", "max-w-[length:10px]")]
+        [TestCase("translate-x-2", "translate-x-[length:6px]")]
         [TestCase("w-widetest", "w-[length:var(--container-widetest)]")]
         [TestCase("text-sizetest/7", "text-[length:var(--text-sizetest)]/7")]
         [TestCase("max-w-widetest", "max-w-[length:var(--container-widetest)]")]
@@ -750,6 +750,59 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(told, Is.True);
+        }
+
+        [Test]
+        public void Given_AClassListThatStoppedNamingAThemeClass_When_TheSheetsChange_Then_ItIsNotConfiguredAgain()
+        {
+            // Arrange
+            AttachSheets(false);
+            var leaf = Mount("bg-brandtest");
+            var context = _mounted.Root.Reconciler.Context;
+            var patcher = new FiberNodePatcher(context);
+            patcher.ApplyVariantManipulators(leaf, new[] { "flex" });
+
+            // Act
+            StyleThemeTokens.Untrack(leaf);
+            patcher.ReleaseCustomPropertyTokens(leaf);
+            patcher.ApplyVariantManipulators(leaf, new[] { "flex" });
+
+            // Assert
+            Assert.That(context.CustomPropertyClasses.ContainsKey(leaf), Is.False);
+        }
+
+        [Test]
+        public void Given_AMountDisposedAndMountedAgainOnTheSameRoot_When_TheSheetsAreRead_Then_TheNewMountReadsThem()
+        {
+            // Arrange
+            AttachSheets(false);
+            var first = V.Mount(_window.rootVisualElement, V.Div());
+            first.Dispose();
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            var normalized = NormalizeInMount("bg-brandtest");
+
+            // Assert
+            Assert.That(normalized, Is.EqualTo("bg-[color:var(--color-brandtest)]"));
+        }
+
+        [Test]
+        public void Given_SmMovedAboveMd_When_TheirRanksAreRead_Then_SmRanksAfterMd()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+
+            // Act
+            bool smAfterMd;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                smAfterMd = StyleLayerPriority.ForVariant(StyleVariantKind.Sm) > StyleLayerPriority.ForVariant(StyleVariantKind.Md);
+            }
+
+            // Assert
+            Assert.That(smAfterMd, Is.True);
         }
     }
 }

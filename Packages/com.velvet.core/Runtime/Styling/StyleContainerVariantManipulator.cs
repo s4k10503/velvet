@@ -86,6 +86,7 @@ namespace Velvet
             target.RegisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged += OnScopesChanged;
             StyleThemeTokens.ScopeChanged += OnThemeChanged;
+            ListenForStyle();
             _watch ??= new StyleResponsiveScope.ScopeWatch(target, ScopeIsStale, OnScopesChanged);
             _watch.Start();
 
@@ -103,6 +104,7 @@ namespace Velvet
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
             StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
             StyleThemeTokens.ScopeChanged -= OnThemeChanged;
+            StopListeningForStyle();
             _watch?.Stop();
             UnhookSources();
             foreach (var owner in _owners.Values)
@@ -123,10 +125,35 @@ namespace Velvet
             UnhookSources();
         }
 
+        private bool _listening;
+
+        // The element's custom styles resolving again (a theme class toggled above it) changes the cascade the
+        // thresholds are read from.
+        private void ListenForStyle()
+        {
+            if (!_listening && target != null && StyleThemeTokens.ReadsValues(_ctx))
+            {
+                _listening = true;
+                target.RegisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+            }
+        }
+
+        private void StopListeningForStyle()
+        {
+            if (_listening && target != null)
+            {
+                _listening = false;
+                target.UnregisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+            }
+        }
+
+        private void OnStyleResolved(CustomStyleResolvedEvent evt) => target?.schedule.Execute(Evaluate);
+
         private void OnThemeChanged(ReconcilerContext ctx)
         {
             if (ReferenceEquals(ctx, _ctx))
             {
+                ListenForStyle();
                 target?.schedule.Execute(Evaluate);
             }
         }
@@ -177,12 +204,14 @@ namespace Velvet
             for (var i = 0; i < _bindings.Length; i++)
             {
                 var query = _bindings[i].Query;
-                if (StyleContainerQuery.TryParse(_bindings[i].Spelling, out var current) && current.Px != query.Px)
+                var reads = StyleContainerQuery.TryParse(_bindings[i].Spelling, out var current);
+                if (reads && current.Px != query.Px)
                 {
                     // A threshold a sheet declares moved: the binding answers for the value it reads now.
                     query = _bindings[i].Query = current;
                 }
-                var on = _sources.TryGetValue(query.Name, out var source) && source.Satisfies(query);
+                // A query whose value the element's cascade no longer gives it matches nothing.
+                var on = reads && _sources.TryGetValue(query.Name, out var source) && source.Satisfies(query);
                 if (on != _on[i])
                 {
                     _on[i] = on;

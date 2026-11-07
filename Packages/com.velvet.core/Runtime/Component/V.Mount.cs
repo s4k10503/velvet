@@ -158,6 +158,7 @@ namespace Velvet
             // optimistic update commits) short-circuit instead of mutating a torn-down fiber.
             var context = Root.Reconciler?.Context;
             FiberRenderer.Dispose(Root);
+            StyleThemeTokens.Release(context);
             if (context != null) FiberErrorBoundary.ReportErrorsDuringDisposal(context);
         }
     }

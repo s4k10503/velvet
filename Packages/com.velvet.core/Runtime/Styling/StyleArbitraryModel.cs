@@ -147,7 +147,8 @@ namespace Velvet
         // important, below every important one and below an animation's.
         public const long InlineStyle = Animation - 1;
 
-        internal static long ForVariant(StyleVariantKind kind) => s_forVariant[kind];
+        internal static long ForVariant(StyleVariantKind kind)
+            => StyleVariantClass.NameOfBreakpoint(kind) != null ? StyleVariantClass.BreakpointRank(kind) : s_forVariant[kind];
 
         // The rank of a variant as written. Only a container query's rank depends on more than its kind: the
         // name a Container parse returns is the prefix, whose direction picks between the two container ranks.

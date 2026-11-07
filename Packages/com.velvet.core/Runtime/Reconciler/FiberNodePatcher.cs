@@ -2802,7 +2802,13 @@ namespace Velvet
                     return;
                 }
             }
+            StyleThemeTokens.Untrack(element);
         }
+
+        // Withdraws the element's custom-property tokens, so a configure that follows binds them again against the
+        // variables the sheets declare now.
+        internal void ReleaseCustomPropertyTokens(VisualElement element)
+            => ApplyCustomPropertyConfig(element, Array.Empty<string>());
 
         // Applies the className-driven variant manipulators (pseudo-class hover:/focus:/
         // active:, conditional dark:/sm:…, container @md:…, relational group-/peer-) in one

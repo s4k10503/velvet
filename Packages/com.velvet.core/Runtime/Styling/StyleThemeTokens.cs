@@ -32,10 +32,23 @@ namespace Velvet
             // Moves whenever a rebuild finds the sheets changed.
             public int Version;
             public bool Polling;
+            public IVisualElementScheduledItem? PollItem;
 
             // The last value a project sheet declares for each --breakpoint-*, --container-* and --animate-* name,
             // as CSS text: what a reader holding no element falls back to.
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
+
+            // How many declarations the project sheets make of each name in Values.
+            public readonly Dictionary<string, int> Counts = new(StringComparer.Ordinal);
+
+            // The length the one declaration of the variable gives, where a single rule declares it: every element
+            // reads that value, so a utility can be written with the literal.
+            public bool TryGetSinglePx(string property, out float px)
+            {
+                px = 0f;
+                return Counts.TryGetValue(property, out var count) && count == 1 && Values.TryGetValue(property, out var text)
+                    && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
+            }
 
             // A length the variable holds: the one the cascade gives the element being read for (Use), else the last a
             // project sheet declared.
@@ -43,11 +56,15 @@ namespace Velvet
             {
                 px = 0f;
                 string? text = null;
-                if (s_element != null)
+                // An element reads what the cascade gives it and nothing else: a value declared under a selector it
+                // does not match is not its own. A reader holding no element (a class being parsed) reads the last
+                // value any rule declares.
+                if (s_element != null ? !StyleCustomProperties.TryStylesheetValue(s_element, property, out text)
+                    : !Values.TryGetValue(property, out text))
                 {
-                    StyleCustomProperties.TryStylesheetValue(s_element, property, out text);
+                    return false;
                 }
-                if (text == null && !Values.TryGetValue(property, out text))
+                if (text == null)
                 {
                     return false;
                 }
@@ -69,6 +86,7 @@ namespace Velvet
             public int ContentHash;
             public string[] Names = Array.Empty<string>();
             public readonly List<string> Cleared = new();
+            public readonly Dictionary<string, int> Counts = new(StringComparer.Ordinal);
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
         }
 
@@ -76,6 +94,11 @@ namespace Velvet
         private static readonly ConditionalWeakTable<ReconcilerContext, Scope> s_scopes = new();
         private static Scope? s_current;
         private static VisualElement? s_element;
+
+        // Whether the mount's sheets declare a value a width-driven variant reads, so its variants listen for the
+        // element's custom styles resolving (a theme class toggled above it changes what it reads).
+        internal static bool ReadsValues(ReconcilerContext ctx)
+            => s_scopes.TryGetValue(ctx, out var scope) && scope.Values.Count > 0;
 
         // Raised after a rebuild finds the sheets a mount reads changed; readers re-evaluate what they took from them.
         internal static event Action<ReconcilerContext>? ScopeChanged;
@@ -86,21 +109,65 @@ namespace Velvet
         {
             public readonly List<WeakReference<VisualElement>> Elements = new();
             public readonly ConditionalWeakTable<VisualElement, string[]> Classes = new();
+            public int PruneAt = 64;
         }
 
         private static readonly ConditionalWeakTable<ReconcilerContext, Themed> s_themed = new();
 
         // Remembers an element whose class list holds a class a theme variable could make, so it is configured again
         // when the sheets change what the variables declare.
+        // The context an element is tracked under, so its record goes with the element (Untrack).
+        private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_trackedBy = new();
+
         internal static void Track(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
             var themed = s_themed.GetValue(ctx, static _ => new Themed());
             if (!themed.Classes.TryGetValue(element, out _))
             {
+                if (themed.Elements.Count >= themed.PruneAt)
+                {
+                    themed.Elements.RemoveAll(static reference => !reference.TryGetTarget(out _));
+                    themed.PruneAt = Math.Max(64, themed.Elements.Count * 2);
+                }
                 themed.Elements.Add(new WeakReference<VisualElement>(element));
             }
             themed.Classes.Remove(element);
             themed.Classes.Add(element, classNames);
+            s_trackedBy.Remove(element);
+            s_trackedBy.Add(element, ctx);
+        }
+
+        // Forgets the class list remembered for element, for an element whose list no longer names a class a theme
+        // variable could make and for one cleaned up or returned to a pool.
+        internal static void Untrack(VisualElement element)
+        {
+            if (s_trackedBy.TryGetValue(element, out var ctx))
+            {
+                s_trackedBy.Remove(element);
+                if (s_themed.TryGetValue(ctx, out var themed))
+                {
+                    themed.Classes.Remove(element);
+                }
+            }
+        }
+
+        // Ends what a mount holds here: its poll, its scope and the class lists it remembered.
+        internal static void Release(ReconcilerContext? ctx)
+        {
+            if (ctx == null)
+            {
+                return;
+            }
+            if (s_scopes.TryGetValue(ctx, out var scope))
+            {
+                scope.PollItem?.Pause();
+                s_scopes.Remove(ctx);
+            }
+            s_themed.Remove(ctx);
+            if (ctx.ThemeRoot != null && s_mounts.TryGetValue(ctx.ThemeRoot, out var registered) && ReferenceEquals(registered, ctx))
+            {
+                s_mounts.Remove(ctx.ThemeRoot);
+            }
         }
 
         private static void Reapply(ReconcilerContext ctx)
@@ -117,6 +184,7 @@ namespace Velvet
                 {
                     using (Use(ctx, element))
                     {
+                        patcher.ReleaseCustomPropertyTokens(element);
                         patcher.ApplyVariantManipulators(element, classes);
                     }
                 }
@@ -211,7 +279,14 @@ namespace Velvet
             if (!scope.Polling)
             {
                 scope.Polling = true;
-                ctx.ThemeRoot.schedule.Execute(() => Refresh(ctx)).Every(PollMs);
+                var weak = new WeakReference<ReconcilerContext>(ctx);
+                scope.PollItem = ctx.ThemeRoot.schedule.Execute(() =>
+                {
+                    if (weak.TryGetTarget(out var live))
+                    {
+                        Refresh(live);
+                    }
+                }).Every(PollMs);
             }
             var signature = SignatureAbove(ctx.ThemeRoot);
             if (signature != scope.Signature)
@@ -224,6 +299,7 @@ namespace Velvet
                 scope.Classes.Clear();
                 scope.Cleared.Clear();
                 scope.Values.Clear();
+                scope.Counts.Clear();
                 for (var element = ctx.ThemeRoot; element != null; element = element.hierarchy.parent)
                 {
                     for (var i = 0; i < element.styleSheets.count; i++)
@@ -234,7 +310,14 @@ namespace Velvet
                 if (!first)
                 {
                     ScopeChanged?.Invoke(ctx);
-                    ctx.ThemeRoot.schedule.Execute(() => Reapply(ctx));
+                    var weak = new WeakReference<ReconcilerContext>(ctx);
+                    ctx.ThemeRoot.schedule.Execute(() =>
+                    {
+                        if (weak.TryGetTarget(out var live))
+                        {
+                            Reapply(live);
+                        }
+                    });
                 }
             }
             return scope;
@@ -269,6 +352,10 @@ namespace Velvet
                 {
                     scope.Values[value.Key] = value.Value;
                 }
+                foreach (var count in read.Counts)
+                {
+                    scope.Counts[count.Key] = (scope.Counts.TryGetValue(count.Key, out var before) ? before : 0) + count.Value;
+                }
             }
             foreach (var name in read.Names)
             {
@@ -297,7 +384,8 @@ namespace Velvet
             var wildcard = name.EndsWith("*", StringComparison.Ordinal);
             if (!wildcard && !name.StartsWith("--breakpoint-", StringComparison.Ordinal)
                 && !name.StartsWith("--container-", StringComparison.Ordinal)
-                && !name.StartsWith("--animate-", StringComparison.Ordinal))
+                && !name.StartsWith("--animate-", StringComparison.Ordinal)
+                && name != "--spacing" && !name.StartsWith("--spacing-", StringComparison.Ordinal))
             {
                 return;
             }
@@ -308,6 +396,7 @@ namespace Velvet
             if (!wildcard)
             {
                 read.Values[name] = text;
+                read.Counts[name] = read.Counts.TryGetValue(name, out var seen) ? seen + 1 : 1;
             }
             else if (text.Trim() == "initial")
             {

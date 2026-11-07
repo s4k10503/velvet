@@ -183,6 +183,7 @@ namespace Velvet
                 {
                     StyleResponsiveScope.ScopesChanged += OnScopesChanged;
                     StyleThemeTokens.ScopeChanged += OnThemeChanged;
+                    ListenForStyle();
                 }
                 if (_source == StackedInnerSource.Container)
                 {
@@ -227,6 +228,7 @@ namespace Velvet
                 target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
                 StyleResponsiveScope.ScopesChanged -= OnScopesChanged;
                 StyleThemeTokens.ScopeChanged -= OnThemeChanged;
+                StopListeningForStyle();
                 _watch?.Stop();
                 _widthSource?.Unhook();
                 UnhookRelational();
@@ -310,11 +312,12 @@ namespace Velvet
             if (_source == StackedInnerSource.Container)
             {
                 // A threshold a sheet declares may have moved since the class was parsed.
-                if (StyleContainerQuery.TryParse(_innerName, out var current))
+                var reads = StyleContainerQuery.TryParse(_innerName, out var current);
+                if (reads)
                 {
                     _query = current;
                 }
-                SetInner(_widthSource?.Satisfies(_query) == true);
+                SetInner(reads && _widthSource?.Satisfies(_query) == true);
                 return;
             }
 
@@ -327,10 +330,33 @@ namespace Velvet
         private bool ScopeIsStale()
             => !ReferenceEquals(_widthSource?.Root, StyleResponsiveScope.ResolveContainer(target, _query.Name));
 
+        private bool _listening;
+
+        private void ListenForStyle()
+        {
+            if (!_listening && target != null && StyleThemeTokens.ReadsValues(_ctx))
+            {
+                _listening = true;
+                target.RegisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+            }
+        }
+
+        private void StopListeningForStyle()
+        {
+            if (_listening && target != null)
+            {
+                _listening = false;
+                target.UnregisterCallback<CustomStyleResolvedEvent>(OnStyleResolved);
+            }
+        }
+
+        private void OnStyleResolved(CustomStyleResolvedEvent evt) => target?.schedule.Execute(EvaluateResponsive);
+
         private void OnThemeChanged(ReconcilerContext ctx)
         {
             if (ReferenceEquals(ctx, _ctx))
             {
+                ListenForStyle();
                 target?.schedule.Execute(EvaluateResponsive);
             }
         }

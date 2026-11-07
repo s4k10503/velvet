@@ -77,6 +77,8 @@ namespace Velvet
             public readonly string[]? Sides;
             // Whether a modifier bracket reads a var(), whose value is a color-mix() percentage.
             public readonly bool ModifierReadsVariable;
+            // Whether the utility reads a var(); one that does not applies a fixed payload and has nothing to watch.
+            public readonly bool ReadsVariable;
             // A z-* reader, whose value restacks the element (TryVariableZ) rather than being applied as a payload.
             public readonly bool StacksZ;
             // An order-* reader, whose value reorders the element among its siblings (TryVariableOrder) the same way.
@@ -104,6 +106,7 @@ namespace Velvet
                 StacksZ = StyleZIndexClass.VariableUtility(utility) != null;
                 StacksOrder = StyleOrderClass.VariableUtility(utility) != null;
                 var readsVariable = utility.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0;
+                ReadsVariable = readsVariable;
                 ModifierReadsVariable = Shape.HasModifier
                     && utility.IndexOf("var(", Math.Max(Shape.MainClose, 0), StringComparison.OrdinalIgnoreCase) >= 0;
                 if (readsVariable)
@@ -185,7 +188,10 @@ namespace Velvet
             s_classes.Remove(element);
             if (s_consumers.TryGetValue(element, out var consumers))
             {
-                Unwatch(element, consumers);
+                if (consumers.Poll != null)
+                {
+                    Unwatch(element, consumers);
+                }
                 s_consumers.Remove(element);
             }
         }
@@ -285,7 +291,7 @@ namespace Velvet
         {
             var consumers = s_consumers.GetValue(target, static _ => new Consumers());
             consumers.Entries.Add(consumer);
-            if (consumers.Entries.Count == 1)
+            if (consumer.ReadsVariable && consumers.Poll == null)
             {
                 Watch(target, consumers);
             }
@@ -311,7 +317,10 @@ namespace Velvet
             }
             if (entries.Count == 0)
             {
-                Unwatch(target, consumers);
+                if (consumers.Poll != null)
+                {
+                    Unwatch(target, consumers);
+                }
                 s_consumers.Remove(target);
             }
         }

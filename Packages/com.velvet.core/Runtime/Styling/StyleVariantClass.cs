@@ -297,6 +297,55 @@ namespace Velvet
             return true;
         }
 
+        private static readonly StyleVariantKind[] s_breakpointOrder =
+        {
+            StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg, StyleVariantKind.Xl, StyleVariantKind.Xxl,
+        };
+
+        private static readonly long[] s_breakpointBits =
+        {
+            StyleLayerPriority.ResponsiveSm, StyleLayerPriority.ResponsiveMd, StyleLayerPriority.ResponsiveLg,
+            StyleLayerPriority.ResponsiveXl, StyleLayerPriority.Responsive2xl,
+        };
+
+        /// <summary>
+        /// The rank of a default breakpoint: Tailwind sorts the min-width group by value, so the five default
+        /// breakpoints take the five ranks in the order of their thresholds, which are the kinds' own order until a sheet
+        /// moves one.
+        /// </summary>
+        internal static long BreakpointRank(StyleVariantKind kind)
+        {
+            var own = Array.IndexOf(s_breakpointOrder, kind);
+            var position = 0;
+            var px = BreakpointPx(kind);
+            for (var i = 0; i < s_breakpointOrder.Length; i++)
+            {
+                var other = BreakpointPx(s_breakpointOrder[i]);
+                if (other < px || (other == px && i < own))
+                {
+                    position++;
+                }
+            }
+            return s_breakpointBits[position];
+        }
+
+        /// <summary>The ranks of the default breakpoints in order of threshold, each with its threshold.</summary>
+        internal static (long Rank, float Px)[] BreakpointsByValue()
+        {
+            var sorted = new (long Rank, float Px)[s_breakpointOrder.Length];
+            var px = new float[s_breakpointOrder.Length];
+            for (var i = 0; i < px.Length; i++)
+            {
+                px[i] = BreakpointPx(s_breakpointOrder[i]);
+            }
+            Array.Sort(px);
+            for (var i = 0; i < px.Length; i++)
+            {
+                sorted[i] = (s_breakpointBits[i], px[i]);
+            }
+            return sorted;
+        }
+
         /// <summary>The name a default breakpoint is written with: <c>sm</c>, <c>md</c>, <c>lg</c>, <c>xl</c>, <c>2xl</c>.</summary>
         internal static string? NameOfBreakpoint(StyleVariantKind kind) => s_themeNames.TryGetValue(kind, out var name) ? name : null;
 
