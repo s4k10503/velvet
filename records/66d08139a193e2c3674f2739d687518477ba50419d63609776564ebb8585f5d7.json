@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 192 case(s) that ran the site: Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(\"transition-all duration-1000 ease-linear\",\"translate-y-[40px]\")",
+ "file": "78f683a351f73e4e992b1f29a5e7e9e02b6cde9c75dbc1dcee2481f308513b8f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdLookAcrossParentsTests.Given_AHolderThatTookTheLeadBackAtOnce_When_AnotherJoinsUnderAnotherParentInThatRender_Then_ItMixesFromItsOwnRotate(\"transition-all duration-1000 ease-linear\",\"translate-y-[40px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdLookAcrossParentsTests.cs": "bbaee835ae5eca51cad09c29d9cf85c786e3d98c6b0a090fbc77c163c346a7f9",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 713,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

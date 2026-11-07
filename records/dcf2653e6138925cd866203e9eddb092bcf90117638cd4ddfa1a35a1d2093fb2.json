@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 13 case(s) that ran the site: Given_APlayHoldingAnElementsPaint_When_AComponentMountsBelowIt_Then_TheContextKeepsItsLeases, Given_APlayHoldingAnElementsPaint_When_AMountedComponentUpdatesItsOwnState_Then_TheContextKeepsItsLeases",
+ "file": "575e060f3a368c0291e1d4decad21997f58e276e2f641c08d199df9029b4facc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseOwnershipTests.Given_APlayHoldingAnElementsPaint_When_AComponentMountsBelowIt_Then_TheContextKeepsItsLeases",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseOwnershipTests.cs": "376ec6a43b993a4d5a2d0deac1972bff5ab187d6c0237ea65abcc224d9c3d6eb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PaintLeaseOwnershipTests.Given_APlayHoldingAnElementsPaint_When_AMountedComponentUpdatesItsOwnState_Then_TheContextKeepsItsLeases",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseOwnershipTests.cs": "376ec6a43b993a4d5a2d0deac1972bff5ab187d6c0237ea65abcc224d9c3d6eb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 26,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionPaintInterpolation.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

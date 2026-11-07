@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ACarryPartWayThroughATransition_When_LandedOnAValue_Then_ItHasLanded",
+ "file": "3ea61f672c5b27502a13640a8d0a1788d5b034400e138358ecd9642cd20efd3e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdCarryTests.Given_ACarryPartWayThroughATransition_When_LandedOnAValue_Then_ItHasLanded",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdCarryTests.cs": "d7ece00337471df07a6b9fb4c74e1d07b31bcb3a67821b25d255e037a11750b8"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 41,
+  "line": 1527,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

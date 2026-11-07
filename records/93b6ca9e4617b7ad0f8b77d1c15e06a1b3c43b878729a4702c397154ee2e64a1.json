@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 318 case(s) that ran the site: Given_ALeadMovingSharedFromAHolder_When_ItStartsAgainTakingABoxFromAnotherHolder_Then_ItHoldsNoCrossfadeProgress",
+ "file": "3ea61f672c5b27502a13640a8d0a1788d5b034400e138358ecd9642cd20efd3e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdShareTests.Given_ALeadMovingSharedFromAHolder_When_ItStartsAgainTakingABoxFromAnotherHolder_Then_ItHoldsNoCrossfadeProgress",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdShareTests.cs": "40e4ac5b4d5f781a277a182106489a591fe9e32e2b390540faad77b45d5d513d"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": "",
+  "before": " && !shared",
+  "column": 70,
+  "line": 473,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": [
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

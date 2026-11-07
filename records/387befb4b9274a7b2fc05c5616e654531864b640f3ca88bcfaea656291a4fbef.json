@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ARingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItIsTornDown_Then_NeitherItNorItsBandKeepsAFaceCallback",
+ "file": "3ea61f672c5b27502a13640a8d0a1788d5b034400e138358ecd9642cd20efd3e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceLifecycleTests.Given_ARingedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItIsTornDown_Then_NeitherItNorItsBandKeepsAFaceCallback",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ProjectedCornerFaceLifecycleTests.cs": "123a42d3d0a5cabdaa363da8d814d2393e5f159a72c00b5508dece6ba8f2f707",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": ";",
+  "before": "ProjectedCornerFace.Forget(element);",
+  "column": 12,
+  "line": 894,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

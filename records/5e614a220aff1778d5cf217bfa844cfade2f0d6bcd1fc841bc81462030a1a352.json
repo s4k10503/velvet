@@ -1,0 +1,119 @@
+{
+ "detail": "EditMode: 11 failed in Velvet.Tests.Styling.Editor: Given_ALayoutIdSpringOnATransitionTransformElement_When_TheSwapBesideItEnds_Then_TheSpringsFrameIsStillPaintedAsWritten, Given_ABareDurationUtility_When_APlayDrivesTheElement_Then_TheNativeTransitionIsSuspended, Given_ADriverSuspendedNativeTransition_When_TheInlineOverridesAreCleared_Then_TheElementsOwnTransitionIsRestored",
+ "file": "78f683a351f73e4e992b1f29a5e7e9e02b6cde9c75dbc1dcee2481f308513b8f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_ALayoutIdSpringOnATransitionTransformElement_When_TheSwapBesideItEnds_Then_TheSpringsFrameIsStillPaintedAsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ABareDurationUtility_When_APlayDrivesTheElement_Then_TheNativeTransitionIsSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ADriverSuspendedNativeTransition_When_TheInlineOverridesAreCleared_Then_TheElementsOwnTransitionIsRestored",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ATransformOnlyPlayOnATransitionAllElement_When_Started_Then_TheNativeTransitionIsSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ATransformOnlyPlayOnATransitionTransformElement_When_Started_Then_TheNativeTransitionIsSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_AnElementCarryingANativeColorTransition_When_ADriverOwnsItsInlineStyles_Then_TheNativeTransitionNamesNoProperty",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_AnElementOnAPanelTransitioningEverything_When_APlayDrivesItsTranslate_Then_OnlyTheTranslateIsTakenOutOfItsTransitions",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_TwoLivePlaysOnOneElement_When_TheFirstIsReleased_Then_TheNativeTransitionStaysSuspended",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "f627f9347f55979eb8eb0237837d4dacba86c5410ee8248b8fa15fd6991303fa",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSlotContextTests.Given_AMountedClipWithCustomLengthAndOpacity_When_ChannelsAreReleased_Then_LayoutTransitionsReturnWhileTheWrapperStaysMounted(Bezier)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSlotContextTests.cs": "62744495cabcae13ac968690fa48a5e29627abe75f93d50768d925d87e99f4c4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSlotContextTests.Given_AMountedClipWithCustomLengthAndOpacity_When_ChannelsAreReleased_Then_LayoutTransitionsReturnWhileTheWrapperStaysMounted(Spring)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSlotContextTests.cs": "62744495cabcae13ac968690fa48a5e29627abe75f93d50768d925d87e99f4c4",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": ";",
+  "before": "style.transitionProperty = names;",
+  "column": 12,
+  "line": 319,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}

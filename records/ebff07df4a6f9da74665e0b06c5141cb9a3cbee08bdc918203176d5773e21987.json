@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "78f683a351f73e4e992b1f29a5e7e9e02b6cde9c75dbc1dcee2481f308513b8f",
+ "killers": [],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 781,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "survived"
+}

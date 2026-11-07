@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 897 case(s) that ran the site: Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_AnotherPropertyIsLeftInTheNativeSlot",
+ "file": "78f683a351f73e4e992b1f29a5e7e9e02b6cde9c75dbc1dcee2481f308513b8f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionOpacityOwnershipTests.Given_ADrawnOpacityWithADeclaredZeroDurationTransition_When_ItSteps_Then_AnotherPropertyIsLeftInTheNativeSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionOpacityOwnershipTests.cs": "5ad338a931e46895ded7b722552e7a6725ca4cef2ea8e291682a2172c3653964",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777"
+   }
+  }
+ ],
+ "measured_by": "42345200801",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 52,
+  "line": 639,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "verdict": "killed"
+}
