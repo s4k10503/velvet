@@ -32,7 +32,7 @@ namespace Velvet.Tests
     /// <remarks>
     /// The client's clock is <see cref="s_now"/>, advanced by hand between frames, and every reading of it is
     /// counted in <see cref="s_reads"/>, which is how polling is observed. An entry's presence is read from the
-    /// client's dictionary rather than through <c>Peek</c>, which reports an expired entry as absent before
+    /// client's dictionary rather than through <c>PeekById</c>, which reports an expired entry as absent before
     /// anything removes it.
     /// </remarks>
     [TestFixture]
@@ -326,7 +326,7 @@ namespace Velvet.Tests
         {
             // Arrange
             s_client.SetQueryData(Todos, "held");
-            var entry = s_client.Peek<string>(Todos)!;
+            var entry = s_client.PeekById<string>(Todos)!;
 
             // Act
             await Pass(GcTime);

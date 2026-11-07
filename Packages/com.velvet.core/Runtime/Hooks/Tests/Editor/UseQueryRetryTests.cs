@@ -401,7 +401,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(new QueryKey("todos"))!.FailureCount, Is.EqualTo(0),
+            Assert.That(s_client.PeekById<int>(new QueryKey("todos"))!.FailureCount, Is.EqualTo(0),
                 "Cancelling during the wait puts back the count the request started from");
         });
 
@@ -420,7 +420,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(new QueryKey("todos"))!.FailureReason, Is.Null,
+            Assert.That(s_client.PeekById<int>(new QueryKey("todos"))!.FailureReason, Is.Null,
                 "Cancelling during the wait puts back the reason the request started from");
         });
 

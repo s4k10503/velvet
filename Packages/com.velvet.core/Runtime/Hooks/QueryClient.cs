@@ -585,8 +585,6 @@ namespace Velvet
             }
         }
 
-        internal QueryEntry<T>? Peek<T>(QueryKey key) => PeekById<T>(Identify(key, DefaultQueryKeyHashFn));
-
         // An expired entry reads as absent before a sweep removes it, so a render never shows an entry that had
         // already expired and that a sibling's subscription in the same commit would sweep.
         internal QueryEntry<T>? PeekById<T>(QueryKey id)

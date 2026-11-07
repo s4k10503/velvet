@@ -1207,7 +1207,7 @@ namespace Velvet.Tests
         private static object? Waiting(QueryKey key) =>
             typeof(QueryEntry<int>)
                 .GetField("_waiters", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .GetValue(s_client.Peek<int>(key));
+                .GetValue(s_client.PeekById<int>(key));
 
         #endregion
 

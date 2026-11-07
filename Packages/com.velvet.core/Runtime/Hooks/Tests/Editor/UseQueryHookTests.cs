@@ -239,7 +239,7 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(7);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)?.Data, Is.EqualTo(7),
+            Assert.That(s_client.PeekById<int>(Todos)?.Data, Is.EqualTo(7),
                 "v5 lets a request whose function never read the signal run on, and its result lands in the entry");
         }
 
@@ -254,7 +254,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
             Assert.That((entry!.Status, entry.IsFetching), Is.EqualTo((QueryStatus.Pending, false)),
                 "Cancelling with revert puts the entry back as it was before the request, which is not fetching");
         }
@@ -270,7 +270,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
             Assert.That((s_tokens[1].IsCancellationRequested, entry!.Status, entry.Data, entry.IsFetching),
                 Is.EqualTo((true, QueryStatus.Success, 1, false)),
                 "The refetch is cancelled and the data it would have replaced stays");
@@ -288,7 +288,7 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(7);
 
             // Assert
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
             Assert.That((entry!.Status, entry.Data), Is.EqualTo((QueryStatus.Pending, 0)),
                 "A request cancelled by its last reader leaving lands nothing");
         }
@@ -353,7 +353,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)!.Error?.Message, Is.EqualTo("failed"),
+            Assert.That(s_client.PeekById<int>(Todos)!.Error?.Message, Is.EqualTo("failed"),
                 "Cancelling with revert restores the error the request found");
         }
 
@@ -367,7 +367,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)!.Status, Is.EqualTo(QueryStatus.Error),
+            Assert.That(s_client.PeekById<int>(Todos)!.Status, Is.EqualTo(QueryStatus.Error),
                 "A first request that failed leaves the entry in Error when its refetch is cancelled");
         }
 
@@ -381,7 +381,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)!.Data, Is.EqualTo(1), "Revert puts back the data held when the request started");
+            Assert.That(s_client.PeekById<int>(Todos)!.Data, Is.EqualTo(1), "Revert puts back the data held when the request started");
         }
 
         [Test]
@@ -394,7 +394,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)!.IsInvalidated, Is.True,
+            Assert.That(s_client.PeekById<int>(Todos)!.IsInvalidated, Is.True,
                 "The entry was invalidated when the request started, and setting data cleared that");
         }
 
@@ -408,7 +408,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)!.DataUpdatedAt, Is.EqualTo(TimeSpan.Zero),
+            Assert.That(s_client.PeekById<int>(Todos)!.DataUpdatedAt, Is.EqualTo(TimeSpan.Zero),
                 "Revert puts back the time the held data landed");
         }
 
@@ -424,7 +424,7 @@ namespace Velvet.Tests
             Hide(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)!.HasData, Is.False, "The entry had no data when the request started");
+            Assert.That(s_client.PeekById<int>(Todos)!.HasData, Is.False, "The entry had no data when the request started");
         }
 
         [Test]
@@ -440,7 +440,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Null,
+            Assert.That(s_client.PeekById<int>(Todos), Is.Null,
                 "The request is gone, so nothing keeps the entry past its gcTime");
         }
 
@@ -773,10 +773,10 @@ namespace Velvet.Tests
             // Act
             s_now = TimeSpan.FromMinutes(1) + GcTime - TimeSpan.FromTicks(1);
             s_client.InvalidateQueries(Unrelated);
-            var keptJustBefore = s_client.Peek<int>(Todos) != null;
+            var keptJustBefore = s_client.PeekById<int>(Todos) != null;
             s_now = TimeSpan.FromMinutes(1) + GcTime;
             s_client.InvalidateQueries(Unrelated);
-            var removedAt = s_client.Peek<int>(Todos) == null;
+            var removedAt = s_client.PeekById<int>(Todos) == null;
 
             // Assert
             Assert.That((keptJustBefore, removedAt), Is.EqualTo((true, true)),
@@ -795,7 +795,7 @@ namespace Velvet.Tests
             other.FlushEffectsForTest();
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Null, "A subscription sweeps the client");
+            Assert.That(s_client.PeekById<int>(Todos), Is.Null, "A subscription sweeps the client");
         }
 
         [Test]
@@ -921,7 +921,7 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(7);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos)?.Data, Is.EqualTo(7),
+            Assert.That(s_client.PeekById<int>(Todos)?.Data, Is.EqualTo(7),
                 "An entry still fetching is not removed, as v5's optionalRemove reschedules the removal instead");
         }
 
@@ -936,7 +936,7 @@ namespace Velvet.Tests
 
             // Act
             s_now = GcTime;
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
 
             // Assert
             Assert.That(entry, Is.Not.Null, "An entry fetching does not read as expired");
@@ -952,7 +952,7 @@ namespace Velvet.Tests
 
             // Act
             s_now = TimeSpan.FromMinutes(14) - TimeSpan.FromTicks(1);
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
 
             // Assert
             Assert.That(entry?.Data, Is.EqualTo(7),
@@ -970,7 +970,7 @@ namespace Velvet.Tests
 
             // Act
             s_now = TimeSpan.FromMinutes(14);
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
 
             // Assert
             Assert.That(entry, Is.Null, "A gcTime after the request settled, the entry is removed");
@@ -984,7 +984,7 @@ namespace Velvet.Tests
 
             // Act
             s_now = TimeSpan.FromMinutes(9) - TimeSpan.FromTicks(1);
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
 
             // Assert
             Assert.That(entry?.Data, Is.EqualTo(7),
@@ -1000,7 +1000,7 @@ namespace Velvet.Tests
 
             // Act
             s_now = TimeSpan.FromMinutes(9);
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
 
             // Assert
             Assert.That(entry, Is.Null, "A gcTime after the request settled, the entry is removed");
@@ -1016,7 +1016,7 @@ namespace Velvet.Tests
 
             // Act
             s_now = TimeSpan.FromMinutes(9);
-            var entry = s_client.Peek<int>(Todos);
+            var entry = s_client.PeekById<int>(Todos);
 
             // Assert
             Assert.That(entry?.Data, Is.EqualTo(7), "A request in flight at the gcTime itself puts the removal off");
@@ -1038,7 +1038,7 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(7);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Null, "With a gcTime of zero the entry goes as soon as its request settles");
+            Assert.That(s_client.PeekById<int>(Todos), Is.Null, "With a gcTime of zero the entry goes as soon as its request settles");
         }
 
         [Test]
@@ -1054,7 +1054,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null, "An entry something still reads is never collected");
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null, "An entry something still reads is never collected");
         }
 
         [Test]
@@ -1070,7 +1070,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null,
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null,
                 "Subscribing again takes the entry off the collection list");
         }
 
@@ -1091,7 +1091,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null, "An entry keeps the longest gcTime asked of it");
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null, "An entry keeps the longest gcTime asked of it");
         }
 
         [Test]
@@ -1106,7 +1106,7 @@ namespace Velvet.Tests
             Show(mounted);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null,
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null,
                 "A collected entry leaves the collection list, so a sweep cannot take its key's next entry");
         }
 
@@ -1123,7 +1123,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null,
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null,
                 "Clear empties the collection list, so a sweep cannot take the key's next entry");
         }
 
@@ -1141,7 +1141,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null,
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null,
                 "Leaving a removed entry does not put it on the collection list, where it would take its key with it");
         }
 
@@ -1177,7 +1177,7 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(Unrelated);
 
             // Assert
-            Assert.That(s_client.Peek<int>(new QueryKey("page", 1)), Is.Null,
+            Assert.That(s_client.PeekById<int>(new QueryKey("page", 1)), Is.Null,
                 "Moving to a new key stops reading the old one");
         }
 
@@ -1234,7 +1234,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(next.Peek<int>(Todos), Is.Not.Null, "The query subscribes to the client it now reads");
+            Assert.That(next.PeekById<int>(Todos), Is.Not.Null, "The query subscribes to the client it now reads");
         }
 
         #endregion
@@ -1510,7 +1510,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(s_client.Peek<int>(Todos), Is.Not.Null,
+            Assert.That(s_client.PeekById<int>(Todos), Is.Not.Null,
                 "The query subscribed to the client its Provider supplied");
         }
 

@@ -3,8 +3,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Velvet
@@ -60,27 +58,26 @@ namespace Velvet
             return false;
         }
 
-        // Only the framework's own tuples: a type that implements ITuple and declares its own equality keeps it.
+        // Only the framework's own tuples: a type that implements System.Runtime.CompilerServices.ITuple and declares its own equality keeps it.
         private static bool IsTuple(Type type)
             => type.Namespace == nameof(System)
                 && (type.Name.StartsWith("ValueTuple`", StringComparison.Ordinal)
                     || type.Name.StartsWith("Tuple`", StringComparison.Ordinal));
 
-        private static readonly ConcurrentDictionary<Type, FieldInfo[]?> s_memberFields = new();
-        private static readonly Func<Type, FieldInfo[]?> s_findMemberFields = FindMemberFields;
+        private static readonly ConcurrentDictionary<Type, System.Reflection.FieldInfo[]?> s_memberFields = new();
+        private static readonly Func<Type, System.Reflection.FieldInfo[]?> s_findMemberFields = FindMemberFields;
 
         // The fields a record's or an anonymous type's compiler-written Equals compares, null for a type whose
         // equality is not that: the instance fields of the type and of each record it derives from, which is the
-        // set the synthesized Equals walks. A tuple is read through ITuple instead.
-        private static FieldInfo[]? MemberFieldsOf(Type type) => s_memberFields.GetOrAdd(type, s_findMemberFields);
+        // set the synthesized Equals walks. A tuple is read through System.Runtime.CompilerServices.ITuple instead.
+        private static System.Reflection.FieldInfo[]? MemberFieldsOf(Type type) => s_memberFields.GetOrAdd(type, s_findMemberFields);
 
-        private static FieldInfo[]? FindMemberFields(Type type)
+        private static System.Reflection.FieldInfo[]? FindMemberFields(Type type)
         {
-            const BindingFlags declared = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
-                | BindingFlags.DeclaredOnly;
-            const BindingFlags equalsFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
-            var fields = new List<FieldInfo>();
-            for (var level = type; level != null && level != typeof(object) && level != typeof(ValueType); level = level.BaseType)
+            const System.Reflection.BindingFlags equalsFlags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.DeclaredOnly;
+            var fields = new List<System.Reflection.FieldInfo>();
+            var level = type;
+            while (level != null && level != typeof(object) && level != typeof(ValueType))
             {
                 // A record is told by the Equals taking its own type, which the compiler writes unless the record
                 // declares it; an anonymous type, which has none of that shape, by being written by the compiler.
@@ -88,21 +85,22 @@ namespace Velvet
                 // The binder also offers Equals(object) for the type's own, which says nothing about a record.
                 if (typed != null && typed.GetParameters()[0].ParameterType != level) typed = null;
                 var compilerWritten = typed != null
-                    ? typed.IsDefined(typeof(CompilerGeneratedAttribute), false)
-                    : level.IsDefined(typeof(CompilerGeneratedAttribute), false)
+                    ? typed.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false)
+                    : level.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false)
                         && level.GetMethod(nameof(object.Equals), equalsFlags, null, new[] { typeof(object) }, null) != null;
                 if (!compilerWritten) return null;
-                fields.AddRange(level.GetFields(declared));
+                fields.AddRange(QueryStructuralSharing.FieldsDeclaredBy(level));
+                level = level.BaseType;
             }
             return fields.ToArray();
         }
 
         // The members of a Members part, in the order they are declared: a tuple's items, or the fields above.
         private static int MemberCount(object part)
-            => part is ITuple tuple ? tuple.Length : MemberFieldsOf(part.GetType())!.Length;
+            => part is System.Runtime.CompilerServices.ITuple tuple ? tuple.Length : MemberFieldsOf(part.GetType())!.Length;
 
         private static object? MemberAt(object part, int index)
-            => part is ITuple tuple ? tuple[index] : MemberFieldsOf(part.GetType())![index].GetValue(part);
+            => part is System.Runtime.CompilerServices.ITuple tuple ? tuple[index] : MemberFieldsOf(part.GetType())![index].GetValue(part);
 
         // A part that holds itself, or nests past this depth, is refused as v5's JSON.stringify refuses a cycle,
         // rather than recursing until the stack overflows.
@@ -110,38 +108,36 @@ namespace Velvet
         [ThreadStatic]
         private static int s_depth;
 
-        private static void Enter()
+        private readonly struct DepthGuard : IDisposable
         {
-            if (s_depth >= MaxDepth)
+            internal DepthGuard(bool enter)
             {
-                throw new InvalidOperationException(
-                    $"A query key part holds itself or nests deeper than {MaxDepth} levels.");
+                if (s_depth >= MaxDepth)
+                {
+                    throw new InvalidOperationException(
+                        $"A query key part holds itself or nests deeper than {MaxDepth} levels.");
+                }
+                s_depth++;
             }
-            s_depth++;
+
+            public void Dispose() => s_depth--;
         }
 
         internal static int HashOf(object? part)
         {
             var kind = KindOf(part);
             if (kind == QueryKeyPartKind.Value) return part?.GetHashCode() ?? 0;
-            Enter();
-            try
+            using var guard = new DepthGuard(true);
+            switch (kind)
             {
-                switch (kind)
-                {
-                    case QueryKeyPartKind.Members:
-                        return MembersHash(part!);
-                    case QueryKeyPartKind.Sequence:
-                        return SequenceHash((IEnumerable)part!);
-                    case QueryKeyPartKind.Dictionary:
-                        return DictionaryHash((IDictionary)part!);
-                    default:
-                        return SetHash((IEnumerable)part!);
-                }
-            }
-            finally
-            {
-                s_depth--;
+                case QueryKeyPartKind.Members:
+                    return MembersHash(part!);
+                case QueryKeyPartKind.Sequence:
+                    return SequenceHash((IEnumerable)part!);
+                case QueryKeyPartKind.Dictionary:
+                    return DictionaryHash((IDictionary)part!);
+                default:
+                    return SetHash((IEnumerable)part!);
             }
         }
 
@@ -198,24 +194,17 @@ namespace Velvet
         {
             var kind = KindOf(part);
             if (kind == QueryKeyPartKind.Value || kind != KindOf(filter)) return object.Equals(part, filter);
-            Enter();
-            try
+            using var guard = new DepthGuard(true);
+            switch (kind)
             {
-                switch (kind)
-                {
-                    case QueryKeyPartKind.Members:
-                        return MembersMatch(part!, filter!, partial);
-                    case QueryKeyPartKind.Sequence:
-                        return SequenceMatches((IEnumerable)part!, (IEnumerable)filter!, partial);
-                    case QueryKeyPartKind.Dictionary:
-                        return DictionaryMatches((IDictionary)part!, (IDictionary)filter!, partial);
-                    default:
-                        return SetEquals((IEnumerable)part!, (IEnumerable)filter!);
-                }
-            }
-            finally
-            {
-                s_depth--;
+                case QueryKeyPartKind.Members:
+                    return MembersMatch(part!, filter!, partial);
+                case QueryKeyPartKind.Sequence:
+                    return SequenceMatches((IEnumerable)part!, (IEnumerable)filter!, partial);
+                case QueryKeyPartKind.Dictionary:
+                    return DictionaryMatches((IDictionary)part!, (IDictionary)filter!, partial);
+                default:
+                    return SetEquals((IEnumerable)part!, (IEnumerable)filter!);
             }
         }
 
