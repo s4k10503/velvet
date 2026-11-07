@@ -448,6 +448,9 @@ namespace Velvet.Tests
             Assert.That(tag.resolvedStyle.borderBottomColor, Is.EqualTo(Color.blue));
         }
 
+        // GREEN_ON_BASE(characterization): the base replaces the class's inline colour with one write of the text colour. Here
+        // the colour is cleared and shown in two steps, and without the held transition the clear runs a transition away
+        // from the class's colour, which this reads before it ends.
         [Test]
         public void Given_ABorderedLabelWithABorderColourClassAndAColourTransition_When_TheClassIsRemoved_Then_TheBorderIsAtOnceTheTextColour()
         {
