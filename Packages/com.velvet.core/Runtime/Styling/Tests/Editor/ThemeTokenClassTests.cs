@@ -216,7 +216,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AProjectEaseToken_When_Mounted_Then_TheTransitionEasesByTheKeywordNearestItsCurve()
+        public void Given_AProjectEaseToken_When_Mounted_Then_TheTransitionEasesByTheKeywordNearestTheCurveOfTheSheet()
         {
             // Arrange
             AttachSheets(false);
@@ -226,7 +226,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(leaf.style.transitionTimingFunction.value.Select(function => function.mode).ToArray(),
-                Is.EqualTo(new[] { StyleEaseCurve.NearestMode(new BezierCurve(0f, 0f, 0.58f, 1f)) }));
+                Is.EqualTo(new[] { EasingMode.Linear }));
         }
 
         [Test]

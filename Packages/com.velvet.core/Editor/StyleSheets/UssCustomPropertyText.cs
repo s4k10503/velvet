@@ -7,8 +7,8 @@ namespace Velvet.Editor
 {
     /// <summary>
     /// Rewrites the custom properties of a USS file that UI Toolkit's importer cannot hold: a value with a unit
-    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) fails the whole sheet, and one with a CSS math function is
-    /// dropped. Such a value becomes a quoted string of its own text, which the importer stores as written and the
+    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) fails the whole sheet, and one with a CSS math function, <c>cubic-bezier()</c> or
+    /// <c>steps()</c> is dropped. Such a value becomes a quoted string of its own text, which the importer stores as written and the
     /// theme readers take back as CSS (<see cref="StyleCustomProperties.Spell"/>).
     /// </summary>
     internal static class UssCustomPropertyText
@@ -216,7 +216,22 @@ namespace Velvet.Editor
             {
                 return false;
             }
-            return TailwindMathSpacing.HasMathFunction(value) || HasUnkeptUnit(value);
+            return TailwindMathSpacing.HasMathFunction(value) || HasEasingFunction(value) || HasUnkeptUnit(value);
+        }
+
+        // cubic-bezier() and steps(), which the importer drops from a custom property as it does a math function.
+        private static bool HasEasingFunction(string value)
+            => HasFunction(value, "cubic-bezier") || HasFunction(value, "steps");
+
+        private static bool HasFunction(string value, string name)
+        {
+            var open = name + "(";
+            var at = value.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+            while (at > 0 && IsIdentChar(value[at - 1]))
+            {
+                at = value.IndexOf(open, at + 1, StringComparison.OrdinalIgnoreCase);
+            }
+            return at >= 0;
         }
 
         private static bool HasUnkeptUnit(string value)
