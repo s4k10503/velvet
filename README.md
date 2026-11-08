@@ -153,7 +153,7 @@ Velvet also ships hooks with no direct React-core equivalent, covering Unity / D
 data-fetching cases the React ecosystem usually hands to third-party libraries —
 `UseService<T>()` (DI resolution), `UseStore` (Zustand-style store subscription, see
 [Store](#store-zustand-style) below), `UseBlocker` (React-Router-style navigation blocking),
-`UseMutation` (react-query-style async-mutation lifecycle), and `UseQuery` (react-query-style cached
+`UseMutation` (react-query-style async-mutation lifecycle), and `UseQuery` / `UseSuspenseQuery` (react-query-style cached
 queries over a `QueryClient`).
 
 ### Store (Zustand-style)
