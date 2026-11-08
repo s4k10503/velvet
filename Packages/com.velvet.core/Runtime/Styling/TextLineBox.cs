@@ -76,18 +76,25 @@ namespace Velvet
         {
             _element = element;
             _centred = centred;
-            element.RegisterCallback<GeometryChangedEvent>(_ =>
+        }
+
+        // The element's own geometry and style events, which it hands over from its HandleEventBubbleUp rather than
+        // through callbacks, which every label and button Velvet creates would otherwise register.
+        public void Handle(EventBase evt)
+        {
+            if (evt is CustomStyleResolvedEvent)
             {
-                if (Retag())
-                {
-                    return;
-                }
-                if (!SizedByItsMeasure())
-                {
-                    Settle();
-                }
-            });
-            element.RegisterCallback<CustomStyleResolvedEvent>(_ => Settle());
+                Settle();
+                return;
+            }
+            if (evt is not GeometryChangedEvent || Retag())
+            {
+                return;
+            }
+            if (!SizedByItsMeasure())
+            {
+                Settle();
+            }
         }
 
         // A TextElement's own DoMeasure.
@@ -529,10 +536,22 @@ namespace Velvet
             return sb.Append(display, copied, display.Length - copied).ToString();
         }
 
+        // Whether text holds a tag whose name starts with name, in any case. Only the text after each '<' is compared, so
+        // a text with none is read once.
+        public static bool HasTag(string text, string name)
+        {
+            var i = text.IndexOf('<');
+            while (i >= 0 && string.Compare(text, i + 1, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) != 0)
+            {
+                i = text.IndexOf('<', i + 1);
+            }
+            return i >= 0;
+        }
+
         // text with open written again after each of its own closing line height tags.
         public static string Reopened(string text, string open)
         {
-            if (text.IndexOf("</line-height", StringComparison.OrdinalIgnoreCase) < 0)
+            if (!HasTag(text, "/line-height"))
             {
                 return text;
             }

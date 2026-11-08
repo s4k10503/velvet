@@ -136,7 +136,7 @@ namespace Velvet
             => element != null && (element.LineBox.SpansLines(raw) | BreaksLine(raw));
 
         private static bool BreaksLine(string? raw)
-            => raw != null && (raw.IndexOf('\n') >= 0 || raw.IndexOf("<br", StringComparison.OrdinalIgnoreCase) >= 0);
+            => raw != null && (raw.IndexOf('\n') >= 0 || TextLineBoxMarkup.HasTag(raw, "br"));
 
         // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
         // an element's Text prop). Stored so a later re-apply (this element's or an ancestor's effect pass)
@@ -350,7 +350,7 @@ namespace Velvet
             {
                 return display;
             }
-            var inner = ownMarkup && display.IndexOf("voffset", StringComparison.OrdinalIgnoreCase) >= 0
+            var inner = ownMarkup && (TextLineBoxMarkup.HasTag(display, "voffset") || TextLineBoxMarkup.HasTag(display, "/voffset"))
                 ? TextLineBoxMarkup.Raised(display, raise, element.resolvedStyle.fontSize)
                 : display;
             return string.Concat("<voffset=", raise.ToString(System.Globalization.CultureInfo.InvariantCulture), "px>", inner, "</voffset>");

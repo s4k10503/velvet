@@ -71,6 +71,16 @@ namespace Velvet
 
         protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
             => LineBox.Measure(desiredWidth, widthMode, desiredHeight, heightMode, _baseMeasure ??= base.DoMeasure);
+
+        [EventInterest(typeof(GeometryChangedEvent), typeof(CustomStyleResolvedEvent))]
+        protected override void HandleEventBubbleUp(EventBase evt)
+        {
+            base.HandleEventBubbleUp(evt);
+            if (evt.target == this)
+            {
+                _lineBox?.Handle(evt);
+            }
+        }
     }
 
     internal sealed class SkewPickLabel : Label, ISkewPickTarget, ILineBoxed
@@ -92,5 +102,16 @@ namespace Velvet
 
         protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
             => LineBox.Measure(desiredWidth, widthMode, desiredHeight, heightMode, _baseMeasure ??= base.DoMeasure);
+
+        // Same hand-over as SkewPickButton's.
+        [EventInterest(typeof(GeometryChangedEvent), typeof(CustomStyleResolvedEvent))]
+        protected override void HandleEventBubbleUp(EventBase evt)
+        {
+            base.HandleEventBubbleUp(evt);
+            if (evt.target == this)
+            {
+                _lineBox?.Handle(evt);
+            }
+        }
     }
 }
