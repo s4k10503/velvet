@@ -77,7 +77,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APropertyOverrideWithNoDurationField_When_Resolved_Then_ItFallsBackToTheTopLevelDurationSec()
+        public void Given_APropertyOverrideWithNoDurationField_When_Resolved_Then_ItRunsFramersDefaultDuration()
         {
             // Arrange — one override sets its own duration; the other omits it (null DurationSec).
             var element = MountOnRealPanel();
@@ -85,7 +85,7 @@ namespace Velvet.Tests
             var overrides = new[]
             {
                 new StylePropertyTransition("opacity", durationSec: 0.15f),
-                new StylePropertyTransition("scale"),
+                new StylePropertyTransition("scale", easing: EasingMode.EaseOut),
             };
             Assume.That(element.panel, Is.Not.Null, "Precondition: the element is on a real panel");
 
@@ -94,12 +94,14 @@ namespace Velvet.Tests
                 durationSec: 0.4f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
             EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
 
-            // Assert — the un-overridden "scale" duration falls back to the top-level DurationSec (0.4f = 400ms),
-            // behind the "all" entry that carries it too.
+            // Assert — "scale" names no duration and runs 300ms rather than the top-level 400ms the "all" entry
+            // carries, as a value's own transition replaces the enclosing one in Framer.
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 400f }).Within(1e-3f));
+            Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 300f }).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the native transition list this case reads, kept by naming a duration
+        // on an entry that would otherwise run its value on Framer's default transition off that list.
         [Test]
         public void Given_ATopLevelDelayAndAnOverrideWithNoDelay_When_Resolved_Then_TheAllEntryKeepsTheTopLevelDelay()
         {
@@ -107,7 +109,7 @@ namespace Velvet.Tests
             // the "all" entry.
             var element = MountOnRealPanel();
             var scheduler = new StyleAnimationScheduler();
-            var overrides = new[] { new StylePropertyTransition("opacity", delaySec: 0f) };
+            var overrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.4f, delaySec: 0f) };
             Assume.That(element.panel, Is.Not.Null, "Precondition: the element is on a real panel");
 
             // Act

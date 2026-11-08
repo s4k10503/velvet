@@ -434,13 +434,15 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { UssEasing.Evaluate(EasingMode.EaseIn, (float)(2 * FrameSec)), 1f }).Within(1e-6f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_ATweenWithTwoOverridesNamingOpacity_When_TheClockStepsAFrame_Then_TheLaterOneTimesIt()
         {
             // Arrange
             var clock = new HeldMotionClock();
-            var element = OverriddenTween(clock, new StylePropertyTransition("opacity", durationSec: 0.25f),
-                new StylePropertyTransition("opacity", durationSec: 0.5f));
+            var element = OverriddenTween(clock, new StylePropertyTransition("opacity", durationSec: 0.25f, easing: EasingMode.Linear),
+                new StylePropertyTransition("opacity", durationSec: 0.5f, easing: EasingMode.Linear));
 
             // Act
             var values = OpacityAndTranslateAfterAFrame(clock, element);
@@ -449,12 +451,14 @@ namespace Velvet.Tests
             Assert.That(values, Is.EqualTo(new[] { (float)(2 * FrameSec), 1f }).Within(1e-5f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_ATweenWithAnOverrideNamingAll_When_TheClockStepsAFrame_Then_ItTimesEveryProperty()
         {
             // Arrange
             var clock = new HeldMotionClock();
-            var element = OverriddenTween(clock, new StylePropertyTransition("all", durationSec: 0.5f));
+            var element = OverriddenTween(clock, new StylePropertyTransition("all", durationSec: 0.5f, easing: EasingMode.Linear));
 
             // Act
             var values = OpacityAndTranslateAfterAFrame(clock, element);
@@ -463,6 +467,8 @@ namespace Velvet.Tests
             Assert.That(values, Is.EqualTo(new[] { (float)(2 * FrameSec), 2f }).Within(1e-5f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_ATweenWithAnOverrideNamingTheShorthandOfItsLength_When_TheClockStepsAFrame_Then_ItTimesTheLonghand()
         {
@@ -473,7 +479,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear,
-                PropertyOverrides = new[] { new StylePropertyTransition("padding", durationSec: 0.5f) },
+                PropertyOverrides = new[] { new StylePropertyTransition("padding", durationSec: 0.5f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayVariantEnter(element, new[] { "pl-[0px]" }, new[] { "pl-[64px]" }, config);
 
@@ -485,6 +491,8 @@ namespace Velvet.Tests
             Assert.That(element.style.paddingLeft.value.value, Is.EqualTo(2f).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         // The override's delay is shorter than the top-level one, and neither is zero, so the tick starts on the
         // override's delay and the top-level one is counted from there.
         [Test]
@@ -497,7 +505,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear, DelaySec = (float)(8 * FrameSec),
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec)) },
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec), durationSec: 1f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
                 new[] { "opacity-100", "translate-x-[64px]" }, config);
@@ -512,6 +520,8 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { (float)(5 * FrameSec), 1f }).Within(1e-5f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_ATweenWhoseOpacityOverrideHasAShorterDelay_When_TheClockStepsTwoFramesPastThatDelay_Then_OpacityHasMovedTwoFrames()
         {
@@ -522,7 +532,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear, DelaySec = (float)(8 * FrameSec),
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec)) },
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec), durationSec: 1f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
 
@@ -703,6 +713,8 @@ namespace Velvet.Tests
             element.style.width.value.value / 64f,
         };
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_ATweenWhoseOverrideNamesAllOfEveryChannelKind_When_TheClockStepsAFrame_Then_EachMovesOnTheOverride()
         {
@@ -713,7 +725,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear,
-                PropertyOverrides = new[] { new StylePropertyTransition("all", durationSec: 0.5f) },
+                PropertyOverrides = new[] { new StylePropertyTransition("all", durationSec: 0.5f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayVariantEnter(element, s_gonePose, s_restPose, config);
 
@@ -797,6 +809,8 @@ namespace Velvet.Tests
                 Is.EqualTo(0.75f + 0.25f * (float)((FrameSec + 0.0625) / 0.25)).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         // A quarter of the way out of the override's two seconds the opacity is at 0.75, and the cancel shortens the
         // override's duration to half a second, not the top-level second to a quarter.
         [Test]
@@ -809,7 +823,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 2f) },
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 2f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
             Step(clock, 0.5);
@@ -822,6 +836,8 @@ namespace Velvet.Tests
             Assert.That(element.style.opacity.value, Is.EqualTo(0.75f + 0.25f * (float)(FrameSec / 0.5)).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         // The forward play's override ran to two seconds; the reversal ends with its own half second.
         [Test]
         public void Given_ATweenExitWhoseOpacityOverrideIsLonger_When_ItIsCancelledAQuarterOfTheWayOut_Then_TheReversalCompletesOnlyOnceItsShortenedDurationHasRun()
@@ -833,7 +849,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear, ExitFromClass = "opacity-100", ExitToClass = "opacity-0",
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 2f) },
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 2f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayExit(element, config, onComplete: null, restoreFromOnCancel: true);
             Step(clock, 0.5);
@@ -903,6 +919,8 @@ namespace Velvet.Tests
             Assert.That(new[] { atOverrideEnd, completions }, Is.EqualTo(new[] { 0, 1 }));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_ATweenWhoseOpacityOverrideHasALongerDelay_When_TheClockStepsPastIt_Then_OpacityStartsOnlyThen()
         {
@@ -913,7 +931,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear,
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec)) },
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: (float)(4 * FrameSec), durationSec: 1f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
                 new[] { "opacity-100", "translate-x-[64px]" }, config);
@@ -927,7 +945,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ATweenWithADelayAndAnOverrideNamingNone_When_TheClockStepsAFrameIntoIt_Then_TheOverrideWaitedTheDelayToo()
+        public void Given_ATweenWithADelayAndAnOverrideNamingNone_When_TheClockStepsAFrameIntoIt_Then_TheOverrideStartedWithThePlay()
         {
             // Arrange
             var clock = new HeldMotionClock();
@@ -936,7 +954,7 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 1f, Easing = EasingMode.Linear, DelaySec = (float)(4 * FrameSec),
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.5f) },
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.5f, easing: EasingMode.Linear) },
             };
             _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
                 new[] { "opacity-100", "translate-x-[64px]" }, config);
@@ -945,9 +963,10 @@ namespace Velvet.Tests
             // Act
             Step(clock, FrameSec);
 
-            // Assert — both a frame in, opacity on its half second.
+            // Assert — translate a frame past the play's delay, opacity five frames into its half second, as Framer
+            // hands a value's own transition no delay of the play's.
             Assert.That(new[] { element.style.opacity.value, element.style.translate.value.x.value },
-                Is.EqualTo(new[] { (float)(2 * FrameSec), 1f }).Within(1e-5f));
+                Is.EqualTo(new[] { (float)(10 * FrameSec), 1f }).Within(1e-5f));
         }
 
         // A zero duration lands at the end of the entry's delay, as UI Toolkit lands such an entry.
@@ -1218,6 +1237,215 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(new[] { pastTopLevel, completions }, Is.EqualTo(new[] { 0, 1 }));
+        }
+
+        // A play whose own delay is eight frames and whose opacity entry names four: opacity moves from four frames
+        // in, as Framer starts each value at its own delay, and the rest waits out the play's eight.
+        private static StyleTransitionConfig ShorterEntryDelay(TransitionType type) => new()
+        {
+            Type = type, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            DelaySec = (float)(8 * FrameSec),
+            PropertyOverrides = new[]
+            {
+                new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: (float)(4 * FrameSec)),
+            },
+        };
+
+        private float OpacityTwoFramesPastFourFrameDelay(StyleTransitionConfig config)
+        {
+            var clock = new HeldMotionClock();
+            var element = OnPanel("earlier");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" }, config);
+            HeldTicks(10);
+            Step(clock, 4 * FrameSec);
+            Step(clock, 2 * FrameSec);
+            return element.style.opacity.value;
+        }
+
+        [Test]
+        public void Given_ABezierPlayWhoseOpacityEntryHasAShorterDelay_When_TheClockStepsTwoFramesPastIt_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange
+            var config = ShorterEntryDelay(TransitionType.Bezier);
+
+            // Act
+            var opacity = OpacityTwoFramesPastFourFrameDelay(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWhoseOpacityEntryHasAShorterDelay_When_TheClockStepsTwoFramesPastIt_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange
+            var config = ShorterEntryDelay(TransitionType.Spring);
+
+            // Act
+            var opacity = OpacityTwoFramesPastFourFrameDelay(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ABezierPlayWhoseTranslateWaitsItsOwnDelay_When_AnEarlierEntryHasStartedTheDriver_Then_TranslateHasNotMoved()
+        {
+            // Arrange — the opacity entry starts the driver four frames before the play's own delay ends.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("waiting");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" }, ShorterEntryDelay(TransitionType.Bezier));
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 6 * FrameSec);
+
+            // Assert — opacity has moved, so the driver runs; translate waits for the eighth frame.
+            Assert.That(element.style.opacity.value > 0f ? element.style.translate.value.x.value : float.NaN, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWhoseTranslateEntryNamesOnlyADelay_When_TheClockStepsATenthOfASecond_Then_TranslateIsOnTheTransformSpring()
+        {
+            // Arrange — the entry names no timing, so translate runs on Framer's 500 / 25 spring, not the play's.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("sprung");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring,
+                PropertyOverrides = new[] { new StylePropertyTransition("translate", delaySec: 0f) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[64px]" }, config);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 0.1);
+
+            // Assert
+            Assert.That(element.style.translate.value.x.value,
+                Is.EqualTo(MotionSpringDriver.SampleSpring(0f, 64f, 1f, 0f, 0.1, (500f, 25f, 1f), null, 10f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABezierPlayWhoseOpacityEntryNamesOnlyADelay_When_HalfOfThreeTenthsOfASecondPasses_Then_OpacityIsOnTheDefaultEase()
+        {
+            // Arrange — the entry names no timing, so opacity runs Framer's 0.3 s cubic-bezier(0.25, 0.1, 0.35, 1).
+            var clock = new HeldMotionClock();
+            var element = OnPanel("eased");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: 0f) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 0.15);
+
+            // Assert
+            Assert.That(element.style.opacity.value,
+                Is.EqualTo(CubicBezierEvaluator.Evaluate(0.25f, 0.1f, 0.35f, 1f, 0.5f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ATweenOnThePanelsClockWhoseEntryNamesNoTiming_When_Started_Then_TheDriverPlaysIt()
+        {
+            // Arrange — UI Toolkit's transition can run neither the spring nor the ease such an entry takes.
+            var element = OnPanel("routed");
+            _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0.4f, PropertyOverrides = new[] { new StylePropertyTransition("translate") },
+            };
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[64px]" }, config);
+
+            // Assert
+            var enters = (System.Collections.IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .GetValue(_scheduler);
+            var pending = enters.Contains(element) ? enters[element] : null;
+            Assert.That(pending?.GetType().GetField("Bezier")?.GetValue(pending), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_ABezierPlayWithADelayAndAnOpacityEntryNamingNone_When_TheClockStepsTwoFrames_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange — the entry names no delay, so opacity starts with the play rather than after its eight frames.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("undelayed");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                DelaySec = (float)(8 * FrameSec),
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" }, config);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 2 * FrameSec);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ATweenOfNoDurationWhoseEntryNamesNoTiming_When_Started_Then_TheDriverPlaysIt()
+        {
+            // Arrange — the play's own timing lands at once, but translate runs Framer's default spring after 0.1 s.
+            var element = OnPanel("zero");
+            _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0f, PropertyOverrides = new[] { new StylePropertyTransition("translate", delaySec: 0.1f) },
+            };
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[64px]" }, config);
+
+            // Assert
+            var enters = (System.Collections.IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .GetValue(_scheduler);
+            var pending = enters.Contains(element) ? enters[element] : null;
+            Assert.That(pending?.GetType().GetField("Bezier")?.GetValue(pending), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_APlayHandedABeforeChildrenWait_When_ItsOpacityEntryDelayHasRunAfterIt_Then_OpacityHasMovedATenth()
+        {
+            // Arrange — a 0.6 s wait above, which Framer sequences ahead of the play, then the entry's own 0.1 s.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("waited");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: 0.1f),
+                },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config,
+                additionalDelaySec: 0.6f, waitSec: 0.6f);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 0.8);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.1f).Within(1e-4f));
         }
     }
 }

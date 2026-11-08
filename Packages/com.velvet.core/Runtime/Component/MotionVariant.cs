@@ -25,8 +25,10 @@ namespace Velvet
         /// <see cref="MotionNode.Exit"/> names it. The destination pose supplies it whether or not it applies
         /// a class.
         /// Null falls back to the enclosing <c>V.Motion</c>'s own
-        /// <c>transition:</c> — itself <see cref="StyleTransition"/>'s <c>Fade</c> preset when the call site
-        /// left that out. Same delegate-outward shape as <see cref="AnimationSequenceStep.Transition"/>,
+        /// <c>transition:</c>. Where the call site gave that no transition, duration or easing, and where a config
+        /// sets nothing but <see cref="StyleTransitionConfig.DelaySec"/>, the repeat options and the
+        /// child-orchestration knobs, each value takes Framer Motion's default transition for it, a spring for a
+        /// transform and a 0.3 s ease for opacity, colours and lengths, after that delay. Same delegate-outward shape as <see cref="AnimationSequenceStep.Transition"/>,
         /// without its carry-forward from the previous step: a variant map has no order to carry along.
         /// The child-orchestration knobs (<see cref="StyleTransitionConfig.StaggerChildrenSec"/>,
         /// <see cref="StyleTransitionConfig.DelayChildrenSec"/>, <see cref="StyleTransitionConfig.When"/>)

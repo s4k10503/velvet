@@ -25,9 +25,20 @@ namespace Velvet
             var end = 0.0;
             foreach (var entry in config.PropertyOverrides ?? System.Array.Empty<StylePropertyTransition>())
             {
-                end = System.Math.Max(end, (entry.DelaySec ?? 0f) + System.Math.Max(0f, entry.DurationSec ?? config.DurationSec));
+                end = System.Math.Max(end, entry.EndAfterSec(config.DelaySec));
             }
             return end;
+        }
+
+        private static double BezierEndSec(StyleTransitionConfig config, string[]? fromClasses, string[]? toClasses,
+            MotionSlotContext? context)
+        {
+            var state = BezierTweenDriver.WithOverrides(
+                BezierTweenDriver.Create(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
+                    config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, config.DurationSec,
+                    MotionRepeat.Of(config)),
+                config.PropertyOverrides, config.DelaySec);
+            return state == null ? 0.0 : state.EndSec + StylePropertyTransition.EarliestAfterSec(config.PropertyOverrides, config.DelaySec);
         }
 
         // context: what the play is planned against (StyleAnimationScheduler.SlotContext), so the span counts only
@@ -39,27 +50,31 @@ namespace Velvet
             {
                 case TransitionType.Bezier:
                     // A zero duration lands the pose at once, as a play with no channel does, so its repeat delay
-                    // never runs.
-                    return config.DurationSec > 0f
-                        && !MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context).IsEmpty
-                            ? BezierSpanSec(config)
-                            : 0.0;
+                    // never runs. The built state measures an entry's default spring over the channel's own travel.
+                    return config.DurationSec > 0f || config.DurationSec == 0f && StylePropertyTransition.AnyAnimates(config.PropertyOverrides)
+                        ? BezierEndSec(config, fromClasses, toClasses, context)
+                        : 0.0;
                 case TransitionType.Spring:
-                    // An instant spring ends where its delay does.
+                    // An instant spring ends where its delay does, its entries aside.
+                    if (config.SpringIsInstant)
+                    {
+                        return OverridesEndSec(config);
+                    }
                     return !config.SpringIsInstant
                         && SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)
-                        ? MotionSpringDriver.SpanSec(
+                        ? StylePropertyTransition.EarliestAfterSec(config.PropertyOverrides, config.DelaySec)
+                        + MotionSpringDriver.SpanSec(
                             MotionSpringDriver.WithOverrides(
                                 MotionSpringDriver.Create(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
                                     config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config), config.SpringSettleSec,
                                     perValueDefaults: config.PerValueDefaults),
-                                config.PropertyOverrides, config.Easing, config.DurationSec),
+                                config.PropertyOverrides, config.DelaySec),
                             MotionRepeat.Of(config))
                         : 0.0;
                 default:
-                    return StyleAnimationScheduler.TweensOnSwap(config)
+                    return System.Math.Max(OverridesEndSec(config), StyleAnimationScheduler.TweensOnSwap(config)
                         ? MotionRepeat.Of(config).TotalSec(config.DurationSec)
-                        : config.DurationSec;
+                        : config.DurationSec);
             }
         }
     }

@@ -732,6 +732,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpringOnTheFramerDefaults_When_ScaleYIsPlanned_Then_ItRunsOnTheScaleSpring()
+        {
+            // Arrange
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-x-100", "scale-y-50" }, new[] { "scale-x-100", "scale-y-100" });
+
+            // Act
+            var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 10f, mass: 1f, perValueDefaults: true);
+
+            // Assert
+            Assert.That(state?.ScaleY?.FixedPhysics, Is.EqualTo(((float, float)?)(550f, 30f)));
+        }
+
+        [Test]
         public void Given_ATweenExitOnAPinnedPopLayoutGhost_When_Started_Then_TheDriverShowsItsFromValue()
         {
             // Arrange

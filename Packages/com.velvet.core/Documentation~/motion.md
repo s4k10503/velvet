@@ -301,9 +301,19 @@ new StyleTransitionConfig
 ```
 
 Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"translate"`,
-`"scale"`, `"rotate"`, `"background-color"`, …). Null fields fall back to the enclosing config, and a
-property no override names animates on the enclosing config's timing, as a value missing from Framer's
-per-value map takes the default transition.
+`"scale"`, `"rotate"`, `"background-color"`, …). An entry replaces the enclosing config for its property,
+as Framer's `getValueTransition` hands a value its own transition whole: a null `DelaySec` starts the value with
+the play rather than after the enclosing config's `DelaySec`, a stagger the play waits still counting, as Framer's
+`animateTarget` hands it only the orchestration delay, which a named `DelaySec` replaces, a `BeforeChildren` or
+`AfterChildren` wait still counting since Framer sequences it ahead of the play; and a null `DurationSec` or
+`Easing` takes 0.3 s and an
+ease-out, Framer's keyframes defaults, not the enclosing config's. An entry naming neither is no transition, as
+`isTransitionDefined` reads one, so its value takes the default Framer picks for it (*Transition semantics*), after
+the entry's delay and once whatever the play repeats. A `Tween` holding such an entry, or a play whose own
+`DurationSec` is 0 holding an entry that animates, plays on the per-frame driver a `Bezier` plays on, the play's own
+curve landing at once. Where an entry's delay is shorter than the play's, the entry's value starts then and the rest
+wait out the play's own; a `Spring`'s or `Bezier`'s reversal starts every value at once. A property no override names animates on the
+enclosing config's timing.
 Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
@@ -350,8 +360,8 @@ new StyleTransitionConfig
   spring as far as the time it covers.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - `ExitSpring` (`new SpringPhysics(stiffness, damping, mass)`) gives an exit physics of its own, and
-  `PropertyOverrides` gives the channels it names a tween of its own, each entry's delay, duration and easing (the
-  config's where it names none), which that channel plays once whatever the play repeats.
+  `PropertyOverrides` gives the channels it names each entry's timing in place of the spring (*Per-property
+  transition overrides*), which that channel plays once whatever the play repeats.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
@@ -534,9 +544,8 @@ algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` 
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
 one-curve-per-direction contract: `ExitBezier` gives an exit its own curve (`new BezierCurve(x1, y1, x2, y2)`),
-and `PropertyOverrides` gives the channels it names a timing of their own, each entry's delay, duration and easing
-(its curve where it names no easing, and the play's where it names no duration), which that channel plays once
-whatever the play repeats. Defaults to Tailwind's own
+and `PropertyOverrides` gives the channels it names each entry's timing in place of the curve (*Per-property
+transition overrides*), which that channel plays once whatever the play repeats. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
 with the `ease-in-out` keyword. `BezierX1` / `BezierX2` accept any finite value, as Motion's `cubicBezier` does; when either lies outside
 `[0,1]` the curve parameter for a given progress is found by bisection over `[0,1]`. A non-finite coordinate falls
@@ -696,7 +705,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   USS transition by for that `EasingMode`, a bezier by its control points, each after `DelaySec`, and a
   zero duration lands the move at once. A Motion whose caller names no `transition`, `duration`,
   `easing` or `delay` moves on Framer's default layout transition, a 0.45 s tween eased by
-  `cubic-bezier(0.4, 0, 0.1, 1)`. A transition the scheduler rejects lands the move at once, its warning
+  `cubic-bezier(0.4, 0, 0.1, 1)`. One given a `duration`, `easing` or `delay` and no `transition` moves on a tween
+  of those, 0.3 s on an ease-out where they name neither: Framer's projection hands its transition on with a
+  velocity, which makes a delay alone a transition it reads. A transition the scheduler rejects lands the move at once, its warning
   logged where the move settles rather than on every render.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
@@ -892,8 +903,8 @@ A step is exactly one of:
 - **`AnimationSequenceStep.To(label, transition?, holdSec?)`** -- activates `label` on the sequence's
   coordinator Motion. Its effect commits the moment the walker *arrives* at the step (not once its hold
   elapses) -- "holds on this step" means the label is already active and the cursor is waiting before
-  moving to the next one. `transition` reuses the most recent non-null transition earlier in the
-  sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
+  moving to the next one. A step that omits `transition`, or names one setting nothing but its delay, repeat
+  and orchestration, plays 0.3 s on an ease-out, as a segment of Framer Motion's sequence does; `holdSec`
   defaults to that transition's `DurationSec + DelaySec` for a tween or a bezier, lengthened by a
   `Bezier` or `Spring` repeat (see *Repeating a play*). A `Spring`-typed step holds for its
   `DelaySec` plus the duration Framer Motion's sequence gives the same spring (clamped to zero when
@@ -969,8 +980,8 @@ but the zero spring duration the `To` bullet above names, and not the same insta
   values on the channels they name, and every value the cancel held that is still on, whatever its channel,
   comes off once the reseed commits.
 
-A `Tween` play -- the default `Type`, and that of `StyleTransition.Fade`, which a sequence takes until a step
-names a transition -- follows the controls on any clock: on a sequence's playback it is played by the per-frame
+A `Tween` play -- the default `Type`, and that of the transition a step naming none takes -- follows the
+controls on any clock: on a sequence's playback it is played by the per-frame
 driver a `Bezier` plays on, eased by the curve UI Toolkit's transition would ease it by
 ([Clocks](#clocks-holding-motion-with-game-time)). A `Tween` the element starts from outside the sequence, an exit
 included, is not on the playback, and on the default clock it stays UI Toolkit's own transition unless it
@@ -1024,15 +1035,39 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   Two or more run through in turn, evenly spaced over the transition; one is a value to head for from what the element
   shows when that segment starts. They are written as inline styles, over the element's classes, and stay at the last
   keyframe when the animation ends.
-- **Transition.** A `StyleTransitionConfig` per call or segment, 0.3 s when null. `Tween` runs `DurationSec` on `Easing`,
-  `Bezier` on its control points, and `Spring` as the spring it describes when the values are one or two keyframes (more
-  play as a tween of `DurationSec`). `DelaySec` delays the segment; `Repeat` and `PropertyOverrides` are not read here.
+- **Transition.** A `StyleTransitionConfig` per call or segment. `Tween` runs `DurationSec` on `Easing`, `Bezier` on its
+  control points, and `Spring` as the spring it describes. A `Tween` or `Bezier` eases its keyframes pair by pair, each
+  pair over an even share of the duration, as Framer's keyframes generator eases them. `DelaySec` delays the segment.
+- **Per-value transitions.** A `PropertyOverrides` entry naming `"opacity"`, `"translate"` (`X` and `Y`),
+  `"scale"`, `"rotate"` or `"all"` times that value, the last entry naming it winning. A single call takes the entry
+  in place of the transition, as Framer's `getValueTransition` hands it, so an entry naming no `DurationSec` and no
+  `Easing` takes the default below; an entry's `DelaySec` of 0, as one naming none, takes the call's, as Framer's
+  `animateMotionValue` reads `valueTransition.delay || transition.delay`. A sequence segment lays the entry over the
+  segment's transition, as Framer's sequence does.
+- **No transition.** A single call whose transition is null, or names nothing as *Transition semantics* below reads
+  one, takes Framer's `getDefaultTransition` for each value: more than two keyframes run 0.8 s on an ease-out; `X`, `Y`
+  and `RotateDeg` the spring of 500 stiffness and 25 damping, and `Scale` the one of 550 stiffness and 30 damping,
+  critically damped where it heads for 0, each with a rest speed of 10; `Opacity` a 0.3 s ease of
+  `cubic-bezier(0.25, 0.1, 0.35, 1)`. A sequence segment takes no per-value default, as Framer's sequence does not: it
+  runs 0.3 s on an ease-out. A `Tween` or `Bezier` naming no `DurationSec` runs 0.3 s too.
+- **Springs.** A `Spring` on a single call runs from the first keyframe to the last over the value's own travel, whatever the
+  number of keyframes, as Framer's spring does in a production build (a development build of Framer raises an
+  invariant past two). A sequence segment of one or two keyframes becomes an easing sampled from the spring, measured
+  over the segment's travel, or over 100 where it gives one keyframe, and ends at 20 s if it has not come to rest;
+  one of more than two keyframes plays as a tween of `DurationSec` on `Easing`, as Framer's sequence does. A single
+  call's spring ends where it comes to rest, however long that takes, as Framer's JSAnimation ends there.
+- **Repeat.** `Repeat`, `RepeatType` and `RepeatDelaySec` repeat each value as Framer's `repeat`, `repeatType` and
+  `repeatDelay` do: `RepeatDelaySec` holds a pass's last value before the next, and no wait follows the last pass. On a
+  single call `Reverse` plays every second pass backwards in time and `Mirror` runs it from the last keyframe back to
+  the first on the same curve. A sequence segment repeats as Framer's sequence writes a repeat out: `Reverse` there
+  plays as `Mirror`, but for a spring, whose easing it reverses, and a count of 20 or more is not read.
 - **Placement.** `AnimateAt` is Framer's `at`: after the previous segment ends by default, `AnimateAt.Time(s)` on the
   timeline, `AnimateAt.WithPrevious` (`"<"`) at the previous segment's start, `AnimateAt.Offset(s)` (`"+0.5"` /
   `"-0.2"`) from the previous segment's end.
 - **Controls.** `AnimateControls` carries `Play`, `Pause`, `Speed`, `TimeSec`, `IsFinished`, `Then(callback)`, the
   awaitable `Finished`, `Stop()` (leave the values where they are) and `Cancel()` (put each begun value back at its first
-  keyframe). `Finished` is cancelled by either. A negative or non-finite `Speed` throws.
+  keyframe). After either, `Finished` never settles and no `Then` callback runs, as Framer's `finished` promise neither
+  resolves nor rejects then. A negative or non-finite `Speed` throws.
 - **Lifetime.** The animations step on the mount's frames and stop, as `Stop()` does, when the component unmounts.
 
 Not offered: a stagger option, and values beyond the five above.
@@ -1076,8 +1111,8 @@ config's timing as an inline transition for the swap and release it on completio
 integrate physically instead.
 
 **Which config a swap takes is decided by the pose it is animating INTO.** A `MotionVariant` naming
-its own `transition` supplies it; a pose that names none takes the Motion's `transition:`, which is
-itself the `Fade` preset when the call site left it out. That is the direction each of the three
+its own `transition` supplies it; a pose that names none takes the Motion's `transition:`. A transition
+that names nothing runs Framer's default for each value (below). That is the direction each of the three
 plays reads: a mount enter takes `variants[animate]`, a runtime label change takes the new label's
 pose, and an `AnimatePresence` exit takes `variants[exit]` — the pose swapped INTO, not the one left
 behind. Framer expresses the same thing as a `transition` key inside a variant object and inside
@@ -1108,9 +1143,17 @@ V.AnimatePresence(children: new VNode[]
 Three consequences worth knowing:
 
 - **Every Motion animates by default.** `V.Motion` without an explicit `transition` is `Fade` for the preset enter and
-  exit of a Motion with no variants, and for a variant play it runs each value on the transition Framer Motion picks for
-  its type: a spring (500 stiffness, 25 damping) for translate and rotate, a stiffer one (550, 30) for scale, and a
-  0.3 s ease for opacity, colours and lengths. A value neither covers lands with the swap, as on any spring. Pass
+  exit of a Motion with no variants. A variant play on a transition that names nothing runs each value on the
+  transition Framer Motion picks for its type: a spring (500 stiffness, 25 damping) for translate, rotate and skew, a
+  stiffer one (550 stiffness, 30 damping, critically damped where it heads for 0) for scale, and a 0.3 s ease of
+  `cubic-bezier(0.25, 0.1, 0.35, 1)` for opacity, colours and lengths. A transition names nothing, as Framer's
+  `isTransitionDefined` reads one, where the call site gives `V.Motion` no `transition`, `duration` or `easing`, or a
+  config sets no knob but `DelaySec`, `Repeat`, `RepeatType`, `RepeatDelaySec`, `StaggerChildrenSec`,
+  `StaggerDirection`, `DelayChildrenSec` and `When`; the defaults then run after that delay, on that repeat. A config
+  naming any other knob and no `DurationSec` runs 0.3 s, Framer's default duration, and so does `V.Motion` given a
+  `duration` or an `easing` and no `transition`: a tween of what it names, on 0.3 s and an ease-out where it names
+  neither, in place of the `Fade` preset a Motion with no variants takes. A value neither covers lands with
+  the swap, as on any spring. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
   means exactly that pose animates and the rest are instant. Whether a removal animates is
