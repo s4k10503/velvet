@@ -200,9 +200,9 @@ namespace Velvet.Tests
             Submit(router, null, PostToItems);
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0")?.Message, Is.EqualTo(
-                "You made a POST request to \"/items\" but did not provide an `action` for route \"0\", so there "
-                + "is no way to handle the request."));
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0") as ErrorResponse)?.Detail, Is.EqualTo(
+                "Error: You made a POST request to \"/items\" but did not provide an `action` for route \"0\", so "
+                + "there is no way to handle the request."));
         }
 
         [Test]
@@ -563,10 +563,8 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?tags=a%2Cb"));
         }
 
-        // GREEN_ON_BASE(characterization): an ISearchParams body was the one get body the base accepted; this pins
-        // that the new encoding leaves its grouping of repeated keys as the base wrote it.
         [Test]
-        public void Given_AGetSubmissionOfASearchParams_When_Submitted_Then_ItsRepeatedKeysAreGrouped()
+        public void Given_AGetSubmissionOfASearchParams_When_Submitted_Then_ItsEntriesKeepTheirOrder()
         {
             // Arrange
             var router = ItemsRouter("/other", Created);
@@ -579,7 +577,7 @@ namespace Velvet.Tests
             Submit(router, query, new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=1&a=3&b=2"));
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=1&b=2&a=3"));
         }
 
         [Test]
@@ -734,7 +732,8 @@ namespace Velvet.Tests
             Submit(router, new ThrowingBody(), new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, Is.EqualTo("Unable to encode submission body"));
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Detail,
+                Is.EqualTo("Error: Unable to encode submission body"));
         }
 
         private sealed class ThrowingBody
@@ -753,8 +752,9 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (router.CurrentLocation!.Path, router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, _log.Contains("action")),
-                Is.EqualTo(("/items", "Unable to encode submission body", false)));
+                (router.CurrentLocation!.Path, (router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Detail,
+                    _log.Contains("action")),
+                Is.EqualTo(("/items", (object)"Error: Unable to encode submission body", false)));
         }
 
         [Test]
@@ -780,8 +780,8 @@ namespace Velvet.Tests
             Submit(router, "lamp", new SubmitOptions { Method = "head", Action = "/items" });
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, _log.Contains("action")),
-                Is.EqualTo(("Invalid request method \"HEAD\"", false)));
+            Assert.That(((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Detail, _log.Contains("action")),
+                Is.EqualTo(((object)"Error: Invalid request method \"HEAD\"", false)));
         }
 
         [Test]
@@ -909,7 +909,7 @@ namespace Velvet.Tests
                 .GetAwaiter().GetResult();
 
             // Assert
-            Assert.That((router.CurrentLocation!.Path, string.Join(",", _log)), Is.EqualTo(("/?index=5&flag=", "layout")));
+            Assert.That((router.CurrentLocation!.Path, string.Join(",", _log)), Is.EqualTo(("/?flag=&index=5", "layout")));
         }
 
         [Test]

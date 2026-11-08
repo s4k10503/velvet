@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Velvet
 {
@@ -39,73 +40,122 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Read-only view over URL query parameters that preserves every value of a repeated key. Enumeration
-    /// yields distinct keys in insertion order.
+    /// Read-only view over URL query parameters, the web's <c>URLSearchParams</c>: an ordered list of name/value
+    /// entries in which a repeated name keeps each entry where it was added. Enumeration yields the entries in
+    /// order, as <c>searchParams.entries()</c> does.
     /// </summary>
-    public interface ISearchParams : IEnumerable<string>
+    public interface ISearchParams : IEnumerable<KeyValuePair<string, string>>
     {
-        /// <summary>Number of distinct keys.</summary>
-        int Count { get; }
+        /// <summary>The number of entries, as <c>searchParams.size</c>.</summary>
+        int Size { get; }
 
-        /// <summary>Distinct keys in insertion order.</summary>
+        /// <summary>Every entry's name, in order and with repeats, as <c>searchParams.keys()</c>.</summary>
         IReadOnlyList<string> Keys { get; }
 
-        bool Has(string key);
+        /// <summary>Every entry's value, in order, as <c>searchParams.values()</c>.</summary>
+        IReadOnlyList<string> Values { get; }
+
+        /// <summary>
+        /// Whether an entry is named <paramref name="key"/>, and holds <paramref name="value"/> when one is
+        /// given, as <c>searchParams.has(name, value)</c>.
+        /// </summary>
+        bool Has(string key, string? value = null);
 
         /// <summary>Returns the first value for a key, or <c>null</c> when the key is absent.</summary>
         string? Get(string key);
 
-        /// <summary>Returns every value for a key in insertion order, or an empty list when absent.</summary>
+        /// <summary>Returns every value for a key in entry order, or an empty list when absent.</summary>
         IReadOnlyList<string> GetAll(string key);
     }
 
     /// <summary>
-    /// Mutable <see cref="ISearchParams"/> implementation that retains key insertion order.
+    /// Mutable <see cref="ISearchParams"/> with the methods of <c>URLSearchParams</c>. <see cref="ToString"/>
+    /// serializes it as <c>searchParams.toString()</c> does.
     /// </summary>
     public sealed class SearchParams : ISearchParams
     {
-        private readonly List<string> _keys = new();
-        private readonly Dictionary<string, List<string>> _values = new(StringComparer.Ordinal);
+        private List<KeyValuePair<string, string>> _entries = new();
 
         /// <summary>A new empty instance on each read, so <see cref="Append"/> on one reaches no other reader.</summary>
         public static SearchParams Empty => new();
 
         /// <inheritdoc />
-        public int Count => _keys.Count;
+        public int Size => _entries.Count;
 
         /// <inheritdoc />
-        public IReadOnlyList<string> Keys => _keys;
+        public IReadOnlyList<string> Keys => _entries.ConvertAll(entry => entry.Key);
 
-        /// <summary>
-        /// Appends a value for a key, preserving any value already stored under the same key.
-        /// </summary>
+        /// <inheritdoc />
+        public IReadOnlyList<string> Values => _entries.ConvertAll(entry => entry.Value);
+
+        /// <summary>Adds an entry after every other, as <c>searchParams.append(name, value)</c>.</summary>
         public void Append(string key, string value)
         {
             if (key == null) throw new ArgumentNullException(nameof(key));
-
-            if (!_values.TryGetValue(key, out var list))
-            {
-                list = new List<string>();
-                _values[key] = list;
-                _keys.Add(key);
-            }
-
-            list.Add(value ?? string.Empty);
+            _entries.Add(new KeyValuePair<string, string>(key, value ?? string.Empty));
         }
 
+        /// <summary>
+        /// Removes every entry named <paramref name="key"/>, or only those holding <paramref name="value"/> when
+        /// one is given, as <c>searchParams.delete(name, value)</c>.
+        /// </summary>
+        public void Delete(string key, string? value = null)
+            => _entries.RemoveAll(entry => entry.Key == key && (value == null || entry.Value == value));
+
+        /// <summary>
+        /// Puts <paramref name="value"/> in the first entry named <paramref name="key"/> and removes the others
+        /// of that name, or appends an entry when there is none, as <c>searchParams.set(name, value)</c>.
+        /// </summary>
+        public void Set(string key, string value)
+        {
+            if (key == null) throw new ArgumentNullException(nameof(key));
+            var first = _entries.FindIndex(entry => entry.Key == key);
+            if (first < 0)
+            {
+                Append(key, value);
+                return;
+            }
+            var kept = new List<KeyValuePair<string, string>>(_entries.Count);
+            for (var index = 0; index < _entries.Count; index++)
+            {
+                if (index == first)
+                {
+                    kept.Add(new KeyValuePair<string, string>(key, value ?? string.Empty));
+                }
+                else if (_entries[index].Key != key)
+                {
+                    kept.Add(_entries[index]);
+                }
+            }
+            _entries = kept;
+        }
+
+        /// <summary>
+        /// Orders the entries by name, comparing UTF-16 code units and keeping the entries of one name in their
+        /// order, as <c>searchParams.sort()</c>.
+        /// </summary>
+        public void Sort() => _entries = _entries.OrderBy(entry => entry.Key, StringComparer.Ordinal).ToList();
+
         /// <inheritdoc />
-        public bool Has(string key) => key != null && _values.ContainsKey(key);
+        public bool Has(string key, string? value = null)
+            => _entries.Exists(entry => entry.Key == key && (value == null || entry.Value == value));
 
         /// <inheritdoc />
         public string? Get(string key)
-            => key != null && _values.TryGetValue(key, out var list) && list.Count > 0 ? list[0] : null;
+        {
+            var index = _entries.FindIndex(entry => entry.Key == key);
+            return index < 0 ? null : _entries[index].Value;
+        }
 
         /// <inheritdoc />
         public IReadOnlyList<string> GetAll(string key)
-            => key != null && _values.TryGetValue(key, out var list) ? list : Array.Empty<string>();
+            => _entries.FindAll(entry => entry.Key == key).ConvertAll(entry => entry.Value);
+
+        /// <summary>The entries as <c>application/x-www-form-urlencoded</c>, with no leading <c>?</c>.</summary>
+        public override string ToString() => RouteQuery.FormUrlEncode(_entries);
 
         /// <inheritdoc />
-        public IEnumerator<string> GetEnumerator() => _keys.GetEnumerator();
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => _entries.GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }

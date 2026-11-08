@@ -8,7 +8,7 @@ namespace Velvet
 {
     internal static class RouteQuery
     {
-        internal static ISearchParams ParseQuery(string path)
+        internal static SearchParams ParseQuery(string path)
         {
             var result = new SearchParams();
             foreach (var pair in ParsePairs(path))
@@ -54,29 +54,13 @@ namespace Velvet
             return qIndex < 0 ? path : path.Substring(0, qIndex);
         }
 
-        internal static string BuildQuery(ISearchParams values)
+        // A query as React Router writes `?${searchParams}`: the entries in order through the
+        // application/x-www-form-urlencoded serializer, and no query at all for no entry.
+        internal static string BuildQuery(IEnumerable<KeyValuePair<string, string>> entries)
         {
-            if (values == null || values.Count == 0)
-            {
-                return string.Empty;
-            }
-
-            var parts = new List<string>(values.Count);
-            foreach (var key in values.Keys)
-            {
-                var escapedKey = Uri.EscapeDataString(key);
-                foreach (var value in values.GetAll(key))
-                {
-                    parts.Add($"{escapedKey}={Uri.EscapeDataString(value ?? string.Empty)}");
-                }
-            }
-            return "?" + string.Join("&", parts);
+            var encoded = FormUrlEncode(entries);
+            return encoded.Length == 0 ? string.Empty : "?" + encoded;
         }
-
-        // A submission's query, as React Router writes `?${searchParams}`: the pairs in the order given, unlike
-        // BuildQuery(ISearchParams), through the application/x-www-form-urlencoded serializer.
-        internal static string BuildQuery(IReadOnlyList<KeyValuePair<string, string>> pairs)
-            => pairs.Count == 0 ? string.Empty : "?" + FormUrlEncode(pairs);
 
         // URLSearchParams' toString: each name and value as UTF-8, a space as '+', the ASCII letters and digits
         // and '*', '-', '.', '_' as they are, and every other byte percent-escaped in upper case.

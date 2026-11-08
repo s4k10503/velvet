@@ -14,7 +14,27 @@
 - `NavigationState.FormEncType`, `NavigationState.Json` and `NavigationState.Text` report the submission in
   flight as React Router's `navigation` does.
 
+- `RouteLoaderContext.Request` is React Router's loader `request`: a GET `RouteRequest` with no body whose
+  `Url` is the location's path and query.
+- `ErrorResponse.Internal`, React Router's `internal`, is true on the responses the router makes.
+- `SearchParams.Set`, `Delete`, `Sort` and `ToString`, and `ISearchParams.Values`, as URLSearchParams has them.
+
 ### Changed
+
+- The router commits an `ErrorResponse` as React Router's `getInternalRouterError` makes one: 405
+  "Method Not Allowed" for a submission whose method no form takes and for one to a route with no action,
+  400 "Bad Request" for a body it cannot encode, where it committed an `InvalidOperationException`. Its
+  `Detail` is `"Error: "` and the message, the 404's included.
+- `ISearchParams` and `SearchParams` are URLSearchParams: entries keep the order they were added in, a
+  repeated name included, `Keys` names every entry, `Size` replaces `Count` and counts entries, and enumeration
+  yields the entries. A query is written as URLSearchParams writes itself, a space as `+`, by the
+  `Hooks.UseSearchParams` setter too.
+- A relative target's leading `..` counts only the matched routes that contribute a path, as React Router's
+  `getResolveToMatches` does, and a `..` after the first segment drops a URL segment rather than a route.
+- `V.Route` takes a route with neither `element` nor `redirectTo`, which renders its matched child route in
+  its place.
+- JavaScript's `String` of an object read as a plain one is `[object Object]` in a submission body, where the
+  object's own `ToString()` was written.
 
 - A route whose `Path` is `""` is no longer an index route: it matches its parent's path like any other path,
   with no index score and no `?index` targeting. Mark an index route with `index: true`.

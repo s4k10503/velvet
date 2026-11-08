@@ -71,7 +71,11 @@ where React Router's `<Outlet context>` lives too. The root Outlet takes none.
 ## Loaders
 
 A route's `loader` runs when the route matches, and `RouteDefinition.LoaderMode` decides how the
-navigation is sequenced against it.
+navigation is sequenced against it. Its `RouteLoaderContext.Request` is React Router's `request`, a GET
+`RouteRequest` with no body whose `Url` is the location's path and query, so a loader reads the search from it.
+
+A route with no `element` renders its matched child route in its place, as React Router renders the outlet,
+under the `V.Outlet` context it was itself rendered with.
 
 | Mode | What it does | React Router equivalent |
 |------|--------------|-------------------------|
@@ -218,12 +222,19 @@ router reads nothing from it. `V.Route` takes `id` and `handle` beside the other
 A navigation to a path no route matches commits, as React Router's data router does. The location becomes that
 path and takes a history entry, the loader data empties, and no guard, action or loader runs. The chain it holds
 is one route: the only top-level route, else the first that is an index route or has a null, empty or `/` path,
-else a route of no element. That
-route carries an `ErrorResponse` with status 404, `StatusText` `"Not Found"` and a `Detail` naming the path, as
-its error, so its `errorElement` renders in place of its `element` and `Hooks.UseRouteError` returns the
+else a route of no element. That route carries an `ErrorResponse` with status 404 and `StatusText` `"Not Found"`
+as its error, so its `errorElement` renders in place of its `element` and `Hooks.UseRouteError` returns the
 `ErrorResponse`; with no `errorElement` the default error element shows `404 Not Found`. A guard redirect to a
 path no route matches commits the same way. `Router.NavigateAsync` reports `NavigationResult.NotFound` for it,
 after the commit; a null path is the one case that commits nothing.
+
+The router makes an `ErrorResponse` as React Router's `getInternalRouterError` does: `Internal` is true, and
+`Detail` is the message as JavaScript writes an `Error`, "Error: " and the message, the message also being the
+`InnerException`'s. It makes one for a path no route matches (404 "Not Found", "No route matches URL" and the
+quoted path), a submission whose method no form takes (405 "Method Not Allowed", "Invalid request method" and
+the quoted method in upper case), a submission to a route with no action (405, a message naming the method, the
+path and the route's id), and a body that cannot be encoded (400 "Bad Request", "Unable to encode submission
+body").
 
 ## Route actions
 
@@ -250,12 +261,12 @@ a sequence of key/value pairs, tuples or two-element lists, a primitive, an enum
 `BigInteger`, whose string (an enum's name) parses as a string body does, and any other object, whose readable
 public properties, indexers aside, and then public fields it declares itself stand for a plain object's own
 enumerable ones, each in declaration order. A value is stringified as JavaScript's `String` does: `null` is
-`"null"`, a number has no culture, and a list is its elements joined by `,`. Strings, dictionaries, pair
-sequences and a `FormData` keep the order they were written in; an `ISearchParams` groups the values of a
-repeated key, as its interface does. A body that throws while it is read, or a sequence with an entry that is
-no pair, is one React Router cannot encode either. A refused `get`, and a body that cannot be encoded, run no
-action: the navigation commits "Unable to encode submission body" as the error of the leaf route, to the
-action's path with its query.
+`"null"`, a number has no culture, a list is its elements joined by `,`, an `ISearchParams` is its serialization,
+a `FormData` is `[object FormData]` and any other object read as a plain one is `[object Object]`; a C# value
+JavaScript has no type for, a `DateTime` say, is its invariant text. Every one of them keeps the order its
+entries were written in. A body that throws while it is read, or a sequence with an entry that is no pair, is
+one React Router cannot encode either. A refused `get`, and a body that cannot be encoded, run no action: the
+navigation commits the 400 above as the error of the leaf route, to the action's path with its query.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
   data as its query string, written as URLSearchParams writes itself: a space is `+`, and every byte but the
@@ -277,11 +288,11 @@ action's path with its query.
 - When the action returns, its result is keyed to its route and published at once, so a route already on
   screen reads it while every matched loader runs; the location then commits with it. The next navigation
   that commits clears it.
-- An action that throws, and a route with no action, commit the exception as that route's error, rendered
-  by the nearest `errorElement` as a loader's is; only the loaders above the route rendering it run, that
-  route keeps the data it held, and no action data commits.
-- Any other method runs no action: the navigation commits React Router's 405 ("Invalid request method") as
-  the error of the leaf route, as a failed action's is.
+- An action that throws commits the exception as that route's error, and a route with no action the 405
+  above, rendered by the nearest `errorElement` as a loader's is; only the loaders above the route rendering
+  it run, that route keeps the data it held, and no action data commits.
+- Any other method runs no action: the navigation commits the 405 above for it as the error of the leaf route,
+  as a failed action's is.
 - A mutation submitted to the location already committed replaces that history entry, unless its action
   fails or `Replace` says otherwise, as React Router's does.
 
@@ -304,7 +315,9 @@ navigate(-1);
   carries its state through `Proceed`. A guard redirect carries none, as a redirect in React Router creates a
   location of its own.
 - `Relative` chooses what a relative target resolves against. `RelativeRoutingType.Route`, the default, drops one
-  matched route for each `..`, anchored at the route level of the component that called the hook;
+  matched route for each leading `..`, anchored at the route level of the component that called the hook and
+  counting only the routes that contribute a path, as React Router's `getResolveToMatches` does — an index route
+  or a pathless layout is no level of its own — and the rest of the target resolves a URL segment at a time;
   `RelativeRoutingType.Path` drops one URL segment of the pathname of that same route for each, as React Router's
   `relative: "path"` does: from the layout `users/:id` at `/users/7/edit`, `".."` is `/users`. An absolute target
   ignores it.
@@ -319,6 +332,12 @@ navigate(-1);
 - `V.Link`, `V.NavLink` and `V.Navigate` take `state` and `relative` beside `replace`; `V.Navigate` redirects again
   when either changes. `V.NavLink` resolves its target
   with the same `relative` to decide whether it is active, and ignores the fragment of the target for that.
+
+`Hooks.UseSearchParams()` is `useSearchParams()`: the `ISearchParams` it returns is URLSearchParams, an
+ordered list of entries whose `Keys`, `Values`, `Size` and enumeration read each entry where it was added, a
+repeated name included, and `SearchParams` adds `Append`, `Set`, `Delete` and `Sort`. Its `ToString()`, and the
+query the setter navigates to, are written as URLSearchParams writes itself: a space is `+`, and every byte but
+the ASCII letters and digits and `*`, `-`, `.` and `_` is percent-escaped.
 
 A target may end in a `#fragment`. `RouterLocation.Path` holds the path and its query without it, `RouterLocation.Hash`
 holds it with its `#` (the empty string when there is none), and it takes no part in matching or in what a route sees.

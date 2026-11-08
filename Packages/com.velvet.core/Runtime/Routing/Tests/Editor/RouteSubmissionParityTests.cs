@@ -90,8 +90,8 @@ namespace Velvet.Tests
             Submit(router, new[] { 1, 2 }, new SubmitOptions { Method = "post", Action = "/items" });
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message,
-                Is.EqualTo("Unable to encode submission body"));
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Detail,
+                Is.EqualTo("Error: Unable to encode submission body"));
         }
 
         [Test]
@@ -105,6 +105,59 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLocation?.Path, Is.EqualTo("/items?q=a+b%7E*"));
+        }
+
+        [Test]
+        public void Given_APostToARouteWithNoAction_When_Submitted_Then_ItCommitsA405()
+        {
+            // Arrange
+            var router = BuildRouter("/items", Route("items"));
+
+            // Act
+            Submit(router, "a=1", new SubmitOptions { Method = "post" });
+
+            // Assert
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0") as ErrorResponse)?.Status, Is.EqualTo(405));
+        }
+
+        [Test]
+        public void Given_AMethodNoFormTakes_When_Submitted_Then_ItCommitsAMethodNotAllowedResponse()
+        {
+            // Arrange
+            var router = ItemsRouter((_, _) => VelvetTask.FromResult<object>("saved"));
+
+            // Act
+            Submit(router, "a=1", new SubmitOptions { Method = "head", Action = "/items" });
+
+            // Assert
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.StatusText,
+                Is.EqualTo("Method Not Allowed"));
+        }
+
+        [Test]
+        public void Given_ABodyNoEncodingTakes_When_Submitted_Then_ItCommitsA400()
+        {
+            // Arrange
+            var router = ItemsRouter((_, _) => VelvetTask.FromResult<object>("saved"));
+
+            // Act
+            Submit(router, new[] { 1, 2 }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Status, Is.EqualTo(400));
+        }
+
+        [Test]
+        public void Given_AGetSubmissionWhoseMemberIsAnObject_When_Submitted_Then_TheMemberIsWrittenAsJavaScriptsString()
+        {
+            // Arrange
+            var router = ItemsRouter((_, _) => VelvetTask.FromResult<object>("saved"));
+
+            // Act
+            Submit(router, new { a = new { b = 1 } }, new SubmitOptions { Action = "/items" });
+
+            // Assert
+            Assert.That(router.CurrentLocation?.Path, Is.EqualTo("/items?a=%5Bobject+Object%5D"));
         }
 
         [Test]

@@ -3186,7 +3186,8 @@ namespace Velvet
         /// Path-based route definition. Declaratively expresses Velvet Router's nested routes and Loaders.
         /// </summary>
         /// <param name="path">URL path pattern for matching; null for a pathless route. See <see cref="RouteDefinition.Path"/>.</param>
-        /// <param name="element">Component rendered when the route matches. Mutually exclusive with <paramref name="redirectTo"/>.</param>
+        /// <param name="element">Component rendered when the route matches; null renders the matched child route, as a
+        /// <c>V.Outlet</c> would. Mutually exclusive with <paramref name="redirectTo"/>.</param>
         /// <param name="scopeId">Optional VContainer scope ID associated with this route.</param>
         /// <param name="loader">Async loader invoked on entry; result is exposed via Loader hook.</param>
         /// <param name="loaderMode">Whether the navigation waits for the loader before committing (Await) or commits immediately and streams the result in (Suspend). See <see cref="LoaderMode"/>.</param>
@@ -3223,12 +3224,6 @@ namespace Velvet
             if (index && children != null)
             {
                 throw new ArgumentException("An index route cannot have child routes.", nameof(children));
-            }
-
-            if (element == null && redirectTo == null)
-            {
-                throw new ArgumentException(
-                    "Either element or redirectTo must be specified.");
             }
 
             if (element != null && redirectTo != null)

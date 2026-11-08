@@ -520,7 +520,7 @@ namespace Velvet.Tests
             Capture.SetSearchParams!.Invoke(next, NavigationMode.Replace);
 
             // Assert
-            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/search?name=a%20b&tag=x&tag=y"));
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/search?name=a+b&tag=x&tag=y"));
         }
 
         [Test]

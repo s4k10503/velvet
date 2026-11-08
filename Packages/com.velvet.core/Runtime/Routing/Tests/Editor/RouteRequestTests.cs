@@ -242,7 +242,7 @@ namespace Velvet.Tests
             var error = ActionError(_ => "ran", body, Json);
 
             // Assert
-            Assert.That(error?.Message, Is.EqualTo("Unable to encode submission body"));
+            Assert.That((error as ErrorResponse)?.Detail, Is.EqualTo("Error: Unable to encode submission body"));
         }
 
         [Test]
@@ -319,6 +319,19 @@ namespace Velvet.Tests
             Assert.That(router.Navigation.Text, Is.EqualTo("a b"));
         }
 
+        [Test]
+        public void Given_ATextPostOfAPlainObject_When_TheActionReadsText_Then_ItIsJavaScriptsStringOfAnObject()
+        {
+            // Arrange
+            var body = new { a = 1 };
+
+            // Act
+            var data = ActionData(request => request.Text(), body, PlainText);
+
+            // Assert
+            Assert.That(data, Is.EqualTo("[object Object]"));
+        }
+
         [TestCase(Json)]
         [TestCase(PlainText)]
         public void Given_AGetSubmissionInAnEncodingThatSendsABody_When_Submitted_Then_ItCommitsTheEncodingError(string encType)
@@ -330,7 +343,60 @@ namespace Velvet.Tests
             var error = ActionError(_ => "ran", body, encType, "get");
 
             // Assert
-            Assert.That(error?.Message, Is.EqualTo("Unable to encode submission body"));
+            Assert.That((error as ErrorResponse)?.Detail, Is.EqualTo("Error: Unable to encode submission body"));
+        }
+
+        #endregion
+
+        #region Refusals and loaders
+
+        [Test]
+        public void Given_ARefusedSubmission_When_ItsErrorIsRead_Then_TheRouterMadeIt()
+        {
+            // Arrange
+            const string body = "a=1";
+
+            // Act
+            var error = ActionError(_ => "ran", body, Json, "get");
+
+            // Assert
+            Assert.That((error as ErrorResponse)?.Internal, Is.True);
+        }
+
+        private static Router LoaderRouter(Func<RouteLoaderContext, string> read)
+            => BuildRouter("/items?q=1#top", Route("/", children: new[]
+            {
+                Route("items", loader: (context, _) => VelvetTask.FromResult<object>(read(context))),
+            }));
+
+        [Test]
+        public void Given_ALoader_When_ItReadsItsRequestUrl_Then_ItIsThePathAndSearch()
+        {
+            // Arrange / Act
+            var router = LoaderRouter(context => context.Request.Url);
+
+            // Assert
+            Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("/items?q=1"));
+        }
+
+        [Test]
+        public void Given_ALoader_When_ItReadsItsRequestMethod_Then_ItIsGet()
+        {
+            // Arrange / Act
+            var router = LoaderRouter(context => context.Request.Method);
+
+            // Assert
+            Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("GET"));
+        }
+
+        [Test]
+        public void Given_ALoader_When_ItReadsItsRequestText_Then_ItIsEmpty()
+        {
+            // Arrange / Act
+            var router = LoaderRouter(context => "[" + context.Request.Text() + "]");
+
+            // Assert
+            Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("[]"));
         }
 
         #endregion

@@ -54,9 +54,11 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken,
             IReadOnlyList<RouteMatch>? keptFrom = null,
-            int launchLimit = int.MaxValue)
+            int launchLimit = int.MaxValue,
+            string url = "/")
         {
             var round = BeginRound();
+            var request = new RouteRequest(url);
 
             var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
 
@@ -83,6 +85,7 @@ namespace Velvet
                 {
                     Params = match.Params,
                     Path = match.MatchedPath,
+                    Request = request,
                 };
 
                 var load = new RouteCancellationSource(externalToken);

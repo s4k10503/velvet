@@ -6,9 +6,9 @@ using System.Text;
 namespace Velvet
 {
     /// <summary>
-    /// The request an action is called with, React Router's <c>request</c>: the submission's method and target,
-    /// and its body in the encoding it was submitted with, built as React Router's
-    /// <c>createClientSideRequest</c> builds it. As with a fetch <c>Request</c>, the body is read once:
+    /// The request a loader or an action is called with, React Router's <c>request</c>, built as React Router's
+    /// <c>createClientSideRequest</c> builds it: a loader's is a <c>GET</c> of the location with no body, and an
+    /// action's carries the submission's method, target and body in the encoding it was submitted with. As with a fetch <c>Request</c>, the body is read once:
     /// <see cref="FormData()"/>, <see cref="Json()"/> and <see cref="Text()"/> each consume it, and a second read
     /// throws.
     /// </summary>
@@ -21,6 +21,13 @@ namespace Velvet
         private readonly string? _body;
         private readonly global::Velvet.FormData? _multipart;
         private readonly string? _essence;
+
+        // A loader's: a GET with no body.
+        internal RouteRequest(string url)
+        {
+            Method = "GET";
+            Url = url;
+        }
 
         internal RouteRequest(string method, string url, string encType, global::Velvet.FormData? formData, object? json, string? text)
         {
@@ -52,18 +59,19 @@ namespace Velvet
             _essence = ContentType.Split(';')[0].Trim().ToLowerInvariant();
         }
 
-        /// <summary>The submission's method, upper-case: <c>POST</c>, <c>PUT</c>, <c>PATCH</c> or <c>DELETE</c>.</summary>
+        /// <summary>The method, upper-case: <c>GET</c> for a loader's, and <c>POST</c>, <c>PUT</c>, <c>PATCH</c> or
+        /// <c>DELETE</c> for an action's.</summary>
         public string Method { get; }
 
-        /// <summary>The path and query string the submission was made to, without the fragment.</summary>
+        /// <summary>The path and query string of the request, without the fragment.</summary>
         public string Url { get; }
 
         /// <summary>
         /// The body's <c>Content-Type</c> header: <c>application/json</c>, <c>text/plain;charset=UTF-8</c>,
         /// <c>application/x-www-form-urlencoded;charset=UTF-8</c>, or <c>multipart/form-data</c> with its
-        /// boundary for any other encType.
+        /// boundary for any other encType; null for a request with no body.
         /// </summary>
-        public string ContentType { get; }
+        public string? ContentType { get; }
 
         /// <summary>Whether <see cref="FormData()"/>, <see cref="Json()"/> or <see cref="Text()"/> has read the body.</summary>
         public bool BodyUsed { get; private set; }
@@ -81,8 +89,8 @@ namespace Velvet
         public object? Json() => JsonText.Parse(Consume());
 
         /// <summary>The body's entries, as <c>request.formData()</c>.</summary>
-        /// <exception cref="InvalidOperationException">The body has already been read, or it was submitted as
-        /// <c>application/json</c> or <c>text/plain</c>.</exception>
+        /// <exception cref="InvalidOperationException">The body has already been read, or the request has none or
+        /// was submitted as <c>application/json</c> or <c>text/plain</c>.</exception>
         public global::Velvet.FormData FormData()
         {
             var body = Consume();
@@ -93,7 +101,7 @@ namespace Velvet
             if (_essence != UrlEncoded)
             {
                 throw new InvalidOperationException(
-                    $"Could not parse content as FormData: the body was submitted as {ContentType}.");
+                    $"Could not parse content as FormData: its Content-Type is {ContentType ?? "absent"}.");
             }
             return new global::Velvet.FormData(RouteQuery.ParsePairs("?" + body));
         }

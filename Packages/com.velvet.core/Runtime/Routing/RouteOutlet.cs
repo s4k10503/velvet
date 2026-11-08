@@ -26,7 +26,10 @@ namespace Velvet
                 return V.Fragment(Array.Empty<VNode>());
             }
 
-            FiberOutletScope.SyncRenderingOutletScope(match!.Route, routeElement!.ResolvedIdentity,
+            // A route with no element renders its child route in its place, as React Router renders the outlet,
+            // under the Outlet context it was itself rendered with.
+            routeElement ??= V.Outlet(outletContext);
+            FiberOutletScope.SyncRenderingOutletScope(match!.Route, routeElement.ResolvedIdentity,
                 router?.ScopeFactory);
 
             // Depth+1 so a nested Outlet in the route's subtree resolves the following match, and the
@@ -35,7 +38,7 @@ namespace Velvet
                 children: new VNode[]
                 {
                     V.Provider(RouterContext.OutletContext, outletContext!,
-                        children: new VNode[] { WithRenderErrorBoundary(location, match, depth, routeElement!) }),
+                        children: new VNode[] { WithRenderErrorBoundary(location, match, depth, routeElement) }),
                 });
         }
 
@@ -108,13 +111,8 @@ namespace Velvet
                 // depth < boundaryDepth: an ancestor above the boundary renders normally below.
             }
 
+            // Null for a route with no element, which Render fills.
             routeElement = match.Route?.Element;
-            if (routeElement == null)
-            {
-                match = null;
-                return false;
-            }
-
             routeDepth = depth + 1;
             return true;
         }

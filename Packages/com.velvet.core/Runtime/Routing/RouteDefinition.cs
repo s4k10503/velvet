@@ -34,7 +34,8 @@ namespace Velvet
 
         /// <summary>
         /// Function-type component to mount when this route matches.
-        /// Pass a <see cref="ComponentNode"/> built via V.Component().
+        /// Pass a <see cref="ComponentNode"/> built via V.Component(). Null renders the matched child route in its
+        /// place, as React Router renders the outlet.
         /// </summary>
         public ComponentNode? Element { get; init; }
 

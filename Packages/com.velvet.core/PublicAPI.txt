@@ -71,7 +71,7 @@
 [Velvet] ctor Velvet.DroppableState.ctor(System.Boolean, Velvet.DraggableInfo?, Velvet.DroppableInfo?): System.Void
 [Velvet] ctor Velvet.ElementNode.ctor(): System.Void
 [Velvet] ctor Velvet.ErrorInfo.ctor(System.String): System.Void
-[Velvet] ctor Velvet.ErrorResponse.ctor(System.Int32, System.String, System.Object?): System.Void
+[Velvet] ctor Velvet.ErrorResponse.ctor(System.Int32, System.String?, System.Object?): System.Void
 [Velvet] ctor Velvet.Experimental.VButton.ctor(System.String?): System.Void
 [Velvet] ctor Velvet.Experimental.VCustom`1[T].ctor(System.String?): System.Void
 [Velvet] ctor Velvet.Experimental.VDiv.ctor(System.String?): System.Void
@@ -652,7 +652,7 @@
 [Velvet] method Velvet.IRouteScopeFactory.CreateScope(Velvet.RouteDefinition?, Velvet.IRouteScope?): Velvet.IRouteScope
 [Velvet] method Velvet.ISearchParams.Get(System.String): System.String?
 [Velvet] method Velvet.ISearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
-[Velvet] method Velvet.ISearchParams.Has(System.String): System.Boolean
+[Velvet] method Velvet.ISearchParams.Has(System.String, System.String?): System.Boolean
 [Velvet] method Velvet.IStoreWriter`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
 [Velvet] method Velvet.InfiniteQueryResult`1[TData].FetchNextPage(System.Boolean, System.Boolean): Velvet.VelvetTask`1[Velvet.InfiniteQueryResult`1[TData]]
@@ -761,10 +761,14 @@
 [Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.Router.SubmitAsync(System.Object?, Velvet.SubmitOptions?, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.SearchParams.Append(System.String, System.String): System.Void
+[Velvet] method Velvet.SearchParams.Delete(System.String, System.String?): System.Void
 [Velvet] method Velvet.SearchParams.Get(System.String): System.String?
 [Velvet] method Velvet.SearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
-[Velvet] method Velvet.SearchParams.GetEnumerator(): System.Collections.Generic.IEnumerator`1[System.String]
-[Velvet] method Velvet.SearchParams.Has(System.String): System.Boolean
+[Velvet] method Velvet.SearchParams.GetEnumerator(): System.Collections.Generic.IEnumerator`1[System.Collections.Generic.KeyValuePair`2[System.String, System.String]]
+[Velvet] method Velvet.SearchParams.Has(System.String, System.String?): System.Boolean
+[Velvet] method Velvet.SearchParams.Set(System.String, System.String): System.Void
+[Velvet] method Velvet.SearchParams.Sort(): System.Void
+[Velvet] method Velvet.SearchParams.ToString(): System.String
 [Velvet] method Velvet.SearchParamsSetter.Invoke(System.Func`2[Velvet.ISearchParams, Velvet.ISearchParams], Velvet.NavigationMode): System.Void
 [Velvet] method Velvet.SearchParamsSetter.Invoke(Velvet.ISearchParams, Velvet.NavigationMode): System.Void
 [Velvet] method Velvet.SliderSettings.Deconstruct(System.Nullable`1[System.Single]&, System.Nullable`1[System.Single]&): System.Void
@@ -1250,6 +1254,7 @@
 [Velvet] property Velvet.ErrorInfo.ComponentStack: System.String
 [Velvet] property Velvet.ErrorInfo.ErrorBoundary: System.String
 [Velvet] property Velvet.ErrorResponse.Detail: System.Object?
+[Velvet] property Velvet.ErrorResponse.Internal: System.Boolean
 [Velvet] property Velvet.ErrorResponse.Status: System.Int32
 [Velvet] property Velvet.ErrorResponse.StatusText: System.String
 [Velvet] property Velvet.Experimental.VBuilder.Class: System.String?
@@ -1352,8 +1357,9 @@
 [Velvet] property Velvet.FragmentNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.GeometryChangedBinding.EventId: System.String
 [Velvet] property Velvet.GeometryChangedBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.GeometryChangedEvent]?
-[Velvet] property Velvet.ISearchParams.Count: System.Int32
 [Velvet] property Velvet.ISearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.ISearchParams.Size: System.Int32
+[Velvet] property Velvet.ISearchParams.Values: System.Collections.Generic.IReadOnlyList`1[System.String]
 [Velvet] property Velvet.IStoreWriter`1[TState].Current: TState
 [Velvet] property Velvet.InfiniteData`2[TPage, TPageParam].PageParams: System.Collections.Generic.IReadOnlyList`1[TPageParam]
 [Velvet] property Velvet.InfiniteData`2[TPage, TPageParam].Pages: System.Collections.Generic.IReadOnlyList`1[TPage]
@@ -1696,13 +1702,14 @@
 [Velvet] property Velvet.RouteDefinition.ScopeId: System.String?
 [Velvet] property Velvet.RouteLoaderContext.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
 [Velvet] property Velvet.RouteLoaderContext.Path: System.String?
+[Velvet] property Velvet.RouteLoaderContext.Request: Velvet.RouteRequest
 [Velvet] property Velvet.RouteMatch.MatchedPath: System.String?
 [Velvet] property Velvet.RouteMatch.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
 [Velvet] property Velvet.RouteMatch.PathnameBase: System.String
 [Velvet] property Velvet.RouteMatch.Route: Velvet.RouteDefinition?
 [Velvet] property Velvet.RouteMatch.RouteId: System.String?
 [Velvet] property Velvet.RouteRequest.BodyUsed: System.Boolean
-[Velvet] property Velvet.RouteRequest.ContentType: System.String
+[Velvet] property Velvet.RouteRequest.ContentType: System.String?
 [Velvet] property Velvet.RouteRequest.Method: System.String
 [Velvet] property Velvet.RouteRequest.Url: System.String
 [Velvet] property Velvet.Router.CanGoBack: System.Boolean
@@ -1726,9 +1733,10 @@
 [Velvet] property Velvet.ScrollViewSettings.HorizontalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
 [Velvet] property Velvet.ScrollViewSettings.TouchScrollBehavior: System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]
 [Velvet] property Velvet.ScrollViewSettings.VerticalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
-[Velvet] property Velvet.SearchParams.Count: System.Int32
 [Velvet] property Velvet.SearchParams.Empty: Velvet.SearchParams
 [Velvet] property Velvet.SearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.SearchParams.Size: System.Int32
+[Velvet] property Velvet.SearchParams.Values: System.Collections.Generic.IReadOnlyList`1[System.String]
 [Velvet] property Velvet.SliderIntSettings.Direction: System.Nullable`1[UnityEngine.UIElements.SliderDirection]
 [Velvet] property Velvet.SliderIntSettings.HighValue: System.Nullable`1[System.Int32]
 [Velvet] property Velvet.SliderIntSettings.Inverted: System.Nullable`1[System.Boolean]

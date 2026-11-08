@@ -88,13 +88,7 @@ namespace Velvet
 
         private static void AddAll(List<KeyValuePair<string, string>> pairs, ISearchParams searchParams)
         {
-            foreach (var key in searchParams.Keys)
-            {
-                foreach (var value in searchParams.GetAll(key))
-                {
-                    pairs.Add(new KeyValuePair<string, string>(key, value ?? string.Empty));
-                }
-            }
+            pairs.AddRange(searchParams);
         }
 
         private static void AddProperties(List<KeyValuePair<string, string>> pairs, object body)
@@ -170,8 +164,10 @@ namespace Velvet
         private static KeyValuePair<string, string> Pair(object? key, object? value)
             => new(Text(key), Text(value));
 
-        // JavaScript's String(value): null is "null", a boolean is lower-case, a number has no culture, and a
-        // list is its elements joined by "," with a null one empty, as Array.prototype.toString has it.
+        // JavaScript's String(value): null is "null", a boolean is lower-case, a number has no culture, a search
+        // params is its serialization, a list is its elements joined by "," with a null one empty, as
+        // Array.prototype.toString has it, and a FormData or any object read as a plain one is what
+        // Object.prototype.toString names it. A formattable C# value with no JavaScript type is its invariant text.
         internal static string Text(object? value) => value switch
         {
             null => "null",
@@ -180,10 +176,13 @@ namespace Velvet
             float number => JsNumber(double.Parse(number.ToString("R", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture)),
             decimal number => (number / 1.0000000000000000000000000000m).ToString(CultureInfo.InvariantCulture),
             string text => text,
+            char character => character.ToString(),
+            ISearchParams searchParams => RouteQuery.FormUrlEncode(searchParams),
+            FormData => "[object FormData]",
             IDictionary => "[object Object]",
             IEnumerable list => string.Join(",", list.Cast<object?>().Select(item => item == null ? string.Empty : Text(item))),
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? string.Empty,
+            _ => "[object Object]",
         };
 
         // Number::toString: the shortest round-trip digits, positional between 1e-6 and 1e21 and otherwise

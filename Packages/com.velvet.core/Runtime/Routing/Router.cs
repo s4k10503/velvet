@@ -449,21 +449,20 @@ namespace Velvet
             return bare;
         }
 
+        // normalizeTo's: the index values are taken out and those that are not bare appended after the rest.
         private static string WithoutBareIndex(string search)
         {
-            var kept = new SearchParams();
             var current = RouteQuery.ParseQuery(search);
-            foreach (var key in current.Keys)
+            var indexValues = current.GetAll("index");
+            current.Delete("index");
+            foreach (var value in indexValues)
             {
-                foreach (var value in current.GetAll(key))
+                if (value.Length > 0)
                 {
-                    if (key != "index" || value.Length > 0)
-                    {
-                        kept.Append(key, value);
-                    }
+                    current.Append("index", value);
                 }
             }
-            return RouteQuery.BuildQuery(kept);
+            return RouteQuery.BuildQuery(current);
         }
 
         private VelvetTask<NavigationResult> Begin(
@@ -516,13 +515,13 @@ namespace Velvet
         /// <c>segment</c>) against the current location, returning an absolute path. Absolute paths
         /// (starting with <c>/</c>) pass through unchanged.
         /// <para/>
-        /// Relative resolution is <b>route-relative</b>:
-        /// each leading <c>..</c> drops one matched-route level — and therefore that route's <i>entire</i>
-        /// URL contribution, which may be several segments for a multi-segment route pattern — anchored at
-        /// <paramref name="baseRouteIndex"/> (the caller's route level; <c>-1</c> = the leaf route). After
-        /// the leading <c>./..</c> are consumed, the remaining target is appended segment-wise to the
-        /// resolved base. When no route matches are available yet (e.g. the very first navigation), it
-        /// falls back to URL-segment-relative resolution against the current path.
+        /// Relative resolution is <b>route-relative</b>, as React Router's <c>resolveTo</c>:
+        /// each leading <c>..</c> drops one level of the matched routes that contribute a path — and therefore
+        /// that route's <i>entire</i> URL contribution — counted from <paramref name="baseRouteIndex"/> (the
+        /// caller's route level; <c>-1</c> = the leaf route). An index route or a pathless layout is not a level of
+        /// its own. The rest of the target resolves against that level's pathname a URL segment at a time. When
+        /// no route matches are available yet (e.g. the very first navigation), it falls back to
+        /// URL-segment-relative resolution against the current path.
         /// </summary>
         internal string? ResolvePath(string path, int baseRouteIndex = -1, RelativeRoutingType relative = RelativeRoutingType.Route)
         {
@@ -573,37 +572,36 @@ namespace Velvet
                 return ResolvePathBySegments(path);
             }
 
-            // Path-relative resolution drops one URL segment per .. from the pathname of the route the caller is
-            // rendered in, not from the URL, as resolveTo does with the matches cut at the calling route.
-            if (relative == RelativeRoutingType.Path)
+            // React Router's resolveTo over getResolveToMatches: the route levels are the matches up to the
+            // caller's that contribute a path, the first and any with a non-empty one, so an index route or a
+            // pathless layout is no level of its own. Only the target's leading .. segments step up a level, and
+            // only for route-relative resolution; what remains resolves against that level's pathname a URL
+            // segment at a time.
+            var anchor = AnchorIndex(matches, baseRouteIndex);
+            var pathnames = new List<string>();
+            for (var level = 0; level <= anchor; level++)
             {
-                return FoldSegments(
-                    new List<string>(matches[AnchorIndex(matches, baseRouteIndex)].PathnameBase
-                        .Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries)),
-                    path.Split('/', StringSplitOptions.RemoveEmptyEntries),
-                    0);
+                if (level == 0 || !string.IsNullOrEmpty(matches[level].Route?.Path))
+                {
+                    pathnames.Add(matches[level].PathnameBase);
+                }
             }
 
-            var targetParts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-            var cursor = AnchorIndex(matches, baseRouteIndex);
-
+            // The search is no part of the pathname resolveTo reads the leading .. segments from.
+            var pathname = RouteQuery.StripQuery(path);
+            var targetParts = pathname.Split('/');
+            var routeIndex = pathnames.Count - 1;
             var start = 0;
-            while (start < targetParts.Length && (targetParts[start] == "." || targetParts[start] == ".."))
+            while (relative != RelativeRoutingType.Path && start < targetParts.Length && targetParts[start] == "..")
             {
-                if (targetParts[start] == "..")
-                {
-                    cursor--;
-                }
+                routeIndex--;
                 start++;
             }
 
-            var basePath = cursor < 0 ? "/" : matches[cursor].PathnameBase;
-
-            var baseSegments = new List<string>(
-                basePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries));
-
-            return FoldSegments(baseSegments, targetParts, start);
+            var basePath = routeIndex < 0 ? "/" : pathnames[routeIndex];
+            return FoldSegments(
+                    new List<string>(basePath.Split('/', StringSplitOptions.RemoveEmptyEntries)), targetParts, start)
+                + path.Substring(pathname.Length);
         }
 
         // The caller's route level, clamped into range; -1 is the leaf.
@@ -615,7 +613,7 @@ namespace Velvet
             for (var i = start; i < tail.Length; i++)
             {
                 var part = tail[i];
-                if (part == ".")
+                if (part.Length == 0 || part == ".")
                 {
                     continue;
                 }
@@ -865,7 +863,7 @@ namespace Velvet
             {
                 if (!unmatched)
                 {
-                    var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken);
+                    var guardResult = await RunGuardChecks(matches, path, mode, pending, cancellationToken);
                     if (guardResult.HasValue)
                     {
                         return guardResult.Value;
@@ -893,8 +891,8 @@ namespace Velvet
                 // The empty chain still begins a round, which is what retires the loads of the location this
                 // one replaces.
                 var (loaderResult, loaderRound) = unmatched
-                    ? await RunLoaderPhase(NoMatches, pending, cancellationToken, null, int.MaxValue)
-                    : await RunLoaderPhase(matches, pending, cancellationToken,
+                    ? await RunLoaderPhase(NoMatches, path, pending, cancellationToken, null, int.MaxValue)
+                    : await RunLoaderPhase(matches, path, pending, cancellationToken,
                         KeptFrom(path), LaunchLimit(matches, action));
                 if (loaderResult.HasValue)
                 {
@@ -1033,6 +1031,7 @@ namespace Velvet
 
         private async VelvetTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
+            string path,
             NavigationMode mode,
             PendingNavigation pending,
             CancellationToken cancellationToken)
@@ -1058,6 +1057,7 @@ namespace Velvet
                     {
                         Params = match.Params,
                         Path = match.MatchedPath,
+                        Request = new RouteRequest(path),
                     };
                     redirectTarget = match.Route.Guard(loaderContext);
                 }
@@ -1145,6 +1145,7 @@ namespace Velvet
         // per history entry.
         private async VelvetTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
+            string url,
             PendingNavigation pending,
             CancellationToken cancellationToken,
             IReadOnlyList<RouteMatch>? keptFrom,
@@ -1154,7 +1155,8 @@ namespace Velvet
             // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
             // resolves. A newer navigation that matches, arriving inside that window, cancels this token,
             // which is what the check below is reading.
-            var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken, keptFrom, launchLimit);
+            var round = await _loaderRunner.RunLoadersAsync(
+                matches, cancellationToken, keptFrom, launchLimit, url);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -1401,7 +1403,7 @@ namespace Velvet
             internal readonly string? Text;
             internal readonly bool? Replace;
             // The error for a method no form takes or a body that cannot be encoded, committed in place of an
-            // action's result. It carries no status.
+            // action's result.
             internal readonly Exception? Refusal;
             // A urlencoded body's pairs, which a get makes its query.
             internal readonly List<KeyValuePair<string, string>> Query = new();
@@ -1414,14 +1416,14 @@ namespace Velvet
                 Replace = replace;
                 if (Array.IndexOf(FormMethods, Method) < 0)
                 {
-                    Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
+                    Refusal = ErrorResponse.InvalidMethod(Method);
                     return;
                 }
                 if (EncType is TextEncType or JsonEncType)
                 {
                     if (Method == "GET")
                     {
-                        Refusal = InvalidBody();
+                        Refusal = ErrorResponse.InvalidBody();
                     }
                     else if (EncType == TextEncType)
                     {
@@ -1435,21 +1437,19 @@ namespace Velvet
                         }
                         catch (FormatException)
                         {
-                            Refusal = InvalidBody();
+                            Refusal = ErrorResponse.InvalidBody();
                         }
                     }
                     return;
                 }
                 if (!SubmissionBody.TryEncode(body, out Query))
                 {
-                    Refusal = InvalidBody();
+                    Refusal = ErrorResponse.InvalidBody();
                     return;
                 }
                 // A FormData body is the submission's own, as React Router keeps the instance it was handed.
                 FormData = body as global::Velvet.FormData ?? new global::Velvet.FormData(Query);
             }
-
-            private static Exception InvalidBody() => new InvalidOperationException("Unable to encode submission body");
 
             private static readonly string[] FormMethods = { "GET", "POST", "PUT", "PATCH", "DELETE" };
 
@@ -1550,9 +1550,7 @@ namespace Velvet
             var match = matches[outcome.Target];
             if (match.Route?.Action == null)
             {
-                outcome.Error = new InvalidOperationException(
-                    $"You made a {submission.Method} request to \"{RouteQuery.StripQuery(path)}\" but did not provide an "
-                    + $"`action` for route \"{match.RouteId}\", so there is no way to handle the request.");
+                outcome.Error = ErrorResponse.NoAction(submission.Method, RouteQuery.StripQuery(path), match.RouteId);
                 return outcome;
             }
             var context = new RouteActionContext
