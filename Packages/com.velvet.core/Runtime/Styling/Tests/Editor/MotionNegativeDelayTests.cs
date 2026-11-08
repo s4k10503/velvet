@@ -240,10 +240,8 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.7f).Within(0.003f));
         }
 
-        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
-        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
-        public void Given_APropertyOverrideWithANegativeCombinedDelay_When_TheFirstFrameRuns_Then_ItHasAlreadyProgressed()
+        public void Given_AStaggeredPropertyOverrideWithANegativeDelay_When_TheFirstFrameRuns_Then_ItsOwnDelayReplacedTheStagger()
         {
             // Arrange
             var element = NativeTweenElement();
@@ -257,16 +255,15 @@ namespace Velvet.Tests
             // Act
             NativeFrame(element, 0.016);
 
-            // Assert
-            Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.3f).Within(0.003f));
+            // Assert — Framer hands a value's own delay in place of the stagger (animateTarget's
+            // `{ delay, ...transition[key] }`), so -0.5 s starts it half way in, not 0.3 s in as -0.5 + 0.2 would.
+            Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(0.003f));
         }
 
-        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
-        // because an entry no longer takes the enclosing config's easing or duration.
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Given_ATweenEnterWithAPositiveCombinedDelay_When_TheDelayElapses_Then_ItAnimatesFromTheStart(
-            bool propertyOverride)
+        // GREEN_ON_BASE(characterization): a tween's own delay and the stagger combining into a positive one, which
+        // this change does not move.
+        [Test]
+        public void Given_ATweenEnterWithAPositiveCombinedDelay_When_TheDelayElapses_Then_ItAnimatesFromTheStart()
         {
             // Arrange
             var element = NativeTweenElement();
@@ -274,10 +271,34 @@ namespace Velvet.Tests
             var scheduler = _scheduler = new StyleAnimationScheduler();
             element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0.2f);
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            NativeFrame(element, 0.016);
+            var waitingOpacity = element.resolvedStyle.opacity;
+            NativeFrame(element, 0.085);
+            NativeFrame(element, 0.016);
+
+            // Assert
+            Assert.That(new[] { waitingOpacity, element.resolvedStyle.opacity },
+                Is.EqualTo(new[] { 0f, 0.016f }).Within(0.003f));
+        }
+
+        [Test]
+        public void Given_AStaggeredPropertyOverrideWithAPositiveDelay_When_ThatDelayElapses_Then_ItAnimatesFromTheStart()
+        {
+            // Arrange — the entry's 0.1 s replaces the 0.2 s stagger rather than adding to it, as Framer's does.
+            var element = NativeTweenElement();
+            StartNativeClock(element);
+            var scheduler = _scheduler = new StyleAnimationScheduler();
+            element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
                 durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0.2f,
-                propertyOverrides: propertyOverride
-                    ? new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f) }
-                    : null);
+                propertyOverrides: new[]
+                {
+                    new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: 0.1f),
+                });
             ForcePanelUpdate(element.panel);
 
             // Act

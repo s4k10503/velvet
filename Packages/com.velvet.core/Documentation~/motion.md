@@ -1055,7 +1055,7 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   invariant past two). A sequence segment of one or two keyframes becomes an easing sampled from the spring, measured
   over the segment's travel, or over 100 where it gives one keyframe, and ends at 20 s if it has not come to rest;
   one of more than two keyframes plays as a tween of `DurationSec` on `Easing`, as Framer's sequence does. A single
-  call's spring ends where it comes to rest, however long that takes, as Framer's `JSAnimation` ends there.
+  call's spring ends where it comes to rest, however long that takes, as Framer's JSAnimation ends there.
 - **Repeat.** `Repeat`, `RepeatType` and `RepeatDelaySec` repeat each value as Framer's `repeat`, `repeatType` and
   `repeatDelay` do: `RepeatDelaySec` holds a pass's last value before the next, and no wait follows the last pass. On a
   single call `Reverse` plays every second pass backwards in time and `Mirror` runs it from the last keyframe back to
