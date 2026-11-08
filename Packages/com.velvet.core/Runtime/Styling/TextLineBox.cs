@@ -324,7 +324,7 @@ namespace Velvet
         }
 
         // The raise that puts the first line's glyphs half a leading below the top of the first line box, which a
-        // button centres in its box. A raise under an upper alignment can only lower the glyphs.
+        // button centres in its box. Under an upper alignment the raise is not taken above zero.
         private float Target(TextAnchor align, in Lines lines, Rect content, Vector2 generated)
         {
             var spare = content.height - lines.Fit(generated).y;
@@ -403,8 +403,8 @@ namespace Velvet
 
     // A text element's alignment written middle-* with the horizontal part its rules or its parent give it, since CSS
     // has no vertical alignment inside a line box. The part is read from the rules beneath the inline value
-    // (StyleCascade.TextAlign), which writing nothing leaves untouched, so a rule outside Velvet's own and a theme's
-    // default both reach it. An inline value somebody else wrote is left alone, and where the rules cannot be read
+    // (StyleCascade.TextAlign) rather than by clearing it, so a rule outside Velvet's own and a theme's default both
+    // reach it. An inline value somebody else wrote is left alone, and where the rules cannot be read
     // the alignment is given back rather than written once and kept.
     internal sealed class MiddleAlignment
     {
@@ -480,8 +480,8 @@ namespace Velvet
     {
         private const string NoParse = "noparse";
 
-        // display with every offset of the app's raised by raise pixels and the raise opened again after each one
-        // closes. fontSize is the element's, which an em offset and a <size> tag are taken of.
+        // display with each px or em offset of the app's raised by raise pixels and the raise opened again after each
+        // of its closing tags. fontSize is the element's, which an em offset and a <size> tag are taken of.
         public static string Raised(string display, float raise, float fontSize)
         {
             var reopen = "<voffset=" + Pixels(raise) + "px>";

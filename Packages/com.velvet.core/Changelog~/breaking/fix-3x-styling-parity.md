@@ -29,5 +29,4 @@
 - `brightness-*`, `saturate-*` and `hue-rotate-*` filter a translucent pixel's colour divided by its alpha, as CSS
   filters a colour that is not premultiplied. They filtered the colour multiplied by the alpha, so the next filter
   read a value CSS clamps (`brightness-150 saturate-0` over half-transparent green gave a gray of 128 over black
-  where CSS gives 91), and in a Linear project the colour space conversion darkened every pixel that was not
-  opaque.
+  where CSS gives 91), and in a Linear project the colour space conversion darkened a translucent colour.

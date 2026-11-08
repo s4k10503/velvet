@@ -242,8 +242,8 @@ namespace Velvet.Tests
             reset!.Invoke(null, null);
         }
     
-        // This project renders in Gamma, so UI Toolkit never sets _UIE_OUTPUT_LINEAR on the filter; the pass is drawn
-        // here with the keyword set, over a premultiplied half-transparent green.
+        // The pass is drawn here with _UIE_OUTPUT_LINEAR set, which this Gamma project's panels do not draw it with, over a
+        // premultiplied half-transparent green.
         [Test]
         public void Given_AHalfTransparentGreenUnderHueRotate90_When_FilteredForLinearOutput_Then_ItsStraightColourIsRotatedConvertedAndPremultiplied()
         {

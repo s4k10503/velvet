@@ -12,8 +12,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies where a text element Velvet creates draws its glyphs in its line box: half the leading below the
-    /// box's top, as CSS places them. Each case compares two renders of the same font at the same size, so the
-    /// font's own metrics cancel and what is left is the declared line heights' half-difference.
+    /// box's top, as CSS places them, and centred in a button, as a browser centres a button's content. Each pixel case
+    /// compares two renders of the same font at the same size, so the font's own metrics cancel and what is left is a
+    /// difference of declared heights.
     /// </summary>
     [Timeout(600000)]
     internal sealed class TextLineBoxPlaybackTests

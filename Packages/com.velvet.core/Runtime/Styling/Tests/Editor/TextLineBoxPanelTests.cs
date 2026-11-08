@@ -12,8 +12,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a text element Velvet creates is as tall as CSS makes it: one line box of the line height per
-    /// line, whatever the font's own content height. Every expected height is the declared line height times the
-    /// line count, so none depends on the font.
+    /// line, whatever the font's own content height. Every expected height is made of declared line heights, so
+    /// none depends on the font.
     /// </summary>
     internal sealed class TextLineBoxPanelTests : PanelTestBase
     {
