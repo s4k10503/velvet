@@ -57,9 +57,22 @@ namespace Velvet
         FetchStatus = 1 << 11,
         /// <summary><see cref="QueryResult{T}.IsPaused"/>.</summary>
         IsPaused = 1 << 12,
+        /// <summary><see cref="InfiniteQueryResult{TData}.HasNextPage"/>.</summary>
+        HasNextPage = 1 << 13,
+        /// <summary><see cref="InfiniteQueryResult{TData}.HasPreviousPage"/>.</summary>
+        HasPreviousPage = 1 << 14,
+        /// <summary><see cref="InfiniteQueryResult{TData}.IsFetchingNextPage"/>.</summary>
+        IsFetchingNextPage = 1 << 15,
+        /// <summary><see cref="InfiniteQueryResult{TData}.IsFetchingPreviousPage"/>.</summary>
+        IsFetchingPreviousPage = 1 << 16,
+        /// <summary><see cref="InfiniteQueryResult{TData}.IsFetchNextPageError"/>.</summary>
+        IsFetchNextPageError = 1 << 17,
+        /// <summary><see cref="InfiniteQueryResult{TData}.IsFetchPreviousPageError"/>.</summary>
+        IsFetchPreviousPageError = 1 << 18,
         /// <summary>Every property, TanStack Query's <c>'all'</c>.</summary>
         All = Status | IsPending | IsSuccess | IsError | Data | Error | IsFetching | IsStale | FailureCount | FailureReason
-            | IsPlaceholderData | FetchStatus | IsPaused,
+            | IsPlaceholderData | FetchStatus | IsPaused | HasNextPage | HasPreviousPage | IsFetchingNextPage
+            | IsFetchingPreviousPage | IsFetchNextPageError | IsFetchPreviousPageError,
     }
 
     /// <summary>
@@ -564,7 +577,7 @@ namespace Velvet
     /// which is what <see cref="QueryOptions{TQueryFnData, TData}.NotifyOnChangeProps"/> leaves to decide when the
     /// component re-renders.
     /// </summary>
-    public sealed class QueryResult<T>
+    public class QueryResult<T>
     {
         private readonly QuerySnapshot<T> _snapshot;
         private readonly IQueryResultSource _observer;
@@ -574,6 +587,8 @@ namespace Velvet
             _snapshot = snapshot;
             _observer = observer;
         }
+
+        private protected QuerySnapshot<T> Snapshot => _snapshot;
 
         /// <summary>Whether the query has data; see <see cref="QueryStatus"/>.</summary>
         public QueryStatus Status => Read(QueryProperties.Status, _snapshot.Status);
@@ -623,7 +638,7 @@ namespace Velvet
         /// </summary>
         public void Refetch() => _observer.Refetch();
 
-        private TValue Read<TValue>(QueryProperties property, TValue value)
+        private protected TValue Read<TValue>(QueryProperties property, TValue value)
         {
             _observer.Track(property);
             return value;
@@ -649,6 +664,11 @@ namespace Velvet
         internal int FailureCount { get; init; }
         internal Exception? FailureReason { get; init; }
         internal bool IsPlaceholderData { get; init; }
+        // An infinite query's: whether its paging names a page either side, and the end the entry's latest request
+        // was asked for, TanStack's fetchMeta.fetchMore.direction.
+        internal bool HasNextPage { get; init; }
+        internal bool HasPreviousPage { get; init; }
+        internal FetchDirection? FetchDirection { get; init; }
 
         internal QueryProperties DifferencesFrom(in QuerySnapshot<T> other)
         {
@@ -666,8 +686,26 @@ namespace Velvet
             if (FailureCount != other.FailureCount) changed |= QueryProperties.FailureCount;
             if (!ReferenceEquals(FailureReason, other.FailureReason)) changed |= QueryProperties.FailureReason;
             if (IsPlaceholderData != other.IsPlaceholderData) changed |= QueryProperties.IsPlaceholderData;
+            return changed | PagingDifferencesFrom(other);
+        }
+
+        private QueryProperties PagingDifferencesFrom(in QuerySnapshot<T> other)
+        {
+            var changed = QueryProperties.None;
+            if (HasNextPage != other.HasNextPage) changed |= QueryProperties.HasNextPage;
+            if (HasPreviousPage != other.HasPreviousPage) changed |= QueryProperties.HasPreviousPage;
+            if (IsFetchingTowards(Velvet.FetchDirection.Forward) != other.IsFetchingTowards(Velvet.FetchDirection.Forward)) changed |= QueryProperties.IsFetchingNextPage;
+            if (IsFetchingTowards(Velvet.FetchDirection.Backward) != other.IsFetchingTowards(Velvet.FetchDirection.Backward)) changed |= QueryProperties.IsFetchingPreviousPage;
+            if (FailedTowards(Velvet.FetchDirection.Forward) != other.FailedTowards(Velvet.FetchDirection.Forward)) changed |= QueryProperties.IsFetchNextPageError;
+            if (FailedTowards(Velvet.FetchDirection.Backward) != other.FailedTowards(Velvet.FetchDirection.Backward)) changed |= QueryProperties.IsFetchPreviousPageError;
             return changed;
         }
+
+        // TanStack's isFetchingNextPage and isFetchingPreviousPage.
+        internal bool IsFetchingTowards(FetchDirection direction) => FetchStatus == QueryFetchStatus.Fetching && FetchDirection == direction;
+
+        // TanStack's isFetchNextPageError and isFetchPreviousPageError.
+        internal bool FailedTowards(FetchDirection direction) => Status == QueryStatus.Error && FetchDirection == direction;
     }
 
     internal static class QueryData
@@ -734,6 +772,8 @@ namespace Velvet
         internal Func<QueryKey, string>? KeyHashFn { get; }
         // What names the entry in the client's cache; see QueryClient.Identify.
         internal QueryKey KeyId { get; }
+        // The paging of an infinite query; null for any other.
+        internal IInfiniteQueryOptions<TQueryFnData>? Paging => Options as IInfiniteQueryOptions<TQueryFnData>;
         internal Func<TQueryFnData, TData>? Select => Options.Select;
 
         // TanStack's getOptimisticResult, which builds the entry a render reads when there is none, with the
@@ -1005,10 +1045,13 @@ namespace Velvet
         internal TimeSpan? InitialDataUpdatedAt { get; private set; }
         internal Func<TimeSpan?>? InitialDataUpdatedAtFn { get; private set; }
         internal IReadOnlyDictionary<string, object?>? Meta { get; private set; }
+        // TanStack's options.behavior: what a request runs in place of QueryFn, an infinite query's paging.
+        internal IQueryBehavior<T>? Behavior { get; private set; }
 
         internal QueryFetchOptions<T> Assign<TData>(QueryOptions<T, TData> options, QueryClient client)
         {
             Meta = options.Meta;
+            Behavior = (options as IInfiniteQueryOptions<T>)?.CreateBehavior(pages: null);
             KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;
             NetworkMode = options.NetworkMode ?? client.DefaultNetworkMode;
             QueryFn = options.QueryFn;
@@ -1024,6 +1067,8 @@ namespace Velvet
         }
 
         internal void SetRetry(RetryRule retry) => Retry = retry;
+
+        internal void SetBehavior(IQueryBehavior<T>? behavior) => Behavior = behavior;
 
         internal QueryFetchOptions<T> Copy() => (QueryFetchOptions<T>)MemberwiseClone();
     }
@@ -1044,7 +1089,7 @@ namespace Velvet
 
     // The per-component half of UseQuery, TanStack's QueryObserver: the options of the latest committed render,
     // and the entry that render subscribed to.
-    internal sealed class QueryObserver<TQueryFnData, TData> : QueryEntryObserver<TQueryFnData>, IQueryResultSource
+    internal sealed class QueryObserver<TQueryFnData, TData> : QueryEntryObserver<TQueryFnData>, IQueryResultSource, IInfiniteResultSource<TData>
     {
         // Where the query has no select, the result holds the entry's data as it is.
         private static readonly Func<TQueryFnData, TData>? s_identity = typeof(TQueryFnData) == typeof(TData)
@@ -1091,6 +1136,25 @@ namespace Velvet
         public void Refetch() => Entry?.Fetch(FetchOptions, cancelRefetch: true);
 
         public override Query? GetCurrentQuery() => Entry?.Query;
+
+        // TanStack's InfiniteQueryObserver fetchNextPage and fetchPreviousPage: a fetch with fetchMore's direction,
+        // cancelling a request in flight unless asked not to, and the result once it settles; a failure is swallowed
+        // unless throwOnError, as v5's fetch catches it.
+        public async VelvetTask<InfiniteQueryResult<TData>> FetchPage(FetchDirection direction, bool cancelRefetch, bool throwOnError)
+        {
+            var entry = Entry;
+            if (entry != null)
+            {
+                try
+                {
+                    await entry.FetchAndWait(FetchOptions, cancelRefetch, direction);
+                }
+                catch (Exception) when (!throwOnError)
+                {
+                }
+            }
+            return new InfiniteQueryResult<TData>(_current, this, this);
+        }
 
         public void Track(QueryProperties property) => _tracked |= property;
 
@@ -1374,8 +1438,14 @@ namespace Velvet
         {
             _current = CreateResult(entry, settings, inRender: true);
             _hasCurrent = true;
-            return new QueryResult<TData>(_current, source);
+            return ResultOf(settings.Paging != null, source);
         }
+
+        // The latest reading as a result, an infinite query's carrying its paging.
+        internal QueryResult<TData> CurrentResult(IQueryResultSource source) => ResultOf(_settings.Paging != null, source);
+
+        private QueryResult<TData> ResultOf(bool infinite, IQueryResultSource source)
+            => infinite ? new InfiniteQueryResult<TData>(_current, source, this) : new QueryResult<TData>(_current, source);
 
         // What names the entry the latest commit subscribed to, which UseQueries matches a render's queries by;
         // null before the first commit.
@@ -1449,6 +1519,7 @@ namespace Velvet
                 isPlaceholderData = false;
             }
 
+            var paging = settings.Paging;
             return new QuerySnapshot<TData>
             {
                 Status = status,
@@ -1460,8 +1531,13 @@ namespace Velvet
                 FailureCount = failureCount,
                 FailureReason = failureReason,
                 IsPlaceholderData = isPlaceholderData,
+                // v5 reads the paging off the entry's own data, not the selected or placeholder data.
+                HasNextPage = paging != null && hasSource && paging.HasNextPage(source),
+                HasPreviousPage = paging != null && hasSource && paging.HasPreviousPage(source),
+                FetchDirection = entry.FetchDirection,
             };
         }
+
 
         // TanStack's fetchOnMount for an observer not yet subscribed, and fetchOptionally for one that is: Sync
         // makes the same choice when it subscribes. The rules last committed are the previous options, whose

@@ -431,6 +431,34 @@ namespace Velvet
         }
 
         /// <summary>
+        /// <see cref="FetchQuery{T}"/> for an infinite query, TanStack Query's <c>fetchInfiniteQuery</c>: the pages the
+        /// entry holds when they are fresh for the query's stale time, and otherwise the pages a request fetches from
+        /// the first, as many as <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.Pages"/> asks or, by
+        /// default, as the entry holds, at least one.
+        /// </summary>
+        /// <returns>A task of the entry's pages; it faults with the request's failure.</returns>
+        public VelvetTask<InfiniteData<TQueryFnData, TPageParam>> FetchInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options)
+        {
+            var entry = EntryFor(options, out var fetchOptions, out var staleTime);
+            // v5's fetchInfiniteQuery sets the behavior with the options' pages, and the request keeps it.
+            fetchOptions.SetBehavior(((IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>)options).CreateBehavior(options.Pages));
+            if (!entry.IsStaleFor(staleTime.Read(entry, rethrow: true))) return VelvetTask.FromResult(entry.Data);
+            return entry.FetchAndWait(fetchOptions, cancelRefetch: false);
+        }
+
+        /// <summary>
+        /// <see cref="FetchInfiniteQuery{TQueryFnData, TPageParam}"/> without the pages, TanStack Query's
+        /// <c>prefetchInfiniteQuery</c>.
+        /// </summary>
+        /// <returns>A task that completes once the request has settled, whatever it did.</returns>
+        public VelvetTask PrefetchInfiniteQuery<TQueryFnData, TPageParam>(InfiniteQueryOptions<TQueryFnData, TPageParam> options)
+        {
+            var request = FetchInfiniteQuery(options);
+            return Settle(new List<VelvetTask> { request }, throwOnError: false);
+        }
+
+        /// <summary>
         /// The data the entry <paramref name="options"/> names holds, and otherwise the data a request for it
         /// returns, TanStack Query's <c>ensureQueryData</c>.
         /// </summary>
@@ -1123,6 +1151,9 @@ namespace Velvet
         // TanStack's isFetched: whether data has landed or been written, or a request has failed, since the entry
         // was made or reset. Initial data is neither.
         private bool _fetched;
+        // TanStack's fetchMeta.fetchMore.direction: the end of an infinite query's pages the latest request was asked
+        // for, null for a request that fetches from the first page.
+        private FetchDirection? _fetchDirection;
 
         private readonly struct EntryState
         {
@@ -1137,6 +1168,7 @@ namespace Velvet
                 IsInvalidated = entry.IsInvalidated;
                 DataUpdatedAt = entry._dataUpdatedAt;
                 Fetched = entry._fetched;
+                FetchDirection = entry._fetchDirection;
             }
 
             // TanStack's getDefaultState with initial data.
@@ -1150,6 +1182,7 @@ namespace Velvet
             }
 
             internal bool Fetched { get; }
+            internal FetchDirection? FetchDirection { get; }
             internal QueryStatus Status { get; }
             internal bool HasData { get; }
             internal T Data { get; }
@@ -1305,11 +1338,10 @@ namespace Velvet
             ReleaseSuspended();
         }
 
-
         // Fetch, handing back a task of the request now in flight: the one this started, or the one it joined.
-        internal VelvetTask<T> FetchAndWait(QueryFetchOptions<T> options, bool cancelRefetch)
+        internal VelvetTask<T> FetchAndWait(QueryFetchOptions<T> options, bool cancelRefetch, FetchDirection? direction = null)
         {
-            Fetch(options, cancelRefetch);
+            Fetch(options, cancelRefetch, direction);
             if (_inFlight == null) return VelvetTask.FromException<T>(new OperationCanceledException());
             var waiter = new VelvetTaskCompletionSource<T>();
             (_waiters ??= new List<VelvetTaskCompletionSource<T>>()).Add(waiter);
@@ -1352,7 +1384,9 @@ namespace Velvet
         // cancelRefetch is TanStack's fetch option of the same name: an explicit refetch over an entry that
         // holds data starts over, and every other request joins the one in flight, which retries again if
         // its retries had been stopped.
-        internal void Fetch(QueryFetchOptions<T> options, bool cancelRefetch)
+        internal FetchDirection? FetchDirection => _fetchDirection;
+
+        internal void Fetch(QueryFetchOptions<T> options, bool cancelRefetch, FetchDirection? direction = null)
         {
             if (IsRemoved) return;
             if (_inFlight != null)
@@ -1369,6 +1403,9 @@ namespace Velvet
 
             // Taken after a request started over is cancelled, as v5 stores the state at that point.
             _revertState = new EntryState(this);
+            _fetchDirection = direction;
+            // TanStack's behavior.onFetch, which reads the data as the request finds it.
+            var attempt = options.Behavior?.OnFetch(HasData, Data, direction);
             _requestTakesToken = false;
             var request = new CancellationTokenSource();
             _inFlight = request;
@@ -1391,13 +1428,14 @@ namespace Velvet
             }
             finally
             {
-                RunAsync(options, request).Forget();
+                RunAsync(options, request, attempt).Forget();
             }
             // Initial data the options gave lets a suspended read resume.
             ReleaseSuspended();
         }
 
-        private async VelvetTask RunAsync(QueryFetchOptions<T> options, CancellationTokenSource request)
+        private async VelvetTask RunAsync(
+            QueryFetchOptions<T> options, CancellationTokenSource request, Func<QueryFunctionContext, VelvetTask<T>>? attempt)
         {
             var queryFn = options.QueryFn;
             var retry = options.Retry;
@@ -1417,7 +1455,7 @@ namespace Velvet
                 var token = request.Token;
                 // The function has read the token only once it has started, which a request paused at the outset has not.
                 if (ReferenceEquals(_inFlight, request)) _requestTakesToken = options.TakesToken;
-                var task = Start(queryFn, meta, request);
+                var task = Start(attempt ?? ContextualOf(queryFn), queryFn, meta, request);
 
                 try
                 {
@@ -1486,24 +1524,28 @@ namespace Velvet
 
         // A query function that throws before returning a task fails the request as one returning a faulted
         // task does.
-        // A context-taking function is handed the context, whose token marks the request as one that took it when
-        // it is read, as reading v5's signal does.
+        private static Func<QueryFunctionContext, VelvetTask<T>>? ContextualOf(Func<CancellationToken, VelvetTask<T>> queryFn)
+            => queryFn.Target is QueryFunctions.Contextual<T> contextual ? contextual.Invoke : null;
+
+        // A context-taking function, an infinite query's paging among them, is handed the context, whose token marks
+        // the request as one that took it when it is read, as reading v5's signal does.
         private VelvetTask<T> Start(
-            Func<CancellationToken, VelvetTask<T>> queryFn, IReadOnlyDictionary<string, object?>? meta,
-            CancellationTokenSource request)
+            Func<QueryFunctionContext, VelvetTask<T>>? contextual, Func<CancellationToken, VelvetTask<T>> queryFn,
+            IReadOnlyDictionary<string, object?>? meta, CancellationTokenSource request)
         {
             var token = request.Token;
             try
             {
-                if (queryFn.Target is QueryFunctions.Contextual<T> contextual)
+                if (contextual != null)
                 {
-                    return contextual.Invoke(new QueryFunctionContext(Client, Key, meta, token, () =>
+                    return contextual(new QueryFunctionContext(Client, Key, meta, token, () =>
                     {
                         if (ReferenceEquals(_inFlight, request)) _requestTakesToken = true;
                     }));
                 }
                 return queryFn(token);
             }
+
 
             catch (Exception ex)
             {
@@ -1841,6 +1883,7 @@ namespace Velvet
         private void Restore(in EntryState saved)
         {
             _fetched = saved.Fetched;
+            _fetchDirection = saved.FetchDirection;
             Status = saved.Status;
             HasData = saved.HasData;
             Data = saved.Data;

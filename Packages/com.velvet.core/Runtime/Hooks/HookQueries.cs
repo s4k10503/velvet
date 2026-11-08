@@ -230,7 +230,7 @@ namespace Velvet
             var results = new QueryResult<TData>[_observers.Length];
             for (var i = 0; i < results.Length; i++)
             {
-                results[i] = new QueryResult<TData>(_observers[i].Current, new QueriesResultSource<TQueryFnData, TData>(_observers, i));
+                results[i] = _observers[i].CurrentResult(new QueriesResultSource<TQueryFnData, TData>(_observers, i));
             }
             return results;
         }

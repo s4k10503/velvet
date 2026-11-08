@@ -401,6 +401,13 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `useIsFetching(filters)` / `queryClient.isFetching(filters)` | `Hooks.UseIsFetching(filters)` / `client.IsFetching(filters)` |
 | `useQueries({ queries })` / `useQueries({ queries, combine })` | `Hooks.UseQueries(queries)` / `Hooks.UseQueries(queries, results => ...)`, over a list of `QueryOptions<TQueryFnData, TData>`; queries of several data types share `object` |
 | `useSuspenseQueries({ queries })` / `useSuspenseQueries({ queries, combine })` | `Hooks.UseSuspenseQueries(queries)` / `Hooks.UseSuspenseQueries(queries, results => ...)` |
+| `useInfiniteQuery({ queryKey, queryFn, initialPageParam, getNextPageParam })` | `Hooks.UseInfiniteQuery(new InfiniteQueryOptions<TPage, TPageParam>(key, context => ..., initialPageParam, (lastPage, pages, lastPageParam, pageParams) => ...))`, the function handed a `QueryFunctionContext<TPageParam>` with `PageParam` and `Direction` |
+| `getPreviousPageParam` / `maxPages` | `GetPreviousPageParam = (firstPage, pages, firstPageParam, pageParams) => ...` / `MaxPages = ...` |
+| a page parameter function returning `undefined` or `null` | returning `PageParam<TPageParam>.None`; a value converts to `PageParam<TPageParam>` |
+| `data.pages` / `data.pageParams` | `result.Data.Pages` / `result.Data.PageParams`, an `InfiniteData<TPage, TPageParam>` |
+| `fetchNextPage()` / `fetchPreviousPage()` / `hasNextPage` / `hasPreviousPage` / `isFetchingNextPage` / `isFetchingPreviousPage` / `isFetchNextPageError` / `isFetchPreviousPageError` | `FetchNextPage()` / `FetchPreviousPage()` / `HasNextPage` / `HasPreviousPage` / `IsFetchingNextPage` / `IsFetchingPreviousPage` / `IsFetchNextPageError` / `IsFetchPreviousPageError` on the `InfiniteQueryResult<TData>` |
+| `useSuspenseInfiniteQuery(options)` | `Hooks.UseSuspenseInfiniteQuery(options)` |
+| `queryClient.fetchInfiniteQuery({ ..., pages })` / `prefetchInfiniteQuery(options)` | `client.FetchInfiniteQuery(options with { Pages = ... })` / `client.PrefetchInfiniteQuery(options)` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
 under `object.Equals`, so a key rebuilt every render names the same entry, and a string or a boxed
@@ -701,6 +708,23 @@ have changed or it is another instance, what it returns keeps the previous insta
 equal, and the component re-renders only when that instance changes. `UseSuspenseQueries` takes each query as
 `UseSuspenseQuery` does: a render with any result pending starts each pending query's request and suspends
 until all of them hold data or have settled.
+
+**Infinite queries.** `UseInfiniteQuery` is `UseQuery` over an entry holding `InfiniteData`: its pages and the
+parameter each was fetched with. Its first request fetches the page `InitialPageParam` names. `FetchNextPage`
+and `FetchPreviousPage` add one page at their end, named by `GetNextPageParam` from the last page or by
+`GetPreviousPageParam` from the first, and fetch nothing where the function returns `PageParam<T>.None`; they
+cancel a request in flight over pages the entry holds unless `cancelRefetch: false`, and return a task of the
+result once the request settles. Every other request — `Refetch`, an invalidation, a mount over stale pages —
+fetches the pages again from the first, with the parameter it was fetched with, then each later one named by
+`GetNextPageParam` from the page fetched before it, as many as the entry held, stopping where the function
+returns none; a retry of such a request carries on from the page that failed, as v5's does. `MaxPages` drops
+the page at the other end once the entry holds more. `HasNextPage` and `HasPreviousPage` read the paging over
+the entry's own pages, not the selected data, and `HasPreviousPage` is false without a `GetPreviousPageParam`.
+`IsFetchingNextPage` / `IsFetchingPreviousPage` and `IsFetchNextPageError` / `IsFetchPreviousPageError` tell
+which end the entry's latest request was for. The page function's request counts as having read the signal once
+it reads `context.CancellationToken`. `FetchInfiniteQuery` fetches as many pages from the first as `Pages`
+asks, or as the entry holds, at least one.
+
 
 
 **Commands on the cache.** `RefetchQueries` fetches the entries a filter selects that a query reads and

@@ -175,6 +175,16 @@ namespace Velvet
             _onTokenRead = onTokenRead;
         }
 
+        // A page's context, which reading the token marks the request through as the context it came from does.
+        private protected QueryFunctionContext(QueryFunctionContext source)
+            : this(source.Client, source.QueryKey, source.Meta, source._token, source._onTokenRead)
+        {
+        }
+
+        // The token without marking the request: the paging between two pages reads it, which is not the function's
+        // read.
+        internal bool IsCancellationRequested => _token.IsCancellationRequested;
+
         /// <summary>The client the request runs in.</summary>
         public QueryClient Client { get; }
 

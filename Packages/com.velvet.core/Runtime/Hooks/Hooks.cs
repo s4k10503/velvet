@@ -3200,6 +3200,90 @@ namespace Velvet
         }
 
         /// <summary>
+        /// <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/> for a query whose result holds the pages
+        /// the entry holds.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <param name="options">The key, the page function, the first page's parameter and the paging.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static InfiniteQueryResult<InfiniteData<TQueryFnData, TPageParam>> UseInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, QueryClient? client = null)
+            => UseInfiniteQuery<TQueryFnData, TPageParam, InfiniteData<TQueryFnData, TPageParam>>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useInfiniteQuery</c>: <see cref="UseQuery{TQueryFnData, TData}"/> over an entry holding
+        /// pages. Its first request fetches the page
+        /// <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.InitialPageParam"/> names;
+        /// <see cref="InfiniteQueryResult{TData}.FetchNextPage"/> and
+        /// <see cref="InfiniteQueryResult{TData}.FetchPreviousPage"/> add a page at either end, and every other
+        /// request — a refetch, an invalidation, a mount over stale pages — fetches again from the first page, with
+        /// the parameter it was fetched with, as many pages as the entry holds, each named by
+        /// <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.GetNextPageParam"/> from the page before,
+        /// stopping early where it names none. A retry of such a request carries on from the page that failed.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <typeparam name="TData">What the select makes of the pages.</typeparam>
+        /// <param name="options">The key, the page function, the first page's parameter, the paging and the options
+        /// of <see cref="QueryOptions{TQueryFnData, TData}"/>.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static InfiniteQueryResult<TData> UseInfiniteQuery<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
+        {
+            ValidateInfiniteQueryOptions(options);
+            var query = UseQueryObserver(options, client, suspense: false);
+            query.ThrowIfError();
+            return (InfiniteQueryResult<TData>)query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseInfiniteQuery{TQueryFnData, TPageParam, TData}"/> for a query whose result holds the
+        /// pages the entry holds.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <param name="options">As <see cref="UseInfiniteQuery{TQueryFnData, TPageParam}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds pages or an error.</returns>
+        public static InfiniteQueryResult<InfiniteData<TQueryFnData, TPageParam>> UseSuspenseInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, QueryClient? client = null)
+            => UseSuspenseInfiniteQuery<TQueryFnData, TPageParam, InfiniteData<TQueryFnData, TPageParam>>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseInfiniteQuery</c>: <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/>
+        /// that suspends and throws as <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> does.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <typeparam name="TData">What the select makes of the pages.</typeparam>
+        /// <param name="options">As <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds pages or an error.</returns>
+        public static InfiniteQueryResult<TData> UseSuspenseInfiniteQuery<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
+        {
+            ValidateInfiniteQueryOptions(options);
+            var query = UseQueryObserver(options, client, suspense: true);
+            UseSuspendWhilePending(query);
+            query.ThrowIfError();
+            return (InfiniteQueryResult<TData>)query.Result;
+        }
+
+        private static void ValidateInfiniteQueryOptions<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.PageFn == null) throw new ArgumentException("InfiniteQueryOptions.PageFn must not be null.", nameof(options));
+            if (options.GetNextPageParam == null)
+            {
+                throw new ArgumentException("InfiniteQueryOptions.GetNextPageParam must not be null.", nameof(options));
+            }
+        }
+
+        /// <summary>
         /// TanStack Query's <c>useQueries({ queries })</c>: <see cref="UseQuery{TQueryFnData, TData}"/> over each of
         /// <paramref name="queries"/> in one hook, so the number of queries can change from render to render. Each
         /// query keeps its observer across renders while some query of the list reads the same entry, whatever its

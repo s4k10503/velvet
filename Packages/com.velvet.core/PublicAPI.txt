@@ -91,6 +91,9 @@
 [Velvet] ctor Velvet.FontIntent.ctor(System.String?, System.Boolean, Velvet.VelvetFontWeight, System.Boolean, System.Boolean, System.Boolean, System.Single, System.Boolean): System.Void
 [Velvet] ctor Velvet.FragmentNode.ctor(): System.Void
 [Velvet] ctor Velvet.GeometryChangedBinding.ctor(): System.Void
+[Velvet] ctor Velvet.InfiniteData`2[TPage, TPageParam].ctor(System.Collections.Generic.IReadOnlyList`1[TPage], System.Collections.Generic.IReadOnlyList`1[TPageParam]): System.Void
+[Velvet] ctor Velvet.InfiniteQueryOptions`2[TQueryFnData, TPageParam].ctor(Velvet.QueryKey, System.Func`2[Velvet.QueryFunctionContext`1[TPageParam], Velvet.VelvetTask`1[TQueryFnData]], TPageParam, System.Func`5[TQueryFnData, System.Collections.Generic.IReadOnlyList`1[TQueryFnData], TPageParam, System.Collections.Generic.IReadOnlyList`1[TPageParam], Velvet.PageParam`1[TPageParam]]): System.Void
+[Velvet] ctor Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].ctor(Velvet.QueryKey, System.Func`2[Velvet.QueryFunctionContext`1[TPageParam], Velvet.VelvetTask`1[TQueryFnData]], TPageParam, System.Func`5[TQueryFnData, System.Collections.Generic.IReadOnlyList`1[TQueryFnData], TPageParam, System.Collections.Generic.IReadOnlyList`1[TPageParam], Velvet.PageParam`1[TPageParam]]): System.Void
 [Velvet] ctor Velvet.KeyDownBinding.ctor(): System.Void
 [Velvet] ctor Velvet.KeyUpBinding.ctor(): System.Void
 [Velvet] ctor Velvet.KeyframeStop.ctor(System.Single): System.Void
@@ -115,6 +118,7 @@
 [Velvet] ctor Velvet.NavigateFunction.ctor(System.Object~, System.IntPtr): System.Void
 [Velvet] ctor Velvet.NavigateOptions.ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
+[Velvet] ctor Velvet.PageParam`1[T].ctor(T): System.Void
 [Velvet] ctor Velvet.ParticlesElement.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesSettings.ctor(UnityEngine.ParticleSystem?, Velvet.PlayTrigger, System.Single): System.Void
 [Velvet] ctor Velvet.PointerDownBinding.ctor(): System.Void
@@ -236,6 +240,8 @@
 [Velvet] field Velvet.DragMovement.Translate: Velvet.DragMovement
 [Velvet] field Velvet.ErrorBoundaryResetReason.ImperativeApi: Velvet.ErrorBoundaryResetReason
 [Velvet] field Velvet.ErrorBoundaryResetReason.Keys: Velvet.ErrorBoundaryResetReason
+[Velvet] field Velvet.FetchDirection.Backward: Velvet.FetchDirection
+[Velvet] field Velvet.FetchDirection.Forward: Velvet.FetchDirection
 [Velvet] field Velvet.FiberElementProps.Empty: Velvet.FiberElementProps
 [Velvet] field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
@@ -321,8 +327,14 @@
 [Velvet] field Velvet.QueryProperties.FailureCount: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.FailureReason: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.FetchStatus: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.HasNextPage: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.HasPreviousPage: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.IsError: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsFetchNextPageError: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsFetchPreviousPageError: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.IsFetching: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsFetchingNextPage: Velvet.QueryProperties
+[Velvet] field Velvet.QueryProperties.IsFetchingPreviousPage: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.IsPaused: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.IsPending: Velvet.QueryProperties
 [Velvet] field Velvet.QueryProperties.IsPlaceholderData: Velvet.QueryProperties
@@ -552,6 +564,8 @@
 [Velvet] method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle]): System.Void
 [Velvet] method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle], System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseInRouterContext(): System.Boolean
+[Velvet] method Velvet.Hooks.UseInfiniteQuery`2(Velvet.InfiniteQueryOptions`2[TQueryFnData, TPageParam], Velvet.QueryClient?): Velvet.InfiniteQueryResult`1[Velvet.InfiniteData`2[TQueryFnData, TPageParam]]
+[Velvet] method Velvet.Hooks.UseInfiniteQuery`3(Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData], Velvet.QueryClient?): Velvet.InfiniteQueryResult`1[TData]
 [Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseIsFetching(Velvet.QueryFilters?, Velvet.QueryClient?): System.Int32
@@ -597,6 +611,8 @@
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
 [Velvet] method Velvet.Hooks.UseSubmit(): Velvet.SubmitFunction
+[Velvet] method Velvet.Hooks.UseSuspenseInfiniteQuery`2(Velvet.InfiniteQueryOptions`2[TQueryFnData, TPageParam], Velvet.QueryClient?): Velvet.InfiniteQueryResult`1[Velvet.InfiniteData`2[TQueryFnData, TPageParam]]
+[Velvet] method Velvet.Hooks.UseSuspenseInfiniteQuery`3(Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData], Velvet.QueryClient?): Velvet.InfiniteQueryResult`1[TData]
 [Velvet] method Velvet.Hooks.UseSuspenseQueries`2(System.Collections.Generic.IReadOnlyList`1[Velvet.QueryOptions`2[TQueryFnData, TData]], Velvet.QueryClient?): System.Collections.Generic.IReadOnlyList`1[Velvet.QueryResult`1[TData]]
 [Velvet] method Velvet.Hooks.UseSuspenseQueries`3(System.Collections.Generic.IReadOnlyList`1[Velvet.QueryOptions`2[TQueryFnData, TData]], System.Func`2[System.Collections.Generic.IReadOnlyList`1[Velvet.QueryResult`1[TData]], TCombined], Velvet.QueryClient?): TCombined
 [Velvet] method Velvet.Hooks.UseSuspenseQuery`1(Velvet.QueryOptions`1[T], Velvet.QueryClient?): Velvet.QueryResult`1[T]
@@ -613,6 +629,8 @@
 [Velvet] method Velvet.ISearchParams.Has(System.String): System.Boolean
 [Velvet] method Velvet.IStoreWriter`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
+[Velvet] method Velvet.InfiniteQueryResult`1[TData].FetchNextPage(System.Boolean, System.Boolean): Velvet.VelvetTask`1[Velvet.InfiniteQueryResult`1[TData]]
+[Velvet] method Velvet.InfiniteQueryResult`1[TData].FetchPreviousPage(System.Boolean, System.Boolean): Velvet.VelvetTask`1[Velvet.InfiniteQueryResult`1[TData]]
 [Velvet] method Velvet.MountedTree.Dispose(): System.Void
 [Velvet] method Velvet.MutationCache.Clear(): System.Void
 [Velvet] method Velvet.MutationCache.Find(Velvet.MutationFilters): Velvet.Mutation?
@@ -652,6 +670,7 @@
 [Velvet] method Velvet.QueryClient.Clear(): System.Void
 [Velvet] method Velvet.QueryClient.DefaultMutationOptions`1(T): T
 [Velvet] method Velvet.QueryClient.EnsureQueryData`1(Velvet.QueryOptions`2[T, T], System.Boolean): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.QueryClient.FetchInfiniteQuery`2(Velvet.InfiniteQueryOptions`2[TQueryFnData, TPageParam]): Velvet.VelvetTask`1[Velvet.InfiniteData`2[TQueryFnData, TPageParam]]
 [Velvet] method Velvet.QueryClient.FetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.QueryClient.GetMutationCache(): Velvet.MutationCache
 [Velvet] method Velvet.QueryClient.GetMutationDefaults(Velvet.QueryKey): Velvet.MutationDefaults
@@ -664,6 +683,7 @@
 [Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryKey?): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.IsFetching(Velvet.QueryFilters?): System.Int32
 [Velvet] method Velvet.QueryClient.IsMutating(Velvet.MutationFilters?): System.Int32
+[Velvet] method Velvet.QueryClient.PrefetchInfiniteQuery`2(Velvet.InfiniteQueryOptions`2[TQueryFnData, TPageParam]): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.PrefetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.RefetchQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.RemoveQueries(Velvet.QueryFilters?): System.Void
@@ -1292,6 +1312,20 @@
 [Velvet] property Velvet.ISearchParams.Count: System.Int32
 [Velvet] property Velvet.ISearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
 [Velvet] property Velvet.IStoreWriter`1[TState].Current: TState
+[Velvet] property Velvet.InfiniteData`2[TPage, TPageParam].PageParams: System.Collections.Generic.IReadOnlyList`1[TPageParam]
+[Velvet] property Velvet.InfiniteData`2[TPage, TPageParam].Pages: System.Collections.Generic.IReadOnlyList`1[TPage]
+[Velvet] property Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].GetNextPageParam: System.Func`5[TQueryFnData, System.Collections.Generic.IReadOnlyList`1[TQueryFnData], TPageParam, System.Collections.Generic.IReadOnlyList`1[TPageParam], Velvet.PageParam`1[TPageParam]]
+[Velvet] property Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].GetPreviousPageParam: System.Func`5[TQueryFnData, System.Collections.Generic.IReadOnlyList`1[TQueryFnData], TPageParam, System.Collections.Generic.IReadOnlyList`1[TPageParam], Velvet.PageParam`1[TPageParam]]?
+[Velvet] property Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].InitialPageParam: TPageParam
+[Velvet] property Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].MaxPages: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].PageFn: System.Func`2[Velvet.QueryFunctionContext`1[TPageParam], Velvet.VelvetTask`1[TQueryFnData]]
+[Velvet] property Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData].Pages: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.InfiniteQueryResult`1[TData].HasNextPage: System.Boolean
+[Velvet] property Velvet.InfiniteQueryResult`1[TData].HasPreviousPage: System.Boolean
+[Velvet] property Velvet.InfiniteQueryResult`1[TData].IsFetchNextPageError: System.Boolean
+[Velvet] property Velvet.InfiniteQueryResult`1[TData].IsFetchPreviousPageError: System.Boolean
+[Velvet] property Velvet.InfiniteQueryResult`1[TData].IsFetchingNextPage: System.Boolean
+[Velvet] property Velvet.InfiniteQueryResult`1[TData].IsFetchingPreviousPage: System.Boolean
 [Velvet] property Velvet.KeyDownBinding.EventId: System.String
 [Velvet] property Velvet.KeyDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]?
 [Velvet] property Velvet.KeyUpBinding.EventId: System.String
@@ -1407,6 +1441,9 @@
 [Velvet] property Velvet.NavigationState.State: Velvet.NavigationLifecycle
 [Velvet] property Velvet.NetworkSignals.IsOnline: System.Func`1[System.Boolean]?
 [Velvet] property Velvet.NetworkSignals.IsVisible: System.Func`1[System.Boolean]?
+[Velvet] property Velvet.PageParam`1[T].HasValue: System.Boolean
+[Velvet] property Velvet.PageParam`1[T].None: Velvet.PageParam`1[T]
+[Velvet] property Velvet.PageParam`1[T].Value: T
 [Velvet] property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem?
 [Velvet] property Velvet.ParticlesSettings.PixelsPerUnit: System.Single
 [Velvet] property Velvet.ParticlesSettings.PlayOn: Velvet.PlayTrigger
@@ -1489,6 +1526,8 @@
 [Velvet] property Velvet.QueryFunctionContext.Client: Velvet.QueryClient
 [Velvet] property Velvet.QueryFunctionContext.Meta: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object?]?
 [Velvet] property Velvet.QueryFunctionContext.QueryKey: Velvet.QueryKey
+[Velvet] property Velvet.QueryFunctionContext`1[TPageParam].Direction: Velvet.FetchDirection
+[Velvet] property Velvet.QueryFunctionContext`1[TPageParam].PageParam: TPageParam
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Enabled: System.Boolean
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].EnabledFn: System.Func`2[Velvet.Query, System.Boolean]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].GcTime: System.Nullable`1[System.TimeSpan]
@@ -1851,6 +1890,7 @@
 [Velvet] type Velvet.Experimental.VSliderInt
 [Velvet] type Velvet.Experimental.VTextField
 [Velvet] type Velvet.Experimental.VToggle
+[Velvet] type Velvet.FetchDirection
 [Velvet] type Velvet.FiberDispatchedEventBinding
 [Velvet] type Velvet.FiberElementProps
 [Velvet] type Velvet.FiberEventBinding
@@ -1875,6 +1915,10 @@
 [Velvet] type Velvet.IRouteScopeFactory
 [Velvet] type Velvet.ISearchParams
 [Velvet] type Velvet.IStoreWriter`1[TState]
+[Velvet] type Velvet.InfiniteData`2[TPage, TPageParam]
+[Velvet] type Velvet.InfiniteQueryOptions`2[TQueryFnData, TPageParam]
+[Velvet] type Velvet.InfiniteQueryOptions`3[TQueryFnData, TPageParam, TData]
+[Velvet] type Velvet.InfiniteQueryResult`1[TData]
 [Velvet] type Velvet.KeyDownBinding
 [Velvet] type Velvet.KeyUpBinding
 [Velvet] type Velvet.KeyframeStop
@@ -1920,6 +1964,7 @@
 [Velvet] type Velvet.NetworkMode
 [Velvet] type Velvet.NetworkSignals
 [Velvet] type Velvet.NullStoreLogger
+[Velvet] type Velvet.PageParam`1[T]
 [Velvet] type Velvet.PanelFocusOrder
 [Velvet] type Velvet.ParticlesElement
 [Velvet] type Velvet.ParticlesSettings
@@ -1943,6 +1988,7 @@
 [Velvet] type Velvet.QueryFetchStatus
 [Velvet] type Velvet.QueryFilters
 [Velvet] type Velvet.QueryFunctionContext
+[Velvet] type Velvet.QueryFunctionContext`1[TPageParam]
 [Velvet] type Velvet.QueryKey
 [Velvet] type Velvet.QueryObserver
 [Velvet] type Velvet.QueryOptions`1[T]

@@ -12,10 +12,17 @@
 - `Hooks.UseQueries` and `Hooks.UseSuspenseQueries`, TanStack Query's `useQueries` and `useSuspenseQueries`,
   with and without a `combine`: a list of queries read in one hook, each keeping its observer while some query
   of the list reads its entry.
+- `Hooks.UseInfiniteQuery` and `Hooks.UseSuspenseInfiniteQuery`, TanStack Query's `useInfiniteQuery` and
+  `useSuspenseInfiniteQuery`, over `InfiniteQueryOptions` (`InitialPageParam`, `GetNextPageParam`,
+  `GetPreviousPageParam`, `MaxPages`) and an entry holding `InfiniteData`. The `InfiniteQueryResult` adds
+  `FetchNextPage`, `FetchPreviousPage`, `HasNextPage`, `HasPreviousPage`, `IsFetchingNextPage`,
+  `IsFetchingPreviousPage`, `IsFetchNextPageError` and `IsFetchPreviousPageError`, each a `QueryProperties` flag
+  for `NotifyOnChangeProps`. A refetch fetches the pages again from the first, as many as the entry holds.
+  `QueryClient.FetchInfiniteQuery` and `PrefetchInfiniteQuery` fill the cache ahead of it.
 
 ### Changed
 
-- `QueryInfo` is replaced by `Query`: the function forms of the query options (`EnabledFn`, `StaleTimeFn`,
+- The read-only QueryInfo view is replaced by `Query`: the function forms of the query options (`EnabledFn`, `StaleTimeFn`,
   `RefetchIntervalFn` and the rest), `PlaceholderData`'s `previousQuery`, `QueryPlaceholder.KeepPreviousData`
   and `QueryFilters.Predicate` are handed the entry's `Query`, which reads the entry as it stands rather than
   as it stood at the call. A nullable `previousQuery` is tested with `!= null` rather than `HasValue`.
