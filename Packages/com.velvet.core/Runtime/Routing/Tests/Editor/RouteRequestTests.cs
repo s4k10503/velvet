@@ -406,6 +406,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ACaretInThePath_When_ALoaderReadsItsRequestUrl_Then_ItIsEncoded()
+        {
+            // Arrange / Act
+            var url = UrlAt("/a^b");
+
+            // Assert
+            Assert.That(url, Is.EqualTo("http://localhost/a%5Eb"));
+        }
+
+        [Test]
         public void Given_DotSegmentsInThePath_When_ALoaderReadsItsRequestUrl_Then_TheyAreResolved()
         {
             // Arrange / Act

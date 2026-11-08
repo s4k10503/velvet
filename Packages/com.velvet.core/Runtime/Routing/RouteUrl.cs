@@ -72,7 +72,7 @@ namespace Velvet
             foreach (var segment in kept)
             {
                 text.Append('/');
-                Encode(text, segment, "\"#<>?`{}");
+                Encode(text, segment, "\"#<>?^`{}");
             }
             return text.Length == 0 ? "/" : text.ToString();
         }
