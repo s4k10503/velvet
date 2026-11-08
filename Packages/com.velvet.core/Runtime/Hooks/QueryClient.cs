@@ -1263,6 +1263,10 @@ namespace Velvet
         // TanStack's #retryer.promise once its request has settled or been cancelled: what a fetch over a fetch
         // status that is not idle joins when no request is in flight.
         private VelvetTask<T>? _settled;
+        // Requests a fetch over a status written idle stopped tracking without aborting, as v5's fetch replaces
+        // #retryer and leaves the old retryer running: each settles into the entry as it would have, with the
+        // callers that waited on it.
+        private Dictionary<CancellationTokenSource, List<VelvetTaskCompletionSource<T>>?>? _orphans;
 
         internal override TimeSpan DataUpdatedAt => _dataUpdatedAt;
 
@@ -1402,26 +1406,51 @@ namespace Velvet
             return waiter.Task;
         }
 
-        private void ResolveWaiters(T data)
+        private static void ResolveWaiters(List<VelvetTaskCompletionSource<T>>? waiters, T data)
         {
-            var waiters = _waiters;
             if (waiters == null) return;
-            _waiters = null;
             foreach (var waiter in waiters)
             {
                 waiter.TrySetResult(data);
             }
         }
 
-        private void RejectWaiters(Exception error)
+        private static void RejectWaiters(List<VelvetTaskCompletionSource<T>>? waiters, Exception error)
         {
-            var waiters = _waiters;
             if (waiters == null) return;
-            _waiters = null;
             foreach (var waiter in waiters)
             {
                 waiter.TrySetException(error);
             }
+        }
+
+        // The callers waiting on the request, the one in flight's or an orphan's, handed over once as it settles.
+        private List<VelvetTaskCompletionSource<T>>? TakeWaiters(CancellationTokenSource request)
+        {
+            if (ReferenceEquals(_inFlight, request))
+            {
+                var waiters = _waiters;
+                _waiters = null;
+                return waiters;
+            }
+            if (!Writes(request)) return null;
+            var orphaned = _orphans![request];
+            _orphans.Remove(request);
+            return orphaned;
+        }
+
+        // Whether the request still writes into the entry: the one in flight, or an orphan still running.
+        private bool Writes(CancellationTokenSource request)
+            => ReferenceEquals(_inFlight, request) || (_orphans != null && _orphans.ContainsKey(request));
+
+        private void OrphanInFlight()
+        {
+            var request = _inFlight;
+            if (request == null) return;
+            (_orphans ??= new Dictionary<CancellationTokenSource, List<VelvetTaskCompletionSource<T>>?>())[request] = _waiters;
+            _waiters = null;
+            _inFlight = null;
+            _paused = false;
         }
 
         private void CancelWaiters()
@@ -1459,7 +1488,7 @@ namespace Velvet
             }
             else
             {
-                CancelInFlight();
+                OrphanInFlight();
             }
             _writtenFetchStatus = null;
             // v5's fetch takes the options it is handed only once it is not joining a request in flight.
@@ -1624,7 +1653,15 @@ namespace Velvet
 
         private void SetPaused(CancellationTokenSource request, bool paused)
         {
-            if (!ReferenceEquals(_inFlight, request) || _paused == paused) return;
+            if (!ReferenceEquals(_inFlight, request))
+            {
+                // v5's pause and continue dispatch from an orphan too, setting the status they name.
+                if (!Writes(request)) return;
+                _writtenFetchStatus = paused ? QueryFetchStatus.Paused : QueryFetchStatus.Fetching;
+                Notify(paused ? QueryActionType.Pause : QueryActionType.Continue);
+                return;
+            }
+            if (_paused == paused) return;
             _paused = paused;
             _writtenFetchStatus = null;
             Notify(paused ? QueryActionType.Pause : QueryActionType.Continue);
@@ -1644,9 +1681,9 @@ namespace Velvet
 
         private void Succeed(CancellationTokenSource request, T data, Func<object?, object, object>? sharing, int failures)
         {
-            // A request stops being the one in flight when something cancels it or removes the entry, and a
-            // completion already posted to the main thread by then still arrives here.
-            if (!ReferenceEquals(_inFlight, request)) return;
+            // A request stops writing when something cancels it or removes the entry, and a completion already
+            // posted to the main thread by then still arrives here.
+            if (!Writes(request)) return;
             T shared;
             try
             {
@@ -1658,6 +1695,8 @@ namespace Velvet
                 return;
             }
 
+            var current = ReferenceEquals(_inFlight, request);
+            var waiters = TakeWaiters(request);
             End(request);
             Data = shared;
             HasData = true;
@@ -1679,11 +1718,11 @@ namespace Velvet
             }
             finally
             {
-                if (callbackFailure == null) ResolveWaiters(shared);
+                if (callbackFailure == null) ResolveWaiters(waiters, shared);
                 ReleaseSuspended();
             }
-            if (callbackFailure != null) FailLanded(callbackFailure);
-            else _settled = VelvetTask.FromResult(shared);
+            if (callbackFailure != null) FailLanded(callbackFailure, waiters, current);
+            else if (current) _settled = VelvetTask.FromResult(shared);
         }
 
         private Exception? RunSuccessCallbacks(T data)
@@ -1703,7 +1742,7 @@ namespace Velvet
 
         // v5's error branch for a throw the cache's success callbacks raised: the request has settled already, so
         // the entry takes the error over its data, and the callers waiting are handed it.
-        private void FailLanded(Exception error)
+        private void FailLanded(Exception error, List<VelvetTaskCompletionSource<T>>? waiters, bool current)
         {
             CountError();
             Error = error;
@@ -1718,8 +1757,8 @@ namespace Velvet
             }
             finally
             {
-                _settled = VelvetTask.FromException<T>(error);
-                RejectWaiters(error);
+                if (current) _settled = VelvetTask.FromException<T>(error);
+                RejectWaiters(waiters, error);
                 ReleaseSuspended();
             }
         }
@@ -1768,7 +1807,9 @@ namespace Velvet
 
         private void Fail(CancellationTokenSource request, Exception error, int failures)
         {
-            if (!ReferenceEquals(_inFlight, request)) return;
+            if (!Writes(request)) return;
+            var current = ReferenceEquals(_inFlight, request);
+            var waiters = TakeWaiters(request);
             End(request);
             CountError();
             // The last good data stays beside the error, as TanStack keeps it, and stale: TanStack flags it
@@ -1786,25 +1827,34 @@ namespace Velvet
             }
             finally
             {
-                _settled = VelvetTask.FromException<T>(error);
-                RejectWaiters(error);
+                if (current) _settled = VelvetTask.FromException<T>(error);
+                RejectWaiters(waiters, error);
                 ReleaseSuspended();
             }
         }
 
         private void RecordFailure(CancellationTokenSource request, int failureCount, Exception error)
         {
-            if (!ReferenceEquals(_inFlight, request)) return;
+            if (!Writes(request)) return;
             FailureCount = failureCount;
             FailureReason = error;
             Notify(QueryActionType.Failed);
         }
 
+        // v5's success and error set the status idle whichever retryer dispatched them, so an orphan settling under
+        // a newer request leaves the entry reading idle until that request's next action.
         private void End(CancellationTokenSource request)
         {
-            _inFlight = null;
-            _paused = false;
-            _writtenFetchStatus = null;
+            if (ReferenceEquals(_inFlight, request))
+            {
+                _inFlight = null;
+                _paused = false;
+                _writtenFetchStatus = null;
+            }
+            else
+            {
+                _writtenFetchStatus = _inFlight == null ? null : QueryFetchStatus.Idle;
+            }
             RescheduleCollection(Client.Now);
             // MUTANT_SURVIVES(equivalent, line removed): nothing cancels a settled request again, so its source only waits for collection.
             request.Dispose();

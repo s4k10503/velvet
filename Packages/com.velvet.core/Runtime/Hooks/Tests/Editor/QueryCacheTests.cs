@@ -641,6 +641,56 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStatusWrittenIdleOverARequest_When_AFetchStartsAnotherAndTheFirstLands_Then_ItsDataLands()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            var query = Find();
+            query.SetState(query.State with { FetchStatus = QueryFetchStatus.Idle });
+            _ = query.Fetch();
+
+            // Act
+            s_sources[0].TrySetResult(5);
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(5),
+                "v5's fetch over an idle status replaces #retryer and the old one still settles into the query");
+        }
+
+        [Test]
+        public void Given_AStatusWrittenIdleOverARequest_When_AFetchStartsAnother_Then_TheFirstIsNotAborted()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(ContextOptions() with { StaleTime = TimeSpan.Zero });
+            var token = s_context!.CancellationToken;
+            var query = Find();
+            query.SetState(query.State with { FetchStatus = QueryFetchStatus.Idle });
+
+            // Act
+            _ = query.Fetch();
+
+            // Assert
+            Assert.That(token.IsCancellationRequested, Is.False, "v5 leaves the old retryer running");
+        }
+
+        [Test]
+        public void Given_AStatusWrittenIdleOverARequest_When_TheFirstLandsUnderTheSecond_Then_TheEntryReadsIdle()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            var query = Find();
+            query.SetState(query.State with { FetchStatus = QueryFetchStatus.Idle });
+            _ = query.Fetch();
+
+            // Act
+            s_sources[0].TrySetResult(5);
+
+            // Assert
+            Assert.That(Find().State.FetchStatus, Is.EqualTo(QueryFetchStatus.Idle),
+                "v5's success action sets the status idle whichever retryer dispatched it");
+        }
+
+        [Test]
         public void Given_ARequestInFlight_When_CancelIsSilent_Then_TheEntryStillReadsFetching()
         {
             // Arrange
