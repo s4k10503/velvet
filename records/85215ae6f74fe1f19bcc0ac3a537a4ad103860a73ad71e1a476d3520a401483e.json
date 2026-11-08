@@ -2,7 +2,7 @@
  "detail": "EditMode: Got a SIGSEGV while executing native code. This usually indicates",
  "file": "0d60ec5e56dae19cd12d896876884d6a231a3d7e62ae481ac8dd3f76284e3758",
  "killers": [],
- "measured_by": "42404816716",
+ "measured_by": "42482824250",
  "mutant": {
   "after": ";",
   "before": "load.Add(Instruction.Create(OpCodes.Ldfld, dependency.Field!));",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "tests": "bee10020bc42d82f97b9695a9cb9b761a1938165485efd0307791b40085b75b1",
  "verdict": "killed (the editor crashed)"
 }

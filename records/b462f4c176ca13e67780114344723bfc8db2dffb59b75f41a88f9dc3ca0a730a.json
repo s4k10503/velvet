@@ -1,15 +1,22 @@
 {
- "detail": "EditMode: 1 failed: Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
+ "detail": "EditMode: 2 failed: Given_AFieldAssignedThroughAConditionalOfAFreshAndAnOutsideObject_When_Compiled_Then_TheReportSaysItWritesIntoAnObjectItDidNotCreate, Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
  "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
  "killers": [
   {
+   "case": "Velvet.Tests.ReactiveScopeRunShapeTests.Given_AFieldAssignedThroughAConditionalOfAFreshAndAnOutsideObject_When_Compiled_Then_TheReportSaysItWritesIntoAnObjectItDidNotCreate",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeRunShapeTests.cs": "d9601d55dfddc2eda8866c19ca89f37ade2394fb4b50adf10afafb140c7acd90",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
    "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_TheAssemblyThisFixtureLivesIn_When_CompilerWeaverRunsOverIt_Then_NoBodyFailsToWeave",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "b51eb819d9f244a91d978d8d98e7d43638e47ff65680d688fcbc6a5824885ae5"
    }
   }
  ],
- "measured_by": "40109529962",
+ "measured_by": "42482824250",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -27,6 +34,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "tests": "bee10020bc42d82f97b9695a9cb9b761a1938165485efd0307791b40085b75b1",
  "verdict": "killed"
 }

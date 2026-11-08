@@ -53,7 +53,7 @@
   {
    "case": "Velvet.Tests.HookCountDiagnosticTests.Given_AHelperCallingUseStateOnlyWhileOpen_When_TheButtonOpensIt_Then_TheErrorIsThrownFromTheHelper",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "0601b2ef0a66265f784f9fd0101dcaad099405c838a926cee5074acb67a34226",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "e6a1e91618e9f9dea44b09e7e1bcb7651a71de315c09f3ad3162a67ca461fc1e",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -62,7 +62,7 @@
   {
    "case": "Velvet.Tests.HookCountDiagnosticTests.Given_AHelperCallingUseStateOnlyWhileOpen_When_TheButtonOpensIt_Then_TheErrorNamesTheComponentAndTheRule",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "0601b2ef0a66265f784f9fd0101dcaad099405c838a926cee5074acb67a34226",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "e6a1e91618e9f9dea44b09e7e1bcb7651a71de315c09f3ad3162a67ca461fc1e",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -71,7 +71,7 @@
   {
    "case": "Velvet.Tests.HookCountDiagnosticTests.Given_APropsComponentWhoseHelperCallsUseStateOnlyWhileOpen_When_Opened_Then_TheErrorNamesTheComponent(\"V.Component\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "0601b2ef0a66265f784f9fd0101dcaad099405c838a926cee5074acb67a34226",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "e6a1e91618e9f9dea44b09e7e1bcb7651a71de315c09f3ad3162a67ca461fc1e",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -80,14 +80,14 @@
   {
    "case": "Velvet.Tests.HookCountDiagnosticTests.Given_APropsComponentWhoseHelperCallsUseStateOnlyWhileOpen_When_Opened_Then_TheErrorNamesTheComponent(\"V.Memo\")",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "0601b2ef0a66265f784f9fd0101dcaad099405c838a926cee5074acb67a34226",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "e6a1e91618e9f9dea44b09e7e1bcb7651a71de315c09f3ad3162a67ca461fc1e",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   }
  ],
- "measured_by": "42366599905",
+ "measured_by": "42482824250",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -101,6 +101,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "tests": "bee10020bc42d82f97b9695a9cb9b761a1938165485efd0307791b40085b75b1",
  "verdict": "killed"
 }

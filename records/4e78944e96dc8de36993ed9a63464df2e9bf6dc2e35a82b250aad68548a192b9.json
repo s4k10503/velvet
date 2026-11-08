@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 5 failed: Given_OnlyTheSetterOfAStateReadByACapturingLambda_When_Compiled_Then_TheReportSaysTheValueIsNeverRead, Given_ADispatchAheadOfTheLastHook_When_Compiled_Then_TheReportSaysTheBodyIsNotKeyedAsAWhole, Given_AUseMutationResult_When_Compiled_Then_TheReportNamesTheHook",
+ "detail": "EditMode: 5 failed: Given_OnlyTheSetterOfAStateReadByACapturingLambda_When_Compiled_Then_TheReportSaysTheValueIsNeverRead, Given_ADispatchAheadOfTheLastHook_When_Compiled_Then_TheReportSaysTheBodyIsNotKeyedAsAWhole, Given_AUseMutationResult_When_Compiled_Then_TheReportNamesTheHook; 1 other editor(s) were up",
  "file": "75c02a872ca0a3504bef9f0488374fda41df2ddfb4c86b00b1a01c3d5ec5c612",
  "killers": [
   {
@@ -14,7 +14,7 @@
    "case": "Velvet.Tests.ReactiveScopeWovenBehaviorE2ETests.Given_ADispatchAheadOfTheLastHook_When_Compiled_Then_TheReportSaysTheBodyIsNotKeyedAsAWhole",
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "fb466b70e3f44f8e399d9502d3fda1c4a8dbbd99b28eb33a9aa348c9085fe210",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "bbf7267b3b070674bf9bf077c79732489b619fa661e2b4394cac75864de861da",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -24,7 +24,7 @@
    "case": "Velvet.Tests.ReactiveScopeWovenBehaviorE2ETests.Given_AUseMutationResult_When_Compiled_Then_TheReportNamesTheHook",
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "fb466b70e3f44f8e399d9502d3fda1c4a8dbbd99b28eb33a9aa348c9085fe210",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "bbf7267b3b070674bf9bf077c79732489b619fa661e2b4394cac75864de861da",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -33,17 +33,17 @@
   {
    "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AnAssemblyAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_ItIsAlsoABuildWarningNamingTheMethod",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "b51eb819d9f244a91d978d8d98e7d43638e47ff65680d688fcbc6a5824885ae5"
    }
   },
   {
    "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AnUnresolvableCalleeAheadOfTheLastHook_When_CompilerWeaverRuns_Then_TheMethodCarriesAReportNamingIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "9c902c68ccdf7ea33be40096cabff17622120999e9f26a33c73e0943cfb42ae8"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "b51eb819d9f244a91d978d8d98e7d43638e47ff65680d688fcbc6a5824885ae5"
    }
   }
  ],
- "measured_by": "42366599905",
+ "measured_by": "42482824250",
  "mutant": {
   "after": ";",
   "before": "foreach (var blocker in blockers) report.Add($\"The body as a whole is not cached: {blocker}.\");",
@@ -57,6 +57,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a2068e8f5bdb9b86183e97b191f08b81aaf8a6c9347c3da1649487afdc75b6aa",
+ "tests": "bee10020bc42d82f97b9695a9cb9b761a1938165485efd0307791b40085b75b1",
  "verdict": "killed"
 }
