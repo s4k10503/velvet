@@ -143,9 +143,8 @@ namespace Velvet
         bool IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>.HasNextPage(InfiniteData<TQueryFnData, TPageParam> data)
             => InfiniteQueryBehavior<TQueryFnData, TPageParam>.NextParam(GetNextPageParam, data).HasValue;
 
-        // v5's hasPreviousPage is false without a getPreviousPageParam.
         bool IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>.HasPreviousPage(InfiniteData<TQueryFnData, TPageParam> data)
-            => GetPreviousPageParam != null && InfiniteQueryBehavior<TQueryFnData, TPageParam>.PreviousParam(GetPreviousPageParam, data).HasValue;
+            => InfiniteQueryBehavior<TQueryFnData, TPageParam>.PreviousParam(GetPreviousPageParam, data).HasValue;
     }
 
     /// <summary>
