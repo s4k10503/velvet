@@ -246,9 +246,7 @@ namespace Velvet
             TextElement textElement, bool horizontal, string text, WhiteSpace whiteSpace, float crossContent)
             => horizontal
                 ? MeasureMinContentWidth(textElement, text, whiteSpace)
-                : textElement.MeasureTextSize(
-                    text, crossContent, VisualElement.MeasureMode.Exactly,
-                    float.NaN, VisualElement.MeasureMode.Undefined).y;
+                : TextLineBox.HeightAt(textElement, text, crossContent);
 
         private static float CapMinimum(float value, float? specified, float? maximum)
         {

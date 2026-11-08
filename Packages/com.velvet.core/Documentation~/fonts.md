@@ -254,6 +254,15 @@ generator and the Advanced Text Generator) implement the tag natively, feeding i
 line-advance math at every line-break site; a following `</line-height>` restores the natural
 metric.
 
+The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text leaf or a `V.Button` under a line
+height measures one line box of that height per line, as CSS does, single lines included and whether the line
+height is above or below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and
+`text-sm/6` 24px. Padding and border sit outside the line boxes, and `resolvedStyle.height` reads the result. The
+glyphs sit half the difference between the line height and the font's content height below the top of the first
+line box: under a `middle-*` alignment (`text-left`, `text-center`, `text-right`, `text-start`, `text-end`) at any box height, a box its flex row stretches or an `h-*` sets included, and under an `upper-*`
+alignment (a label with no text alignment class, `text-top-*`) where the line height is at least the font's
+content height.
+
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
 as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-height`'s values: a

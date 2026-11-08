@@ -57,24 +57,44 @@ namespace Velvet
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
     }
 
-    internal sealed class SkewPickButton : Button, ISkewPickTarget
+    internal sealed class SkewPickButton : Button, ISkewPickTarget, ILineBoxed
     {
+        private TextLineBox? _lineBox;
+
+        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this);
+
         public SkewPickRegion? PickRegion { get; set; }
 
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
+
+        protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
+        {
+            var lines = TextLineBox.Before(this, LineBox, heightMode);
+            return lines.Fit(base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode), desiredHeight, heightMode);
+        }
     }
 
-    internal sealed class SkewPickLabel : Label, ISkewPickTarget
+    internal sealed class SkewPickLabel : Label, ISkewPickTarget, ILineBoxed
     {
         public SkewPickLabel(string text)
             : base(text)
         {
         }
 
+        private TextLineBox? _lineBox;
+
+        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this);
+
         public SkewPickRegion? PickRegion { get; set; }
 
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
+
+        protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
+        {
+            var lines = TextLineBox.Before(this, LineBox, heightMode);
+            return lines.Fit(base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode), desiredHeight, heightMode);
+        }
     }
 }

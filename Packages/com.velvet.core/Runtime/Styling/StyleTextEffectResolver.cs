@@ -238,6 +238,7 @@ namespace Velvet
                     breaks = null;
                     display = Compose(raw, effect, te.enableRichText, new TextShaping(null, cell));
                 }
+                display = Raised(ctx, te, display);
                 ShowText(ctx, te, raw, display);
                 TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal)
                     || effect.Numeric == NumericSpacing.Tabular);
@@ -298,6 +299,24 @@ namespace Velvet
                     ctx.TextOverlineBindings.Remove(te);
                 }
             }
+        }
+
+        // The shown text inside the <voffset> its line boxes place it with (TextLineBox), which a leaf with rich text
+        // off is shown without.
+        private static string Raised(ReconcilerContext ctx, TextElement element, string display)
+        {
+            if (!element.enableRichText)
+            {
+                return display;
+            }
+            if (element is not ILineBoxed boxed)
+            {
+                return display;
+            }
+            var raise = boxed.LineBox.Shown(ctx);
+            return raise == 0f
+                ? display
+                : string.Concat("<voffset=", raise.ToString(System.Globalization.CultureInfo.InvariantCulture), "px>", display, "</voffset>");
         }
 
         // Decoration and line height are tags, so a leaf with rich text off is shown without them rather than

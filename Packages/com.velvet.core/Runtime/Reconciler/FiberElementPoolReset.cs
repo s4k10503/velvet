@@ -121,6 +121,11 @@ namespace Velvet
                 skewPick.PickRegion = null;
             }
 
+            if (element is ILineBoxed lineBoxed)
+            {
+                lineBoxed.LineBox.Reset();
+            }
+
             // Clearing ANY inline property restores the matched-rules value THROUGH the transition system, so
             // while the element is still on a panel every clear below can become a running animation instead —
             // one that keeps painting what the reset just removed, and that the transition-longhand nulls at

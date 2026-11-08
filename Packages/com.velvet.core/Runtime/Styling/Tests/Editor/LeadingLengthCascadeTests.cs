@@ -85,6 +85,8 @@ namespace Velvet.Tests
             Assert.That(text, Is.EqualTo("<line-height=21px>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the line-height tag this pins is unchanged; the case reads it without the
+        // <voffset> a line box now places the text with, whose size is the font's.
         [Test]
         public void Given_AnEmLeadingOverTextAtTheSameSize_When_Mounted_Then_TheTextGetsTheElementsLength()
         {
@@ -92,9 +94,11 @@ namespace Velvet.Tests
             var text = MountAndReadText(V.Div(className: "text-[20px] leading-[1.5em]", V.Text("hi")));
 
             // Assert
-            Assert.That(text, Is.EqualTo("<line-height=30px>hi</line-height>"));
+            Assert.That(System.Text.RegularExpressions.Regex.Replace(text, "^<voffset=[^>]*>(.*)</voffset>$", "$1"), Is.EqualTo("<line-height=30px>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the line-height tag this pins is unchanged; the case reads it without the
+        // <voffset> a line box now places the text with, whose size is the font's.
         [Test]
         public void Given_AnEmLeadingOnALabelItself_When_Mounted_Then_ItsOwnTextGetsItsLength()
         {
@@ -102,7 +106,7 @@ namespace Velvet.Tests
             var text = MountAndReadText(V.Label(className: "text-[20px] leading-[150%]", text: "hi"));
 
             // Assert
-            Assert.That(text, Is.EqualTo("<line-height=30px>hi</line-height>"));
+            Assert.That(System.Text.RegularExpressions.Regex.Replace(text, "^<voffset=[^>]*>(.*)</voffset>$", "$1"), Is.EqualTo("<line-height=30px>hi</line-height>"));
         }
 
         [Test]
@@ -141,6 +145,8 @@ namespace Velvet.Tests
                 : float.Parse(tagged.Substring(start, end - start), System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        // GREEN_ON_BASE(refactor): the line-height tag this pins is unchanged; the case reads it without the
+        // <voffset> a line box now places the text with, whose size is the font's.
         [Test]
         public void Given_AUnitlessLeadingOverALargerLabel_When_Mounted_Then_TheLabelGetsTheFactor()
         {
@@ -149,7 +155,7 @@ namespace Velvet.Tests
                 V.Div(className: "text-[20px] leading-[1.5]", V.Label(className: "text-[40px]", text: "hi")));
 
             // Assert
-            Assert.That(text, Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(System.Text.RegularExpressions.Regex.Replace(text, "^<voffset=[^>]*>(.*)</voffset>$", "$1"), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
         // The declaring element is given a fixed box in both toggle cases, so its geometry does not move
