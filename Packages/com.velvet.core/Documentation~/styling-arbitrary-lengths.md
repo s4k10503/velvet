@@ -180,7 +180,8 @@ while hovered). A `rotate-[…]` and a `scale-[…]` the browser rejects take no
 | `2cap` | that font's cap height; its ascent where it carries none, and the em where it carries neither |
 | `2ch`, `2ic` | the advance of `0` and of `水` in that font, or in its first fallback font holding the glyph; 0.5em and 1em where none does |
 | `2lh` | the line height Velvet gives the element's text: the nearest `leading-*` or `text-<size>` line height on it or an ancestor ([fonts.md](fonts.md)), else the preflight's 1.5 times its font size, and the font's own under `leading-[normal]` |
-| `2rex`, `2rch`, `2rcap`, `2ric`, `2rlh` | the same, for the panel root's font at 16px, the size a rem is taken at |
+| `2rex`, `2rch`, `2rcap`, `2ric` | the same, for the panel root's font at 16px, the size a rem is taken at |
+| `2rlh` | the root's line height under the preflight: 1.5 times the 16px a rem is taken at, 24px |
 | `50vw`, `50vh`, `50vmin`, `50vmax` | the panel — in an editor window, the window's content: its width, its height, the smaller and the larger of the two |
 | `50svw`, `50lvh`, `50dvmin`, … | the same as the unprefixed unit: a panel has no browser chrome to show or hide, which is where CSS makes the small, large and dynamic viewports equal |
 | a math function mixing a percentage with a length, or reading an `em` or a viewport unit | each term against its own basis, as CSS evaluates it |

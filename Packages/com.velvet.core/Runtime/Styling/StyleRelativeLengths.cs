@@ -195,9 +195,11 @@ namespace Velvet
         private static FontUnitPixels UnitsOf(VisualElement element)
             => StyleFontUnits.Of(element, element.resolvedStyle.fontSize, StyleTextEffectResolver.LineHeightOf(element));
 
-        // The root-relative units: the panel root's font, at the font size a rem is taken at.
+        // The root-relative units: the panel root's font, at the font size a rem is taken at, and the preflight's line
+        // height at that size.
         private static FontUnitPixels RootUnitsOf(VisualElement element)
-            => StyleFontUnits.Of(element.panel.visualTree, StyleLengthExpression.RootFontSize, float.NaN);
+            => StyleFontUnits.Of(element.panel.visualTree, StyleLengthExpression.RootFontSize,
+                StyleTextEffectResolver.PreflightLeading.Value * StyleLengthExpression.RootFontSize);
 
         private static UnityEngine.Vector2 PercentBox(VisualElement parent, bool absolute)
         {

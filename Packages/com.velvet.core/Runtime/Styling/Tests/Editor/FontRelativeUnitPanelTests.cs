@@ -221,13 +221,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OneRlhUnderAPixelLeading_When_Settled_Then_ItIsTheRootFontsLineHeightAtSixteenPixels()
+        public void Given_OneRlhUnderAPixelLeading_When_Settled_Then_ItIsThePreflightLineHeightAtSixteenPixels()
         {
             // Act
             Mount("text-[20px] leading-[30px] w-[300px] h-[200px]", "w-[1rlh] h-[10px]");
 
-            // Assert
-            Assert.That(Written, Is.EqualTo(FacePixels(_font.faceInfo.lineHeight, 16f)).Within(1e-3f));
+            // Assert — the root's line height under the preflight, 1.5 times 16px.
+            Assert.That(Written, Is.EqualTo(24f).Within(1e-3f));
         }
     }
 }
