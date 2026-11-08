@@ -83,7 +83,7 @@ Keys are compared the way hook dependencies are ([react-migration.md §1-4](reac
 A scope is built on every render when it:
 
 - takes the result of a call whose target the build cannot see — through an interface or a virtual method, or into an assembly the build cannot load;
-- takes the result of a hook outside the weaver's allow-lists (`Hooks.Use`, `Hooks.UseMutation`, `Hooks.UseBlocker`, `Hooks.UseFallback`), or of a custom hook that reaches one;
+- takes the result of a hook outside the weaver's allow-lists (`Hooks.Use`, `Hooks.UseMutation`, `Hooks.UseQuery`, `Hooks.UseSuspenseQuery`, `Hooks.UseBlocker`, `Hooks.UseFallback`), or of a custom hook that reaches one;
 - calls something that reads state it was not handed: a static member with nothing to read from (`DateTime.Now`, `Time.time`), a framework method outside a short list of pure ones (`List<T>.Add`), or a static field that is not `readonly`;
 - reads a stable object that a call may have changed — the result of `Hooks.UseRef`, `Hooks.UseMutableRef` or `Hooks.UseService` handed as an argument to anything but a `V.*` factory, a property getter or a pure framework member — so it is rebuilt after the call rather than served from before it;
 - calls `V.Portal` or `V.WorldSpace`, or builds a child of one, directly or through a local;

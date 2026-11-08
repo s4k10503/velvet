@@ -29,6 +29,8 @@ namespace Velvet
             nameof(Hooks.UseId),
             nameof(Hooks.UseDeferredValue),
             nameof(Hooks.UseMutation),
+            nameof(Hooks.UseQuery),
+            nameof(Hooks.UseSuspenseQuery),
             nameof(Hooks.UseService),
             nameof(Hooks.UseFallback),
             nameof(Hooks.Use),

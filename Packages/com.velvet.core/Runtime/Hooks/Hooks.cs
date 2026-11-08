@@ -3126,16 +3126,17 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// Not a Suspense hook: a query with no data yet returns <see cref="QueryStatus.Pending"/> rather than
-        /// suspending, as <c>useQuery</c> does. <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/>
-        /// stays the cache-less <c>use()</c>.
+        /// suspending, as <c>useQuery</c> does; <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> suspends.
+        /// <see cref="Use{T}(Func{CancellationToken, VelvetTask{T}}, object)"/> stays the cache-less <c>use()</c>.
         /// <para/>
         /// The component subscribes in a passive effect, as <c>useQuery</c> does, and a fetch that mounting
         /// starts begins there. A change of key moves the subscription to the new key's entry: the result
         /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
         /// <para/>
-        /// A failed request runs again up to <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> times before the
+        /// A failed request runs again as <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> says before the
         /// failure is the entry's error, and a request that lands is shared structurally with the data the entry
-        /// held (<see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does.
+        /// held (<see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does. Under
+        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> the error is thrown from this call.
         /// </remarks>
         /// <typeparam name="TQueryFnData">The entry's data type. Every query sharing a key must use the same
         /// one.</typeparam>
@@ -3149,6 +3150,134 @@ namespace Velvet
         public static QueryResult<TData> UseQuery<TQueryFnData, TData>(
             QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
+            var query = UseQueryObserver(options, client, suspense: false);
+            query.ThrowIfError();
+            return query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> for a query whose result holds the data its query
+        /// function returns.
+        /// </summary>
+        /// <typeparam name="T">The query's data type. Every query sharing a key must use the same one.</typeparam>
+        /// <param name="options">As <see cref="UseQuery{T}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{T}"/>'s.</param>
+        /// <returns>The entry's state once it holds data or an error.</returns>
+        public static QueryResult<T> UseSuspenseQuery<T>(QueryOptions<T> options, QueryClient? client = null)
+            => UseSuspenseQuery<T, T>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQuery</c>: <see cref="UseQuery{TQueryFnData, TData}"/> that suspends to the
+        /// nearest <c>V.Suspense</c> while the result is <see cref="QueryStatus.Pending"/>, and throws to the nearest
+        /// error boundary when the entry's request has failed and it holds no data. While the nearest
+        /// <see cref="QueryErrorResetBoundary"/> stands reset, that error is not thrown and the result carries it;
+        /// otherwise the result is <see cref="QueryStatus.Success"/>, or <see cref="QueryStatus.Error"/> over data
+        /// a later request failed to refresh.
+        /// </summary>
+        /// <remarks>
+        /// The options are <see cref="UseQuery{TQueryFnData, TData}"/>'s, but that the query is always enabled,
+        /// <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> is ignored, and the error rule above
+        /// replaces <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> and its function. The stale time, and a garbage-collection
+        /// time, of less than a second count as a second, so the render that follows the suspension does not fetch
+        /// again. A suspending render starts the entry's request, or joins the one in flight, and the component
+        /// renders again once the entry holds data or the request has settled. Until the nearest
+        /// <see cref="QueryErrorResetBoundary"/> is reset, a component mounting over an entry whose request failed
+        /// and that holds no data throws its error rather than fetching again; a request that settles with no data
+        /// while a component is suspended on it undoes such a reset.
+        /// </remarks>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="options">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds data or an error.</returns>
+        public static QueryResult<TData> UseSuspenseQuery<TQueryFnData, TData>(
+            QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
+        {
+            var query = UseQueryObserver(options, client, suspense: true);
+            UseSuspendWhilePending(query);
+            query.ThrowIfError();
+            return query.Result;
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useQueryErrorResetBoundary</c>: the <see cref="QueryErrorResetBoundary"/>
+        /// <see cref="QueryErrorResetBoundaryContext.Ref"/> provides, or the one shared by every query without a
+        /// Provider above it.
+        /// </summary>
+        /// <returns>The boundary.</returns>
+        public static QueryErrorResetBoundary UseQueryErrorResetBoundary()
+            => UseContext(QueryErrorResetBoundaryContext.Ref)!;
+
+        private static readonly Func<CancellationToken, VelvetTask<Unit>> s_settledSuspendedQuery
+            = _ => VelvetTask.FromResult(Unit.Default);
+        private static readonly object s_settledSuspendedQueryKey = new();
+
+        // What a query hook's render read, and what its suspense and error rules read beside the result.
+        private readonly struct QueryRead<TQueryFnData, TData>
+        {
+            internal QueryRead(QueryObserver<TQueryFnData, TData> observer, QueryEntry<TQueryFnData> entry,
+                in QuerySettings<TQueryFnData, TData> settings, QueryClient client, QueryErrorResetBoundary boundary)
+            {
+                Observer = observer;
+                Entry = entry;
+                Settings = settings;
+                Client = client;
+                Boundary = boundary;
+                Result = observer.Read(entry, settings);
+            }
+
+            internal QueryResult<TData> Result { get; }
+            internal QueryObserver<TQueryFnData, TData> Observer { get; }
+            internal QueryEntry<TQueryFnData> Entry { get; }
+            internal QuerySettings<TQueryFnData, TData> Settings { get; }
+            internal QueryClient Client { get; }
+            internal QueryErrorResetBoundary Boundary { get; }
+
+            // TanStack's getHasError, whose error useBaseQuery throws.
+            internal void ThrowIfError()
+            {
+                var current = Observer.Current;
+                if (Settings.HasError(current, Entry, Boundary)) ExceptionDispatchInfo.Capture(current.Error!).Throw();
+            }
+        }
+
+        private static QueryRead<TQueryFnData, TData> UseQueryObserver<TQueryFnData, TData>(
+            QueryOptions<TQueryFnData, TData> options, QueryClient? client, bool suspense)
+        {
+            var hookName = suspense ? nameof(UseSuspenseQuery) : nameof(UseQuery);
+            ValidateQueryOptions(options);
+            // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(hookName);
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                $"{hookName} found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                $"above the caller, or pass the client to {hookName}.");
+            var boundary = UseContext(QueryErrorResetBoundaryContext.Ref)!;
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
+            var observer = UseMutableRef<QueryObserver<TQueryFnData, TData>>(() => new QueryObserver<TQueryFnData, TData>(() => setVersion.Invoke(v => v + 1))).Current;
+            var settings = new QuerySettings<TQueryFnData, TData>(options, queryClient, suspense);
+            var entry = settings.ReadEntry(queryClient);
+            settings = settings.PreventingErrorBoundaryRetry(entry, boundary);
+
+            // TanStack's useClearResetErrorBoundary.
+            UseEffect((Func<Action?>)(() =>
+            {
+                boundary.ClearReset();
+                return null;
+            }), new object?[] { boundary });
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, settings);
+                return null;
+            }));
+
+            return new QueryRead<TQueryFnData, TData>(observer, entry, settings, queryClient, boundary);
+        }
+
+        private static void ValidateQueryOptions<TQueryFnData, TData>(QueryOptions<TQueryFnData, TData> options)
+        {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
             if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
@@ -3158,25 +3287,30 @@ namespace Velvet
                     $"QueryOptions<{typeof(TQueryFnData).Name}, {typeof(TData).Name}> needs a Select to turn one into the other.",
                     nameof(options));
             }
-            // Surface "UseQuery" in HookGuard's outside-of-render message instead of "UseContext".
-            _ = Resolve("UseQuery");
-            var provided = UseContext(QueryClientContext.Ref);
-            var queryClient = client ?? provided ?? throw new InvalidOperationException(
-                "UseQuery found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
-                "above the caller, or pass the client to UseQuery.");
-            var (_, setVersion) = UseState(0);
-            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
-            var observer = UseMutableRef<QueryObserver<TQueryFnData, TData>>(() => new QueryObserver<TQueryFnData, TData>(() => setVersion.Invoke(v => v + 1))).Current;
-            var settings = new QuerySettings<TQueryFnData, TData>(options, queryClient);
+        }
 
-            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
-            UseEffect((Func<Action?>)(() =>
-            {
-                observer.Sync(queryClient, settings);
-                return null;
-            }));
+        // TanStack's shouldSuspend and fetchOptimistic: a pending result suspends on the entry's request, started
+        // here when none is in flight, until the entry holds data or the request settles; one that settles with
+        // no data clears the boundary's reset. The async slot is taken at every render, a settled one included, so
+        // that a Use called after this hook keeps the slot it had.
+        private static void UseSuspendWhilePending<TQueryFnData, TData>(in QueryRead<TQueryFnData, TData> query)
+        {
+            var pending = query.Observer.Current.Status == QueryStatus.Pending ? query.Entry : null;
+            pending?.Fetch(new QueryFetchOptions<TQueryFnData>().Assign(query.Settings.Options, query.Client), cancelRefetch: false);
+            var boundary = query.Boundary;
+            UseCore(
+                pending == null ? s_settledSuspendedQuery : token => WaitForSuspendedQuery(pending!, boundary, token),
+                pending == null ? s_settledSuspendedQueryKey : pending.Request ?? pending,
+                resourceKeyExplicit: true,
+                nameof(UseSuspenseQuery));
+        }
 
-            return observer.Read(queryClient.PeekById<TQueryFnData>(settings.KeyId), settings);
+        private static async VelvetTask<Unit> WaitForSuspendedQuery<T>(
+            QueryEntry<T> entry, QueryErrorResetBoundary boundary, CancellationToken token)
+        {
+            await entry.WhenSuspendedCanResume(token);
+            if (!entry.HasData) boundary.ClearReset();
+            return Unit.Default;
         }
 
         #endregion
