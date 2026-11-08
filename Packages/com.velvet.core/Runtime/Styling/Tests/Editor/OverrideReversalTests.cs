@@ -78,5 +78,53 @@ namespace Velvet.Tests
             // Assert
             Assert.That(element.style.opacity.value, Is.EqualTo(1f / 3f).Within(1e-3f));
         }
+
+        // Steps a fresh play, hands translate back from a gesture after `beforeSec` where `gesture` is set, steps on
+        // `afterSec`, and returns the opacity shown.
+        private static float OpacityAfter(System.Func<MotionSpringState> create, float beforeSec, float afterSec, bool gesture)
+        {
+            var element = new VisualElement();
+            var state = create();
+            MotionSpringDriver.ApplyCurrentValues(element, state);
+            MotionSpringDriver.Step(element, state, beforeSec);
+            if (gesture)
+            {
+                state.TranslateX!.Masked = true;
+                MotionSpringDriver.ReturnChannels(element, state, StyleLonghandSet.Of(StyleLonghand.Translate),
+                    MotionSlotContext.ReadImportant(element, new[] { "opacity-0", "translate-x-[0px]" },
+                        new[] { "opacity-100", "translate-x-[64px]" }));
+            }
+            MotionSpringDriver.Step(element, state, afterSec);
+            return element.style.opacity.value;
+        }
+
+        [Test]
+        public void Given_AnEasedOpacityOnTheFramerDefaults_When_AGestureHandsTranslateBackMidway_Then_OpacityRunsAsIfNoGestureHadBeen()
+        {
+            // Arrange — opacity runs the 0.3 s default ease; a gesture held translate and lets it go 0.15 s in.
+            static MotionSpringState Create() => MotionSpringDriver.Create(Plan(), 100f, 10f, 1f, perValueDefaults: true)!;
+            var untouched = OpacityAfter(Create, 0.15f, 0.1f, gesture: false);
+
+            // Act
+            var returned = OpacityAfter(Create, 0.15f, 0.1f, gesture: true);
+
+            // Assert
+            Assert.That(returned, Is.EqualTo(untouched).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_AnEndlessMirroredPulse_When_AGestureHandsTranslateBackMidPass_Then_LaterPassesRunBetweenTheirOwnEnds()
+        {
+            // Arrange — opacity pulses 0 <-> 1 for ever; a gesture on translate lets go part-way through a pass.
+            static MotionSpringState Create() => MotionSpringDriver.Create(Plan(), 100f, 10f, 1f,
+                new MotionRepeat(float.PositiveInfinity, TransitionRepeatType.Mirror, 0f))!;
+            var untouched = OpacityAfter(Create, 0.2f, 1.6f, gesture: false);
+
+            // Act
+            var returned = OpacityAfter(Create, 0.2f, 1.6f, gesture: true);
+
+            // Assert
+            Assert.That(returned, Is.EqualTo(untouched).Within(1e-5f));
+        }
     }
 }

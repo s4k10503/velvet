@@ -2726,6 +2726,9 @@ namespace Velvet
         private sealed class AnchorExitStart
         {
             internal float Sec;
+            // The part of Sec a wait makes up (MotionOrchestrationFrame.WaitSec): an AfterChildren exit's wait for
+            // the exits below it, and any wait its claim carried.
+            internal float WaitSec;
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2800,6 +2803,7 @@ namespace Velvet
             if (ReferenceEquals(own.Motion, walk.Anchor) && walk.AnchorStart != null)
             {
                 walk.AnchorStart.Sec = startSec;
+                walk.AnchorStart.WaitSec = own.ClaimWaitSec + startSec - own.ClaimSec;
             }
             if (MotionVariantResolver.IsVariantChild(own.Motion))
             {
@@ -3073,7 +3077,7 @@ namespace Velvet
                 // variant rather than be left without it (interrupt handling).
                 _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, exitWait.CompleteAnchor,
                     restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec + anchorStart.Sec,
-                    onSwap: onExitSwap);
+                    onSwap: onExitSwap, waitSec: anchorStart.WaitSec);
             }
             if (landsAfterExit != null)
             {

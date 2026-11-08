@@ -926,10 +926,9 @@ namespace Velvet
 
         /// <summary>
         /// Hands the channels <see cref="GestureChannelMask.MaskChannels"/> held for a gesture, among <paramref name="named"/>, back to
-        /// the play, each from what <paramref name="shown"/> reads the element showing, and releases every channel's
-        /// spring again from where it stands, so the returned ones head for the play's target on its spring and the
-        /// others carry on with the value and velocity they had, as Framer Motion animates a value a gesture state
-        /// let go of back to its animate target.
+        /// the play, each from what <paramref name="shown"/> reads the element showing, released again from there toward
+        /// the play's target, as Framer Motion animates a value a gesture state let go of back to its animate target.
+        /// Every other channel carries on untouched.
         /// </summary>
         public static void ReturnChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named,
             MotionSlotContext shown)
@@ -971,28 +970,18 @@ namespace Velvet
             {
                 return;
             }
-            // A channel the gesture left alone keeps its own timeline, as Framer leaves a value no gesture state
-            // touches on its animation: what it still had to wait it waits from now, and an entry's tween runs on.
-            var spentSec = (float)state.ElapsedSec;
-            state.ElapsedSec = 0.0;
-            ForEachActiveChannel(state, c =>
+            // Only the channels the gesture held start again, from now on the play's clock; every other one is left
+            // on its own animation, as Framer leaves a value no gesture state touches.
+            var nowSec = (float)state.ElapsedSec;
+            foreach (var c in back)
             {
-                if (back.Contains(c))
+                c.DelaySec = nowSec;
+                if (c.Timing is { } own)
                 {
-                    StartsNow(c);
-                }
-                else if (c.Timing is { } own)
-                {
-                    c.Timing = own with { DelaySec = own.DelaySec - spentSec };
-                    c.PassSec = c.Timing.Value.DelaySec + own.DurationSec;
-                    return;
-                }
-                else
-                {
-                    c.DelaySec = Mathf.Max(0f, c.DelaySec - spentSec);
+                    c.Timing = own with { DelaySec = nowSec };
                 }
                 Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
-            });
+            }
             GestureChannelMask.ResyncNarrowing(element, state);
             WriteChannelValues(element, state);
         }
