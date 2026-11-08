@@ -79,7 +79,8 @@ namespace Velvet
 
         private static void MarkIfShowing(TextElement text, FontAsset asset)
         {
-            if (text.resolvedStyle.unityFontDefinition.fontAsset == asset)
+            var shown = text.resolvedStyle.unityFontDefinition.fontAsset;
+            if (shown == asset || LineBoxFont.SourceOf(shown) == asset)
             {
                 text.MarkDirtyText();
             }

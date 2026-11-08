@@ -121,6 +121,11 @@ namespace Velvet
                 skewPick.PickRegion = null;
             }
 
+            if (element is ILineBoxed lineBoxed)
+            {
+                lineBoxed.LineBox.Reset();
+            }
+
             // Clearing ANY inline property restores the matched-rules value THROUGH the transition system, so
             // while the element is still on a panel every clear below can become a running animation instead —
             // one that keeps painting what the reset just removed, and that the transition-longhand nulls at
@@ -203,6 +208,7 @@ namespace Velvet
             // takes its subject off the generation context rather than capturing one, so one instance's is
             // every instance's.
             element.generateVisualContent = defaults.generateVisualContent;
+            (element as ILineBoxed)?.LineBox.WatchRepaints();
             // Writes focusable false on its way through, so anything restoring a type's own focusable — the
             // line in FiberButtonPoolHelper — has to come after this call.
             element.selection.isSelectable = defaults.selection.isSelectable;

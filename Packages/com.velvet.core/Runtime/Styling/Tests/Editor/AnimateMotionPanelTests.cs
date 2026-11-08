@@ -116,7 +116,7 @@ namespace Velvet.Tests
             StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
             var f = element.style.filter.value[0];
 
-            Assert.That((f.type, f.GetParameter(0).floatValue), Is.EqualTo((FilterFunctionType.HueRotate, 180f)));
+            Assert.That($"{f.customDefinition?.filterName}({f.GetParameter(0).floatValue})", Is.EqualTo("velvet-hue-rotate(180)"));
         }
 
         [Test]

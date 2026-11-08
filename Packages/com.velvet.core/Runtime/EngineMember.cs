@@ -18,6 +18,7 @@ namespace Velvet
     {
         private static readonly Assembly UIElements = typeof(VisualElement).Assembly;
         private static readonly Assembly IMGUI = typeof(UnityEngine.GUIUtility).Assembly;
+        private static readonly Assembly TextCore = typeof(UnityEngine.TextCore.Text.FontAsset).Assembly;
 
         private const string FocusControllerType = "UnityEngine.UIElements.FocusController";
         private const string VisualElementType = "UnityEngine.UIElements.VisualElement";
@@ -205,6 +206,10 @@ namespace Velvet
 
         internal static readonly EngineMember ComputedStyleBackgroundSize =
             ReadProperty(UIElements, ComputedStyleType, "backgroundSize", "UnityEngine.UIElements.BackgroundSize");
+
+        // TextLineBox's and FieldLineBox's reading of the alignment beneath the middle-* one they write inline.
+        internal static readonly EngineMember ComputedStyleUnityTextAlign =
+            ReadProperty(UIElements, ComputedStyleType, "unityTextAlign", "enum:UnityEngine.TextAnchor");
 
         // ProjectedCornerFace's reading of whether an element clips its content: the element's own computed style, inline
         // style included, since IResolvedStyle carries no overflow.
@@ -406,6 +411,42 @@ namespace Velvet
 
         internal static readonly EngineMember TransformVersionChange =
             Field(UIElements, VersionChangeType, "Transform", "enum:" + VersionChangeType);
+
+        // LineBoxFontOwner's reading of the font an element's rules and parent give it beneath its inline value, as
+        // UI Toolkit's own TextUtilities.GetFontAsset reads it.
+        internal static readonly EngineMember ComputedStyleUnityFontDefinition =
+            ReadProperty(UIElements, ComputedStyleType, "unityFontDefinition", "UnityEngine.UIElements.FontDefinition");
+
+        internal static readonly EngineMember ComputedStyleUnityFont =
+            ReadProperty(UIElements, ComputedStyleType, "unityFont", "UnityEngine.Font");
+
+        internal static readonly EngineMember TextSettingsOfElement = Method(UIElements, "UnityEngine.UIElements.TextUtilities",
+            "GetTextSettingsFrom", "UnityEngine.TextCore.Text.TextSettings", VisualElementType);
+
+        internal static readonly EngineMember TextSettingsCachedFontAsset = Method(TextCore,
+            "UnityEngine.TextCore.Text.TextSettings", "GetCachedFontAsset", "UnityEngine.TextCore.Text.FontAsset", "UnityEngine.Font");
+
+        // LineBoxFont's upload of the atlases the text system queued, before it destroys one of them.
+        internal static readonly EngineMember FontAssetUpdateAtlasTexturesInQueue = Method(TextCore,
+            "UnityEngine.TextCore.Text.FontAsset", "UpdateAtlasTexturesInQueue", "System.Void");
+
+        // LineBoxFont's hand-over of a copy's rewritten fallback and weight tables to a native asset created already.
+        internal static readonly EngineMember FontAssetNativeFontAsset =
+            Field(TextCore, "UnityEngine.TextCore.Text.FontAsset", "m_NativeFontAsset", "System.IntPtr");
+
+        internal static readonly EngineMember FontAssetUpdateFallbacks = Method(TextCore,
+            "UnityEngine.TextCore.Text.FontAsset", "UpdateFallbacks", "System.Void");
+
+        internal static readonly EngineMember FontAssetUpdateWeightFallbacks = Method(TextCore,
+            "UnityEngine.TextCore.Text.FontAsset", "UpdateWeightFallbacks", "System.Void");
+
+        // LineBoxFont's reading of whether a dynamic asset without a source font can still rasterise from a file path.
+        internal static readonly EngineMember FontAssetSourceFontFilePath =
+            Field(TextCore, "UnityEngine.TextCore.Text.FontAsset", "m_SourceFontFilePath", "System.String");
+
+        // TextLineBox's request for a fresh measure of an element whose line height changed under it.
+        internal static readonly EngineMember LayoutVersionChange =
+            Field(UIElements, VersionChangeType, "Layout", "enum:" + VersionChangeType);
 
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");

@@ -248,11 +248,48 @@ collapse unapplied on that one element.
 
 **`leading-*` (line-height)** has no USS property either — UI Toolkit's style has no `line-height`, and
 `-unity-paragraph-spacing` only affects explicit `\n` breaks, not the per-line advance a real line-height
-changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead, and a leaf with
-`enableRichText = false` keeps its font's line advance. Both text engines (the standard
+changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead. Both text engines (the standard
 generator and the Advanced Text Generator) implement the tag natively, feeding it into the
 line-advance math at every line-break site; a following `</line-height>` restores the natural
 metric.
+
+The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text leaf or a `V.Button` measures one
+line box of its line height per line, as CSS does, single lines included and whether the line height is above or
+below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and `text-sm/6` 24px. Text that
+no `leading-*` or `text-<size>` reaches takes the 1.5 Tailwind's preflight gives the root, so a 16px text is 24px
+tall. Once such text takes more than one line, by a newline, a `<br>` or wrapping, a word broken across lines
+included, its shown string carries the `1.5em` tag as a `leading-normal` one would, which spaces those lines; a
+single line is shown as written, which the tag would not change. Padding and border sit outside the line boxes,
+and `resolvedStyle.height` reads the result. The glyphs sit half the difference between the line height and the
+font's content height below the top of the first line box, whatever the box's height: a box its flex row
+stretches or an `h-*` sets, and one a `max-h-*` caps below its line boxes, whose text starts at its top and
+overflows below it. A `V.Button`'s lines are centred in the button instead, as a browser centres a button's
+content. CSS has no vertical alignment inside a line box, so such an element is aligned `middle-*` with the
+horizontal part its rules or its parent give it: `text-top-left` and a label with no alignment class read
+`middle-left`, a parent's `text-center` and a `-unity-text-align` in a sheet of the application's still reach it,
+and a button with no alignment class keeps its theme's `middle-center`. An alignment written inline by the
+application is left as it is. Rich text of the application's own keeps to these boxes: a `<voffset>` of its own
+moves with the text, its own `</voffset>` and `</line-height>` end only its own tag, and under markup of its own the
+box is the first line box and then each further line at the advance the generator gives it, which its own
+`<line-height>` or `<size>` changes. A
+single-line field's input text is UI Toolkit's own element: it is given one line box by an inline height of the
+line height plus its own padding and border, and is aligned the same way.
+
+A multiline field's input and a label or button with `enableRichText = false` show no rich text, so cannot carry
+the tag; their lines are spaced by their font instead: such text is drawn in a copy of its font asset whose ascent
+and descent are one line height apart, which both text generators lay out one line height per line. The
+copy is written as the element's inline `-unity-font-definition`, of the font asset a font class or the
+application wrote inline or else of the one its rules, its parent and an inline legacy `-unity-font` give it, as
+UI Toolkit picks among them, and given back when the element no
+longer needs it or goes back to its pool. The faces its weight table and its fallback table name, a font stack's
+included as the stack grows and is released, are copied the same way; under the standard generator a line drawn
+from a fallback face is then one line height too. A copy keeps its source's scale, sampling size, render mode, material and style weights; one whose
+source rasterises glyphs (from a font file, a file path or the OS) has an atlas of its own, one per font and line
+height. A copy no element holds is spread to the next line height its source is asked for rather than another made,
+so a source has no more copies than were held at once; one whose source is destroyed is destroyed the next time
+any copy is asked for or given back, and in the editor every copy is destroyed before the scripts reload. Such a label is aligned `upper-*` with
+its horizontal part, which places its lines from the top of its box as the line boxes are; a button's stay
+centred.
 
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
@@ -260,13 +297,15 @@ as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-he
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
 (`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
 `mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. `leading-[inherit]` takes the parent's
-line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, and
+line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, sizes
+the box in the font's own lines, and
 takes an ancestor's line height away from the text. A math function is read where it
 comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A length that reads more than the element's
 font size, a viewport unit (`leading-[10vw]`) or a math function mixing an em or a percentage with another
 length (`leading-[calc(1em+4px)]`), is measured on the element that declares it, like the other relative
-lengths, a percentage being of its font size, and measured again when that size or the panel changes;
+lengths, a percentage being of its font size and an `lh` of its parent's line height, as CSS takes it
+(`leading-[2lh]` under a 16px preflight parent is 48px), and measured again when that size or the panel changes;
 a result below zero is zero. Until it is measured the text carries no tag. A negative value, any other unit, or a
 malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
 `<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's

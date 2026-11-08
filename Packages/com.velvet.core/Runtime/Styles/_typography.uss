@@ -78,6 +78,10 @@
    send it CustomStyleResolvedEvent; see LeadingLengthProbe. */
 .velvet-leading-length { --velvet-leading-length: 1; }
 
+/* Gives a field's input text the custom property that makes UI Toolkit send it CustomStyleResolvedEvent; see
+   FieldLineBox. A label or button Velvet creates has it from _preflight.uss. */
+.velvet-line-box { --velvet-line-box: 1; }
+
 /* Text Overflow (Tailwind: text-ellipsis / text-clip; `truncate` is declared in _layout.uss).
    The ellipsis only renders with hidden overflow and no wrapping. `-unity-text-overflow-position`
    defaults to `end`, matching Tailwind's trailing ellipsis. */

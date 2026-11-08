@@ -686,8 +686,10 @@ namespace Velvet
                 }
                 case AnimateMode.Hue:
                 {
-                    var fn = new FilterFunction(FilterFunctionType.HueRotate);
-                    fn.AddParameter(new FilterParameter(HueAngleDeg(t)));
+                    if (BuiltInFilterDefinitions.Amount(BuiltInFilterDefinitions.HueRotate, HueAngleDeg(t)) is not { } fn)
+                    {
+                        break;
+                    }
                     // A FRESH list every frame is REQUIRED, not wasteful: UI Toolkit's inline-filter setter
                     // dirties the element only when the backing list REFERENCE changes (it ref-compares, not
                     // content-compares), so reusing one mutated list would repaint frame 1 then freeze the hue.

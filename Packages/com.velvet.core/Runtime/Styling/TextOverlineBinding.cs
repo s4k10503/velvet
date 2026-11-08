@@ -64,8 +64,15 @@ namespace Velvet
             var textBlockHeight = element.MeasureTextSize(
                 shown, element.contentRect.width, VisualElement.MeasureMode.Exactly,
                 0f, VisualElement.MeasureMode.Undefined).y;
+            // A lowered text (TextLineBox) sits that far below the top of the block the generator measures.
+            var content = element.contentRect;
+            var raise = element is ILineBoxed boxed ? boxed.LineBox.Raise : 0f;
+            if (raise < 0f)
+            {
+                content.y -= raise;
+            }
             if (!TextOverlinePainter.TryComputeGeometry(
-                    element.contentRect, measuredWidth, textBlockHeight, element.resolvedStyle.fontSize,
+                    content, measuredWidth, textBlockHeight, element.resolvedStyle.fontSize,
                     element.resolvedStyle.unityTextAlign, out var rule))
             {
                 return;

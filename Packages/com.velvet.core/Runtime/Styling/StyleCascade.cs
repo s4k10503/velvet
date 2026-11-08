@@ -180,6 +180,72 @@ namespace Velvet
         }
 #endif
 
+        // The text alignment the rules give, or the one inherited where none does; null where the cached style cannot be
+        // read. Read by an accessor compiled once, as RulesHash is, since a text element reads it in every style pass that
+        // resolves it.
+        public static UnityEngine.TextAnchor? TextAlign(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledTextAlign != null)
+            {
+                var read = s_compiledTextAlign(element);
+                return read == NotCached ? null : read;
+            }
+#endif
+            if (s_textAlign == null) return null;
+            return Of(element) is { } style ? (UnityEngine.TextAnchor)s_textAlign.GetValue(style) : null;
+        }
+
+        private static readonly PropertyInfo? s_fontDefinition = EngineMember.ComputedStyleUnityFontDefinition.ResolveProperty();
+        private static readonly PropertyInfo? s_unityFont = EngineMember.ComputedStyleUnityFont.ResolveProperty();
+        private static readonly MethodInfo? s_settingsOf = EngineMember.TextSettingsOfElement.ResolveMethod();
+        private static readonly MethodInfo? s_cachedFontAsset = EngineMember.TextSettingsCachedFontAsset.ResolveMethod();
+
+        // The font asset the rules and the parent give element beneath its inline font definition, read as UI Toolkit
+        // reads an element's own, with inlineFont, a legacy Font written inline, in place of the rules' one; null where
+        // the cached style cannot be read.
+        public static UnityEngine.TextCore.Text.FontAsset? UnderlyingFontAsset(VisualElement element, UnityEngine.Font? inlineFont)
+        {
+            var style = s_fontDefinition != null && s_unityFont != null ? Of(element) : null;
+            if (style == null)
+            {
+                return null;
+            }
+            var definition = (FontDefinition)s_fontDefinition.GetValue(style);
+            if (definition.fontAsset != null)
+            {
+                return definition.fontAsset;
+            }
+            if (definition.font != null)
+            {
+                return CachedFontAsset(element, definition.font);
+            }
+            return CachedFontAsset(element, inlineFont != null ? inlineFont : (UnityEngine.Font?)s_unityFont.GetValue(style));
+        }
+
+        // The font asset UI Toolkit draws font in for element, or its text settings' default where font is null.
+        public static UnityEngine.TextCore.Text.FontAsset? CachedFontAsset(VisualElement element, UnityEngine.Font? font)
+        {
+            var settings = s_settingsOf?.Invoke(null, new object[] { element }) as UnityEngine.TextCore.Text.TextSettings;
+            if (settings == null || s_cachedFontAsset == null)
+            {
+                return null;
+            }
+            return font != null
+                ? s_cachedFontAsset.Invoke(settings, new object[] { font }) as UnityEngine.TextCore.Text.FontAsset
+                : settings.defaultFontAsset;
+        }
+
+        // Whether TextAlign can be read at all, so that a caller writing over the alignment can give it back instead.
+        public static bool ReadsTextAlign => s_textAlign != null && s_style != null && s_hash != null && s_tryGet != null;
+
+        private static readonly PropertyInfo? s_textAlign = EngineMember.ComputedStyleUnityTextAlign.ResolveProperty();
+        private const UnityEngine.TextAnchor NotCached = (UnityEngine.TextAnchor)(-1);
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, UnityEngine.TextAnchor>? s_compiledTextAlign =
+            s_textAlign == null ? null : Compile(s_textAlign, NotCached);
+#endif
+
         // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
         // be read. Read by an accessor compiled once, as RulesHash is, since a layoutId projection can read it on every pass
         // (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).

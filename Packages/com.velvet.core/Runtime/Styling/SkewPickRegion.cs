@@ -57,24 +57,61 @@ namespace Velvet
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
     }
 
-    internal sealed class SkewPickButton : Button, ISkewPickTarget
+    internal sealed class SkewPickButton : Button, ISkewPickTarget, ILineBoxed
     {
+        private TextLineBox? _lineBox;
+        private TextLineBox.BaseMeasure? _baseMeasure;
+
+        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this, centred: true);
+
         public SkewPickRegion? PickRegion { get; set; }
 
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
+
+        protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
+            => LineBox.Measure(desiredWidth, widthMode, desiredHeight, heightMode, _baseMeasure ??= base.DoMeasure);
+
+        [EventInterest(typeof(GeometryChangedEvent), typeof(CustomStyleResolvedEvent))]
+        protected override void HandleEventBubbleUp(EventBase evt)
+        {
+            base.HandleEventBubbleUp(evt);
+            if (evt.target == this)
+            {
+                _lineBox?.Handle(evt);
+            }
+        }
     }
 
-    internal sealed class SkewPickLabel : Label, ISkewPickTarget
+    internal sealed class SkewPickLabel : Label, ISkewPickTarget, ILineBoxed
     {
         public SkewPickLabel(string text)
             : base(text)
         {
         }
 
+        private TextLineBox? _lineBox;
+        private TextLineBox.BaseMeasure? _baseMeasure;
+
+        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this, centred: false);
+
         public SkewPickRegion? PickRegion { get; set; }
 
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
+
+        protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
+            => LineBox.Measure(desiredWidth, widthMode, desiredHeight, heightMode, _baseMeasure ??= base.DoMeasure);
+
+        // Same hand-over as SkewPickButton's.
+        [EventInterest(typeof(GeometryChangedEvent), typeof(CustomStyleResolvedEvent))]
+        protected override void HandleEventBubbleUp(EventBase evt)
+        {
+            base.HandleEventBubbleUp(evt);
+            if (evt.target == this)
+            {
+                _lineBox?.Handle(evt);
+            }
+        }
     }
 }

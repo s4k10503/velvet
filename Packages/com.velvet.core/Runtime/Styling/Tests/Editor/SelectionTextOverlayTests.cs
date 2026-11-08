@@ -413,11 +413,24 @@ namespace Velvet.Tests
         private static bool HasSelection(TextField field)
             => field.textSelection.cursorIndex != field.textSelection.selectIndex;
 
+        // Generates the input's text, as the frame after the mount would. Until a text element holds a generation of
+        // its own, TextHandle.textInfo is a text info shared by every element that does not, so the length a selection
+        // is clamped to depended on the fixtures run before this one.
+        private static void GenerateText(TextField field)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var handle = typeof(TextElement).GetProperty("uitkTextHandle", flags)!.GetValue(Input(field));
+            handle.GetType().GetMethod("ComputeSettingsAndUpdate", flags)!.Invoke(handle, null);
+        }
+
+        // GREEN_ON_BASE(characterization): the overlay this pins is the base's; only the arrangement changed, which
+        // generates the input's text before selecting so the case no longer reads another fixture's text info.
         [Test]
         public void Given_ASelectionMadeBeforeFocus_When_FocusArrives_Then_TheDrawingShowsWithoutWaitingForATick()
         {
             // Arrange
             var field = Mount(TextColorHost);
+            GenerateText(field);
             field.textSelection.SelectRange(1, 3);
 
             // Act
@@ -427,11 +440,14 @@ namespace Velvet.Tests
             Assert.That((HasSelection(field), Showing(field)), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the overlay this pins is the base's; only the arrangement changed, which
+        // generates the input's text before selecting so the case no longer reads another fixture's text info.
         [Test]
         public void Given_AFieldWhoseFocusLeft_When_ItsTextColorRendersOverAKeptSelection_Then_NoDrawingShows()
         {
             // Arrange
             var field = Mount(SteppingHost);
+            GenerateText(field);
             field.textSelection.SelectRange(1, 3);
             SendFocusIn(Input(field));
             var whileFocused = Showing(field);

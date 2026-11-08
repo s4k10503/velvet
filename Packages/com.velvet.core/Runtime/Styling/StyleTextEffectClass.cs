@@ -742,7 +742,7 @@ namespace Velvet
             {
                 open = OpenLineHeightTag(value);
             }
-            return string.Concat(open, text, "</line-height>");
+            return string.Concat(open, TextLineBoxMarkup.Reopened(text, open), "</line-height>");
         }
 
         private static string OpenLineHeightTag(LeadingValue value)

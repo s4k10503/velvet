@@ -1,6 +1,8 @@
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -74,6 +76,31 @@ namespace Velvet.Tests
             // resolver that binds a Grayscale filter instead of this Custom definition.
             Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
                 Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-saturate", (float?)1.5f)));
+        }
+
+        [Test]
+        public void Given_ANegatedHueRotatePreset_When_Resolved_Then_TheInlineFilterBindsTheBuiltInHueRotateDefinition()
+        {
+            // Act
+            var fn = ResolveSingle("-hue-rotate-90");
+
+            // Assert
+            Assert.That($"{fn?.customDefinition?.filterName}({fn?.GetParameter(0).floatValue})",
+                Is.EqualTo("velvet-hue-rotate(-90)"));
+        }
+
+        [Test]
+        public void Given_TheBuiltInHueRotateDefinition_When_Inspected_Then_ItsOneParameterDefaultsToZeroDegrees()
+        {
+            // Arrange
+            var def = BuiltInFilterDefinitions.HueRotate;
+
+            // Act
+            var parameters = def?.parameters;
+
+            // Assert — hue-rotate(0) is the identity a cross-transition pads with.
+            Assert.That(parameters is { Length: 1 } ? parameters[0].interpolationDefaultValue.floatValue : float.NaN,
+                Is.EqualTo(0f));
         }
 
         [Test]
@@ -213,6 +240,41 @@ namespace Velvet.Tests
                 "ResetStaticCaches", BindingFlags.NonPublic | BindingFlags.Static);
             Assume.That(reset, Is.Not.Null, "Precondition: the editor cache-reset hook exists");
             reset!.Invoke(null, null);
+        }
+    
+        // The pass is drawn here with _UIE_OUTPUT_LINEAR set, which this Gamma project's panels do not draw it with, over a
+        // premultiplied half-transparent green.
+        [Test]
+        public void Given_AHalfTransparentGreenUnderHueRotate90_When_FilteredForLinearOutput_Then_ItsStraightColourIsRotatedConvertedAndPremultiplied()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("a GPU to run the filter shader");
+            var material = new Material(Shader.Find(VelvetShaders.FilterHueRotate));
+            material.EnableKeyword("_UIE_OUTPUT_LINEAR");
+            material.SetFloat("_HueRotate", 90f);
+            var source = new Texture2D(1, 1, TextureFormat.RGBAFloat, false, true);
+            source.SetPixel(0, 0, new Color(0f, 0.5f, 0f, 0.5f));
+            source.Apply();
+            var target = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+            var read = new Texture2D(1, 1, TextureFormat.RGBAFloat, false, true);
+
+            // Act
+            Graphics.Blit(source, target, material);
+            var previous = RenderTexture.active;
+            RenderTexture.active = target;
+            read.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
+            read.Apply();
+            RenderTexture.active = previous;
+            var filtered = read.GetPixel(0, 0);
+            target.Release();
+            Object.DestroyImmediate(target);
+            Object.DestroyImmediate(read);
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(material);
+
+            // Assert — the straight green rotates to (0, 0.855, 1), each channel is converted, then multiplied by 0.5.
+            Assert.That(new[] { filtered.g, filtered.b },
+                Is.EqualTo(new[] { Mathf.GammaToLinearSpace(0.855f) * 0.5f, 0.5f }).Within(0.01f));
         }
     }
 }

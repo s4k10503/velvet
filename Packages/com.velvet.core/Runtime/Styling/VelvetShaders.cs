@@ -14,6 +14,7 @@ namespace Velvet
         internal const string BoxShadow = "Velvet/BoxShadow";
         internal const string FilterBrightness = "Velvet/FilterBrightness";
         internal const string FilterSaturate = "Velvet/FilterSaturate";
+        internal const string FilterHueRotate = "Velvet/FilterHueRotate";
         internal const string FilterDropShadow = "Velvet/FilterDropShadow";
         internal const string ParticleBlend = "Velvet/ParticleBlend";
         internal const string BackdropFilter = "Velvet/BackdropFilter";
@@ -23,6 +24,7 @@ namespace Velvet
             BoxShadow,
             FilterBrightness,
             FilterSaturate,
+            FilterHueRotate,
             FilterDropShadow,
             ParticleBlend,
             BackdropFilter,
