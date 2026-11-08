@@ -42,7 +42,7 @@ the list, the last when none is given. A navigation pushes onto that history. A 
 commits its 404 at once. Where a route matched at the start has a loader — or a guard or a `redirectTo`, which
 are Velvet's — the router starts with `Router.Initialized` false and runs them at once, as React Router's
 `initialize()` runs the initial load: `Router.Navigation` stays `Idle` throughout, and the first commit sets
-`Initialized`. Until then a route renders its `RouteDefinition.HydrateFallbackElement` (`V.Route(hydrateFallbackElement: …)`)
+`Initialized`. Until then — and only until then — a route renders its `RouteDefinition.HydrateFallbackElement` (`V.Route(hydrateFallbackElement: …)`)
 in place of itself and the routes below it, where the routes from it down to an `Await` loader that has neither
 data nor an error yet declare none closer; with none at or above that loader nothing renders, as React Router
 renders its HydrateFallback or nothing. A `Suspend` loader, Velvet's, holds back no rendering.
@@ -84,8 +84,9 @@ where React Router's `<Outlet context>` lives too. The root Outlet takes none.
 
 A route's `loader` runs when the route matches, and `RouteDefinition.LoaderMode` decides how the
 navigation is sequenced against it. Its `RouteLoaderContext.Request` is React Router's `request`, a GET
-`RouteRequest` with no body whose `Url` is `http://localhost` and the location's path and query, as memory
-history's createURL makes it, so a loader reads the search from it.
+`RouteRequest` with no body whose `Url` is the location's path and query resolved against `http://localhost`, as
+memory history's createURL makes it with the URL constructor — so `/search?q=a b` reads
+`http://localhost/search?q=a%20b` — and a loader reads the search from it.
 
 A route with no `element` renders its matched child route in its place, as React Router renders the outlet,
 under the `V.Outlet` context it was itself rendered with.
@@ -119,7 +120,9 @@ A cancellation callback a loader registers on its token runs when that cancellat
 throws is reported through `Debug.LogException` rather than raised at the navigation or the disposal
 that caused it.
 
-A loader that throws — or whose task fails — does not abort the navigation. The location commits and
+A loader that throws — or whose task fails — does not abort the navigation; an `OperationCanceledException` is
+such a failure too unless the loader's own token was cancelled, as React Router drops a rejection only when the
+request's signal aborted. The location commits and
 the error is recorded as React Router's `state.errors` records it: keyed by the nearest route at or above
 the failing one that carries an `errorElement`, or by the root where none does (`findNearestBoundary`), so
 `Router.CurrentLoaderErrors` holds it under that route's id. Of two errors reaching one such route, the

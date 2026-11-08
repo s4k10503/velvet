@@ -22,20 +22,17 @@ namespace Velvet
         private readonly global::Velvet.FormData? _multipart;
         private readonly string? _essence;
 
-        // Memory history's createURL resolves every href against this origin.
-        private const string Origin = "http://localhost";
-
         // A loader's: a GET with no body.
         internal RouteRequest(string url)
         {
             Method = "GET";
-            Url = Origin + url;
+            Url = RouteUrl.Of(url);
         }
 
         internal RouteRequest(string method, string url, string encType, global::Velvet.FormData? formData, object? json, string? text)
         {
             Method = method;
-            Url = Origin + url;
+            Url = RouteUrl.Of(url);
             if (encType == JsonType)
             {
                 _body = JsonText.Stringify(json);
@@ -67,8 +64,9 @@ namespace Velvet
         public string Method { get; }
 
         /// <summary>
-        /// The request's URL, as memory history's <c>createURL</c> makes it: <c>http://localhost</c> and the path and
-        /// query string, without the fragment.
+        /// The request's URL, as memory history's <c>createURL</c> makes it: the path and query string, without the
+        /// fragment, resolved against <c>http://localhost</c> and written as <c>new URL(...).toString()</c> writes
+        /// it, dot segments resolved and percent-encoded.
         /// </summary>
         public string Url { get; }
 

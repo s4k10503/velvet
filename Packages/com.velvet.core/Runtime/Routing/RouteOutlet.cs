@@ -29,7 +29,7 @@ namespace Velvet
 
             // React Router's _renderMatches: the deepest hydrate fallback above a loader still owed data renders in
             // place of the routes from it down, except where an error is keyed, which renders its error instead.
-            var fallbackDepth = HydrateFallbackDepth(location!.Matches!, errors, loaderData);
+            var fallbackDepth = router?.Initialized == false ? HydrateFallbackDepth(location!.Matches!, errors, loaderData) : -1;
             if (fallbackDepth >= 0 && depth >= fallbackDepth
                 && depth != ResolveErrorBoundaryDepth(location.Matches!, errors))
             {

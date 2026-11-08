@@ -141,6 +141,65 @@ namespace Velvet.Tests
             });
 
         [Test]
+        public void Given_ALoaderStillRunningAtTheStart_When_AFragmentOnlyNavigationFollows_Then_TheLoaderRunsAgain()
+        {
+            // Arrange — the router stands on `/` without having loaded it, so a fragment is no reason to skip loading.
+            var calls = 0;
+            var pending = new VelvetTaskCompletionSource<object>();
+            var router = new Router(new[]
+            {
+                new RouteDefinition
+                {
+                    Path = "/",
+                    Element = V.Component(StubA),
+                    Loader = (_, _) =>
+                    {
+                        calls++;
+                        return pending.Task;
+                    },
+                },
+            });
+
+            // Act
+            router.NavigateAsync("/#top").Forget();
+
+            // Assert
+            Assert.That(calls, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AnInitializedRouter_When_ItsRouteOwesData_Then_NoHydrateFallbackShows()
+        {
+            // Arrange — a location handed to the Outlet directly, whose route has an Await loader with no data, under
+            // a router that has finished its initial load.
+            var router = BuildRouter("/", Route("/"));
+            var route = new RouteDefinition
+            {
+                Path = "/",
+                Element = V.Component(StubB),
+                Loader = (_, _) => VelvetTask.FromResult<object>("never-read"),
+            };
+            var location = new RouterLocation
+            {
+                Path = "/",
+                Params = new Dictionary<string, string>(),
+                Matches = new[]
+                {
+                    new RouteMatch { Route = route, RouteId = "0", MatchedPath = "/", Params = new Dictionary<string, string>() },
+                },
+            };
+
+            // Act
+            using var mounted = V.Mount(_root, V.Provider(RouterContext.Router, router, children: new VNode[]
+            {
+                V.Provider(RouterContext.Location, location, children: new VNode[] { V.Outlet() }),
+            }));
+
+            // Assert
+            Assert.That(_root.FindLabelByText("stub-b"), Is.Not.Null);
+        }
+
+        [Test]
         public void Given_ALoaderStillRunningAtTheStart_When_Read_Then_TheRouterIsNotInitialized()
         {
             // Arrange / Act

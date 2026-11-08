@@ -76,6 +76,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALoaderFaultingWithItsOwnCancellation_When_Committed_Then_ItIsTheRoutesError()
+        {
+            // Arrange / Act — the loader's token is never cancelled; the exception is the loader's own, a request
+            // timing out under a source of its own, say.
+            var router = BuildRouter("/a", Route("/", children: new[]
+            {
+                Route("a", loader: (_, _) =>
+                {
+                    var faulted = new VelvetTaskCompletionSource<object>();
+                    faulted.TrySetException(new OperationCanceledException("timed-out"));
+                    return faulted.Task;
+                }),
+            }));
+
+            // Assert
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0")?.Message, Is.EqualTo("timed-out"));
+        }
+
+        [Test]
         public void Given_TwoLoadersFailingToOneBoundary_When_Committed_Then_TheHigherRoutesErrorStays()
         {
             // Arrange / Act

@@ -119,7 +119,7 @@ namespace Velvet
                 }
                 else
                 {
-                    RunSuspendLoader(key, task, round).Forget();
+                    RunSuspendLoader(key, task, round, load.Token).Forget();
                 }
             }
 
@@ -129,10 +129,11 @@ namespace Velvet
                 {
                     round.Results[routeId] = await task;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (LoadCancelled(round, routeId))
                 {
-                    // A cancellation is not this route's load failure. What this loop leaves in
-                    // Errors is what the navigation's commit publishes for UseRouteError.
+                    // React Router drops a rejection only when the request's own signal aborted; any other, an
+                    // OperationCanceledException of the loader's own included, is the route's failure below. What
+                    // this loop leaves in Errors is what the navigation's commit publishes for UseRouteError.
                 }
                 catch (Exception ex)
                 {
@@ -243,7 +244,17 @@ namespace Velvet
             }
         }
 
-        private async VelvetTask RunSuspendLoader(string? routeId, VelvetTask<object> task, LoaderRound round)
+        private static bool LoadCancelled(LoaderRound round, string? routeId)
+        {
+            if (!round.Loads.TryGetValue(routeId, out var load))
+            {
+                return true;
+            }
+            return load.Token.IsCancellationRequested;
+        }
+
+        private async VelvetTask RunSuspendLoader(
+            string? routeId, VelvetTask<object> task, LoaderRound round, CancellationToken token)
         {
             try
             {
@@ -253,7 +264,7 @@ namespace Velvet
                 {
                     result = await task;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     return;
                 }

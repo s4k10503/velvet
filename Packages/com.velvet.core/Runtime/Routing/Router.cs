@@ -965,7 +965,7 @@ namespace Velvet
             var location = BuildLocation(path, hash, matches, visit);
             // Only the fragment changes: nothing runs and nothing loads, as React Router's startNavigation completes
             // a hash change at once. A redirect is never one, its target being the Guard's.
-            if (!initiator.HasValue && IsHashChangeOnly(path, hash, submission, visit))
+            if (!initiator.HasValue && IsHashChangeOnly(path, hash, submission))
             {
                 return CommitHashChange(location, matches, mode, pending);
             }
@@ -1316,11 +1316,12 @@ namespace Velvet
 
         // React Router's isHashChangeOnly: the same pathname and search, and a fragment that is new, changed, or
         // kept, but not one removed. A mutation submission or a pending revalidation is never one.
-        // Never the initial load, which loads the location the router already stands on.
-        private bool IsHashChangeOnly(string path, string hash, Submission? submission, Visit visit)
+        // Only once initialized, as startNavigation's short circuit requires state.initialized: before that the
+        // location the router stands on has not loaded.
+        private bool IsHashChangeOnly(string path, string hash, Submission? submission)
         {
             var current = CurrentLocation;
-            if (visit.Hydrating || current?.Path != path || _revalidationRequired || submission?.IsMutation == true)
+            if (!Initialized || current?.Path != path || _revalidationRequired || submission?.IsMutation == true)
             {
                 return false;
             }

@@ -15,7 +15,8 @@
   flight as React Router's `navigation` does.
 
 - `RouteLoaderContext.Request` is React Router's loader `request`: a GET `RouteRequest` with no body whose
-  `Url` is `http://localhost` and the location's path and query, as memory history's createURL makes it.
+  `Url` is the location's path and query resolved against `http://localhost` and serialized as the URL
+  constructor serializes it, as memory history's createURL makes it.
 - `ErrorResponse.Internal`, React Router's `internal`, is true on the responses the router makes.
 - `SearchParams.Set`, `Delete`, `Sort` and `ToString`, and `ISearchParams.Values`, as URLSearchParams has them.
 

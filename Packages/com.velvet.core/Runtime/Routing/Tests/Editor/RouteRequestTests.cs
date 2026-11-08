@@ -379,6 +379,42 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("http://localhost/items?q=1"));
         }
 
+        private static string UrlAt(string path)
+        {
+            var router = BuildRouter(path, Route("*", loader: (context, _) => VelvetTask.FromResult<object>(context.Request.Url)));
+            return (string)router.CurrentLoaderData.GetValueOrDefault("0");
+        }
+
+        [Test]
+        public void Given_ASpaceInTheSearch_When_ALoaderReadsItsRequestUrl_Then_ItIsPercentEncoded()
+        {
+            // Arrange / Act
+            var url = UrlAt("/search?q=a b");
+
+            // Assert
+            Assert.That(url, Is.EqualTo("http://localhost/search?q=a%20b"));
+        }
+
+        [Test]
+        public void Given_ANonAsciiPath_When_ALoaderReadsItsRequestUrl_Then_ItsUtf8BytesAreEncoded()
+        {
+            // Arrange / Act
+            var url = UrlAt("/café");
+
+            // Assert
+            Assert.That(url, Is.EqualTo("http://localhost/caf%C3%A9"));
+        }
+
+        [Test]
+        public void Given_DotSegmentsInThePath_When_ALoaderReadsItsRequestUrl_Then_TheyAreResolved()
+        {
+            // Arrange / Act
+            var url = UrlAt("/a/./b/../c");
+
+            // Assert
+            Assert.That(url, Is.EqualTo("http://localhost/a/c"));
+        }
+
         [Test]
         public void Given_ALoader_When_ItReadsItsRequestMethod_Then_ItIsGet()
         {
