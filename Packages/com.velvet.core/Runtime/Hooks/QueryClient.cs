@@ -752,6 +752,9 @@ namespace Velvet
         {
             if (!_queryCache.Detach(entry)) return;
             _inactive.Remove(entry);
+            // With nothing left to expire, the loop's next frame walks and ends rather than reading the clock until
+            // the deadline the last walk found, which belonged to an entry no longer here.
+            if (_inactive.Count == 0) _canExpire = false;
             Announce(entry);
         }
 
