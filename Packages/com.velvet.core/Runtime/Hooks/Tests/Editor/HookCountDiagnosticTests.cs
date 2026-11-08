@@ -23,6 +23,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class HookCountDiagnosticTests
     {
+        private static readonly QueryClient s_mutationClient = new();
+
         private sealed class IntStore : Store<int>
         {
             public IntStore(int initial) : base(initial) { }
@@ -57,7 +59,7 @@ namespace Velvet.Tests
             ["UseDeferredValue"] = () => Hooks.UseDeferredValue(1),
             ["UseOptimistic"] = () => Hooks.UseOptimistic<int, int>(0, (state, action) => state + action),
             ["UseMutation"] = () => Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: (value, _) => VelvetTask.FromResult(value))),
+                MutationFn: (value, _) => VelvetTask.FromResult(value)), s_mutationClient),
             ["UseTransition"] = () => Hooks.UseTransition(),
             ["Use"] = () => Hooks.Use(() => VelvetTask.FromResult(1), resourceKey: "sheet"),
         };

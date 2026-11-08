@@ -102,11 +102,16 @@
 [Velvet] ctor Velvet.MountOptions.ctor(): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
 [Velvet] ctor Velvet.MutateOptions`2[TVariables, TData].ctor(): System.Void
-[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Func`1[Velvet.VelvetTask]?, System.Func`2[System.Exception, Velvet.VelvetTask]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Func`2[TVariables, Velvet.VelvetTask]?, System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`3[TData, TVariables, Velvet.VelvetTask]?, System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`3[TVariables, TData, TContext].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Func`2[TVariables, Velvet.VelvetTask`1[TContext]]?, System.Func`4[TData, TVariables, TContext?, Velvet.VelvetTask]?, System.Func`4[System.Exception, TVariables, TContext?, Velvet.VelvetTask]?, System.Func`5[TData?, System.Exception?, TVariables, TContext?, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationCache.ctor(): System.Void
+[Velvet] ctor Velvet.MutationDefaults.ctor(): System.Void
+[Velvet] ctor Velvet.MutationFilters.ctor(): System.Void
+[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`2[Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`3[System.Exception, Velvet.MutationFunctionContext, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`4[System.Exception, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask`1[TData]]?, System.Func`4[TData, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`4[System.Exception, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`3[TVariables, TData, TContext].ctor(System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask`1[TData]]?, System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask`1[TContext]]?, System.Func`5[TData, TVariables, TContext?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`5[System.Exception, TVariables, TContext?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?, System.Func`6[TData?, System.Exception?, TVariables, TContext?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
+[Velvet] ctor Velvet.MutationScope.ctor(System.String): System.Void
+[Velvet] ctor Velvet.MutationStateOptions`1[TResult].ctor(): System.Void
 [Velvet] ctor Velvet.NavigateFunction.ctor(System.Object~, System.IntPtr): System.Void
 [Velvet] ctor Velvet.NavigateOptions.ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
@@ -247,6 +252,18 @@
 [Velvet] field Velvet.LoaderMode.Suspend: Velvet.LoaderMode
 [Velvet] field Velvet.MemoizationReportAttribute.MetadataKey: System.String
 [Velvet] field Velvet.MemoizationReportAttribute.WarnValue: System.String
+[Velvet] field Velvet.MutationActionType.Continue: Velvet.MutationActionType
+[Velvet] field Velvet.MutationActionType.Error: Velvet.MutationActionType
+[Velvet] field Velvet.MutationActionType.Failed: Velvet.MutationActionType
+[Velvet] field Velvet.MutationActionType.Pause: Velvet.MutationActionType
+[Velvet] field Velvet.MutationActionType.Pending: Velvet.MutationActionType
+[Velvet] field Velvet.MutationActionType.Success: Velvet.MutationActionType
+[Velvet] field Velvet.MutationCacheEventType.Added: Velvet.MutationCacheEventType
+[Velvet] field Velvet.MutationCacheEventType.ObserverAdded: Velvet.MutationCacheEventType
+[Velvet] field Velvet.MutationCacheEventType.ObserverOptionsUpdated: Velvet.MutationCacheEventType
+[Velvet] field Velvet.MutationCacheEventType.ObserverRemoved: Velvet.MutationCacheEventType
+[Velvet] field Velvet.MutationCacheEventType.Removed: Velvet.MutationCacheEventType
+[Velvet] field Velvet.MutationCacheEventType.Updated: Velvet.MutationCacheEventType
 [Velvet] field Velvet.MutationStatus.Error: Velvet.MutationStatus
 [Velvet] field Velvet.MutationStatus.Idle: Velvet.MutationStatus
 [Velvet] field Velvet.MutationStatus.Pending: Velvet.MutationStatus
@@ -517,6 +534,7 @@
 [Velvet] method Velvet.Hooks.UseInRouterContext(): System.Boolean
 [Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseIsMutating(Velvet.MutationFilters?, Velvet.QueryClient?): System.Int32
 [Velvet] method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
 [Velvet] method Velvet.Hooks.UseLoaderData`1(): T?
@@ -527,10 +545,12 @@
 [Velvet] method Velvet.Hooks.UseMemo`1(System.Func`1[T], System.Object?[]?): T
 [Velvet] method Velvet.Hooks.UseMutableRef`1(System.Func`1[T]): Velvet.MutableRef`1[T]
 [Velvet] method Velvet.Hooks.UseMutableRef`1(T): Velvet.MutableRef`1[T]
-[Velvet] method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
-[Velvet] method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
-[Velvet] method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
-[Velvet] method Velvet.Hooks.UseMutation`3(Velvet.MutationOptions`3[TVariables, TData, TContext]): Velvet.MutationResult`2[TVariables, TData]
+[Velvet] method Velvet.Hooks.UseMutation(Velvet.MutationOptions, Velvet.QueryClient?): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
+[Velvet] method Velvet.Hooks.UseMutationState(Velvet.MutationFilters?, Velvet.QueryClient?): System.Collections.Generic.IReadOnlyList`1[Velvet.MutationState]
+[Velvet] method Velvet.Hooks.UseMutationState`1(Velvet.MutationStateOptions`1[TResult]?, Velvet.QueryClient?): System.Collections.Generic.IReadOnlyList`1[TResult]
+[Velvet] method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables], Velvet.QueryClient?): Velvet.MutationResult`2[TVariables, Velvet.Unit]
+[Velvet] method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData], Velvet.QueryClient?): Velvet.MutationResult`2[TVariables, TData]
+[Velvet] method Velvet.Hooks.UseMutation`3(Velvet.MutationOptions`3[TVariables, TData, TContext], Velvet.QueryClient?): Velvet.MutationResult`2[TVariables, TData]
 [Velvet] method Velvet.Hooks.UseNavigate(): Velvet.NavigateFunction
 [Velvet] method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
 [Velvet] method Velvet.Hooks.UseNavigationType(): Velvet.NavigationType
@@ -566,6 +586,13 @@
 [Velvet] method Velvet.IStoreWriter`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
 [Velvet] method Velvet.MountedTree.Dispose(): System.Void
+[Velvet] method Velvet.MutationCache.Clear(): System.Void
+[Velvet] method Velvet.MutationCache.Find(Velvet.MutationFilters): Velvet.Mutation?
+[Velvet] method Velvet.MutationCache.FindAll(Velvet.MutationFilters?): System.Collections.Generic.IReadOnlyList`1[Velvet.Mutation]
+[Velvet] method Velvet.MutationCache.GetAll(): System.Collections.Generic.IReadOnlyList`1[Velvet.Mutation]
+[Velvet] method Velvet.MutationCache.Remove(Velvet.Mutation): System.Void
+[Velvet] method Velvet.MutationCache.ResumePausedMutations(): Velvet.VelvetTask
+[Velvet] method Velvet.MutationCache.Subscribe(System.Action`1[Velvet.MutationCacheEvent]): System.Action
 [Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData], Velvet.MutateOptions`2[Velvet.Unit, TData]?): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
@@ -585,17 +612,24 @@
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
 [Velvet] method Velvet.QueryClient.CancelQueries(Velvet.QueryFilters?, System.Boolean): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.Clear(): System.Void
+[Velvet] method Velvet.QueryClient.DefaultMutationOptions`1(T): T
 [Velvet] method Velvet.QueryClient.EnsureQueryData`1(Velvet.QueryOptions`2[T, T], System.Boolean): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.QueryClient.FetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.QueryClient.GetMutationCache(): Velvet.MutationCache
+[Velvet] method Velvet.QueryClient.GetMutationDefaults(Velvet.QueryKey): Velvet.MutationDefaults
+[Velvet] method Velvet.QueryClient.GetMutationDefaults`1(Velvet.QueryKey): TOptions?
 [Velvet] method Velvet.QueryClient.GetQueriesData`1(Velvet.QueryFilters?): System.Collections.Generic.IReadOnlyList`1[System.Collections.Generic.KeyValuePair`2[Velvet.QueryKey, T?]]
 [Velvet] method Velvet.QueryClient.GetQueryData`1(Velvet.QueryKey): T?
 [Velvet] method Velvet.QueryClient.GetQueryState`1(Velvet.QueryKey): Velvet.QueryState`1[T]?
 [Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.InvalidateQueries(Velvet.QueryKey?): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.IsMutating(Velvet.MutationFilters?): System.Int32
 [Velvet] method Velvet.QueryClient.PrefetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.RefetchQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
 [Velvet] method Velvet.QueryClient.RemoveQueries(Velvet.QueryFilters?): System.Void
 [Velvet] method Velvet.QueryClient.ResetQueries(Velvet.QueryFilters?, Velvet.RefetchOptions?): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.ResumePausedMutations(): Velvet.VelvetTask
+[Velvet] method Velvet.QueryClient.SetMutationDefaults(Velvet.QueryKey, Velvet.MutationOptionsBase): System.Void
 [Velvet] method Velvet.QueryClient.SetQueriesData`1(Velvet.QueryFilters?, System.Func`2[T?, T]): System.Collections.Generic.IReadOnlyList`1[System.Collections.Generic.KeyValuePair`2[Velvet.QueryKey, T?]]
 [Velvet] method Velvet.QueryClient.SetQueryData`1(Velvet.QueryKey, System.Func`2[T?, T]): T?
 [Velvet] method Velvet.QueryClient.SetQueryData`1(Velvet.QueryKey, T): T?
@@ -673,6 +707,10 @@
 [Velvet] method Velvet.SubmitFunction.BeginInvoke(System.Object?, Velvet.SubmitOptions?, System.AsyncCallback~, System.Object~): System.IAsyncResult~
 [Velvet] method Velvet.SubmitFunction.EndInvoke(System.IAsyncResult~): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.SubmitFunction.Invoke(System.Object?, Velvet.SubmitOptions?): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.ThrowOnErrorRule.Equals(System.Object?): System.Boolean
+[Velvet] method Velvet.ThrowOnErrorRule.Equals(Velvet.ThrowOnErrorRule): System.Boolean
+[Velvet] method Velvet.ThrowOnErrorRule.GetHashCode(): System.Int32
+[Velvet] method Velvet.ThrowOnErrorRule.When(System.Func`2[System.Exception, System.Boolean]): Velvet.ThrowOnErrorRule
 [Velvet] method Velvet.TransitionStarter.Equals(System.Object?): System.Boolean
 [Velvet] method Velvet.TransitionStarter.Equals(Velvet.TransitionStarter): System.Boolean
 [Velvet] method Velvet.TransitionStarter.GetHashCode(): System.Int32
@@ -1245,30 +1283,53 @@
 [Velvet] property Velvet.MountOptions.OnUncaughtError: System.Action`2[System.Exception, Velvet.ErrorInfo]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
 [Velvet] property Velvet.MutateOptions`2[TVariables, TData].CancellationToken: System.Threading.CancellationToken
-[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`3[System.Exception, TVariables, System.Object?]?
-[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSettled: System.Action`4[TData?, System.Exception?, TVariables, System.Object?]?
-[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSuccess: System.Action`3[TData, TVariables, System.Object?]?
-[Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
-[Velvet] property Velvet.MutationOptions.OnError: System.Func`2[System.Exception, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions.OnSettled: System.Func`2[System.Exception?, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions.OnSuccess: System.Func`1[Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions.Retry: Velvet.RetryPolicy?
-[Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
-[Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`1[TVariables].OnSettled: System.Func`3[System.Exception?, TVariables, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Func`2[TVariables, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`1[TVariables].Retry: Velvet.RetryPolicy?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Func`3[System.Exception, TVariables, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSettled: System.Func`4[TData?, System.Exception?, TVariables, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Func`3[TData, TVariables, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].Retry: Velvet.RetryPolicy?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnError: System.Func`4[System.Exception, TVariables, TContext?, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnMutate: System.Func`2[TVariables, Velvet.VelvetTask`1[TContext]]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSettled: System.Func`5[TData?, System.Exception?, TVariables, TContext?, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSuccess: System.Func`4[TData, TVariables, TContext?, Velvet.VelvetTask]?
-[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].Retry: Velvet.RetryPolicy?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnError: System.Action`4[System.Exception, TVariables, System.Object?, Velvet.MutationFunctionContext]?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSettled: System.Action`5[TData?, System.Exception?, TVariables, System.Object?, Velvet.MutationFunctionContext]?
+[Velvet] property Velvet.MutateOptions`2[TVariables, TData].OnSuccess: System.Action`4[TData, TVariables, System.Object?, Velvet.MutationFunctionContext]?
+[Velvet] property Velvet.Mutation.Meta: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object?]?
+[Velvet] property Velvet.Mutation.MutationId: System.Int32
+[Velvet] property Velvet.Mutation.Options: Velvet.MutationOptionsBase
+[Velvet] property Velvet.Mutation.State: Velvet.MutationState
+[Velvet] property Velvet.MutationCache.OnError: System.Func`6[System.Exception, System.Object?, System.Object?, Velvet.Mutation, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationCache.OnMutate: System.Func`4[System.Object?, Velvet.Mutation, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationCache.OnSettled: System.Func`7[System.Object?, System.Exception?, System.Object?, System.Object?, Velvet.Mutation, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationCache.OnSuccess: System.Func`6[System.Object?, System.Object?, System.Object?, Velvet.Mutation, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationCacheEvent.Action: System.Nullable`1[Velvet.MutationActionType]
+[Velvet] property Velvet.MutationCacheEvent.Mutation: Velvet.Mutation?
+[Velvet] property Velvet.MutationCacheEvent.Observer: Velvet.MutationObserver?
+[Velvet] property Velvet.MutationCacheEvent.Type: Velvet.MutationCacheEventType
+[Velvet] property Velvet.MutationFilters.Exact: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.MutationFilters.MutationKey: Velvet.QueryKey?
+[Velvet] property Velvet.MutationFilters.Predicate: System.Func`2[Velvet.Mutation, System.Boolean]?
+[Velvet] property Velvet.MutationFilters.Status: System.Nullable`1[Velvet.MutationStatus]
+[Velvet] property Velvet.MutationFunctionContext.CancellationToken: System.Threading.CancellationToken
+[Velvet] property Velvet.MutationFunctionContext.Client: Velvet.QueryClient
+[Velvet] property Velvet.MutationFunctionContext.Meta: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object?]?
+[Velvet] property Velvet.MutationFunctionContext.MutationKey: Velvet.QueryKey?
+[Velvet] property Velvet.MutationObserver.Options: Velvet.MutationOptionsBase
+[Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions.OnError: System.Func`3[System.Exception, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions.OnSettled: System.Func`3[System.Exception?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions.OnSuccess: System.Func`2[Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptionsBase.GcTime: System.Nullable`1[System.TimeSpan]
+[Velvet] property Velvet.MutationOptionsBase.Meta: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object?]?
+[Velvet] property Velvet.MutationOptionsBase.MutationKey: Velvet.QueryKey?
+[Velvet] property Velvet.MutationOptionsBase.Retry: Velvet.RetryPolicy?
+[Velvet] property Velvet.MutationOptionsBase.Scope: Velvet.MutationScope?
+[Velvet] property Velvet.MutationOptionsBase.ThrowOnError: System.Nullable`1[Velvet.ThrowOnErrorRule]
+[Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Func`4[System.Exception, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSettled: System.Func`4[System.Exception?, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask`1[TData]]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Func`4[System.Exception, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSettled: System.Func`5[TData?, System.Exception?, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Func`4[TData, TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].MutationFn: System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask`1[TData]]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnError: System.Func`5[System.Exception, TVariables, TContext?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnMutate: System.Func`3[TVariables, Velvet.MutationFunctionContext, Velvet.VelvetTask`1[TContext]]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSettled: System.Func`6[TData?, System.Exception?, TVariables, TContext?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
+[Velvet] property Velvet.MutationOptions`3[TVariables, TData, TContext].OnSuccess: System.Func`5[TData, TVariables, TContext?, Velvet.MutationFunctionContext, Velvet.VelvetTask]?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Error: System.Exception?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].FailureCount: System.Int32
@@ -1280,6 +1341,18 @@
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsSuccess: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Status: Velvet.MutationStatus
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Variables: TVariables?
+[Velvet] property Velvet.MutationScope.Id: System.String
+[Velvet] property Velvet.MutationState.Context: System.Object?
+[Velvet] property Velvet.MutationState.Data: System.Object?
+[Velvet] property Velvet.MutationState.Error: System.Exception?
+[Velvet] property Velvet.MutationState.FailureCount: System.Int32
+[Velvet] property Velvet.MutationState.FailureReason: System.Exception?
+[Velvet] property Velvet.MutationState.IsPaused: System.Boolean
+[Velvet] property Velvet.MutationState.Status: Velvet.MutationStatus
+[Velvet] property Velvet.MutationState.SubmittedAt: System.TimeSpan
+[Velvet] property Velvet.MutationState.Variables: System.Object?
+[Velvet] property Velvet.MutationStateOptions`1[TResult].Filters: Velvet.MutationFilters?
+[Velvet] property Velvet.MutationStateOptions`1[TResult].Select: System.Func`2[Velvet.Mutation, TResult]?
 [Velvet] property Velvet.NavigateOptions.PreventScrollReset: System.Boolean
 [Velvet] property Velvet.NavigateOptions.Relative: Velvet.RelativeRoutingType
 [Velvet] property Velvet.NavigateOptions.Replace: System.Boolean
@@ -1322,6 +1395,8 @@
 [Velvet] property Velvet.QueryClient.DefaultStaleTime: System.TimeSpan
 [Velvet] property Velvet.QueryClientOptions.Clock: System.Func`1[System.TimeSpan]?
 [Velvet] property Velvet.QueryClientOptions.GcTime: System.TimeSpan
+[Velvet] property Velvet.QueryClientOptions.MutationCache: Velvet.MutationCache?
+[Velvet] property Velvet.QueryClientOptions.Mutations: Velvet.MutationOptionsBase?
 [Velvet] property Velvet.QueryClientOptions.NetworkMode: Velvet.NetworkMode
 [Velvet] property Velvet.QueryClientOptions.QueryKeyHashFn: System.Func`2[Velvet.QueryKey, System.String]?
 [Velvet] property Velvet.QueryClientOptions.RefetchOnReconnect: Velvet.QueryRefetchMode
@@ -1728,12 +1803,25 @@
 [Velvet] type Velvet.MountedTree
 [Velvet] type Velvet.MutableRef`1[T]
 [Velvet] type Velvet.MutateOptions`2[TVariables, TData]
+[Velvet] type Velvet.Mutation
+[Velvet] type Velvet.MutationActionType
+[Velvet] type Velvet.MutationCache
+[Velvet] type Velvet.MutationCacheEvent
+[Velvet] type Velvet.MutationCacheEventType
+[Velvet] type Velvet.MutationDefaults
+[Velvet] type Velvet.MutationFilters
+[Velvet] type Velvet.MutationFunctionContext
+[Velvet] type Velvet.MutationObserver
 [Velvet] type Velvet.MutationOptions
+[Velvet] type Velvet.MutationOptionsBase
 [Velvet] type Velvet.MutationOptions`1[TVariables]
 [Velvet] type Velvet.MutationOptions`2[TVariables, TData]
 [Velvet] type Velvet.MutationOptions`3[TVariables, TData, TContext]
 [Velvet] type Velvet.MutationResultExtensions
 [Velvet] type Velvet.MutationResult`2[TVariables, TData]
+[Velvet] type Velvet.MutationScope
+[Velvet] type Velvet.MutationState
+[Velvet] type Velvet.MutationStateOptions`1[TResult]
 [Velvet] type Velvet.MutationStatus
 [Velvet] type Velvet.NavigateFunction
 [Velvet] type Velvet.NavigateOptions
@@ -1826,6 +1914,7 @@
 [Velvet] type Velvet.SuspenseNode
 [Velvet] type Velvet.TextFieldSettings
 [Velvet] type Velvet.TextNode
+[Velvet] type Velvet.ThrowOnErrorRule
 [Velvet] type Velvet.TransitionStarter
 [Velvet] type Velvet.TransitionRepeatType
 [Velvet] type Velvet.TransitionType

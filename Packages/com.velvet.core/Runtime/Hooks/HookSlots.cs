@@ -412,12 +412,36 @@ namespace Velvet
         // Set when the mount that created this slot unmounts. A remount of the same fiber builds new
         // slots, so a call still in flight from the earlier mount matches none of them, which the fiber's
         // IsDisposed cannot say once the remount has cleared it.
-        public bool Retired { get; set; }
+        public bool Retired { get; private set; }
+
+        // TanStack's MutationObserver state: the client fixed at the first render, as useMutation keeps the
+        // observer it built then; the record the latest render passed, as passed (the effect's key) and with the
+        // client's defaults filled in, and its slot-typed form (Invocation); what the last commit applied, which is
+        // what a call is built from; and the mutation the handle shows. Current outlives the unmount, as v5's
+        // #currentMutation does.
+        public QueryClient Client { get; set; } = null!;
+        public MutationObserver Observer { get; set; } = null!;
+        public MutationOptionsBase Passed { get; set; } = null!;
+        public MutationOptionsBase? CommittedPassed { get; set; }
+        public MutationOptionsBase Declared { get; set; } = null!;
+        public object Invocation { get; set; } = null!;
+        public MutationOptionsBase? CommittedDeclared { get; set; }
+        public object CommittedInvocation { get; set; } = null!;
+        public Mutation? Current { get; set; }
+        public HookEffectSlot? OptionsEffect { get; set; }
+
+        // TanStack's onUnsubscribe: the observer leaves the mutation it shows and keeps pointing at it.
+        public void Retire()
+        {
+            Retired = true;
+            Current?.RemoveObserver(Observer);
+        }
     }
 
     // TContext is Unit for the options records that carry no context. The callbacks are read through the
     // members below rather than stored as delegates of one shape, so the context-free records reach the
-    // slot as the caller built them: adapting them to the context shape would allocate on every render.
+    // slot as the caller built them: adapting them to the context shape would allocate on every render. Each
+    // member reads the options record a call was built with (Mutation.Invocation), not the slot's latest.
     internal abstract class HookMutationSlot<TVariables, TData, TContext> : HookMutationSlot
     {
         public MutationResult<TVariables, TData> Result { get; } = new();
@@ -427,60 +451,74 @@ namespace Velvet
         // delivered only while it holds the current value.
         public long Generation { get; set; }
 
-        public abstract RetryPolicy? Retry { get; }
-        public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
-        public abstract VelvetTask<TContext> InvokeOnMutate(TVariables variables);
+        public abstract VelvetTask<TData> InvokeMutationFn(object options, TVariables variables, MutationFunctionContext context);
+        public abstract VelvetTask<TContext> InvokeOnMutate(object options, TVariables variables, MutationFunctionContext context);
+        // Whether OnMutate made the context, which is then the mutation's state as well; without one the state
+        // keeps none, as v5's onMutate returning undefined leaves it.
+        public abstract bool HasOnMutate(object options);
         // What a per-call callback receives as the context, which the context-free slot declines to box.
         public virtual object? BoxContext(TContext context) => context;
-        public abstract VelvetTask InvokeOnSuccess(TData data, TVariables variables, TContext context);
-        public abstract VelvetTask InvokeOnError(Exception error, TVariables variables, TContext context);
-        public abstract VelvetTask InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context);
+        public abstract VelvetTask InvokeOnSuccess(object options, TData data, TVariables variables, TContext context, MutationFunctionContext functionContext);
+        public abstract VelvetTask InvokeOnError(object options, Exception error, TVariables variables, TContext context, MutationFunctionContext functionContext);
+        public abstract VelvetTask InvokeOnSettled(object options, TData data, Exception? error, TVariables variables, TContext context, MutationFunctionContext functionContext);
+
+        // v5 rejects a call whose options have no function with this message.
+        protected static Exception NoMutationFn() => new InvalidOperationException("No mutationFn found");
     }
 
     internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot<TVariables, TData, Unit>
     {
-        public MutationOptions<TVariables, TData> Options { get; set; } = null!;
+        public override VelvetTask<TData> InvokeMutationFn(object options, TVariables variables, MutationFunctionContext context) =>
+            ((MutationOptions<TVariables, TData>)options).MutationFn is { } mutationFn
+                ? mutationFn(variables, context)
+                : VelvetTask.FromException<TData>(NoMutationFn());
 
-        public override RetryPolicy? Retry => Options.Retry;
+        public override VelvetTask<Unit> InvokeOnMutate(object options, TVariables variables, MutationFunctionContext context) =>
+            VelvetTask.FromResult(Unit.Default);
 
-        public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
-            Options.MutationFn(variables, token);
-
-        public override VelvetTask<Unit> InvokeOnMutate(TVariables variables) => VelvetTask.FromResult(Unit.Default);
+        public override bool HasOnMutate(object options) => false;
 
         public override object? BoxContext(Unit context) => null;
 
-        public override VelvetTask InvokeOnSuccess(TData data, TVariables variables, Unit context) =>
-            Options.OnSuccess is { } onSuccess ? onSuccess(data, variables) : VelvetTask.CompletedTask;
+        public override VelvetTask InvokeOnSuccess(object options, TData data, TVariables variables, Unit context, MutationFunctionContext functionContext) =>
+            ((MutationOptions<TVariables, TData>)options).OnSuccess is { } onSuccess ? onSuccess(data, variables, functionContext) : VelvetTask.CompletedTask;
 
-        public override VelvetTask InvokeOnError(Exception error, TVariables variables, Unit context) =>
-            Options.OnError is { } onError ? onError(error, variables) : VelvetTask.CompletedTask;
+        public override VelvetTask InvokeOnError(object options, Exception error, TVariables variables, Unit context, MutationFunctionContext functionContext) =>
+            ((MutationOptions<TVariables, TData>)options).OnError is { } onError ? onError(error, variables, functionContext) : VelvetTask.CompletedTask;
 
-        public override VelvetTask InvokeOnSettled(TData data, Exception? error, TVariables variables, Unit context) =>
-            Options.OnSettled is { } onSettled ? onSettled(data, error, variables) : VelvetTask.CompletedTask;
+        public override VelvetTask InvokeOnSettled(object options, TData data, Exception? error, TVariables variables, Unit context, MutationFunctionContext functionContext) =>
+            ((MutationOptions<TVariables, TData>)options).OnSettled is { } onSettled ? onSettled(data, error, variables, functionContext) : VelvetTask.CompletedTask;
     }
 
     internal sealed class HookContextMutationSlot<TVariables, TData, TContext>
         : HookMutationSlot<TVariables, TData, TContext>
     {
-        public MutationOptions<TVariables, TData, TContext> Options { get; set; } = null!;
+        public override VelvetTask<TData> InvokeMutationFn(object options, TVariables variables, MutationFunctionContext context) =>
+            ((MutationOptions<TVariables, TData, TContext>)options).MutationFn is { } mutationFn
+                ? mutationFn(variables, context)
+                : VelvetTask.FromException<TData>(NoMutationFn());
 
-        public override RetryPolicy? Retry => Options.Retry;
+        public override VelvetTask<TContext> InvokeOnMutate(object options, TVariables variables, MutationFunctionContext context) =>
+            ((MutationOptions<TVariables, TData, TContext>)options).OnMutate is { } onMutate
+                ? onMutate(variables, context)
+                : VelvetTask.FromResult(default(TContext)!);
 
-        public override VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token) =>
-            Options.MutationFn(variables, token);
+        public override bool HasOnMutate(object options) => ((MutationOptions<TVariables, TData, TContext>)options).OnMutate != null;
 
-        public override VelvetTask<TContext> InvokeOnMutate(TVariables variables) =>
-            Options.OnMutate is { } onMutate ? onMutate(variables) : VelvetTask.FromResult(default(TContext)!);
+        public override VelvetTask InvokeOnSuccess(object options, TData data, TVariables variables, TContext context, MutationFunctionContext functionContext) =>
+            ((MutationOptions<TVariables, TData, TContext>)options).OnSuccess is { } onSuccess
+                ? onSuccess(data, variables, context, functionContext)
+                : VelvetTask.CompletedTask;
 
-        public override VelvetTask InvokeOnSuccess(TData data, TVariables variables, TContext context) =>
-            Options.OnSuccess is { } onSuccess ? onSuccess(data, variables, context) : VelvetTask.CompletedTask;
+        public override VelvetTask InvokeOnError(object options, Exception error, TVariables variables, TContext context, MutationFunctionContext functionContext) =>
+            ((MutationOptions<TVariables, TData, TContext>)options).OnError is { } onError
+                ? onError(error, variables, context, functionContext)
+                : VelvetTask.CompletedTask;
 
-        public override VelvetTask InvokeOnError(Exception error, TVariables variables, TContext context) =>
-            Options.OnError is { } onError ? onError(error, variables, context) : VelvetTask.CompletedTask;
-
-        public override VelvetTask InvokeOnSettled(TData data, Exception? error, TVariables variables, TContext context) =>
-            Options.OnSettled is { } onSettled ? onSettled(data, error, variables, context) : VelvetTask.CompletedTask;
+        public override VelvetTask InvokeOnSettled(object options, TData data, Exception? error, TVariables variables, TContext context, MutationFunctionContext functionContext) =>
+            ((MutationOptions<TVariables, TData, TContext>)options).OnSettled is { } onSettled
+                ? onSettled(data, error, variables, context, functionContext)
+                : VelvetTask.CompletedTask;
     }
 
     internal sealed class HookRefSlot

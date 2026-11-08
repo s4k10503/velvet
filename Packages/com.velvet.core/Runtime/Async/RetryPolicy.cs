@@ -84,13 +84,10 @@ namespace Velvet
             RetryCallbacks<TState> callbacks,
             CancellationToken cancellationToken)
         {
-            if (NetworkMode == NetworkMode.Online)
+            if (NetworkMode == NetworkMode.Online && IsOnline == null) await VelvetTask.SwitchToMainThread();
+            if (!CanStart(state, callbacks))
             {
-                if (IsOnline == null) await VelvetTask.SwitchToMainThread();
-                if (!(IsOnline?.Invoke() ?? NetworkSignals.ReadOnline()))
-                {
-                    await PauseAsync(state, callbacks, cancellationToken);
-                }
+                await PauseAsync(state, callbacks, atStart: true, cancellationToken);
             }
 
             for (var failureCount = 0; ; failureCount++)
@@ -115,12 +112,23 @@ namespace Velvet
                 // A Wait that ignores the token still starts no attempt for a caller who has abandoned it.
                 cancellationToken.ThrowIfCancellationRequested();
                 if (IsOnline == null || IsFocused == null) await VelvetTask.SwitchToMainThread();
-                if (!CanContinue())
+                if (!CanContinue(state, callbacks))
                 {
-                    await PauseAsync(state, callbacks, cancellationToken);
+                    await PauseAsync(state, callbacks, atStart: false, cancellationToken);
                 }
             }
         }
+
+        // TanStack's canFetch: whether the network mode lets the first attempt start. Read on the main thread.
+        internal bool CanFetch() => NetworkMode != NetworkMode.Online || (IsOnline?.Invoke() ?? NetworkSignals.ReadOnline());
+
+        // TanStack's canStart: what the first attempt waits for, which leaves the application's visibility out.
+        private bool CanStart<TState>(TState state, RetryCallbacks<TState> callbacks)
+            => CanFetch() && (callbacks.CanRun?.Invoke(state) ?? true);
+
+        // TanStack's canContinue: what a retry waits for.
+        private bool CanContinue<TState>(TState state, RetryCallbacks<TState> callbacks)
+            => CanContinue() && (callbacks.CanRun?.Invoke(state) ?? true);
 
         // What a mutation without a Retry runs under: no retry, but the network mode every v5 mutation has.
         internal static RetryPolicy NoRetry { get; } = new() { Retry = false };
@@ -137,6 +145,7 @@ namespace Velvet
         private async VelvetTask PauseAsync<TState>(
             TState state,
             RetryCallbacks<TState> callbacks,
+            bool atStart,
             CancellationToken cancellationToken)
         {
             callbacks.OnPause?.Invoke(state);
@@ -144,9 +153,9 @@ namespace Velvet
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await VelvetTask.Yield();
+                await (callbacks.WaitToContinue?.Invoke(state) ?? VelvetTask.Yield());
             }
-            while (!CanContinue());
+            while (atStart ? !CanStart(state, callbacks) : !CanContinue(state, callbacks));
             cancellationToken.ThrowIfCancellationRequested();
             callbacks.OnContinue?.Invoke(state);
         }
@@ -197,6 +206,11 @@ namespace Velvet
         public Action<TState, Exception>? OnFail { get; init; }
         public Action<TState>? OnPause { get; init; }
         public Action<TState>? OnContinue { get; init; }
+        // TanStack's canRun: false holds the run paused whatever the network says, as a mutation waits for the
+        // ones ahead of it in its scope.
+        public Func<TState, bool>? CanRun { get; init; }
+        // What a pause waits on before it reads its conditions again; null waits for the next frame.
+        public Func<TState, VelvetTask>? WaitToContinue { get; init; }
     }
 
     /// <summary>

@@ -25,29 +25,35 @@ namespace Velvet
     /// <see cref="MutationResult{TVariables, TData}.MutateAsync"/>. For a value carried from before the call to
     /// its callbacks, use <see cref="MutationOptions{TVariables, TData, TContext}"/>. Each callback returns a
     /// task the call waits for before the next stage, as TanStack Query awaits the promise its callbacks return;
-    /// a callback with nothing to wait for returns <see cref="VelvetTask.CompletedTask"/>.
+    /// a callback with nothing to wait for returns <see cref="VelvetTask.CompletedTask"/>. The function and every
+    /// callback are handed the call's <see cref="MutationFunctionContext"/> last.
     /// </summary>
+    /// <remarks>
+    /// <see cref="MutationFn"/> may be left null for <see cref="QueryClient.SetMutationDefaults"/> to supply; a call
+    /// whose options still have none fails with an <see cref="InvalidOperationException"/>, as v5's does.
+    /// </remarks>
     public sealed record MutationOptions<TVariables, TData>(
-        Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
-        Func<TData, TVariables, VelvetTask>? OnSuccess = null,
-        Func<Exception, TVariables, VelvetTask>? OnError = null)
+        Func<TVariables, MutationFunctionContext, VelvetTask<TData>>? MutationFn,
+        Func<TData, TVariables, MutationFunctionContext, VelvetTask>? OnSuccess = null,
+        Func<Exception, TVariables, MutationFunctionContext, VelvetTask>? OnError = null) : MutationOptionsBase
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the data and a null exception on
         /// success and default data and the exception on failure.
         /// </summary>
-        public Func<TData?, Exception?, TVariables, VelvetTask>? OnSettled { get; init; }
+        public Func<TData?, Exception?, TVariables, MutationFunctionContext, VelvetTask>? OnSettled { get; init; }
 
-        /// <summary>
-        /// Retries a failed <see cref="MutationFn"/> within the same call: <see cref="MutationResult{TVariables, TData}.Status"/>,
-        /// <see cref="MutationResult{TVariables, TData}.Data"/> and <see cref="MutationResult{TVariables, TData}.Error"/>
-        /// stay uncommitted between attempts while <see cref="MutationResult{TVariables, TData}.FailureCount"/>,
-        /// <see cref="MutationResult{TVariables, TData}.FailureReason"/> and
-        /// <see cref="MutationResult{TVariables, TData}.IsPaused"/> follow them, and <see cref="OnSuccess"/> /
-        /// <see cref="OnError"/> / <see cref="OnSettled"/> run once, for the last attempt's outcome. When null,
-        /// the default, a failure is not retried, as TanStack Query's mutations default to <c>retry: 0</c>.
-        /// </summary>
-        public RetryPolicy? Retry { get; init; }
+        internal override MutationOptionsBase WithDefaults(MutationOptionsBase defaults)
+        {
+            var typed = defaults as MutationOptions<TVariables, TData>;
+            return (this with
+            {
+                MutationFn = MutationFn ?? typed?.MutationFn,
+                OnSuccess = OnSuccess ?? typed?.OnSuccess,
+                OnError = OnError ?? typed?.OnError,
+                OnSettled = OnSettled ?? typed?.OnSettled,
+            }).WithSharedDefaults(defaults);
+        }
     }
 
     /// <summary>
@@ -58,17 +64,29 @@ namespace Velvet
     /// and finish in <see cref="OnSettled"/>. Where <see cref="OnMutate"/> throws or its task faults, or the
     /// options declare none, the callbacks receive a default context. Every callback returns a task the call
     /// waits for before the next stage, <see cref="OnMutate"/> included, so a context built from a request is
-    /// the task's result.
+    /// the task's result. As <see cref="MutationOptions{TVariables, TData}"/>, each is handed the call's
+    /// <see cref="MutationFunctionContext"/> last, and <see cref="MutationFn"/> may come from the client's defaults.
     /// </summary>
     public sealed record MutationOptions<TVariables, TData, TContext>(
-        Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
-        Func<TVariables, VelvetTask<TContext>>? OnMutate = null,
-        Func<TData, TVariables, TContext?, VelvetTask>? OnSuccess = null,
-        Func<Exception, TVariables, TContext?, VelvetTask>? OnError = null,
-        Func<TData?, Exception?, TVariables, TContext?, VelvetTask>? OnSettled = null)
+        Func<TVariables, MutationFunctionContext, VelvetTask<TData>>? MutationFn,
+        Func<TVariables, MutationFunctionContext, VelvetTask<TContext>>? OnMutate = null,
+        Func<TData, TVariables, TContext?, MutationFunctionContext, VelvetTask>? OnSuccess = null,
+        Func<Exception, TVariables, TContext?, MutationFunctionContext, VelvetTask>? OnError = null,
+        Func<TData?, Exception?, TVariables, TContext?, MutationFunctionContext, VelvetTask>? OnSettled = null)
+        : MutationOptionsBase
     {
-        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
-        public RetryPolicy? Retry { get; init; }
+        internal override MutationOptionsBase WithDefaults(MutationOptionsBase defaults)
+        {
+            var typed = defaults as MutationOptions<TVariables, TData, TContext>;
+            return (this with
+            {
+                MutationFn = MutationFn ?? typed?.MutationFn,
+                OnMutate = OnMutate ?? typed?.OnMutate,
+                OnSuccess = OnSuccess ?? typed?.OnSuccess,
+                OnError = OnError ?? typed?.OnError,
+                OnSettled = OnSettled ?? typed?.OnSettled,
+            }).WithSharedDefaults(defaults);
+        }
     }
 
     /// <summary>
@@ -76,18 +94,27 @@ namespace Velvet
     /// Use this overload when the mutation is fire-and-forget (typical for Store actions that update state internally).
     /// </summary>
     public sealed record MutationOptions<TVariables>(
-        Func<TVariables, CancellationToken, VelvetTask> MutationFn,
-        Func<TVariables, VelvetTask>? OnSuccess = null,
-        Func<Exception, TVariables, VelvetTask>? OnError = null)
+        Func<TVariables, MutationFunctionContext, VelvetTask>? MutationFn,
+        Func<TVariables, MutationFunctionContext, VelvetTask>? OnSuccess = null,
+        Func<Exception, TVariables, MutationFunctionContext, VelvetTask>? OnError = null) : MutationOptionsBase
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
         /// success.
         /// </summary>
-        public Func<Exception?, TVariables, VelvetTask>? OnSettled { get; init; }
+        public Func<Exception?, TVariables, MutationFunctionContext, VelvetTask>? OnSettled { get; init; }
 
-        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
-        public RetryPolicy? Retry { get; init; }
+        internal override MutationOptionsBase WithDefaults(MutationOptionsBase defaults)
+        {
+            var typed = defaults as MutationOptions<TVariables>;
+            return (this with
+            {
+                MutationFn = MutationFn ?? typed?.MutationFn,
+                OnSuccess = OnSuccess ?? typed?.OnSuccess,
+                OnError = OnError ?? typed?.OnError,
+                OnSettled = OnSettled ?? typed?.OnSettled,
+            }).WithSharedDefaults(defaults);
+        }
     }
 
     /// <summary>
@@ -95,18 +122,27 @@ namespace Velvet
     /// "logout" / "reset" actions where everything is captured in closure.
     /// </summary>
     public sealed record MutationOptions(
-        Func<CancellationToken, VelvetTask> MutationFn,
-        Func<VelvetTask>? OnSuccess = null,
-        Func<Exception, VelvetTask>? OnError = null)
+        Func<MutationFunctionContext, VelvetTask>? MutationFn,
+        Func<MutationFunctionContext, VelvetTask>? OnSuccess = null,
+        Func<Exception, MutationFunctionContext, VelvetTask>? OnError = null) : MutationOptionsBase
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
         /// success.
         /// </summary>
-        public Func<Exception?, VelvetTask>? OnSettled { get; init; }
+        public Func<Exception?, MutationFunctionContext, VelvetTask>? OnSettled { get; init; }
 
-        /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
-        public RetryPolicy? Retry { get; init; }
+        internal override MutationOptionsBase WithDefaults(MutationOptionsBase defaults)
+        {
+            var typed = defaults as MutationOptions;
+            return (this with
+            {
+                MutationFn = MutationFn ?? typed?.MutationFn,
+                OnSuccess = OnSuccess ?? typed?.OnSuccess,
+                OnError = OnError ?? typed?.OnError,
+                OnSettled = OnSettled ?? typed?.OnSettled,
+            }).WithSharedDefaults(defaults);
+        }
     }
 
     /// <summary>
@@ -116,38 +152,41 @@ namespace Velvet
     /// hook options' own callbacks, once the call's outcome is on the handle, and only while the component is
     /// mounted and the call is still the one the handle follows: the component unmounting, a newer call
     /// starting and <see cref="MutationResult{TVariables, TData}.Reset"/> each drop them. Every context
-    /// parameter is the call's <c>OnMutate</c> result boxed, and null for the context-free option records.
+    /// parameter is the call's <c>OnMutate</c> result boxed, and null for the context-free option records. The
+    /// <see cref="MutationFunctionContext"/> each is handed last carries the meta and key of the options the
+    /// handle's component last committed, as v5's observer builds it from its own options.
     /// </summary>
     public sealed record MutateOptions<TVariables, TData>
     {
         /// <summary>
-        /// The token the call's mutation function receives. Nothing but the caller cancels it: unmounting the
-        /// component, a newer call and <see cref="MutationResult{TVariables, TData}.Reset"/> leave a call
-        /// running, as TanStack Query v5's mutation never cancels. A function that honours a cancelled token
-        /// ends in the exception, which fails the call like any other.
+        /// The token the call's mutation function receives in <see cref="MutationFunctionContext.CancellationToken"/>.
+        /// Nothing but the caller cancels it: unmounting the component, a newer call and
+        /// <see cref="MutationResult{TVariables, TData}.Reset"/> leave a call running, as TanStack Query v5's mutation
+        /// never cancels. A function that honours a cancelled token ends in the exception, which fails the call like
+        /// any other.
         /// </summary>
         public CancellationToken CancellationToken { get; init; }
 
         /// <summary>Runs when the call succeeds.</summary>
-        public Action<TData, TVariables, object?>? OnSuccess { get; init; }
+        public Action<TData, TVariables, object?, MutationFunctionContext>? OnSuccess { get; init; }
 
         /// <summary>Runs when the call fails.</summary>
-        public Action<Exception, TVariables, object?>? OnError { get; init; }
+        public Action<Exception, TVariables, object?, MutationFunctionContext>? OnError { get; init; }
 
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the data and a null exception on
         /// success and default data and the exception on failure.
         /// </summary>
-        public Action<TData?, Exception?, TVariables, object?>? OnSettled { get; init; }
+        public Action<TData?, Exception?, TVariables, object?, MutationFunctionContext>? OnSettled { get; init; }
 
         // Contained one by one, as TanStack's observer contains them: a throwing callback is reported and
         // costs neither the next callback nor the call's outcome.
-        internal void Deliver(TData? data, Exception? error, TVariables variables, object? context)
+        internal void Deliver(TData? data, Exception? error, TVariables variables, object? context, MutationFunctionContext functionContext)
         {
             try
             {
-                if (error == null) OnSuccess?.Invoke(data!, variables, context);
-                else OnError?.Invoke(error, variables, context);
+                if (error == null) OnSuccess?.Invoke(data!, variables, context, functionContext);
+                else OnError?.Invoke(error, variables, context, functionContext);
             }
             catch (Exception callbackFailure)
             {
@@ -155,7 +194,7 @@ namespace Velvet
             }
             try
             {
-                OnSettled?.Invoke(data, error, variables, context);
+                OnSettled?.Invoke(data, error, variables, context, functionContext);
             }
             catch (Exception callbackFailure)
             {
@@ -203,8 +242,9 @@ namespace Velvet
         /// </summary>
         public Exception? FailureReason { get; private set; }
         /// <summary>
-        /// True while the call waits for a connection or for the application to become visible again, as TanStack's
-        /// <c>isPaused</c>. See <see cref="RetryPolicy.NetworkMode"/>.
+        /// True while the call waits for a connection, for an earlier mutation of its
+        /// <see cref="MutationOptionsBase.Scope"/> to settle, or, before a retry, for the application to become
+        /// visible again, as TanStack's <c>isPaused</c>. See <see cref="RetryPolicy.NetworkMode"/>.
         /// </summary>
         public bool IsPaused { get; private set; }
 

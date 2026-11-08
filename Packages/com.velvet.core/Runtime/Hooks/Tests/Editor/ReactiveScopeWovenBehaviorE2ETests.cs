@@ -31,6 +31,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ReactiveScopeWovenBehaviorE2ETests
     {
+        private static readonly QueryClient s_mutationClient = new();
+
         private VisualElement _root = null!;
 
         private static readonly int[] s_calls = new int[8];
@@ -359,7 +361,7 @@ namespace Velvet.Tests
             s_setFirst = setFirst;
             s_setSecond = setSecond;
             var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: (v, _) => VelvetTask.FromResult(v * 2)));
+                MutationFn: (v, _) => VelvetTask.FromResult(v * 2)), s_mutationClient);
             return V.Div("mutation",
                 V.Label(text: Describe(0, first)),
                 V.Label(text: Describe(1, mutation.Status)),

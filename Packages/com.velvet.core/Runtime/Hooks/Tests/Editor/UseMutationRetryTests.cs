@@ -16,13 +16,15 @@ namespace Velvet.Tests
     /// Specifies <see cref="MutationOptions{TVariables, TData}.Retry"/> on a mounted
     /// <see cref="Hooks.UseMutation{TVariables, TData}"/>: retries stay inside one call, so the call commits
     /// and delivers one outcome; a retry waits on the caller's token, which an unmount leaves live; a call still retrying does not
-    /// publish over a newer one; the latest render's <c>Retry</c> and <c>MutationFn</c> are the ones used; and a
+    /// publish over a newer one; the <c>Retry</c> and <c>MutationFn</c> the latest commit applied are the ones used; and a
     /// context call's <c>OnMutate</c> and <c>OnSettled</c> run once around its attempts.
     /// <see cref="RetryPolicyTests"/> owns the policy's own schedule.
     /// </summary>
     [TestFixture]
     internal sealed class UseMutationRetryTests
     {
+        private static QueryClient s_mutationClient = new();
+
         private VisualElement _root = null!;
         private static MutationResult<int, int>? s_captured;
         private static MutationResult<int, Unit>? s_voidCaptured;
@@ -46,6 +48,7 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
+            s_mutationClient = new QueryClient();
             _root = new VisualElement();
             s_case++;
             s_captured = null;
@@ -231,6 +234,9 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "retry-rerender"));
             s_retry = s_noDelay;
             mounted.Render(V.Component(CaptureMutationRender, key: "retry-rerender"));
+            // The commit's passive effects hand the options to the observer a call is built from, as v5's
+            // useMutation does in its effect.
+            mounted.FlushEffectsForTest();
 
             // Act
             await s_captured!.MutateAsync(21);
@@ -238,7 +244,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_captured.Status, Is.EqualTo(MutationStatus.Success),
-                "A Retry the latest render passed is the one the next call uses");
+                "A Retry the latest commit applied is the one the next call uses");
         });
 
         [UnityTest]
@@ -252,13 +258,15 @@ namespace Velvet.Tests
             var call = s_captured!.MutateAsync(1);
             s_mutationFn = (v, _) => VelvetTask.FromResult(v * 100);
             mounted.Render(V.Component(CaptureMutationRender, key: "retry-latest-fn"));
+            // The commit's passive effects are where the pending call the handle shows takes the new options.
+            mounted.FlushEffectsForTest();
 
             // Act
             gate.TrySetResult();
             var result = await call;
 
             // Assert
-            Assert.That(result, Is.EqualTo(100), "The retry calls the MutationFn of the latest render, as v5 does");
+            Assert.That(result, Is.EqualTo(100), "The retry calls the MutationFn of the latest commit, as v5's setOptions hands it to the pending call");
         });
 
         [UnityTest]
@@ -587,20 +595,20 @@ namespace Velvet.Tests
         }
 #endif
 
-        private static Func<T1, T2, VelvetTask> ForThisCase<T1, T2>(Action<T1, T2> callback)
+        private static Func<T1, T2, MutationFunctionContext, VelvetTask> ForThisCase<T1, T2>(Action<T1, T2> callback)
         {
             var owner = s_case;
-            return (first, second) =>
+            return (first, second, _) =>
             {
                 if (owner == s_case) callback(first, second);
                 return VelvetTask.CompletedTask;
             };
         }
 
-        private static Func<T1, T2, T3, T4, VelvetTask> ForThisCase<T1, T2, T3, T4>(Action<T1, T2, T3, T4> callback)
+        private static Func<T1, T2, T3, T4, MutationFunctionContext, VelvetTask> ForThisCase<T1, T2, T3, T4>(Action<T1, T2, T3, T4> callback)
         {
             var owner = s_case;
-            return (first, second, third, fourth) =>
+            return (first, second, third, fourth, _) =>
             {
                 if (owner == s_case) callback(first, second, third, fourth);
                 return VelvetTask.CompletedTask;
@@ -610,16 +618,18 @@ namespace Velvet.Tests
         [Component]
         public static VNode CaptureMutationRender()
         {
+            // Captured here rather than read when the call runs, so a render's options carry that render's function.
+            var mutationFn = s_mutationFn;
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnError: ForThisCase<Exception, int>((_, _) => s_onErrorCount++)) { Retry = s_retry });
+                MutationFn: (v, context) => mutationFn(v, context.CancellationToken),
+                OnError: ForThisCase<Exception, int>((_, _) => s_onErrorCount++)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
         [Component]
         public static VNode CaptureMutationLabelRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn) { Retry = s_retry });
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: $"{s_captured.Status.ToString().ToLowerInvariant()} failures={s_captured.FailureCount} paused={s_captured.IsPaused}");
         }
 
@@ -627,8 +637,8 @@ namespace Velvet.Tests
         public static VNode CaptureMutationRecordingSuccessesRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnSuccess: ForThisCase<int, int>((data, _) => s_delivered.Add(data))) { Retry = s_retry });
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnSuccess: ForThisCase<int, int>((data, _) => s_delivered.Add(data))) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -636,7 +646,7 @@ namespace Velvet.Tests
         public static VNode CaptureVoidMutationRender()
         {
             s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
-                MutationFn: async (v, ct) => await s_mutationFn(v, ct)) { Retry = s_retry });
+                MutationFn: async (v, context) => await s_mutationFn(v, context.CancellationToken)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -644,9 +654,9 @@ namespace Velvet.Tests
         public static VNode CaptureContextMutationRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, int>(
-                MutationFn: s_mutationFn,
-                OnMutate: _ => VelvetTask.FromResult(++s_onMutateCount),
-                OnSettled: ForThisCase<int, Exception?, int, int>((_, _, _, _) => s_onSettledCount++)) { Retry = s_retry });
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnMutate: (_, _) => VelvetTask.FromResult(++s_onMutateCount),
+                OnSettled: ForThisCase<int, Exception?, int, int>((_, _, _, _) => s_onSettledCount++)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -654,7 +664,7 @@ namespace Velvet.Tests
         public static VNode CaptureNoInputMutationRender()
         {
             s_noInputCaptured = Hooks.UseMutation(new MutationOptions(
-                MutationFn: async ct => await s_mutationFn(0, ct)) { Retry = s_retry });
+                MutationFn: async context => await s_mutationFn(0, context.CancellationToken)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
     }

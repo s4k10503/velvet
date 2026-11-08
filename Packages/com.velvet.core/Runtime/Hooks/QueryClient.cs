@@ -83,10 +83,25 @@ namespace Velvet
         /// differently — game time that pauses, or a clock a test advances by hand.
         /// </summary>
         public Func<TimeSpan>? Clock { get; init; }
+
+        /// <summary>
+        /// The cache the client's mutations are kept in, TanStack Query's <c>mutationCache</c> option; null makes
+        /// a new one.
+        /// </summary>
+        public MutationCache? MutationCache { get; init; }
+
+        /// <summary>
+        /// The options every mutation of the client starts from, TanStack Query's <c>defaultOptions.mutations</c>:
+        /// what a mutation's own options and the defaults <see cref="QueryClient.SetMutationDefaults"/> registered
+        /// for its key leave null is taken from here. A <see cref="MutationDefaults"/> fills the options every record
+        /// shares; a typed options record also supplies its function and callbacks to options of its own type.
+        /// </summary>
+        public MutationOptionsBase? Mutations { get; init; }
     }
 
     /// <summary>
-    /// Provides a <see cref="QueryClient"/> to the <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> calls below it:
+    /// Provides a <see cref="QueryClient"/> to the <see cref="Hooks.UseQuery{TQueryFnData, TData}"/>,
+    /// <see cref="Hooks.UseMutation{TVariables, TData}"/> and <see cref="Hooks.UseMutationState{TResult}"/> calls below it:
     /// <c>V.Provider(QueryClientContext.Ref, value: client, children: ...)</c>, TanStack Query's
     /// <c>QueryClientProvider</c>. Read it with <c>Hooks.UseContext(QueryClientContext.Ref)</c> to reach the
     /// client from a component, as <c>useQueryClient()</c> does.
@@ -94,8 +109,8 @@ namespace Velvet
     public static class QueryClientContext
     {
         /// <summary>
-        /// The context <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> reads. Its default is null, so a query with no
-        /// Provider above it and no client passed to it throws rather than sharing a hidden one.
+        /// The context the query and mutation hooks read. Its default is null, so a hook with no Provider above it and
+        /// no client passed to it throws rather than sharing a hidden one.
         /// </summary>
         public static readonly ComponentContext<QueryClient?> Ref
             = ComponentContext<QueryClient?>.Create(defaultValue: null);
@@ -128,6 +143,10 @@ namespace Velvet
             = (failureCount, _) => TimeSpan.FromMilliseconds(Math.Min(1000d * Math.Pow(2d, failureCount), 30000d));
 
         private readonly Func<TimeSpan> _clock;
+        private readonly MutationCache _mutationCache;
+        private readonly MutationOptionsBase? _mutationOptions;
+        // In registration order, a key registered again keeping its place, as v5's Map does.
+        private readonly List<KeyValuePair<QueryKey, MutationOptionsBase>> _mutationDefaults = new();
         // Advanced by every render that reads this client, so an entry whose last reader left under the current
         // value left after the render whose effects are subscribing now.
         private int _readEpoch;
@@ -151,6 +170,8 @@ namespace Velvet
             DefaultRefetchOnReconnect = options.RefetchOnReconnect;
             DefaultRefetchOnWindowFocusFn = options.RefetchOnWindowFocusFn;
             DefaultRefetchOnReconnectFn = options.RefetchOnReconnectFn;
+            _mutationCache = options.MutationCache ?? new MutationCache();
+            _mutationOptions = options.Mutations;
             if (options.Clock != null)
             {
                 _clock = options.Clock;
@@ -459,7 +480,8 @@ namespace Velvet
 
         /// <summary>
         /// Removes every entry and cancels every request in flight, as TanStack Query's <c>clear()</c>. A
-        /// mounted query re-renders without data and fetches into a new entry.
+        /// mounted query re-renders without data and fetches into a new entry. The mutations in
+        /// <see cref="GetMutationCache"/> are removed too; one still running runs on.
         /// </summary>
         public void Clear()
         {
@@ -471,9 +493,120 @@ namespace Velvet
             {
                 entry.Remove();
             }
+            _mutationCache.Clear();
         }
 
+        /// <summary>The cache the client's mutations are kept in, TanStack Query's <c>getMutationCache()</c>.</summary>
+        public MutationCache GetMutationCache() => _mutationCache;
+
+        /// <summary>
+        /// How many of the mutations <paramref name="filters"/> selects are pending, TanStack Query's
+        /// <c>isMutating</c>; the filters' own <see cref="MutationFilters.Status"/> is replaced.
+        /// </summary>
+        public int IsMutating(MutationFilters? filters = null)
+            => _mutationCache.FindAll((filters ?? new MutationFilters()) with { Status = MutationStatus.Pending }).Count;
+
+        /// <summary>
+        /// Registers <paramref name="options"/> as the defaults of every mutation whose key
+        /// <paramref name="mutationKey"/> leads, TanStack Query's <c>setMutationDefaults</c>. Registering a key
+        /// again replaces its defaults where they stood in the order.
+        /// </summary>
+        public void SetMutationDefaults(QueryKey mutationKey, MutationOptionsBase options)
+        {
+            if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            for (var i = 0; i < _mutationDefaults.Count; i++)
+            {
+                if (!_mutationDefaults[i].Key.Equals(mutationKey)) continue;
+                _mutationDefaults[i] = new KeyValuePair<QueryKey, MutationOptionsBase>(mutationKey, options);
+                return;
+            }
+            _mutationDefaults.Add(new KeyValuePair<QueryKey, MutationOptionsBase>(mutationKey, options));
+        }
+
+        /// <summary>
+        /// The options every record shares, as the defaults <see cref="SetMutationDefaults"/> registered for keys
+        /// leading <paramref name="mutationKey"/> set them, merged in registration order with a later registration
+        /// winning: TanStack Query's <c>getMutationDefaults</c>, and what <see cref="DefaultMutationOptions"/> fills
+        /// those options from. An empty <see cref="MutationDefaults"/> when none matches. A registration's function
+        /// and callbacks are not in it, since they reach only options of the registration's own type: read them with
+        /// <see cref="GetMutationDefaults{TOptions}"/>.
+        /// </summary>
+        public MutationDefaults GetMutationDefaults(QueryKey mutationKey)
+        {
+            if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
+            return (MutationDefaults)FillFromKeyDefaults(new MutationDefaults(), mutationKey);
+        }
+
+        /// <summary>
+        /// The defaults <see cref="SetMutationDefaults"/> registered for keys leading <paramref name="mutationKey"/>
+        /// as options of type <typeparamref name="TOptions"/>: the shared options as
+        /// <see cref="GetMutationDefaults"/> reports them, and the function and callbacks of the registrations of
+        /// exactly that type, merged in registration order with a later one winning. Null when no registration of
+        /// that type matches.
+        /// </summary>
+        public TOptions? GetMutationDefaults<TOptions>(QueryKey mutationKey) where TOptions : MutationOptionsBase
+        {
+            if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
+            return (TOptions?)TypedKeyDefaults(typeof(TOptions), mutationKey);
+        }
+
+        /// <summary>
+        /// <paramref name="options"/> with what it leaves null taken from the defaults registered for keys leading
+        /// its key, as <see cref="GetMutationDefaults{TOptions}"/> reads them for the options' own type, and then from
+        /// <see cref="QueryClientOptions.Mutations"/>: TanStack Query's <c>defaultMutationOptions</c>.
+        /// <see cref="Hooks.UseMutation{TVariables, TData}"/> runs its options through this.
+        /// </summary>
+        public T DefaultMutationOptions<T>(T options) where T : MutationOptionsBase
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            MutationOptionsBase filled = options;
+            if (options.MutationKey is { } mutationKey)
+            {
+                filled = filled.WithDefaults(
+                    TypedKeyDefaults(options.GetType(), mutationKey) ?? FillFromKeyDefaults(new MutationDefaults(), mutationKey));
+            }
+            if (_mutationOptions != null) filled = filled.WithDefaults(_mutationOptions);
+            return (T)filled;
+        }
+
+        // The registrations of exactly this type merged latest first, carrying the shared options of every
+        // matching registration; null when none of this type matches.
+        private MutationOptionsBase? TypedKeyDefaults(Type type, QueryKey mutationKey)
+        {
+            MutationOptionsBase? typed = null;
+            for (var i = _mutationDefaults.Count - 1; i >= 0; i--)
+            {
+                var registered = _mutationDefaults[i];
+                if (registered.Value.GetType() != type || !mutationKey.Matches(registered.Key)) continue;
+                typed = typed == null ? registered.Value : typed.WithDefaults(registered.Value);
+            }
+            return typed?.WithSharedFrom(FillFromKeyDefaults(new MutationDefaults(), mutationKey));
+        }
+
+        // Fills from each matching registration in turn, the latest first, taking only what is still null. For the
+        // shared options, and for a function or callback among layers of the options' own type, that is the result
+        // of v5's spread. A layer of another record type fills only the shared options: a function it sets could
+        // never be called with these options' types, so it is passed over.
+        private MutationOptionsBase FillFromKeyDefaults(MutationOptionsBase filled, QueryKey mutationKey)
+        {
+            for (var i = _mutationDefaults.Count - 1; i >= 0; i--)
+            {
+                if (mutationKey.Matches(_mutationDefaults[i].Key)) filled = filled.WithDefaults(_mutationDefaults[i].Value);
+            }
+            return filled;
+        }
+
+        /// <summary>
+        /// Wakes the client's paused mutations while the device reads as online, TanStack Query's
+        /// <c>resumePausedMutations</c>; offline it does nothing. See <see cref="MutationCache.ResumePausedMutations"/>.
+        /// </summary>
+        public VelvetTask ResumePausedMutations()
+            => NetworkSignals.ReadOnline() ? _mutationCache.ResumePausedMutations() : VelvetTask.CompletedTask;
+
         internal TimeSpan Now => _clock();
+
+        internal Func<TimeSpan> Clock => _clock;
 
         // The entries a filter selects, among those that have not expired. A snapshot, since what runs on them
         // can remove entries.
