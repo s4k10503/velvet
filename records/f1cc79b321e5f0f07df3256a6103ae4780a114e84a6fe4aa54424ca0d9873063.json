@@ -1,0 +1,87 @@
+{
+ "detail": "EditMode: 166 failed: m_LastFocusedElement), m_LastPendingFocusedElement), selectedTextElement)",
+ "file": "73ee9ffb4b6ec7da838c72622e7bacea088a72e02f990c0fbbda6b33b047f133",
+ "killers": [
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(BaseVisualElementPanel.add_hierarchyChanged)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(BaseVisualElementPanel.duringLayoutPhase)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(BaseVisualElementPanel.hierarchyVersion)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(BaseVisualElementPanel.remove_hierarchyChanged)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(BaseVisualElementPanel.styleAnimationSystem)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(Clickable.active)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(Clickable.clicked)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(Clickable.clickedWithEventInfo)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(ComputedStyle.backgroundColor)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.EngineMemberLinkerKeepTests.Given_ADeclaredEngineMember_When_TheLinkXmlIsRead_Then_ItKeepsThatMember(ComputedStyle.backgroundImage)",
+   "files": {
+    "Packages/com.velvet.core/Editor/PlayerBuild/Tests/Editor/EngineMemberLinkerKeepTests.cs": "6e8cf33b2b69a35c829e173709cd2d72c275f8bea9f2d0c5b915841a721cb7ec"
+   }
+  }
+ ],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 27,
+  "line": 50,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Editor/PlayerBuild/EngineMemberLinkerKeep.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "line removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

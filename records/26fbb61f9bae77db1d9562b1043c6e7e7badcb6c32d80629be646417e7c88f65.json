@@ -1,0 +1,65 @@
+{
+ "detail": "EditMode: 5 failed: Given_AnEaseTokenDeclaredDifferentlyUnderAThemeClass_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTheThemeClassCurveStandsThere, Given_AnEaseTokenDeclaredOnceAsCubicBezier_When_AWidthTransitionOfItsClassRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere, 2, 1)\\\"; }\")",
+ "file": "2ef6dd97e64bbd7c28b130045e44a9b56a2fe09fa4bf248473ab163053d1aa1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ThemeTokenEaseTests.Given_AnEaseTokenDeclaredDifferentlyUnderAThemeClass_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTheThemeClassCurveStandsThere",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenEaseTests.cs": "11f0847e481f79bacd2140d0207718c142904202cc7885843300d207acbce01d",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenEaseTests.Given_AnEaseTokenDeclaredOnceAsCubicBezier_When_AWidthTransitionOfItsClassRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenEaseTests.cs": "11f0847e481f79bacd2140d0207718c142904202cc7885843300d207acbce01d",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1); }\",\":root { --ease-snappy: \\\"cubic-bezier(0.2, 0.8, 0.2, 1)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --ease-steps: steps(4, jump-end); }\",\":root { --ease-steps: \\\"steps(4, jump-end)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssEasingFunctionImportTests.Given_TheSameCustomPropertyRewritten_When_TheStockImporterReadsIt_Then_ItStoresTheQuotedText",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssEasingFunctionImportTests.cs": "c01ff7642c230f53fefbe6f5682e9bf99a7046538d91e343e8547dada5ca1eb3"
+   }
+  }
+ ],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "",
+  "before": " || HasEasingFunction(value)",
+  "column": 61,
+  "line": 219,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

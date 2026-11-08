@@ -1,19 +1,34 @@
 {
- "detail": "EditMode: 1 failed: Given_AHandlerCapturingAState_When_AnotherStateChanges_Then_TheButtonIsNotBuiltAgain",
+ "detail": "EditMode: 3 failed: Given_AStateOfANullableType_When_ALabelReadsIt_Then_BothLabelsAreCached, Given_APropertyReadOffAStructState_When_Compiled_Then_NothingIsLeftUncached, Given_AHandlerCapturingAState_When_AnotherStateChanges_Then_TheButtonIsNotBuiltAgain",
  "file": "6f00da18df89b426106dd6344585429daad22b2d7a74d0b5246465fc1473ca24",
  "killers": [
   {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_AStateOfANullableType_When_ALabelReadsIt_Then_BothLabelsAreCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_APropertyReadOffAStructState_When_Compiled_Then_NothingIsLeftUncached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
    "case": "Velvet.Tests.ReactiveScopeWovenBehaviorE2ETests.Given_AHandlerCapturingAState_When_AnotherStateChanges_Then_TheButtonIsNotBuiltAgain",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "f6eb5a26914a7d31d64cf801f6fa017c825ca0ed99416427dfcc5aff1e28d7a1",
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "c6468d9e91218641dcfd5ada650bdc438f65e95f07f3c4d1c1ec4753712a9708",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/CompilerILPostProcessorE2ETests.cs": "eaafccfccd60759c40d07c9a8d54fdf0aabf065de421b3e6e3c3a8e4995cc081",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeWovenBehaviorE2ETests.cs": "fb466b70e3f44f8e399d9502d3fda1c4a8dbbd99b28eb33a9aa348c9085fe210",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   }
  ],
- "measured_by": "40109529962",
+ "measured_by": "42404816716",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -27,6 +42,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "bf038dd36f48d022dd5ab55a883ed2a3e43a16b234ec2902d88126cecb1e5b9a",
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
  "verdict": "killed"
 }

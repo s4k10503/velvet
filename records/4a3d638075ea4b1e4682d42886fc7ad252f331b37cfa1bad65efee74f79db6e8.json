@@ -1,0 +1,62 @@
+{
+ "detail": "EditMode: 5 failed: Given_AnArrayDerivedFromAnArrayAndAStatementBetweenThem_When_AnotherStateChanges_Then_NeitherArrayIsBuiltAgain, Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_NeitherLabelReadingTheArrayIsBuiltAgain, Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_TheArrayIsNotBuiltAgain; 1 other editor(s) were up",
+ "file": "3d0f9b098824aebce97b0a09c893b09eba67b6ba571646eb19f5458ae41c01ec",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromAnArrayAndAStatementBetweenThem_When_AnotherStateChanges_Then_NeitherArrayIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_NeitherLabelReadingTheArrayIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromOneStateAndReadByTwoLabels_When_AnotherStateChanges_Then_TheArrayIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayReadByOneLabel_When_AnotherStateChanges_Then_TheArrayIsNotBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayTheBodyWritesIntoAfterBuildingIt_When_Compiled_Then_TheReportSaysTheArrayIsNotCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 107,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Values.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

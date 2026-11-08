@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --ease-steps: steps(4, jump-end); }\",\":root { --ease-steps: \\\"steps(4, jump-end)\\\"; }\")",
+ "file": "2ef6dd97e64bbd7c28b130045e44a9b56a2fe09fa4bf248473ab163053d1aa1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --ease-steps: steps(4, jump-end); }\",\":root { --ease-steps: \\\"steps(4, jump-end)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  }
+ ],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "",
+  "before": " || HasFunction(value, \"steps\")",
+  "column": 49,
+  "line": 224,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

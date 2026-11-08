@@ -2,7 +2,7 @@
  "detail": "EditMode: CS0019: '-' has no overload for these operands",
  "file": "5a91234c65d224e8faefb2f1fe4c80d4732735fb3c084bcb29be00abddbbc372",
  "killers": [],
- "measured_by": "42387265711",
+ "measured_by": "42404816716",
  "mutant": {
   "after": "-",
   "before": "+",
@@ -16,6 +16,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
  "verdict": "not a mutant (the operator does not apply)"
 }

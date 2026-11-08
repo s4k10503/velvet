@@ -1,0 +1,78 @@
+{
+ "detail": "EditMode: 9 failed: 25rem\\\"; }\"), 5em\\\"}\"), Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --radius-card: calc(var(--spacing) * 4); }\",\":root { --radius-card: \\\"calc(var(--spacing) * 4)\\\"; }\")",
+ "file": "2ef6dd97e64bbd7c28b130045e44a9b56a2fe09fa4bf248473ab163053d1aa1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1); }\",\":root { --ease-snappy: \\\"cubic-bezier(0.2, 0.8, 0.2, 1)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --ease-steps: steps(4, jump-end); }\",\":root { --ease-steps: \\\"steps(4, jump-end)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --radius-card: calc(var(--spacing) * 4); }\",\":root { --radius-card: \\\"calc(var(--spacing) * 4)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --spacing: -0.5rem !important; }\",\":root { --spacing: \\\"-0.5rem\\\" !important; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --spacing: 0.25rem; }\",\":root { --spacing: \\\"0.25rem\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --text-big: 1.5em }\",\":root { --text-big: \\\"1.5em\\\"}\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root { --w: clamp(1rem, 5vw, 2rem); }\",\":root { --w: \\\"clamp(1rem, 5vw, 2rem)\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyWithAnUnkeptUnitOrAMathFunction_When_TheSheetIsRewritten_Then_ItsValueIsQuotedAsWritten(\":root{--a:1rem;--b:2rem}\",\":root{--a: \\\"1rem\\\";--b: \\\"2rem\\\"}\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_AValueSpanningLines_When_TheSheetIsRewritten_Then_TheSheetKeepsItsLineCount",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "1ef45e060753d7cab8f5006f51a0785397885e85f87b37ecd0bdcf6388cceff3"
+   }
+  }
+ ],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 34,
+  "line": 138,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

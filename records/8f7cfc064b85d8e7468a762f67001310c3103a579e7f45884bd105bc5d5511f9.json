@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed: Given_AScopeInsideATry_When_Compiled_Then_NoBranchEntersAProtectedRegionMidway",
+ "file": "2aaf0433aaa0e964cc7401c320404cd6623d2802994f2fe8f59f32387b1d17e9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_AScopeInsideATry_When_Compiled_Then_NoBranchEntersAProtectedRegionMidway",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "&&",
+  "before": "||",
+  "column": 55,
+  "line": 444,
+  "operator": "logic",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

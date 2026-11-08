@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "3d0f9b098824aebce97b0a09c893b09eba67b6ba571646eb19f5458ae41c01ec",
+ "killers": [],
+ "measured_by": "42404816716",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 75,
+  "line": 90,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.Values.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "survived"
+}
