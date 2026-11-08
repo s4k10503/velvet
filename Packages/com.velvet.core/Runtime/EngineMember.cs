@@ -411,6 +411,10 @@ namespace Velvet
         internal static readonly EngineMember TransformVersionChange =
             Field(UIElements, VersionChangeType, "Transform", "enum:" + VersionChangeType);
 
+        // TextLineBox's request for a fresh measure of an element whose line height changed under it.
+        internal static readonly EngineMember LayoutVersionChange =
+            Field(UIElements, VersionChangeType, "Layout", "enum:" + VersionChangeType);
+
         internal static readonly EngineMember PanelDuringLayoutPhase = ReadProperty(UIElements,
             "UnityEngine.UIElements.BaseVisualElementPanel", "duringLayoutPhase", "System.Boolean");
 

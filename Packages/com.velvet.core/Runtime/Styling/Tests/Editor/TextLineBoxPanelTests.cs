@@ -28,6 +28,17 @@ namespace Velvet.Tests
             return V.Label(name: "tag", className: className, text: "Tag");
         }
 
+        private static string s_text = string.Empty;
+        private static StateUpdater<string> s_setText;
+
+        [Component]
+        private static VNode Retextable()
+        {
+            var (text, setText) = Hooks.UseState(s_text);
+            s_setText = setText;
+            return V.Label(name: "tag", className: s_className, text: text);
+        }
+
         [Component]
         private static VNode SwitchableParent()
         {
@@ -42,6 +53,14 @@ namespace Velvet.Tests
             var (className, setClass) = Hooks.UseState(s_className);
             s_setClass = setClass;
             return V.Button(name: "tag", className: className, text: "Tag");
+        }
+
+        [Component]
+        private static VNode SwitchableMultilineField()
+        {
+            var (className, setClass) = Hooks.UseState(s_className);
+            s_setClass = setClass;
+            return V.TextField(name: "tag", className: className, value: "a", multiline: true);
         }
 
         [Component]
@@ -96,6 +115,39 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
             return element;
         }
+        // Changes the label's text and runs one panel update.
+        private VisualElement RetextOnce(VisualElement element, string text)
+        {
+            s_setText.Invoke(text);
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(element.panel);
+            return element;
+        }
+
+        private VisualElement MountRetextable(string className, string text)
+        {
+            s_className = className;
+            s_text = text;
+            return Mount(V.Component(Retextable), "tag");
+        }
+
+        // A label Velvet creates, shown with rich text off from its first layout.
+        private Label MountPlainLabel(string className, string text)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "tag", className: className, text: text));
+            var label = _window.rootVisualElement.Q<Label>("tag");
+            label.enableRichText = false;
+            for (var i = 0; i < 3; i++)
+            {
+                ForcePanelUpdate(label.panel);
+            }
+            return label;
+        }
+
+        private static float TwoLineHeight(TextElement element)
+            => element.MeasureTextSize("M\nM", float.NaN, VisualElement.MeasureMode.Undefined, float.NaN,
+                VisualElement.MeasureMode.Undefined).y;
+
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         private VisualElement Mount(VNode node, string name)
@@ -426,6 +478,142 @@ namespace Velvet.Tests
 
             // Assert — lowered by the 10px box less its 24px line box, which puts the line's top at the box's.
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<voffset=-14px>Hello</voffset>"));
+        }
+
+        [Test]
+        public void Given_ALabelUnderANormalLineHeight_When_ItsParentDropsIt_Then_TheLabelIsOnePreflightLineBoxTall()
+        {
+            // Arrange
+            var label = MountSwitchable(SwitchableParent, "text-[16px] leading-[normal]");
+
+            // Act
+            PatchOnce(label, "text-[16px]");
+
+            // Assert
+            Assert.That(label.layout.height, Is.EqualTo(24f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AWrappedLabel_When_ItsTextChangesToAnotherOfAsManyLines_Then_TheNewTextTakesThePreflightLineHeight()
+        {
+            // Arrange — both texts take two lines of the 160px box, so the box keeps its size.
+            var label = MountRetextable("w-40 text-[16px]", "Loading all of the data now");
+
+            // Act
+            RetextOnce(label, "Saving all of the data now");
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>Saving all of the data now</line-height>"));
+        }
+
+        [Test]
+        public void Given_ALabelInAFixedBox_When_ItsTextChangesFromOneLineToThree_Then_ItIsRaisedByTheBoxLessThreeLineBoxes()
+        {
+            // Arrange
+            var label = MountRetextable("h-24 w-40 text-[16px] whitespace-pre", "Short");
+
+            // Act
+            RetextOnce(label, "a\nb\nc");
+
+            // Assert — the 96px box less three 24px line boxes.
+            Assert.That(Regex.Match(RenderedTextProbe.Of(label), "^<voffset=([-0-9.]+)px>").Groups[1].Value, Is.EqualTo("24"));
+        }
+
+        [Test]
+        public void Given_AMultilineField_When_LaidOut_Then_ItsInputLinesAreItsLineHeightApart()
+        {
+            // Act
+            var field = (TextField)Mount(V.TextField(name: "field", className: "text-[16px] leading-8", value: "a", multiline: true), "field");
+
+            // Assert
+            Assert.That(TwoLineHeight((TextElement)field.textEdition), Is.EqualTo(64f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AMultilineFieldWithNoLineHeightClass_When_LaidOut_Then_ItsInputTextIsThreePreflightLineBoxesTall()
+        {
+            // Act
+            var field = (TextField)Mount(V.TextField(name: "field", className: "text-[16px]", value: "a\nb\nc", multiline: true), "field");
+
+            // Assert
+            Assert.That(((TextElement)field.textEdition).contentRect.height, Is.EqualTo(72f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AMultilineField_When_ItsLineHeightClassChanges_Then_ItsInputLinesFollowIt()
+        {
+            // Arrange
+            s_className = "text-[16px] leading-8";
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(SwitchableMultilineField));
+            var field = _window.rootVisualElement.Q<TextField>("tag");
+            for (var i = 0; i < 3; i++)
+            {
+                ForcePanelUpdate(field.panel);
+            }
+
+            // Act
+            PatchOnce(field, "text-[16px] leading-10");
+
+            // Assert
+            Assert.That(TwoLineHeight((TextElement)field.textEdition), Is.EqualTo(80f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): on the base nothing writes a field's input font. A pool reset that kept the
+        // font a multiline use wrote would read Undefined here.
+        [Test]
+        public void Given_APooledMultilineField_When_RentedAsASingleLineField_Then_ItsInputTextCarriesNoInlineFont()
+        {
+            // Arrange
+            var first = (TextField)Mount(V.TextField(name: "field", className: "text-[16px]", value: "a", multiline: true), "field");
+            _mounted.Dispose();
+
+            // Act — mounted with no panel update, so nothing has settled the field for its new use.
+            _mounted = V.Mount(_window.rootVisualElement, V.TextField(name: "field", value: "a"));
+            var field = _window.rootVisualElement.Q<TextField>("field");
+
+            // Assert — null where the pool handed back another field, which StyleKeyword.Null can never equal.
+            Assert.That(ReferenceEquals(field, first) ? ((TextElement)field.textEdition).style.unityFontDefinition.keyword : (StyleKeyword?)null,
+                Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ALabelWithRichTextOff_When_LaidOut_Then_ItsLinesAreItsLineHeightApart()
+        {
+            // Act
+            var label = MountPlainLabel("text-[16px] leading-8", "a");
+
+            // Assert
+            Assert.That(TwoLineHeight(label), Is.EqualTo(64f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ALabelWithRichTextOffInABoxTallerThanItsLine_When_LaidOut_Then_ItsTextIsAlignedToTheTopOfTheBox()
+        {
+            // Act
+            var label = MountPlainLabel("h-12 text-[16px]", "OK");
+
+            // Assert — its one line is one line box tall (the case above), which upper-left places at the box's top.
+            Assert.That(label.resolvedStyle.unityTextAlign, Is.EqualTo(TextAnchor.UpperLeft));
+        }
+
+        // GREEN_ON_BASE(characterization): on the base a button's text is centred by its theme's middle-center. One
+        // placed at the top, as a label with rich text off is, would read UpperCenter.
+        [Test]
+        public void Given_AButtonWithRichTextOffTallerThanItsLine_When_LaidOut_Then_ItsTextStaysCentred()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Button(name: "go", className: "h-12 text-[16px]", text: "Go"));
+            var button = _window.rootVisualElement.Q<Button>("go");
+            button.enableRichText = false;
+
+            // Act
+            for (var i = 0; i < 3; i++)
+            {
+                ForcePanelUpdate(button.panel);
+            }
+
+            // Assert
+            Assert.That(button.resolvedStyle.unityTextAlign, Is.EqualTo(TextAnchor.MiddleCenter));
         }
     }
 }

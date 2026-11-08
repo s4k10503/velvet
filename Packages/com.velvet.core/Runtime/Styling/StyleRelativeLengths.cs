@@ -89,8 +89,11 @@ namespace Velvet
             {
                 return false;
             }
-            // A leading cannot be measured against the line height it is itself, so `lh` takes the font's own.
-            var font = StyleFontUnits.Of(element, element.resolvedStyle.fontSize, float.NaN);
+            // A leading cannot be measured against the line height it is itself, so `lh` takes the parent's, as CSS
+            // takes it, and the font's own at the root.
+            var parent = element.hierarchy.parent;
+            var font = StyleFontUnits.Of(element, element.resolvedStyle.fontSize,
+                parent != null ? StyleTextEffectResolver.LineHeightOf(parent) : float.NaN);
             var viewport = ViewportOf(element);
             px = expression.Evaluate(new RelativeLengthBasis(font, RootUnitsOf(element), font.Em, viewport.width,
                 viewport.height));

@@ -39,7 +39,7 @@ namespace Velvet
 
         private float _fontSize = float.NaN;
         private float _pixelsPerPoint = float.NaN;
-        private FontDefinition _font;
+        private FontDefinition _measuredFont;
         private Font? _legacyFont;
         private FontStyle _style;
         private float _singleLine = float.NaN;
@@ -48,8 +48,20 @@ namespace Velvet
         private readonly TextElement _element;
         private readonly bool _centred;
         private readonly MiddleAlignment _alignment = new();
+        private readonly LineBoxFontOwner _font = new();
         private ReconcilerContext? _context;
         private string? _unraised;
+        // The app's text the element was last shown with, null before its first.
+        private string? _shownRaw;
+        private bool _settling;
+
+        // The line height the element was last measured at, so that a line height the layout cannot see change asks it
+        // for another measure rather than the one it holds.
+        private float _measuredLineHeight;
+        private bool _measuredOnce;
+        private static readonly System.Reflection.MethodInfo? s_incrementVersion = EngineMember.ElementIncrementVersion.ResolveMethod();
+        private static readonly object?[]? s_layoutChange =
+            EngineMember.LayoutVersionChange.ResolveField() is { } change ? new[] { change.GetValue(null) } : null;
 
         // Whether the shown text carries a line height tag, and whether it carries rich text of the app's own, whose
         // tags can space or size a line past what a count of line boxes gives.
@@ -134,24 +146,22 @@ namespace Velvet
                 return measure(desiredWidth, widthMode, desiredHeight, heightMode);
             }
             var lines = Before(_element, this);
+            _measuredLineHeight = LineHeightFor(_element);
+            _measuredOnce = true;
             var generated = Unraised is { } text
                 ? _element.MeasureTextSize(text, desiredWidth, widthMode, float.NaN, VisualElement.MeasureMode.Undefined)
                 : measure(desiredWidth, widthMode, float.NaN, VisualElement.MeasureMode.Undefined);
             NoteLines(lines, generated);
             var fit = lines.Fit(generated);
-            // The uncapped height is recorded, which is the one a settle compares the box with.
+            // The uncapped height is recorded, which is the one a settle compares the box with: a box capped below
+            // it is not the size its measure gave it.
             Record(widthMode == VisualElement.MeasureMode.Exactly ? desiredWidth : fit.x, fit.y);
-            if (heightMode == VisualElement.MeasureMode.AtMost) Record(widthMode == VisualElement.MeasureMode.Exactly ? desiredWidth : fit.x, Mathf.Min(fit.y, desiredHeight));
             return heightMode == VisualElement.MeasureMode.AtMost ? new Vector2(fit.x, Mathf.Min(fit.y, desiredHeight)) : fit;
         }
 
         private static Lines Before(TextElement element, TextLineBox box)
         {
-            if (string.IsNullOrEmpty(element.text))
-            {
-                return default;
-            }
-            var lineHeight = StyleTextEffectResolver.LineHeightOf(element);
+            var lineHeight = LineHeightFor(element);
             if (float.IsNaN(lineHeight))
             {
                 return default;
@@ -160,6 +170,10 @@ namespace Velvet
             var tagged = box._tagged && element.enableRichText;
             return new Lines(lineHeight, single, tagged ? lineHeight : box._advance, tagged && box._ownMarkup);
         }
+
+        // The line height an element's lines are measured in, NaN where it has none or no text.
+        private static float LineHeightFor(TextElement element)
+            => string.IsNullOrEmpty(element.text) ? float.NaN : StyleTextEffectResolver.LineHeightOf(element);
 
         // The height text takes at a width, in the line boxes of an element Velvet created and in the generator's
         // own lines anywhere else.
@@ -201,7 +215,23 @@ namespace Velvet
             _spansLines = false;
             _retagged = false;
             _linesOf = null;
+            _shownRaw = null;
             _alignment.Release(_element);
+            _font.Release(_element);
+        }
+
+        // Settles a laid-out element whose app text has changed, since a text that keeps the element's box raises no
+        // geometry event to settle it by. An ancestor's line height reaches the element here too, where no style or
+        // geometry event settles it (Given_ALabelUnderANormalLineHeight_When_ItsParentDropsIt_Then_TheLabelIsOnePreflightLineBoxTall).
+        public void AfterShown(string raw)
+        {
+            Remeasure();
+            var changed = _shownRaw != null && !string.Equals(raw, _shownRaw, StringComparison.Ordinal);
+            _shownRaw = raw;
+            if (changed && !_settling)
+            {
+                Settle();
+            }
         }
 
         // An untagged text the generator wrapped is shown again with the preflight's tag. Read on a geometry change,
@@ -229,12 +259,38 @@ namespace Velvet
 
         private void Settle()
         {
-            if (float.IsNaN(StyleTextEffectResolver.LineHeightOf(_element)))
+            _settling = true;
+            try
+            {
+                SettleBox();
+            }
+            finally
+            {
+                _settling = false;
+            }
+        }
+
+        private void SettleBox()
+        {
+            Remeasure();
+            var lineHeight = StyleTextEffectResolver.LineHeightOf(_element);
+            if (float.IsNaN(lineHeight))
             {
                 _alignment.Release(_element);
+                _font.Release(_element);
+            }
+            else if (!_element.enableRichText)
+            {
+                // Text shown without tags is spaced by its font, whose lines are then the line boxes, so it is placed
+                // at the top of the box as the first line box is, and centred in a button.
+                _font.Settle(_element, lineHeight);
+                _alignment.Settle(_element, upper: !_centred);
+                Raise = 0f;
+                return;
             }
             else
             {
+                _font.Release(_element);
                 _alignment.Settle(_element);
             }
             var context = _context;
@@ -278,6 +334,22 @@ namespace Velvet
                 return;
             }
             SetRaise(Mathf.Round(Target(align, lines, content, generated) * 100f) / 100f, context);
+        }
+
+        // Asks the layout to measure the element again where its line height is no longer the one it was measured at.
+        private void Remeasure()
+        {
+            if (!_measuredOnce || s_incrementVersion == null || s_layoutChange == null)
+            {
+                return;
+            }
+            var lineHeight = LineHeightFor(_element);
+            if (lineHeight.Equals(_measuredLineHeight))
+            {
+                return;
+            }
+            _measuredLineHeight = lineHeight;
+            s_incrementVersion.Invoke(_element, s_layoutChange);
         }
 
         private void SetRaise(float raise, ReconcilerContext context)
@@ -353,12 +425,12 @@ namespace Velvet
             var style = element.resolvedStyle;
             var pixelsPerPoint = element.panel?.scaledPixelsPerPoint ?? float.NaN;
             if (style.fontSize != _fontSize || pixelsPerPoint != _pixelsPerPoint || style.unityFontStyleAndWeight != _style
-                || !style.unityFontDefinition.Equals(_font) || style.unityFont != _legacyFont)
+                || !style.unityFontDefinition.Equals(_measuredFont) || style.unityFont != _legacyFont)
             {
                 _fontSize = style.fontSize;
                 _pixelsPerPoint = pixelsPerPoint;
                 _style = style.unityFontStyleAndWeight;
-                _font = style.unityFontDefinition;
+                _measuredFont = style.unityFontDefinition;
                 _legacyFont = style.unityFont;
                 _singleLine = element.MeasureTextSize(Probe, float.NaN, VisualElement.MeasureMode.Undefined, float.NaN,
                     VisualElement.MeasureMode.Undefined).y;
@@ -408,8 +480,8 @@ namespace Velvet
         }
     }
 
-    // A text element's alignment written middle-* with the horizontal part its rules or its parent give it, since CSS
-    // has no vertical alignment inside a line box. The part is read from the rules beneath the inline value
+    // A text element's alignment written middle-* (or upper-*, for text whose lines are its line boxes) with the
+    // horizontal part its rules or its parent give it, since CSS has no vertical alignment inside a line box. The part is read from the rules beneath the inline value
     // (StyleCascade.TextAlign) rather than by clearing it, so a rule outside Velvet's own and a theme's default both
     // reach it. An inline value somebody else wrote is left alone, and where the rules cannot be read
     // the alignment is given back rather than written once and kept.
@@ -418,7 +490,8 @@ namespace Velvet
         // The alignment this wrote inline, or null while the element's alignment is its own.
         private TextAnchor? _owned;
 
-        public void Settle(VisualElement element)
+        // upper writes upper-* rather than middle-*.
+        public void Settle(VisualElement element, bool upper = false)
         {
             if (!StyleCascade.ReadsTextAlign)
             {
@@ -444,7 +517,7 @@ namespace Velvet
             {
                 return;
             }
-            var wanted = Middle(underlying);
+            var wanted = upper ? Upper(underlying) : Middle(underlying);
             if (wanted == underlying)
             {
                 Release(element);
@@ -474,6 +547,15 @@ namespace Velvet
             TextAnchor.UpperCenter or TextAnchor.LowerCenter => TextAnchor.MiddleCenter,
             TextAnchor.UpperRight or TextAnchor.LowerRight => TextAnchor.MiddleRight,
             TextAnchor.UpperLeft or TextAnchor.LowerLeft => TextAnchor.MiddleLeft,
+            _ => align,
+        };
+
+        // The upper-* anchor with the horizontal part of align.
+        internal static TextAnchor Upper(TextAnchor align) => align switch
+        {
+            TextAnchor.MiddleCenter or TextAnchor.LowerCenter => TextAnchor.UpperCenter,
+            TextAnchor.MiddleRight or TextAnchor.LowerRight => TextAnchor.UpperRight,
+            TextAnchor.MiddleLeft or TextAnchor.LowerLeft => TextAnchor.UpperLeft,
             _ => align,
         };
     }

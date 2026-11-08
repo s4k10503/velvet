@@ -248,8 +248,7 @@ collapse unapplied on that one element.
 
 **`leading-*` (line-height)** has no USS property either — UI Toolkit's style has no `line-height`, and
 `-unity-paragraph-spacing` only affects explicit `\n` breaks, not the per-line advance a real line-height
-changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead, and a leaf with
-`enableRichText = false` keeps its font's line advance. Both text engines (the standard
+changes — so it is realised through UI Toolkit's rich-text `<line-height=X>` tag instead. Both text engines (the standard
 generator and the Advanced Text Generator) implement the tag natively, feeding it into the
 line-advance math at every line-break site; a following `</line-height>` restores the natural
 metric.
@@ -274,8 +273,18 @@ moves with the text, its own `</voffset>` and `</line-height>` end only its own 
 box is the first line box and then each further line at the advance the generator gives it, which its own
 `<line-height>` or `<size>` changes. A
 single-line field's input text is UI Toolkit's own element: it is given one line box by an inline height of the
-line height plus its own padding and border, and is aligned the same way. A multiline field's input shows no rich
-text, so its lines advance by the font's own line height.
+line height plus its own padding and border, and is aligned the same way.
+
+A multiline field's input and a label or button with `enableRichText = false` show no rich text, so cannot carry
+the tag; their lines are spaced by their font instead: such text is drawn in a copy of its font asset whose ascent
+and descent are one line height apart, which both text generators lay out one line height per line. The
+copy is written as the element's inline `-unity-font-definition`, of the font asset a font class or the
+application wrote inline or else of its parent's, and given back when the element no longer needs it or goes back
+to its pool; an inline legacy `Font` is left alone. A copy of a dynamic asset is made from its source font with an
+atlas of its own, one per font and line height, kept for the application's lifetime (in the editor, until the
+scripts reload); a dynamic asset with no source font keeps its own lines. Such a label is aligned `upper-*` with
+its horizontal part, which places its lines from the top of its box as the line boxes are; a button's stay
+centred.
 
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
@@ -290,7 +299,8 @@ comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A length that reads more than the element's
 font size, a viewport unit (`leading-[10vw]`) or a math function mixing an em or a percentage with another
 length (`leading-[calc(1em+4px)]`), is measured on the element that declares it, like the other relative
-lengths, a percentage being of its font size, and measured again when that size or the panel changes;
+lengths, a percentage being of its font size and an `lh` of its parent's line height, as CSS takes it
+(`leading-[2lh]` under a 16px preflight parent is 48px), and measured again when that size or the panel changes;
 a result below zero is zero. Until it is measured the text carries no tag. A negative value, any other unit, or a
 malformed value is ignored. A bare spacing step (`leading-6`, `leading-13`, `leading-4.5`, `leading-px`) emits
 `<line-height=Npx>` at the px value the spacing scale gives that step, as Tailwind's

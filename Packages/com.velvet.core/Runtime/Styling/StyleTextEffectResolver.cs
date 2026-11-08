@@ -269,6 +269,7 @@ namespace Velvet
                 }
                 display = Raised(ctx, te, display, effect, raw);
                 ShowText(ctx, te, raw, display);
+                (te as ILineBoxed)?.LineBox.AfterShown(raw);
                 TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal)
                     || effect.Numeric == NumericSpacing.Tabular);
                 var decoration = effect.Decoration;

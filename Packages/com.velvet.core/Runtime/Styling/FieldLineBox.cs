@@ -7,8 +7,7 @@ namespace Velvet
     // A single-line field's input text in a CSS line box: its text element is UI Toolkit's own, which Velvet cannot
     // measure for, so the line box is written to it as an inline height of the line height plus its own padding and
     // border, and its text is aligned middle-* (MiddleAlignment), which CSS's half-leading places the same. A
-    // multiline field is left in the font's own lines: its text element shows no rich text, so nothing spaces its
-    // lines by the line height.
+    // multiline field's text element shows no rich text, so its lines are spaced by its font instead (LineBoxFont).
     internal sealed class FieldLineBox
     {
         private static readonly ConditionalWeakTable<TextField, FieldLineBox> s_boxes = new();
@@ -16,6 +15,7 @@ namespace Velvet
         private readonly TextField _field;
         private readonly TextElement _text;
         private readonly MiddleAlignment _alignment = new();
+        private readonly LineBoxFontOwner _font = new();
         private float? _ownedHeight;
 
         private FieldLineBox(TextField field, TextElement text)
@@ -49,9 +49,18 @@ namespace Velvet
             var lineHeight = StyleTextEffectResolver.LineHeightOf(_text);
             if (_field.multiline || float.IsNaN(lineHeight))
             {
-                Release();
+                ReleaseLineBox();
+                if (_field.multiline)
+                {
+                    _font.Settle(_text, lineHeight);
+                }
+                else
+                {
+                    _font.Release(_text);
+                }
                 return;
             }
+            _font.Release(_text);
             var style = _text.resolvedStyle;
             var height = lineHeight + style.paddingTop + style.paddingBottom + style.borderTopWidth + style.borderBottomWidth;
             var inlineHeight = _text.style.height;
@@ -65,6 +74,12 @@ namespace Velvet
         }
 
         private void Release()
+        {
+            _font.Release(_text);
+            ReleaseLineBox();
+        }
+
+        private void ReleaseLineBox()
         {
             if (_ownedHeight != null && _text.style.height.value.value == _ownedHeight)
             {

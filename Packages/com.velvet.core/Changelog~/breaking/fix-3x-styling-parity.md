@@ -21,11 +21,19 @@
   `text-top-left`, `text-top-center` and the default alignment now place text as `text-left` and `text-center` do,
   and text in a box taller than its lines, which a `middle-*` alignment used to centre, sits in the first line
   box. A `V.Button`'s lines stay centred in the button, as a browser centres a button's content.
+- A multiline `V.TextField`'s input lines, and the lines of a label or button with `enableRichText = false`, are
+  one line height apart, as CSS spaces them, where they took the font's own line advance: in Inter, in an editor panel,
+  a 16px multiline field's lines were 19.5px apart rather than 24px. Such text has no `<line-height>` tag to carry,
+  so its element's inline `-unity-font-definition` is a copy of its font asset with the line height as its ascent
+  and descent, and a label with rich text off is aligned `upper-*`, which puts its first line box at the top of its
+  box. The copy of a dynamic font asset has an atlas of its own.
 - A `<voffset>` in the application's own rich text is shown that much above or below the line box placement, and
   its own `</voffset>` or `</line-height>` no longer ends the placement or the line height Velvet writes around it.
 
 ### Fixed
 
+- An `lh` inside a `leading-[…]` is the parent's line height, as CSS takes it: `leading-[2lh]` under a 16px
+  parent is 48px, where it was twice the font's own line height.
 - `brightness-*`, `saturate-*` and `hue-rotate-*` filter a translucent pixel's colour divided by its alpha, as CSS
   filters a colour that is not premultiplied. They filtered the colour multiplied by the alpha, so the next filter
   read a value CSS clamps (`brightness-150 saturate-0` over half-transparent green gave a gray of 128 over black

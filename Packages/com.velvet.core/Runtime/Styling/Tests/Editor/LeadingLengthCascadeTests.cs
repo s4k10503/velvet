@@ -121,6 +121,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadingOfTwoLh_When_Mounted_Then_TheLabelGetsTwiceItsParentsLineHeight()
+        {
+            // Act — the parent takes the preflight's 1.5 at 16px.
+            var text = MountAndReadText(V.Div(className: "text-[16px]", V.Label(className: "leading-[2lh]", text: "hi")));
+
+            // Assert
+            Assert.That(text, Is.EqualTo("<line-height=48px>hi</line-height>"));
+        }
+
+        [Test]
         public void Given_AViewportWidthLeading_When_Mounted_Then_TheLabelGetsThatShareOfTheWindowsContent()
         {
             // Act
