@@ -181,7 +181,7 @@ namespace Velvet.Tests
             Assert.That(_root, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): the base runs every loader on every navigation.
+        // GREEN_ON_BASE(characterization): the base runs every loader on every navigation, null-path layouts included.
         [Test]
         public void Given_TwoPathlessLayoutsAtOnePlace_When_NavigatingFromOneToTheOther_Then_TheSecondsLoaderRuns()
         {
@@ -189,8 +189,8 @@ namespace Velvet.Tests
             var router = BuildRouter("/x",
                 Route("/", children: new[]
                 {
-                    Route("", loader: (_, _) => Loaded($"first-{++_users}"), children: new[] { Route("x") }),
-                    Route("", loader: (_, _) => Loaded($"second-{++_user}"), children: new[] { Route("y") }),
+                    Route(null, loader: (_, _) => Loaded($"first-{++_users}"), children: new[] { Route("x") }),
+                    Route(null, loader: (_, _) => Loaded($"second-{++_user}"), children: new[] { Route("y") }),
                 }));
 
             // Act

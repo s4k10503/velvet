@@ -1021,9 +1021,10 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns the error the route at the current Outlet depth failed with — an error thrown below its
-        /// element, while rendering, from an effect or from an element callback, or else its loader's — or null
-        /// when the route did not error.
+        /// Returns the error the calling route renders, as React Router's <c>useRouteError</c>: an error thrown below
+        /// its element, while rendering, from an effect or from an element callback, or else the error the router
+        /// committed for this route — a loader's, an action's or a refusal, which the router keys by the nearest
+        /// route with an <c>errorElement</c> at or above the one that failed. Null when there is none.
         /// </summary>
         public static Exception? UseRouteError()
         {
@@ -1037,25 +1038,12 @@ namespace Velvet
             {
                 return renderError;
             }
-            if (location?.Matches == null || depth <= 0 || errors == null || errors.Count == 0)
+            if (location?.Matches == null || depth <= 0 || depth > location.Matches.Count || errors == null)
             {
                 return null;
             }
-            // A loader error bubbles to the nearest ancestor route with an ErrorElement,
-            // which renders here. The error is keyed by the descendant route that actually threw, so it is not
-            // found under this boundary route's own RouteId. Resolve it by scanning from this boundary
-            // (Matches[depth - 1]) toward the leaf and returning the error on the nearest matched route at or
-            // below the boundary — the one this boundary caught.
-            var start = System.Math.Min(depth - 1, location.Matches.Count - 1);
-            for (var i = start; i < location.Matches.Count; i++)
-            {
-                var routeId = location.Matches[i].RouteId;
-                if (routeId != null && errors.TryGetValue(routeId, out var ex))
-                {
-                    return ex;
-                }
-            }
-            return null;
+            var routeId = location.Matches[depth - 1].RouteId;
+            return routeId != null && errors.TryGetValue(routeId, out var error) ? error : null;
         }
 
         /// <summary>

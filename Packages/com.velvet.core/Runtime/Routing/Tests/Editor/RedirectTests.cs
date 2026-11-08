@@ -183,8 +183,8 @@ namespace Velvet.Tests
                 Route("protected", guard: MakeToggleGuard(out var enableGuard)),
                 Route("other"),
                 Route("login"),
-            });
-            router.NavigateSync("/protected");
+            },
+                options: new RouterOptions { InitialEntries = new[] { "/protected" } });
             router.NavigateSync("/other");
 
             // Act
@@ -225,8 +225,8 @@ namespace Velvet.Tests
             {
                 Route("a"),
                 Route("b", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/nonexistent")),
-            });
-            router.NavigateSync("/b");
+            },
+                options: new RouterOptions { InitialEntries = new[] { "/b" } });
             router.NavigateSync("/a");
             Assume.That(router.HistoryIndex, Is.EqualTo(1), "Precondition: positioned on /a at index 1");
 
@@ -302,8 +302,8 @@ namespace Velvet.Tests
                 Route("home"),
                 Route("page"),
                 Route("admin", guard: MakeToggleGuard(out var enableGuard, redirectTo: "/admin")),
-            });
-            router.NavigateSync("/home");
+            },
+                options: new RouterOptions { InitialEntries = new[] { "/home" } });
             router.NavigateSync("/page");
             router.GoBackSync();
             Assume.That((router.HistoryIndex, router.CanGoForward), Is.EqualTo((0, true)),

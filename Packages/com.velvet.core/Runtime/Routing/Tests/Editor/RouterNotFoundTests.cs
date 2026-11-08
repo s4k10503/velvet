@@ -258,7 +258,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                s_routeError is ErrorResponse { Status: 404, StatusText: "Not Found", Detail: "No route matches URL \"/nowhere\"" },
+                s_routeError is ErrorResponse { Status: 404, StatusText: "Not Found", Detail: "Error: No route matches URL \"/nowhere\"" },
                 Is.True);
         }
 

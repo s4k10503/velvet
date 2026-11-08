@@ -111,20 +111,18 @@ namespace Velvet.Tests
         }
 
         /// <summary>
-        /// Builds a Router from <paramref name="routes"/> and synchronously navigates to
-        /// <paramref name="startPath"/>. Use when a test starts from a known location; otherwise
-        /// construct the Router directly.
+        /// Builds a Router from <paramref name="routes"/> that starts on <paramref name="startPath"/>, its one
+        /// initial entry, as React Router's <c>createMemoryRouter(routes, { initialEntries: [startPath] })</c>.
+        /// Use when a test starts from a known location; otherwise construct the Router directly.
         /// </summary>
         public static Router BuildRouter(string startPath, params RouteDefinition[] routes)
         {
-            var router = new Router(routes);
-            var result = router.NavigateSync(startPath);
-            if (result != NavigationResult.Success)
+            var router = new Router(routes, options: new RouterOptions { InitialEntries = new[] { startPath } });
+            if (!router.Initialized)
             {
                 router.Dispose();
                 throw new InvalidOperationException(
-                    $"BuildRouter: initial navigation to '{startPath}' failed with {result}. " +
-                    "Check that the route table contains the start path.");
+                    $"BuildRouter: the initial load at '{startPath}' did not finish synchronously.");
             }
             return router;
         }

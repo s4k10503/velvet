@@ -18,14 +18,24 @@ namespace Velvet
         public string? Id { get; init; }
 
         /// <summary>
-        /// Route pattern matched against the URL, e.g. <c>"users/:id"</c> (<c>"/"</c> for the root,
-        /// <c>""</c> for an index route). Supports <c>:param</c>, optional <c>:param?</c>, and splat <c>*</c>.
+        /// Route pattern matched against the URL, e.g. <c>"users/:id"</c> (<c>"/"</c> for the root). Supports
+        /// <c>:param</c>, optional <c>:param?</c> and <c>segment?</c>, and splat <c>*</c>. Null makes a
+        /// pathless route, which matches only through a child or as an <see cref="Index"/> route; <c>""</c>
+        /// matches its parent's path like any other path.
         /// </summary>
         public string? Path { get; init; }
 
         /// <summary>
+        /// Whether this is an index route, React Router's <c>index: true</c>: it renders in its parent's
+        /// <c>Outlet</c> at the parent's own path, outranks a sibling of the same path, and is what a bare
+        /// <c>?index</c> in a submission's query targets. An index route declares no <see cref="Children"/>.
+        /// </summary>
+        public bool Index { get; init; }
+
+        /// <summary>
         /// Function-type component to mount when this route matches.
-        /// Pass a <see cref="ComponentNode"/> built via V.Component().
+        /// Pass a <see cref="ComponentNode"/> built via V.Component(). Null renders the matched child route in its
+        /// place, as React Router renders the outlet.
         /// </summary>
         public ComponentNode? Element { get; init; }
 
@@ -48,6 +58,14 @@ namespace Velvet
         /// Component shown when the Loader or the Action fails.
         /// </summary>
         public ComponentNode? ErrorElement { get; init; }
+
+        /// <summary>
+        /// Component shown in place of this route while the router's initial load runs and a route at or below it,
+        /// down to the next route that has one, has an <see cref="LoaderMode.Await"/> loader with no data and no
+        /// error yet, as React Router's <c>hydrateFallbackElement</c>. Where no route above such a loader has one, the
+        /// routes render nothing until it settles.
+        /// </summary>
+        public ComponentNode? HydrateFallbackElement { get; init; }
 
         /// <summary>Nested child routes rendered into this route's <c>Outlet</c>.</summary>
         public RouteDefinition[]? Children { get; init; }

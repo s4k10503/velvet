@@ -520,7 +520,7 @@ namespace Velvet.Tests
             Capture.SetSearchParams!.Invoke(next, NavigationMode.Replace);
 
             // Assert
-            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/search?name=a%20b&tag=x&tag=y"));
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/search?name=a+b&tag=x&tag=y"));
         }
 
         [Test]
@@ -815,8 +815,8 @@ namespace Velvet.Tests
             {
                 Route("start", element: V.Component(StubA)),
                 Route("dest", element: V.Component(StubB)),
-            });
-            router.NavigateSync("/start");
+            },
+                options: new RouterOptions { InitialEntries = new[] { "/start" } });
 
             // Act
             using var mounted = MountWith(router, V.Navigate("/dest", replace: true, key: "nav"));

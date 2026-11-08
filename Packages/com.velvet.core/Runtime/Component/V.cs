@@ -3188,8 +3188,9 @@ namespace Velvet
         /// <summary>
         /// Path-based route definition. Declaratively expresses Velvet Router's nested routes and Loaders.
         /// </summary>
-        /// <param name="path">URL path pattern for matching. Must not be null.</param>
-        /// <param name="element">Component rendered when the route matches. Mutually exclusive with <paramref name="redirectTo"/>.</param>
+        /// <param name="path">URL path pattern for matching; null for a pathless route. See <see cref="RouteDefinition.Path"/>.</param>
+        /// <param name="element">Component rendered when the route matches; null renders the matched child route, as a
+        /// <c>V.Outlet</c> would. Mutually exclusive with <paramref name="redirectTo"/>.</param>
         /// <param name="scopeId">Optional VContainer scope ID associated with this route.</param>
         /// <param name="loader">Async loader invoked on entry; result is exposed via Loader hook.</param>
         /// <param name="loaderMode">Whether the navigation waits for the loader before committing (Await) or commits immediately and streams the result in (Suspend). See <see cref="LoaderMode"/>.</param>
@@ -3201,11 +3202,16 @@ namespace Velvet
         /// <param name="action">Called for a submission other than <c>get</c> that targets this route; its result is exposed via <c>Hooks.UseActionData</c>.</param>
         /// <param name="id">Identifies the route among the matches; see <see cref="RouteDefinition.Id"/>.</param>
         /// <param name="handle">Data the route carries for <c>Hooks.UseMatches</c>; see <see cref="RouteDefinition.Handle"/>.</param>
+        /// <param name="index">Makes the route an index route; see <see cref="RouteDefinition.Index"/>.</param>
+        /// <param name="hydrateFallbackElement">Shown while the initial load runs; see
+        /// <see cref="RouteDefinition.HydrateFallbackElement"/>.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="loaderMode"/> names no member of
         /// <see cref="LoaderMode"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="index"/> is true and <paramref name="children"/> is
+        /// not null.</exception>
         /// <returns>The created <see cref="RouteDefinition"/>.</returns>
         public static RouteDefinition Route(
-            string? path,
+            string? path = null,
             ComponentNode? element = null,
             string? scopeId = null,
             Func<RouteLoaderContext, CancellationToken, VelvetTask<object>>? loader = null,
@@ -3217,17 +3223,13 @@ namespace Velvet
             bool caseSensitive = false,
             Func<RouteActionContext, CancellationToken, VelvetTask<object>>? action = null,
             string? id = null,
-            object? handle = null)
+            object? handle = null,
+            bool index = false,
+            ComponentNode? hydrateFallbackElement = null)
         {
-            if (path == null)
+            if (index && children != null)
             {
-                throw new ArgumentNullException(nameof(path));
-            }
-
-            if (element == null && redirectTo == null)
-            {
-                throw new ArgumentException(
-                    "Either element or redirectTo must be specified.");
+                throw new ArgumentException("An index route cannot have child routes.", nameof(children));
             }
 
             if (element != null && redirectTo != null)
@@ -3263,6 +3265,8 @@ namespace Velvet
                 Action = action,
                 Id = id,
                 Handle = handle,
+                Index = index,
+                HydrateFallbackElement = hydrateFallbackElement,
             };
         }
 
