@@ -16,8 +16,10 @@ the file. Before closing a major, list the open pull requests adding to `## [Unr
 and say in the body which the version carries; `breaking_in_flight_check.py` refuses one that names
 none of them.
 `scripts/release/release_notes.py` turns one version's section into the published body — Highlights, install
-instructions, the long-form entries collapsed, the compare link. Nothing about a release is written
-twice, and nothing is written straight into the GitHub release.
+instructions, the long-form entries collapsed, the compare link. Where the long-form entries would take
+the body past GitHub's limit they are replaced by a link to the section at the tag; CONTRIBUTING.md's
+release section owns that rule. Nothing about a release is written twice, and nothing is written
+straight into the GitHub release.
 
 The dispatch also refuses a commit the mutation record does not answer, or whose required CI on
 `main` did not pass; CONTRIBUTING.md's release section owns that gate and the way past it. Ask it

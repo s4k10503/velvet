@@ -1636,7 +1636,13 @@ is never written twice. Each version therefore needs a `### Highlights` block ab
 `### Added` / `### Changed` / `### Fixed` headings: a handful of one-paragraph bullets, which the
 note leads with and the long-form entries follow, collapsed. A version missing one fails the release
 — and fails the `Test ▸ release-notes` check on the pull request that introduced it, which is where
-you want to hear about it. Preview a note before merging:
+you want to hear about it.
+
+GitHub refuses a release body over 125,000 characters, and `upm.yml` creates the release only after
+it has pushed both tags. So where the long-form entries would take the note past that, the builder
+leaves them out and links the version's section of `CHANGELOG.md` at the release tag in their place;
+Highlights, install and the compare link stay. A note still over the limit without them is refused
+before any tag is pushed, and its Highlights are what to shorten. Preview a note before merging:
 
 ```bash
 python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
