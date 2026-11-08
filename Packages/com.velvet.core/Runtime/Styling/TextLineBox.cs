@@ -23,8 +23,9 @@ namespace Velvet
     // TextLineBoxPlaybackTests pins it.
     internal sealed class TextLineBox
     {
-        // The marker whose rule in _typography.uss makes UI Toolkit send the element CustomStyleResolvedEvent, so the
-        // alignment is settled in the style pass that changed it.
+        // The marker whose rule in _typography.uss makes UI Toolkit send an element CustomStyleResolvedEvent, so the
+        // alignment is settled in the style pass that changed it. A label or button Velvet creates has the same custom
+        // property from its own preflight class, and only a field's input text, which has neither, carries this one.
         internal const string MarkerClass = "velvet-line-box";
 
         // A single line the generator lays out to the font's own line ascender and descender, whatever its glyphs,
@@ -74,7 +75,6 @@ namespace Velvet
         public TextLineBox(TextElement element)
         {
             _element = element;
-            element.AddToClassList(MarkerClass);
             element.RegisterCallback<GeometryChangedEvent>(_ =>
             {
                 if (!SizedByItsMeasure())
@@ -133,11 +133,6 @@ namespace Velvet
                 System.Array.Fill(_measured, new Vector2(float.NaN, float.NaN));
             }
             _unraised = display;
-            // A pooled element's classes are cleared when it is returned.
-            if (!_element.ClassListContains(MarkerClass))
-            {
-                _element.AddToClassList(MarkerClass);
-            }
             return Raise;
         }
 
