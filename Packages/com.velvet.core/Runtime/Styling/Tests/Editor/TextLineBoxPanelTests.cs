@@ -3,10 +3,13 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 using Velvet.Editor;
 using Velvet.TestUtilities;
+using TextElement = UnityEngine.UIElements.TextElement;
 
 namespace Velvet.Tests
 {
@@ -614,6 +617,51 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(button.resolvedStyle.unityTextAlign, Is.EqualTo(TextAnchor.MiddleCenter));
+        }
+
+        [Test]
+        public void Given_ALabelWithRichTextOffWhoseRuleGivesItAFont_When_LaidOut_Then_ItIsDrawnInACopyOfThatFont()
+        {
+            // Arrange — a font asset saved where a sheet can name it, which the label's own rule gives it.
+            var label0 = MountLabel(string.Empty);
+            var ruled = FontAsset.CreateFontAsset(StyleFontUnits.AssetOf(label0)!.sourceFontFile);
+            _mounted.Dispose();
+            const string path = "Assets/VelvetLineBoxRuledFont.asset";
+            AssetDatabase.CreateAsset(ruled, path);
+            AssetDatabase.AddObjectToAsset(ruled.atlasTexture, ruled);
+            AssetDatabase.AddObjectToAsset(ruled.material, ruled);
+            try
+            {
+                AttachAppSheet(".ruled { -unity-font-definition: url(\"project://database/" + path + "\"); }");
+
+                // Act
+                var label = MountPlainLabel("ruled text-[16px]", "a");
+
+                // Assert
+                Assert.That(LineBoxFont.SourceOf(label.resolvedStyle.unityFontDefinition.fontAsset), Is.SameAs(ruled));
+            }
+            finally
+            {
+                _mounted?.Dispose();
+                _mounted = null;
+                AssetDatabase.DeleteAsset(path);
+            }
+        }
+
+        [Test]
+        public void Given_ALabelWhoseRichTextIsTurnedOffAfterLayout_When_TheNextFrameRuns_Then_ItsLinesAreItsLineHeightApart()
+        {
+            // Arrange
+            var label = (Label)MountLabel("text-[16px] leading-8", "a");
+
+            // Act — the repaint, the scheduler tick after it, and the style pass after that.
+            label.enableRichText = false;
+            ForcePanelUpdate(label.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(label.panel);
+            ForcePanelUpdate(label.panel);
+
+            // Assert
+            Assert.That(TwoLineHeight(label), Is.EqualTo(64f).Within(0.01f));
         }
     }
 }

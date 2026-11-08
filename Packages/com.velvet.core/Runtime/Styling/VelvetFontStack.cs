@@ -19,6 +19,9 @@ namespace Velvet
         // (StyleFontResolver.MarkShowing).
         public static event Action<FontAsset>? Grew;
 
+        // Raised with each asset whose table Release took entries out of, for the copies made of it (LineBoxFont).
+        public static event Action<FontAsset>? Shrank;
+
         // The names of a family list, trimmed, unquoted and without the empty ones. A family starting with the
         // address prefix is one key whatever it holds.
         public static List<string> Split(string family)
@@ -108,7 +111,15 @@ namespace Velvet
                     table.Remove(fallback);
                 }
             }
+            var shrunk = new List<FontAsset>(s_appended.Keys);
             s_appended.Clear();
+            foreach (var primary in shrunk)
+            {
+                if (primary != null)
+                {
+                    Shrank?.Invoke(primary);
+                }
+            }
         }
 
         // Whether target is in from's fallback tables, however deep.

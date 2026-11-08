@@ -26,7 +26,9 @@
   a 16px multiline field's lines were 19.5px apart rather than 24px. Such text has no `<line-height>` tag to carry,
   so its element's inline `-unity-font-definition` is a copy of its font asset with the line height as its ascent
   and descent, and a label with rich text off is aligned `upper-*`, which puts its first line box at the top of its
-  box. The copy of a dynamic font asset has an atlas of its own.
+  box. The faces the asset's weight and fallback tables name are copied the same way, a font stack's as it grows
+  and is released, and the element's own rules' font is the one copied. The copy of a dynamic font asset has an
+  atlas of its own. Turning `enableRichText` off or on after layout takes effect on the frame after.
 - A `<voffset>` in the application's own rich text is shown that much above or below the line box placement, and
   its own `</voffset>` or `</line-height>` no longer ends the placement or the line height Velvet writes around it.
 

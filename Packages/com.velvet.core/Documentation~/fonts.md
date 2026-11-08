@@ -279,10 +279,14 @@ A multiline field's input and a label or button with `enableRichText = false` sh
 the tag; their lines are spaced by their font instead: such text is drawn in a copy of its font asset whose ascent
 and descent are one line height apart, which both text generators lay out one line height per line. The
 copy is written as the element's inline `-unity-font-definition`, of the font asset a font class or the
-application wrote inline or else of its parent's, and given back when the element no longer needs it or goes back
-to its pool; an inline legacy `Font` is left alone. A copy of a dynamic asset is made from its source font with an
-atlas of its own, one per font and line height, kept for the application's lifetime (in the editor, until the
-scripts reload); a dynamic asset with no source font keeps its own lines. Such a label is aligned `upper-*` with
+application wrote inline or else of the one its rules and its parent give it, and given back when the element no
+longer needs it or goes back to its pool. The faces its weight table and its fallback table name, a font stack's
+included as the stack grows and is released, are copied the same way; under the standard generator a line drawn
+from a fallback face is then one line height too. A copy keeps its source's scale, sampling size, render mode, material and style weights; one whose
+source rasterises glyphs (from a font file, a file path or the OS) has an atlas of its own, one per font and line
+height. A copy no element holds is spread to the next line height its source is asked for rather than another made,
+so a source has no more copies than were held at once; one whose source is destroyed is destroyed, and in the
+editor every copy is destroyed before the scripts reload. Such a label is aligned `upper-*` with
 its horizontal part, which places its lines from the top of its box as the line boxes are; a button's stay
 centred.
 

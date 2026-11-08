@@ -196,6 +196,41 @@ namespace Velvet
             return Of(element) is { } style ? (UnityEngine.TextAnchor)s_textAlign.GetValue(style) : null;
         }
 
+        private static readonly PropertyInfo? s_fontDefinition = EngineMember.ComputedStyleUnityFontDefinition.ResolveProperty();
+        private static readonly PropertyInfo? s_unityFont = EngineMember.ComputedStyleUnityFont.ResolveProperty();
+        private static readonly MethodInfo? s_settingsOf = EngineMember.TextSettingsOfElement.ResolveMethod();
+        private static readonly MethodInfo? s_cachedFontAsset = EngineMember.TextSettingsCachedFontAsset.ResolveMethod();
+
+        // The font asset the rules and the parent give element beneath its inline font, read as UI Toolkit reads an
+        // element's own; null where the cached style cannot be read.
+        public static UnityEngine.TextCore.Text.FontAsset? UnderlyingFontAsset(VisualElement element)
+        {
+            var style = s_fontDefinition != null && s_unityFont != null ? Of(element) : null;
+            if (style == null)
+            {
+                return null;
+            }
+            var definition = (FontDefinition)s_fontDefinition.GetValue(style);
+            if (definition.fontAsset != null)
+            {
+                return definition.fontAsset;
+            }
+            return CachedFontAsset(element, definition.font != null ? definition.font : (UnityEngine.Font?)s_unityFont.GetValue(style));
+        }
+
+        // The font asset UI Toolkit draws font in for element, or its text settings' default where font is null.
+        public static UnityEngine.TextCore.Text.FontAsset? CachedFontAsset(VisualElement element, UnityEngine.Font? font)
+        {
+            var settings = s_settingsOf?.Invoke(null, new object[] { element }) as UnityEngine.TextCore.Text.TextSettings;
+            if (settings == null || s_cachedFontAsset == null)
+            {
+                return null;
+            }
+            return font != null
+                ? s_cachedFontAsset.Invoke(settings, new object[] { font }) as UnityEngine.TextCore.Text.FontAsset
+                : settings.defaultFontAsset;
+        }
+
         // Whether TextAlign can be read at all, so that a caller writing over the alignment can give it back instead.
         public static bool ReadsTextAlign => s_textAlign != null && s_style != null && s_hash != null && s_tryGet != null;
 

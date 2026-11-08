@@ -88,7 +88,37 @@ namespace Velvet
         {
             _element = element;
             _centred = centred;
+            element.generateVisualContent += s_onRepaint;
         }
+
+        // enableRichText changes what the text is shown with and how its lines are spaced, and neither the element's
+        // style nor its box, so no event this is handed follows it; the setter repaints the element, which is where it
+        // is looked for. The settle that follows writes styles and shows the text again, so it is scheduled rather than
+        // run inside the repaint.
+        private static readonly Action<MeshGenerationContext> s_onRepaint = mgc => (mgc.visualElement as ILineBoxed)?.LineBox.Repainted();
+        private Action? _richTextChanged;
+
+        private void Repainted()
+        {
+            if (_element.enableRichText == _richText)
+            {
+                return;
+            }
+            _richText = _element.enableRichText;
+            _element.schedule.Execute(_richTextChanged ??= RichTextChanged);
+        }
+
+        private void RichTextChanged()
+        {
+            if (_context != null)
+            {
+                StyleTextEffectResolver.ReapplyElement(_context, _element);
+            }
+            Settle();
+        }
+
+        // The element's enableRichText as the last settle found it.
+        private bool _richText = true;
 
         // The element's own geometry and style events, which it hands over from its HandleEventBubbleUp rather than
         // through callbacks, which every label and button Velvet creates would otherwise register.
@@ -216,6 +246,7 @@ namespace Velvet
             _retagged = false;
             _linesOf = null;
             _shownRaw = null;
+            _richText = true;
             _alignment.Release(_element);
             _font.Release(_element);
         }
@@ -272,6 +303,7 @@ namespace Velvet
 
         private void SettleBox()
         {
+            _richText = _element.enableRichText;
             Remeasure();
             var lineHeight = StyleTextEffectResolver.LineHeightOf(_element);
             if (float.IsNaN(lineHeight))

@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
@@ -10,28 +11,103 @@ namespace Velvet
     // A copy of a font asset whose ascent and descent are spread evenly about the font's own until they are one line
     // height apart, for text whose line height cannot be written as a <line-height> tag: a multiline field's input
     // text and a label or button with rich text off, none of which parses tags. Both text generators then lay each line
-    // out one line height tall and one line height below the last (LineBoxFontTests pins both).
+    // out one line height tall and one line height below the last (LineBoxFontTests pins both). The faces its weight
+    // table and its fallback table name are copied the same way: under the standard generator a line drawn from an
+    // uncopied fallback keeps that face's height (LineBoxFontTests' fallback case).
     //
-    // A copy of a dynamic asset is created from the same source font with an atlas of its own: one atlas filled by
-    // two assets would be packed twice over. A static asset adds no glyph, so its copy shares its atlas. Copies are
-    // kept for the domain's lifetime, one per font and line height.
+    // A copy is an instance of its source, so it keeps the source's scale, sampling size, render mode, material settings
+    // and style weights. One whose source can add glyphs gets an atlas and a material of its own: one atlas filled by two
+    // assets would be packed twice over. One whose source cannot shares the source's atlas.
+    //
+    // A copy is held by the elements written in it and by the copies naming it. One nothing holds is spread to the next
+    // line height asked of its source rather than destroyed and made again, so a source has no more copies than were
+    // held at once. One whose source is gone is destroyed.
     internal static class LineBoxFont
     {
-        private static readonly Dictionary<(FontAsset Source, int Units), FontAsset?> s_variants = new();
+        private sealed class Entry
+        {
+            public FontAsset Source = null!;
+            public int Key;
+            // A line height and font size the key was taken at, which a fallback table the source grows is copied at.
+            public float LineHeight;
+            public float FontSize;
+            public FontAsset? Copy;
+            public bool SharesAtlas;
+            public readonly List<WeakReference<object>> Users = new();
+            public int Parents;
+            public readonly List<Entry> Children = new();
+            // The source's fallback table as the copy's was last built from, which a font stack grows and releases.
+            public FontAsset[] Fallbacks = Array.Empty<FontAsset>();
+        }
+
+        private static readonly Dictionary<(FontAsset Source, int Key), Entry> s_entries = new();
+        private static readonly Dictionary<FontAsset, Entry> s_byCopy = new();
+        private static readonly LinkedList<Entry> s_idle = new();
 
         // Keyed in 1/256 font units, a step under the line height, since a height a hair over a device pixel is laid
         // out a whole device pixel taller (LineBoxFontTests' Standard cases read 24.5 for a 24px line otherwise).
         private const float UnitsPerKey = 256f;
 
+        private static int s_made;
+
+        private static readonly FieldInfo? s_sourcePath = EngineMember.FontAssetSourceFontFilePath.ResolveField();
+        private static readonly MethodInfo? s_uploadQueued = EngineMember.FontAssetUpdateAtlasTexturesInQueue.ResolveMethod();
+
         static LineBoxFont()
         {
+            VelvetFontStack.Grew += Refallback;
+            VelvetFontStack.Shrank += Refallback;
 #if UNITY_EDITOR
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += DestroyAll;
 #endif
         }
 
-        // source with its lines lineHeight pixels apart at fontSize, or null where no copy can be made.
-        public static FontAsset? For(FontAsset source, float lineHeight, float fontSize)
+        // source with its lines lineHeight pixels apart at fontSize, held by user until Release, or null where no copy
+        // can be made.
+        public static FontAsset? Acquire(object user, FontAsset source, float lineHeight, float fontSize)
+        {
+            var entry = EntryFor(source, lineHeight, fontSize);
+            if (entry?.Copy == null)
+            {
+                return null;
+            }
+            foreach (var held in entry.Users)
+            {
+                if (held.TryGetTarget(out var target) && ReferenceEquals(target, user))
+                {
+                    return entry.Copy;
+                }
+            }
+            entry.Users.Add(new WeakReference<object>(user));
+            s_idle.Remove(entry);
+            return entry.Copy;
+        }
+
+        public static void Release(object user, FontAsset copy)
+        {
+            if (!s_byCopy.TryGetValue(copy, out var entry))
+            {
+                return;
+            }
+            entry.Users.RemoveAll(held => !held.TryGetTarget(out var target) || ReferenceEquals(target, user));
+            Idle(entry);
+        }
+
+        // The asset copy was made of, or null for an asset that is not a copy.
+        public static FontAsset? SourceOf(FontAsset? copy)
+        {
+            Entry? entry = null;
+            if (copy != null)
+            {
+                s_byCopy.TryGetValue(copy, out entry);
+            }
+            return entry?.Source;
+        }
+
+        // The number of copies that exist, held or kept.
+        internal static int Count => s_byCopy.Count;
+
+        private static Entry? EntryFor(FontAsset source, float lineHeight, float fontSize)
         {
             var face = source.faceInfo;
             if (!(fontSize > 0f) || !(lineHeight >= 0f) || !(face.pointSize > 0f) || !(face.scale > 0f))
@@ -39,102 +115,253 @@ namespace Velvet
                 return null;
             }
             var units = lineHeight / (fontSize / face.pointSize * face.scale);
-            return Cached(source, Mathf.FloorToInt(units * UnitsPerKey) - 1);
+            var key = (source, Mathf.FloorToInt(units * UnitsPerKey) - 1);
+            if (s_entries.TryGetValue(key, out var entry))
+            {
+                if (entry.Copy != null && !SameFallbacks(entry))
+                {
+                    Link(entry, lineHeight, fontSize);
+                }
+                return entry;
+            }
+            // Entered before its faces are copied, so a table that names it again finds it and stops.
+            entry = TakeIdle(source);
+            if (entry != null)
+            {
+                s_entries.Remove((source, entry.Key));
+                entry.Key = key.Item2;
+                entry.LineHeight = lineHeight;
+                entry.FontSize = fontSize;
+                s_entries[key] = entry;
+                Spread(entry.Copy!, source, key.Item2 / UnitsPerKey);
+                Link(entry, lineHeight, fontSize);
+                return entry;
+            }
+            entry = new Entry { Source = source, Key = key.Item2, LineHeight = lineHeight, FontSize = fontSize };
+            s_entries[key] = entry;
+            entry.Copy = Create(source, out entry.SharesAtlas);
+            if (entry.Copy == null)
+            {
+                return entry;
+            }
+            Spread(entry.Copy, source, key.Item2 / UnitsPerKey);
+            s_byCopy[entry.Copy] = entry;
+            Link(entry, lineHeight, fontSize);
+            return entry;
         }
 
-        // A copy a face of the weight table being copied names again is that face itself, so the copying ends.
-        private static FontAsset? Cached(FontAsset source, int key)
+        // A copy of source nothing holds, taken to be spread to another line height rather than another made.
+        private static Entry? TakeIdle(FontAsset source)
         {
-            if (s_variants.TryGetValue((source, key), out var variant) && (variant is null || variant != null))
+            for (var node = s_idle.First; node != null; node = node.Next)
             {
-                return variant;
+                if (node.Value.Source == source && node.Value.Copy != null)
+                {
+                    s_idle.Remove(node);
+                    return node.Value;
+                }
             }
-            s_variants[(source, key)] = null;
-            variant = Create(source, key / UnitsPerKey);
-            s_variants[(source, key)] = variant;
-            return variant;
+            return null;
         }
 
-        private static FontAsset? Create(FontAsset source, float units)
+        private static FontAsset? Create(FontAsset source, out bool sharesAtlas)
         {
-            var copy = Copy(source);
-            if (copy == null)
-            {
-                return null;
-            }
+            sharesAtlas = !AddsGlyphs(source);
+            var copy = UnityEngine.Object.Instantiate(source);
             copy.hideFlags = HideFlags.DontSave;
-            var face = copy.faceInfo;
+            if (!sharesAtlas)
+            {
+                var format = (source.atlasRenderMode & (UnityEngine.TextCore.LowLevel.GlyphRenderMode)0x10000) != 0
+                    ? TextureFormat.RGBA32
+                    : TextureFormat.Alpha8;
+                var atlas = new Texture2D(source.atlasWidth, source.atlasHeight, format, false) { hideFlags = HideFlags.DontSave };
+                var material = new Material(source.material) { hideFlags = HideFlags.DontSave };
+                material.mainTexture = atlas;
+                copy.atlasTextures = new[] { atlas };
+                copy.material = material;
+                material.name = "Velvet line box material #" + ++s_made;
+                copy.materialHashCode = material.name.GetHashCode();
+                copy.ClearFontAssetData();
+            }
+            return copy;
+        }
+
+        // copy given the source's ascent and descent spread evenly until they are units apart.
+        private static void Spread(FontAsset copy, FontAsset source, float units)
+        {
+            // Named apart from its source and from what it was named before, since the text system finds an asset by a
+            // hash of its name (TextAsset.hashCode), which an instance carries over from its source.
+            copy.name = source.name + " line box " + units.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " #" + ++s_made;
+            copy.hashCode = copy.name.GetHashCode();
+            var face = source.faceInfo;
             var spread = (units - (face.ascentLine - face.descentLine)) * 0.5f;
             face.ascentLine += spread;
             face.descentLine -= spread;
             face.lineHeight = face.ascentLine - face.descentLine;
             copy.faceInfo = face;
-            copy.fallbackFontAssetTable = source.fallbackFontAssetTable != null
-                ? new List<FontAsset>(source.fallbackFontAssetTable)
-                : new List<FontAsset>();
-            var weights = source.fontWeightTable;
+            copy.ReadFontAssetDefinition();
+        }
+
+        // Whether source rasterises glyphs it does not hold yet: from a font file, a font file's path, or the OS.
+        private static bool AddsGlyphs(FontAsset source) => source.atlasPopulationMode switch
+        {
+            AtlasPopulationMode.DynamicOS => true,
+            AtlasPopulationMode.Dynamic => source.sourceFontFile != null
+                || !string.IsNullOrEmpty(s_sourcePath?.GetValue(source) as string),
+            _ => false,
+        };
+
+        // The copy's weight and fallback tables written as copies of the source's, at the same line height.
+        private static void Link(Entry entry, float lineHeight, float fontSize)
+        {
+            var copy = entry.Copy!;
+            var previous = entry.Children.ToArray();
+            entry.Children.Clear();
+            var weights = entry.Source.fontWeightTable;
             var copied = copy.fontWeightTable;
             for (var i = 0; weights != null && copied != null && i < weights.Length && i < copied.Length; i++)
             {
-                copied[i].regularTypeface = weights[i].regularTypeface == source ? copy : WeightOf(weights[i].regularTypeface, source, units);
-                copied[i].italicTypeface = weights[i].italicTypeface == source ? copy : WeightOf(weights[i].italicTypeface, source, units);
+                copied[i].regularTypeface = Face(entry, weights[i].regularTypeface, lineHeight, fontSize);
+                copied[i].italicTypeface = Face(entry, weights[i].italicTypeface, lineHeight, fontSize);
             }
+            var fallbacks = entry.Source.fallbackFontAssetTable;
+            entry.Fallbacks = fallbacks != null ? fallbacks.ToArray() : Array.Empty<FontAsset>();
+            var table = new List<FontAsset>(entry.Fallbacks.Length);
+            foreach (var fallback in entry.Fallbacks)
+            {
+                if (Face(entry, fallback, lineHeight, fontSize) is { } face)
+                {
+                    table.Add(face);
+                }
+            }
+            copy.fallbackFontAssetTable = table;
             copy.ReadFontAssetDefinition();
-            return copy;
+            foreach (var child in previous)
+            {
+                child.Parents--;
+                Idle(child);
+            }
         }
 
-        // A face of the weight table in the same line height, which is taken in the source's units.
-        private static FontAsset? WeightOf(FontAsset? face, FontAsset source, float units)
+        // face in the line height, held by entry: the copy itself for the source, and face itself where no copy can be
+        // made or where face is being copied further up.
+        private static FontAsset? Face(Entry entry, FontAsset? face, float lineHeight, float fontSize)
         {
             if (face == null)
             {
                 return null;
             }
-            var ratio = face.faceInfo.pointSize * source.faceInfo.scale / (source.faceInfo.pointSize * face.faceInfo.scale);
-            return Cached(face, Mathf.FloorToInt(units * ratio * UnitsPerKey)) ?? face;
+            if (face == entry.Source)
+            {
+                return entry.Copy;
+            }
+            var child = EntryFor(face, lineHeight, fontSize);
+            if (child?.Copy == null)
+            {
+                return face;
+            }
+            child.Parents++;
+            s_idle.Remove(child);
+            entry.Children.Add(child);
+            return child.Copy;
         }
 
-        private static FontAsset? Copy(FontAsset source)
+        private static bool SameFallbacks(Entry entry)
         {
-            switch (source.atlasPopulationMode)
+            var table = entry.Source.fallbackFontAssetTable;
+            var same = (table?.Count ?? 0) == entry.Fallbacks.Length;
+            for (var i = 0; same && i < entry.Fallbacks.Length; i++)
             {
-                case AtlasPopulationMode.Static:
-                    return UnityEngine.Object.Instantiate(source);
-                case AtlasPopulationMode.DynamicOS:
-                    return FontAsset.CreateFontAsset(source.faceInfo.familyName, source.faceInfo.styleName,
-                        (int)source.faceInfo.pointSize);
-                default:
-                    return source.sourceFontFile == null
-                        ? null
-                        : FontAsset.CreateFontAsset(source.sourceFontFile, (int)source.faceInfo.pointSize,
-                            source.atlasPadding, source.atlasRenderMode, source.atlasWidth, source.atlasHeight);
+                same = table![i] == entry.Fallbacks[i];
             }
+            return same;
+        }
+
+        // A font stack grew or released source's fallback table, which each copy of it takes in now, before the text
+        // drawn in one is generated again.
+        private static void Refallback(FontAsset source)
+        {
+            foreach (var entry in new List<Entry>(s_entries.Values))
+            {
+                if (entry.Source == source && entry.Copy != null && !SameFallbacks(entry))
+                {
+                    Link(entry, entry.LineHeight, entry.FontSize);
+                }
+            }
+        }
+
+        private static bool Held(Entry entry)
+        {
+            entry.Users.RemoveAll(held => !held.TryGetTarget(out _));
+            return entry.Users.Count > 0 || entry.Parents > 0;
+        }
+
+        private static void Idle(Entry entry)
+        {
+            if (entry.Copy == null || Held(entry) || s_idle.Contains(entry))
+            {
+                return;
+            }
+            s_idle.AddLast(entry);
+            // A copy whose source is gone is not asked for again.
+            for (var node = s_idle.First; node != null;)
+            {
+                var next = node.Next;
+                if (node.Value.Source == null && !Held(node.Value))
+                {
+                    s_idle.Remove(node);
+                    Destroy(node.Value);
+                }
+                node = next;
+            }
+        }
+
+        private static void Destroy(Entry entry)
+        {
+            s_entries.Remove((entry.Source, entry.Key));
+            var copy = entry.Copy;
+            entry.Copy = null;
+            if (copy != null)
+            {
+                s_byCopy.Remove(copy);
+                if (entry.SharesAtlas)
+                {
+                    // The atlas and material are the source's, which destroying the copy would destroy with it.
+                    copy.atlasTextures = Array.Empty<Texture2D>();
+                    copy.material = null;
+                }
+                else
+                {
+                    // Atlases the text system has queued for upload, which may list this copy's.
+                    s_uploadQueued?.Invoke(null, null);
+                }
+                UnityEngine.Object.DestroyImmediate(copy);
+            }
+            foreach (var child in entry.Children)
+            {
+                child.Parents--;
+                Idle(child);
+            }
+            entry.Children.Clear();
         }
 
         private static void DestroyAll()
         {
-            foreach (var pair in s_variants)
+            foreach (var entry in new List<Entry>(s_entries.Values))
             {
-                var variant = pair.Value;
-                if (variant == null)
-                {
-                    continue;
-                }
-                if (pair.Key.Source.atlasPopulationMode == AtlasPopulationMode.Static)
-                {
-                    // The atlas and material are the source's, which destroying the copy would destroy with it.
-                    variant.atlasTextures = Array.Empty<Texture2D>();
-                    variant.material = null;
-                }
-                UnityEngine.Object.DestroyImmediate(variant);
+                entry.Children.Clear();
+                Destroy(entry);
             }
-            s_variants.Clear();
+            s_entries.Clear();
+            s_byCopy.Clear();
+            s_idle.Clear();
         }
     }
 
     // An element's inline font written as LineBoxFont's copy of the font it would otherwise take, and given back. The
-    // font it would take is its inline one where somebody else wrote it, and else its parent's, which it inherits;
-    // an inline legacy Font is not a font asset and is left alone.
+    // font it would otherwise take is its inline one where somebody else wrote it, and else the one its rules and its
+    // parent give it beneath the inline value (StyleCascade.UnderlyingFontAsset).
     internal sealed class LineBoxFontOwner
     {
         private FontAsset? _written;
@@ -145,14 +372,22 @@ namespace Velvet
             var inline = element.style.unityFontDefinition;
             if (_written == null || inline.value.fontAsset != _written)
             {
-                _written = null;
+                Drop();
                 _underlying = inline;
             }
-            var source = _underlying.keyword == StyleKeyword.Undefined
-                ? _underlying.value.fontAsset
-                : element.hierarchy.parent is { } parent ? StyleFontUnits.AssetOf(parent) : null;
+            FontAsset? source;
+            if (_underlying.keyword == StyleKeyword.Undefined)
+            {
+                source = _underlying.value.fontAsset != null
+                    ? _underlying.value.fontAsset
+                    : StyleCascade.CachedFontAsset(element, _underlying.value.font);
+            }
+            else
+            {
+                source = StyleCascade.UnderlyingFontAsset(element);
+            }
             var variant = source != null && !float.IsNaN(lineHeight)
-                ? LineBoxFont.For(source, lineHeight, element.resolvedStyle.fontSize)
+                ? LineBoxFont.Acquire(this, source, lineHeight, element.resolvedStyle.fontSize)
                 : null;
             if (variant == null)
             {
@@ -163,6 +398,7 @@ namespace Velvet
             {
                 return;
             }
+            Drop();
             _written = variant;
             element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromSDFFont(variant));
         }
@@ -177,8 +413,17 @@ namespace Velvet
             {
                 element.style.unityFontDefinition = _underlying;
             }
-            _written = null;
+            Drop();
             _underlying = default;
+        }
+
+        private void Drop()
+        {
+            if (_written != null)
+            {
+                LineBoxFont.Release(this, _written);
+            }
+            _written = null;
         }
     }
 }
