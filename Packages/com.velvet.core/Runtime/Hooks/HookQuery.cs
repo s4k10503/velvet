@@ -234,6 +234,10 @@ namespace Velvet
         // What a request runs, as v5 reads options.queryFn; an infinite query's runs its behavior instead.
         internal abstract QueryFunction<TQueryFnData> Function { get; }
 
+        // These options without their select, for the observer UseQueries shares among the queries of one entry,
+        // which holds the entry's own data whatever each query makes of it.
+        internal QueryOptionsBase<TQueryFnData, TQueryFnData> Raw() => RawQueryOptions<TQueryFnData>.Of(this);
+
         /// <summary>
         /// TanStack Query's <c>meta</c>: what the entry carries as <see cref="Query.Meta"/> for the query cache's
         /// callbacks, its events and a filter's predicate, and what a context-taking query function is handed. The
@@ -1136,6 +1140,9 @@ namespace Velvet
 
         // The entry this observer reads was removed, which no snapshot carries.
         internal abstract void OnRemoved();
+
+        // The entry the observer's latest commit subscribed to; null before it and after it leaves.
+        internal abstract QueryEntry<T>? SubscribedEntry { get; }
     }
 
     // The per-component half of UseQuery, TanStack's QueryObserver: the options of the latest committed render,
@@ -1487,6 +1494,7 @@ namespace Velvet
         internal QueryResult<TData> Read(
             QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, IQueryResultSource source)
         {
+            if (_host != null && entry.HasData) _lastWithData = entry;
             _current = CreateResult(entry, settings, inRender: true);
             _hasCurrent = true;
             return ResultOf(settings.Paging != null, source);
@@ -1613,9 +1621,30 @@ namespace Velvet
         // enabled v5 resolves against the entry the render reads.
         private bool WillFetch(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, bool inRender)
         {
-            if (Entry == null) return settings.Rules.ShouldFetchOnMount(entry, inRender);
-            return (!ReferenceEquals(entry, Entry) || !Rules.IsEnabled(entry, inRender))
+            var subscribed = _host != null ? _host.SubscribedEntry : Entry;
+            var rules = _host != null ? _host.Rules : Rules;
+            if (subscribed == null) return settings.Rules.ShouldFetchOnMount(entry, inRender);
+            return (!ReferenceEquals(entry, subscribed) || !rules.IsEnabled(entry, inRender))
                 && settings.Rules.ShouldFetchOptionally(entry, inRender);
+        }
+
+        // UseQueries' result for one query over the observer the queries of its entry share, TanStack's
+        // getOptimisticResult(options) on that observer: this observer subscribes to nothing and computes the
+        // query's own result, its select and placeholder memo its own, while the shared one holds the subscription.
+        private QueryEntryObserver<TQueryFnData>? _host;
+
+        internal void Host(QueryEntryObserver<TQueryFnData> host) => _host = host;
+
+        internal override QueryEntry<TQueryFnData>? SubscribedEntry => Entry;
+
+        // A result computed outside a render from the entry as it stands, as v5 reads a query's result after its
+        // shared observer told of a change.
+        internal QueryResult<TData> Refresh(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, IQueryResultSource source)
+        {
+            if (entry.HasData) _lastWithData = entry;
+            _current = CreateResult(entry, settings, inRender: false);
+            _hasCurrent = true;
+            return ResultOf(settings.Paging != null, source);
         }
 
         // The select runs again only when the entry's data or the select's instance changed since it last ran,

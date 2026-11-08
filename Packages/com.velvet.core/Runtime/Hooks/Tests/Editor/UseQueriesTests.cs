@@ -347,6 +347,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheListCommitsAgain_Then_TheyShareOneObserver()
+        {
+            // Arrange
+            using var mounted = Mount(MixedReader);
+            Settle(mounted, () => Source("a").TrySetResult(1));
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
+                Is.EqualTo(1), "v5 keeps one observer for each queryHash, whatever each query selects");
+        }
+
+        [Test]
+        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheDataLands_Then_EachResultIsItsOwnSelection()
+        {
+            // Arrange
+            using var mounted = Mount(MixedReader);
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+
+            // Assert
+            Assert.That(s_typed, Is.EqualTo("n1:1"), "Each query's result comes from its own select, as v5's getOptimisticResult(options) does");
+        }
+
+        [Test]
         public void Given_AReadFromAQueryListingItsProps_When_AnotherQuerysDataChanges_Then_TheComponentDoesNotRenderAgain()
         {
             // Arrange
