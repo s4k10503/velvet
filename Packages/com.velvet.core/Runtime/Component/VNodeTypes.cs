@@ -155,9 +155,20 @@ namespace Velvet
         // default layout transition in its place (LayoutIdTiming.From).
         internal bool TransitionDefaulted { get; init; }
 
+        // Set by V.Motion when its caller named a delay and no transition, duration or easing: Framer counts a delay
+        // alone as no transition, so a variant play takes the per-value defaults after it.
+        internal bool TransitionDelayOnly { get; init; }
+
         // What a variant play on this Motion takes where its pose names no transition: the Framer default for a Motion
         // nobody gave one, else the Motion's own.
-        internal StyleTransitionConfig? VariantTransition => TransitionDefaulted ? StyleTransitionConfig.FramerDefault : Transition;
+        internal StyleTransitionConfig? VariantTransition => TransitionDefaulted ? StyleTransitionConfig.FramerDefault
+            : TransitionDelayOnly ? (_delayedDefault ??= StyleTransitionConfig.FramerDefault.With(delaySec: Transition?.DelaySec))
+            : Transition?.PlayedOnVariant;
+
+        private StyleTransitionConfig? _delayedDefault;
+
+        // What a swap into a pose naming pose.Transition plays on.
+        internal StyleTransitionConfig? PoseTransition(StyleTransitionConfig? pose) => pose?.PlayedOnVariant ?? VariantTransition;
 
         /// <summary>
         /// Callback invoked when the enter animation completes.

@@ -628,7 +628,7 @@ namespace Velvet
 
         // Framer Motion's sequence ignores a segment's repeat of 20 or more, warning that it does, and plays the
         // segment once.
-        private const float MaxSegmentRepeat = 20f;
+        internal const float MaxSegmentRepeat = 20f;
         private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_segmentOnce = new();
         private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_inSequence = new();
 

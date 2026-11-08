@@ -251,20 +251,32 @@ namespace Velvet
         internal const float DefaultEaseX2 = 0.35f;
         internal const float DefaultEaseY2 = 1f;
 
+        internal const float TransformSpringStiffness = 500f;
+        internal const float TransformSpringDamping = 25f;
+        internal const float ScaleSpringStiffness = 550f;
+        internal const float DefaultSpringRestSpeed = 10f;
+
+        internal static float ScaleSpringDamping(float target)
+            => target == 0f ? 2f * Mathf.Sqrt(ScaleSpringStiffness) : 30f;
+
         // A transform value runs on a spring, scale on a critically damped one that is stiffer, and any other value
         // on the ease above.
         private static void AssignFramerDefaults(MotionSpringState state)
         {
             if (state.Opacity != null) state.Opacity.EaseSec = DefaultEaseSec;
             if (state.PaintProgress != null) state.PaintProgress.EaseSec = DefaultEaseSec;
-            Spring(state.TranslateX, 500f, 25f);
-            Spring(state.TranslateY, 500f, 25f);
-            Spring(state.Rotate, 500f, 25f);
-            Spring(state.SkewX, 500f, 25f);
-            Spring(state.SkewY, 500f, 25f);
+            Spring(state.TranslateX, TransformSpringStiffness, TransformSpringDamping);
+            Spring(state.TranslateY, TransformSpringStiffness, TransformSpringDamping);
+            Spring(state.Rotate, TransformSpringStiffness, TransformSpringDamping);
+            Spring(state.SkewX, TransformSpringStiffness, TransformSpringDamping);
+            Spring(state.SkewY, TransformSpringStiffness, TransformSpringDamping);
             if (state.Scale != null)
             {
-                Spring(state.Scale, 550f, state.Scale.Target == 0f ? 2f * Mathf.Sqrt(550f) : 30f);
+                Spring(state.Scale, ScaleSpringStiffness, ScaleSpringDamping(state.Scale.Target));
+            }
+            if (state.ScaleY != null)
+            {
+                Spring(state.ScaleY, ScaleSpringStiffness, ScaleSpringDamping(state.ScaleY.Target));
             }
             if (state.Colors != null)
             {
@@ -281,7 +293,7 @@ namespace Velvet
             if (channel != null)
             {
                 channel.FixedPhysics = (stiffness, damping);
-                channel.RestSpeed = 10f;
+                channel.RestSpeed = DefaultSpringRestSpeed;
             }
         }
 

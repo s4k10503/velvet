@@ -1024,15 +1024,33 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   Two or more run through in turn, evenly spaced over the transition; one is a value to head for from what the element
   shows when that segment starts. They are written as inline styles, over the element's classes, and stay at the last
   keyframe when the animation ends.
-- **Transition.** A `StyleTransitionConfig` per call or segment, 0.3 s when null. `Tween` runs `DurationSec` on `Easing`,
-  `Bezier` on its control points, and `Spring` as the spring it describes when the values are one or two keyframes (more
-  play as a tween of `DurationSec`). `DelaySec` delays the segment; `Repeat` and `PropertyOverrides` are not read here.
+- **Transition.** A `StyleTransitionConfig` per call or segment. `Tween` runs `DurationSec` on `Easing`, `Bezier` on its
+  control points, and `Spring` as the spring it describes. A `Tween` or `Bezier` eases its keyframes pair by pair, each
+  pair over an even share of the duration, as Framer's keyframes generator eases them. `DelaySec` delays the segment.
+  `PropertyOverrides` is not read here.
+- **No transition.** A single call whose transition is null, or names nothing as *Transition semantics* below reads
+  one, takes Framer's `getDefaultTransition` for each value: more than two keyframes run 0.8 s on an ease-out; `X`, `Y`
+  and `RotateDeg` the spring of 500 stiffness and 25 damping, and `Scale` the one of 550 stiffness and 30 damping,
+  critically damped where it heads for 0, each with a rest speed of 10; `Opacity` a 0.3 s ease of
+  `cubic-bezier(0.25, 0.1, 0.35, 1)`. A sequence segment takes no per-value default, as Framer's sequence does not: it
+  runs 0.3 s on an ease-out. A `Tween` or `Bezier` naming no `DurationSec` runs 0.3 s too.
+- **Springs.** A `Spring` on a single call runs from the first keyframe to the last over the value's own travel, whatever the
+  number of keyframes, as Framer's spring does in a production build (a development build of Framer raises an
+  invariant past two). A sequence segment of one or two keyframes becomes an easing sampled from the spring, measured
+  over the segment's travel, or over 100 where it gives one keyframe; one of more keyframes plays as a tween of
+  `DurationSec` on `Easing`, as Framer's sequence does, which also ends the easing at 20 s.
+- **Repeat.** `Repeat`, `RepeatType` and `RepeatDelaySec` repeat each value as Framer's `repeat`, `repeatType` and
+  `repeatDelay` do: `RepeatDelaySec` holds a pass's last value before the next, and no wait follows the last pass. On a
+  single call `Reverse` plays every second pass backwards in time and `Mirror` runs it from the last keyframe back to
+  the first on the same curve. A sequence segment repeats as Framer's sequence writes a repeat out: `Reverse` there
+  plays as `Mirror`, but for a spring, whose easing it reverses, and a count of 20 or more is not read.
 - **Placement.** `AnimateAt` is Framer's `at`: after the previous segment ends by default, `AnimateAt.Time(s)` on the
   timeline, `AnimateAt.WithPrevious` (`"<"`) at the previous segment's start, `AnimateAt.Offset(s)` (`"+0.5"` /
   `"-0.2"`) from the previous segment's end.
 - **Controls.** `AnimateControls` carries `Play`, `Pause`, `Speed`, `TimeSec`, `IsFinished`, `Then(callback)`, the
   awaitable `Finished`, `Stop()` (leave the values where they are) and `Cancel()` (put each begun value back at its first
-  keyframe). `Finished` is cancelled by either. A negative or non-finite `Speed` throws.
+  keyframe). After either, `Finished` never settles and no `Then` callback runs, as Framer's `finished` promise neither
+  resolves nor rejects then. A negative or non-finite `Speed` throws.
 - **Lifetime.** The animations step on the mount's frames and stop, as `Stop()` does, when the component unmounts.
 
 Not offered: a stagger option, and values beyond the five above.
@@ -1076,8 +1094,8 @@ config's timing as an inline transition for the swap and release it on completio
 integrate physically instead.
 
 **Which config a swap takes is decided by the pose it is animating INTO.** A `MotionVariant` naming
-its own `transition` supplies it; a pose that names none takes the Motion's `transition:`, which is
-itself the `Fade` preset when the call site left it out. That is the direction each of the three
+its own `transition` supplies it; a pose that names none takes the Motion's `transition:`. A transition
+that names nothing runs Framer's default for each value (below). That is the direction each of the three
 plays reads: a mount enter takes `variants[animate]`, a runtime label change takes the new label's
 pose, and an `AnimatePresence` exit takes `variants[exit]` — the pose swapped INTO, not the one left
 behind. Framer expresses the same thing as a `transition` key inside a variant object and inside
@@ -1108,9 +1126,15 @@ V.AnimatePresence(children: new VNode[]
 Three consequences worth knowing:
 
 - **Every Motion animates by default.** `V.Motion` without an explicit `transition` is `Fade` for the preset enter and
-  exit of a Motion with no variants, and for a variant play it runs each value on the transition Framer Motion picks for
-  its type: a spring (500 stiffness, 25 damping) for translate and rotate, a stiffer one (550, 30) for scale, and a
-  0.3 s ease for opacity, colours and lengths. A value neither covers lands with the swap, as on any spring. Pass
+  exit of a Motion with no variants. A variant play on a transition that names nothing runs each value on the
+  transition Framer Motion picks for its type: a spring (500 stiffness, 25 damping) for translate, rotate and skew, a
+  stiffer one (550 stiffness, 30 damping, critically damped where it heads for 0) for scale, and a 0.3 s ease of
+  `cubic-bezier(0.25, 0.1, 0.35, 1)` for opacity, colours and lengths. A transition names nothing, as Framer's
+  `isTransitionDefined` reads one, where the call site gives `V.Motion` no `transition`, `duration` or `easing`, or a
+  config sets no knob but `DelaySec`, `Repeat`, `RepeatType`, `RepeatDelaySec`, `StaggerChildrenSec`,
+  `StaggerDirection`, `DelayChildrenSec` and `When`; the defaults then run after that delay, on that repeat. A config
+  naming any other knob and no `DurationSec` runs 0.3 s, Framer's default duration. A value neither covers lands with
+  the swap, as on any spring. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
   means exactly that pose animates and the rest are instant. Whether a removal animates is
