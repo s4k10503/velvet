@@ -537,7 +537,7 @@ any query asked for (five minutes by default), as v5's `scheduleGc` timer remove
 to come first. While an entry that can still expire is held, the client reads its clock once a frame, as a
 retry's wait does, so removal lands on the first frame whose reading is at or past the deadline; with only
 `TimeSpan.MaxValue` entries, or none, it reads nothing. A query reading the entry again before then keeps it,
-and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame. A query's render builds the entry it reads when there is none, as v5's observer does, and nothing collects that entry before the client's next poll of its clock, whatever its `GcTime`.
+and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame. A query's render builds the entry it reads when there is none, as v5's observer does, and, whatever its `GcTime`, nothing collects that entry before the second time the client's polling of its clock walks the entries, so a commit whose effects run after one such walk still finds it.
 As in v5, an entry with a request in flight is kept, and readable, until a whole `GcTime` has passed since
 the request settled: the removal never cancels a request, so a request of a query function taking no token
 that never settles keeps its entry for as long as the client lives, and the client reads its clock every

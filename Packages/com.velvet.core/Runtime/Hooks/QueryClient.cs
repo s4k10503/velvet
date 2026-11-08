@@ -701,7 +701,7 @@ namespace Velvet
             var entry = new QueryEntry<T>(this, key, id, hashFn, gcTime);
             _entries.Add(id, entry);
             MarkInactive(entry);
-            entry.HeldForRender = heldForRender;
+            entry.RenderHoldPolls = heldForRender ? RenderHoldPolls : 0;
             if (options != null) entry.SetOptions(options);
             return entry;
         }
@@ -722,7 +722,7 @@ namespace Velvet
         internal void MarkActive(QueryEntry entry)
         {
             entry.InactiveSince = null;
-            entry.HeldForRender = false;
+            entry.RenderHoldPolls = 0;
             // The deadline the last walk found may belong to this entry, so the next poll walks again.
             _canExpire = false;
             _inactive.Remove(entry);
@@ -829,18 +829,20 @@ namespace Velvet
         private static bool IsExpired(QueryEntry entry, TimeSpan now)
         {
             var since = entry.InactiveSince;
-            return since != null && !entry.HeldForRender && entry.FetchStatus == QueryFetchStatus.Idle
+            return since != null && entry.RenderHoldPolls == 0 && entry.FetchStatus == QueryFetchStatus.Idle
                 && now - since.Value >= entry.GcTime;
         }
 
-        // An entry a render built is held from collection until the next poll that walks the entries, however short
-        // its gcTime, so the renders after it in the same pass, and the client's commands, find it. A commit whose
-        // passive effects run after that poll can find it collected and build another.
+        // An entry a render built is held from collection, however short its gcTime, through the poll that walks the
+        // entries next and released at the one after, so a commit whose passive effects run after one walking poll
+        // still subscribes to it. A commit whose effects run after two can find it collected and build another.
+        private const int RenderHoldPolls = 2;
+
         private void ReleaseRenderHolds()
         {
             foreach (var entry in _inactive)
             {
-                entry.HeldForRender = false;
+                if (entry.RenderHoldPolls > 0) entry.RenderHoldPolls--;
             }
         }
 
@@ -892,8 +894,8 @@ namespace Velvet
         internal TimeSpan GcTime { get; private set; }
         internal TimeSpan? InactiveSince { get; set; }
         internal int InactiveEpoch { get; set; }
-        // Built by a render, and neither subscribed to nor polled past since: see QueryClient.ReleaseRenderHolds.
-        internal bool HeldForRender { get; set; }
+        // The walking polls left before an entry a render built may be collected: see QueryClient.ReleaseRenderHolds.
+        internal int RenderHoldPolls { get; set; }
         internal abstract Type DataType { get; }
         internal abstract QueryFetchStatus FetchStatus { get; }
         internal bool IsFetching => FetchStatus == QueryFetchStatus.Fetching;

@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -9,8 +10,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a query's render builds the entry it reads when there is none, as v5's
-    /// <c>getOptimisticResult</c> builds its query, and that a commit made before the client next polls its clock
-    /// takes that entry up however many renders ran in between, a zero garbage-collection time included.
+    /// <c>getOptimisticResult</c> builds its query, and that the commit after it takes that entry up, a zero
+    /// garbage-collection time included, however many renders ran in between and through one walking poll of
+    /// the client's clock.
     /// </summary>
     /// <remarks>
     /// The client's clock stands still, and <see cref="s_initialDataCalls"/> counts how often an entry took the
@@ -62,6 +64,26 @@ namespace Velvet.Tests
             Assert.That(s_initialDataCalls, Is.EqualTo(1),
                 "The commit takes up the entry its render built rather than letting it expire and building another");
         }
+
+        [Test]
+        public void Given_AZeroGcTime_When_OneFramesPollRunsBetweenTheRenderAndItsCommit_Then_TheCommitKeepsTheEntryItsRenderBuilt()
+        {
+            // Arrange — the client's frame loop polls once, as a frame does between a render and the panel tick that
+            // runs its passive effects.
+            s_client = NewClient(TimeSpan.Zero);
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+
+            // Act
+            PollOnce(s_client);
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_initialDataCalls, Is.EqualTo(1),
+                "A render's entry outlasts the first walking poll, so the commit after it subscribes to it");
+        }
+
+        private static void PollOnce(QueryClient client)
+            => typeof(QueryClient).GetMethod("Poll", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(client, null);
 
         private static QueryClient NewClient(TimeSpan gcTime)
             => new(new QueryClientOptions { GcTime = gcTime, Retry = 0, Clock = () => TimeSpan.Zero });
