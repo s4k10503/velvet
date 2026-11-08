@@ -258,16 +258,24 @@ The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text lea
 line box of its line height per line, as CSS does, single lines included and whether the line height is above or
 below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and `text-sm/6` 24px. Text that
 no `leading-*` or `text-<size>` reaches takes the 1.5 Tailwind's preflight gives the root, so a 16px text is 24px
-tall, and where its text has a place a line can break at (a space, a hyphen, a CJK character) its shown string
-carries the `1.5em` tag as a `leading-normal` one would, which spaces the lines it wraps into. Padding and border sit outside the line
-boxes, and `resolvedStyle.height` reads the result. The glyphs sit half the difference between the line height and
-the font's content height below the top of the first line box, whatever the box's height, a box its flex row
-stretches or an `h-*` sets included. CSS has no vertical alignment inside a line box, so such an element is
-aligned `middle-*` with the horizontal part it resolves, inherited or its own: `text-top-left` and an element with no
-alignment class read `middle-left`, and a parent's `text-center` still reaches it. An alignment written inline by
-the application is left as it is. A single-line field's input text is UI Toolkit's own element: it is given one line box by an inline height of
-the line height plus its own padding and border, and is aligned the same way. A multiline field's input shows no
-rich text, so its lines advance by the font's own line height.
+tall. Once such text takes more than one line, by a newline, a `<br>` or wrapping, a word broken across lines
+included, its shown string carries the `1.5em` tag as a `leading-normal` one would, which spaces those lines; a
+single line is shown as written, which the tag would not change. Padding and border sit outside the line boxes,
+and `resolvedStyle.height` reads the result. The glyphs sit half the difference between the line height and the
+font's content height below the top of the first line box, whatever the box's height: a box its flex row
+stretches or an `h-*` sets, and one a `max-h-*` caps below its line boxes, whose text starts at its top and
+overflows below it. A `V.Button`'s lines are centred in the button instead, as a browser centres a button's
+content. CSS has no vertical alignment inside a line box, so such an element is aligned `middle-*` with the
+horizontal part its rules or its parent give it: `text-top-left` and a label with no alignment class read
+`middle-left`, a parent's `text-center` and a `-unity-text-align` in a sheet of the application's still reach it,
+and a button with no alignment class keeps its theme's `middle-center`. An alignment written inline by the
+application is left as it is. Rich text of the application's own keeps to these boxes: a `<voffset>` of its own
+moves with the text, its own `</voffset>` and `</line-height>` end only its own tag, and under markup of its own the
+box is the first line box and then each further line at the advance the generator gives it, which its own
+`<line-height>` or `<size>` changes. A
+single-line field's input text is UI Toolkit's own element: it is given one line box by an inline height of the
+line height plus its own padding and border, and is aligned the same way. A multiline field's input shows no rich
+text, so its lines advance by the font's own line height.
 
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim

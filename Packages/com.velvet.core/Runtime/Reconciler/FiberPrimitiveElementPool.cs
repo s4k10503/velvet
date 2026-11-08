@@ -226,6 +226,8 @@ namespace Velvet
                 TextField.ussClassName);
 
             textField.SetValueWithoutNotify(string.Empty);
+            // The height and alignment the input text's line box wrote inline, which the next use settles for itself.
+            FieldLineBox.Reset(textField);
             textField.textEdition.isPassword = false;
             textField.maxLength = DefaultMaxLength;
             textField.textSelection.SelectNone();

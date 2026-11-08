@@ -60,8 +60,9 @@ namespace Velvet
     internal sealed class SkewPickButton : Button, ISkewPickTarget, ILineBoxed
     {
         private TextLineBox? _lineBox;
+        private TextLineBox.BaseMeasure? _baseMeasure;
 
-        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this);
+        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this, centred: true);
 
         public SkewPickRegion? PickRegion { get; set; }
 
@@ -69,13 +70,7 @@ namespace Velvet
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
 
         protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
-        {
-            var lines = TextLineBox.Before(this, LineBox, heightMode);
-            var generated = LineBox.Unraised is { } text
-                ? MeasureTextSize(text, desiredWidth, widthMode, desiredHeight, heightMode)
-                : base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode);
-            return LineBox.Measured(desiredWidth, widthMode, heightMode, lines.Fit(generated, desiredHeight, heightMode));
-        }
+            => LineBox.Measure(desiredWidth, widthMode, desiredHeight, heightMode, _baseMeasure ??= base.DoMeasure);
     }
 
     internal sealed class SkewPickLabel : Label, ISkewPickTarget, ILineBoxed
@@ -86,8 +81,9 @@ namespace Velvet
         }
 
         private TextLineBox? _lineBox;
+        private TextLineBox.BaseMeasure? _baseMeasure;
 
-        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this);
+        public TextLineBox LineBox => _lineBox ??= new TextLineBox(this, centred: false);
 
         public SkewPickRegion? PickRegion { get; set; }
 
@@ -95,12 +91,6 @@ namespace Velvet
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
 
         protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
-        {
-            var lines = TextLineBox.Before(this, LineBox, heightMode);
-            var generated = LineBox.Unraised is { } text
-                ? MeasureTextSize(text, desiredWidth, widthMode, desiredHeight, heightMode)
-                : base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode);
-            return LineBox.Measured(desiredWidth, widthMode, heightMode, lines.Fit(generated, desiredHeight, heightMode));
-        }
+            => LineBox.Measure(desiredWidth, widthMode, desiredHeight, heightMode, _baseMeasure ??= base.DoMeasure);
     }
 }

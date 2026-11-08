@@ -161,14 +161,16 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineOnLabelItself_When_Mounted_Then_OwnTextIsCollapsed()
         {
             var label = MountAndFindLabel(V.Label(className: "whitespace-pre-line", text: "a   b"));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>a b</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineOnParent_When_Mounted_Then_ChildTextLeafIsCollapsed()
         {
@@ -176,9 +178,10 @@ namespace Velvet.Tests
             // transform/decoration cascade from an ancestor onto a class-less V.Text leaf.
             var label = MountAndFindLabel(V.Div(className: "whitespace-pre-line", V.Text("a   b")));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>a b</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("a b"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineAncestorAndExplicitNowrapDescendant_When_Mounted_Then_DescendantTextNotCollapsedAndNoInlineWrite()
         {
@@ -192,9 +195,10 @@ namespace Velvet.Tests
                 V.Label(name: "inherited", text: "c   d")));
             var explicitLabel = _window.rootVisualElement.Q<Label>("explicit");
 
-            Assert.That((RenderedTextProbe.Of(explicitLabel), explicitLabel.style.whiteSpace.keyword), Is.EqualTo(("<line-height=1.5em>a   b</line-height>", StyleKeyword.Null)));
+            Assert.That((RenderedTextProbe.Of(explicitLabel), explicitLabel.style.whiteSpace.keyword), Is.EqualTo(("a   b", StyleKeyword.Null)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineAncestorAndPlainSiblingDescendant_When_Mounted_Then_SiblingTextCollapsed()
         {
@@ -205,7 +209,7 @@ namespace Velvet.Tests
                 V.Label(name: "explicit", className: "whitespace-nowrap", text: "a   b"),
                 V.Label(name: "inherited", text: "c   d")));
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>("inherited")), Is.EqualTo("<line-height=1.5em>c d</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>("inherited")), Is.EqualTo("c d"));
         }
 
         [Test]
@@ -281,6 +285,7 @@ namespace Velvet.Tests
             Assert.That(_window.rootVisualElement.Q<Label>().style.whiteSpace.value, Is.EqualTo(WhiteSpace.Pre));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_WhitespacePreLineClassRemoved_When_Patched_Then_TextRestoredToRaw()
         {
@@ -291,12 +296,12 @@ namespace Velvet.Tests
             // DESCENDANT walk (a separate concern — see ApplyToDescendants). The inline-clear sibling test
             // right below pins that SAME unconditional recompute, just for the whiteSpace half of it.
             Mount(V.Component(RenderPreLineToggle));
-            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>a b</line-height>"), "Precondition: initial collapse");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b"), "Precondition: initial collapse");
 
             s_setPreLineClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>a   b</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a   b"));
         }
 
         [Test]
@@ -333,6 +338,7 @@ namespace Velvet.Tests
             Assert.That(label.style.whiteSpace.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AncestorPreLineClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
         {
@@ -342,14 +348,15 @@ namespace Velvet.Tests
             // else (PatchText only calls OnTextSet when the text prop itself changes), so without the walk
             // it would keep showing the stale collapsed string forever.
             Mount(V.Component(RenderPreLineAncestorToggle));
-            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>a b</line-height>"), "Precondition: initial collapse");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b"), "Precondition: initial collapse");
 
             s_setPreLineAncestorClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>a   b</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a   b"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ThreeLevelCascade_When_Mounted_Then_LeafIsCollapsedAndUppercased()
         {
@@ -360,9 +367,10 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(V.Div(className: "whitespace-pre-line",
                 V.Div(className: "uppercase", V.Text("a   b c"))));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>A B C</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("A B C"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ThreeLevelCascadeParentUppercaseRemoved_When_Patched_Then_LeafStaysCollapsedButNotUppercased()
         {
@@ -372,14 +380,15 @@ namespace Velvet.Tests
             // effect going non-empty -> empty) re-resolves it. Pins that the grandparent's surviving axis
             // and the parent's just-removed one resolve independently through a 3-level chain.
             Mount(V.Component(RenderThreeLevelCascade));
-            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>A B C</line-height>"), "Precondition: initial collapse+uppercase");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("A B C"), "Precondition: initial collapse+uppercase");
 
             s_setCascadeParentClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>a b c</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("a b c"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LabelPooledWithPreLineState_When_RentedAgainWithoutTheClass_Then_NewLabelHasNoInlineWhiteSpace()
         {
@@ -406,7 +415,7 @@ namespace Velvet.Tests
             // remaining terms alone would hold on a reconciler that never pooled it.
             var recycled = _window.rootVisualElement.Q<Label>("leaf");
             Assert.That((pooledWhileHidden, recycled.style.whiteSpace.keyword, RenderedTextProbe.Of(recycled)),
-                Is.EqualTo((true, StyleKeyword.Null, "<line-height=1.5em>c   d</line-height>")));
+                Is.EqualTo((true, StyleKeyword.Null, "c   d")));
         }
 
         [Test]

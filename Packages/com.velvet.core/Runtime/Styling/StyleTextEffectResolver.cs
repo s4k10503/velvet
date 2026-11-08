@@ -106,12 +106,8 @@ namespace Velvet
         // (ResolveEffective's walk): a number times the element's own font size, an em or percentage length
         // times its declaring element's, or a length as written, and the preflight's 1.5 times the element's font
         // size where none sets one. NaN for `leading-[normal]`, and where a measured length cannot be measured yet.
-        internal static float LineHeightOf(VisualElement element) => LineHeightOf(element, out _);
-
-        // declared is false where the line height is the preflight's.
-        internal static float LineHeightOf(VisualElement element, out bool declared)
+        internal static float LineHeightOf(VisualElement element)
         {
-            declared = true;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (s_effectContexts.TryGetValue(e, out var ctx) && ctx.TextEffects.TryGetValue(e, out var eff)
@@ -129,27 +125,18 @@ namespace Velvet
                     };
                 }
             }
-            declared = false;
             return PreflightLeading.Value * element.resolvedStyle.fontSize;
         }
 
-        // Whether the text has a place a line can break at, so that it can wrap and the preflight's line height has to
-        // space its lines. A text with none is shown without the tag, which a single line does not need; TextLineBox
-        // sizes its box either way.
-        internal static bool CanSpanLines(string? text)
-        {
-            if (text == null)
-            {
-                return false;
-            }
-            var breaks = false;
-            for (var i = 0; i < text.Length && !breaks; i++)
-            {
-                var c = text[i];
-                breaks = char.IsWhiteSpace(c) || c == '-' || c == '\u00AD' || c == '\u200B' || c >= '\u2E80';
-            }
-            return breaks;
-        }
+        // Whether a text Velvet creates is shown in the preflight's line height: where it breaks a line itself, or
+        // where the generator has laid it out in more than one line (TextLineBox.SpansLines). A single line is the
+        // same with the tag or without it, so the tag is not written for one.
+        // Not short-circuited, since SpansLines is what takes a new text in. False for any other element.
+        private static bool ShowsPreflight(ILineBoxed? element, string? raw)
+            => element != null && (element.LineBox.SpansLines(raw) | BreaksLine(raw));
+
+        private static bool BreaksLine(string? raw)
+            => raw != null && (raw.IndexOf('\n') >= 0 || raw.IndexOf("<br", StringComparison.OrdinalIgnoreCase) >= 0);
 
         // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
         // an element's Text prop). Stored so a later re-apply (this element's or an ancestor's effect pass)
@@ -177,25 +164,24 @@ namespace Velvet
         // The create-time entry to Apply. A freshly created element is detached and its side tables are empty, so
         // with no effect class of its own there is nothing for Apply to resolve, write or remove, and its
         // descendants are not walked either: an ancestor's effect reaches the element from the ancestor's own pass.
-        // A text element Velvet creates whose text can span lines is the exception, since it shows the preflight's line
-        // height.
+        // A text element Velvet creates whose text breaks a line is the exception, since it shows the preflight's line
+        // height, and one that is not is still given the context its line box is shown in.
         public static void ApplyOnCreate(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
-            if (element.hierarchy.parent == null && !ShowsPreflight(ctx, element) && StyleTextEffectClass.Parse(classNames).IsEmpty)
+            if (element.hierarchy.parent == null && StyleTextEffectClass.Parse(classNames).IsEmpty)
             {
-                return;
+                if (element is not ILineBoxed boxed)
+                {
+                    return;
+                }
+                ctx.TextRawText.TryGetValue(element, out var raw);
+                if (!ShowsPreflight(boxed, raw))
+                {
+                    boxed.LineBox.Bind(ctx);
+                    return;
+                }
             }
             Apply(ctx, element, classNames);
-        }
-
-        private static bool ShowsPreflight(ReconcilerContext ctx, VisualElement element)
-        {
-            if (element is not ILineBoxed)
-            {
-                return false;
-            }
-            ctx.TextRawText.TryGetValue(element, out var raw);
-            return CanSpanLines(raw);
         }
 
         // A line height a sheet declares under a selector is the cascade's to give once the element's style pass has run,
@@ -265,7 +251,7 @@ namespace Velvet
             {
                 var effect = ResolveEffective(ctx, te);
                 // A text element Velvet creates is shown in the preflight's line height where nothing sets one.
-                if (effect.Leading == null && te is ILineBoxed && CanSpanLines(raw))
+                if (effect.Leading == null && ShowsPreflight(te as ILineBoxed, raw))
                 {
                     effect.Leading = PreflightLeading;
                 }
@@ -281,7 +267,7 @@ namespace Velvet
                     breaks = null;
                     display = Compose(raw, effect, te.enableRichText, new TextShaping(null, cell));
                 }
-                display = Raised(ctx, te, display);
+                display = Raised(ctx, te, display, effect, raw);
                 ShowText(ctx, te, raw, display);
                 TextShownWatch.Sync(ctx, te, WritesTags(effect) || !string.Equals(display, raw, StringComparison.Ordinal)
                     || effect.Numeric == NumericSpacing.Tabular);
@@ -346,7 +332,9 @@ namespace Velvet
 
         // The shown text inside the <voffset> its line boxes place it with (TextLineBox), which a leaf with rich text
         // off is shown without.
-        private static string Raised(ReconcilerContext ctx, TextElement element, string display)
+        // The app's own offsets inside it are raised with it (TextLineBoxMarkup).
+        private static string Raised(ReconcilerContext ctx, TextElement element, string display, in ResolvedEffect effect,
+            string raw)
         {
             if (!element.enableRichText)
             {
@@ -356,10 +344,16 @@ namespace Velvet
             {
                 return display;
             }
-            var raise = boxed.LineBox.Shown(ctx, display);
-            return raise == 0f
-                ? display
-                : string.Concat("<voffset=", raise.ToString(System.Globalization.CultureInfo.InvariantCulture), "px>", display, "</voffset>");
+            var ownMarkup = raw.IndexOf('<') >= 0;
+            var raise = boxed.LineBox.Shown(ctx, display, WritesLineHeight(effect), ownMarkup);
+            if (raise == 0f)
+            {
+                return display;
+            }
+            var inner = ownMarkup && display.IndexOf("voffset", StringComparison.OrdinalIgnoreCase) >= 0
+                ? TextLineBoxMarkup.Raised(display, raise, element.resolvedStyle.fontSize)
+                : display;
+            return string.Concat("<voffset=", raise.ToString(System.Globalization.CultureInfo.InvariantCulture), "px>", inner, "</voffset>");
         }
 
         // Decoration and line height are tags, so a leaf with rich text off is shown without them rather than
@@ -432,9 +426,11 @@ namespace Velvet
         private static bool WritesTags(in ResolvedEffect effect)
         {
             var decorated = effect.Decoration is TextDecorationKind.Underline or TextDecorationKind.LineThrough;
-            var spaced = effect.Leading is { Unit: LeadingUnit.Em or LeadingUnit.Pixel or LeadingUnit.EmLength };
-            return decorated || spaced;
+            return decorated || WritesLineHeight(effect);
         }
+
+        private static bool WritesLineHeight(in ResolvedEffect effect)
+            => effect.Leading is { Unit: LeadingUnit.Em or LeadingUnit.Pixel or LeadingUnit.EmLength };
 
         // The leaf's text stays what the app gave, and the string it shows goes in through the engine's
         // rendered-text hook. Setting the text, from here or from a prop write, resets the shown string to the

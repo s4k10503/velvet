@@ -398,6 +398,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, false, true)), measured);
         }
 
+        // GREEN_ON_BASE(characterization): the base never rewrote the white space of a leaf with nothing to balance, as the probe reads it there.
         [Test]
         public void Given_TextThatFitsOneLine_When_Balanced_Then_ItKeepsTheWhiteSpaceItWasWrittenWith()
         {
@@ -412,7 +413,7 @@ namespace Velvet.Tests
             var styled = _window.rootVisualElement.Q<Label>("styled");
 
             // Assert — neither collapsed nor written pre-wrap, since nothing was broken.
-            Assert.That((RenderedTextProbe.Of(styled), styled.style.whiteSpace.value), Is.EqualTo(("<line-height=1.5em>aaaa  bbbb</line-height>", WhiteSpace.Normal)));
+            Assert.That((RenderedTextProbe.Of(styled), styled.style.whiteSpace.value), Is.EqualTo(("aaaa  bbbb", WhiteSpace.Normal)));
         }
 
         // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.

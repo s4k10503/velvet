@@ -206,6 +206,10 @@ namespace Velvet
         internal static readonly EngineMember ComputedStyleBackgroundSize =
             ReadProperty(UIElements, ComputedStyleType, "backgroundSize", "UnityEngine.UIElements.BackgroundSize");
 
+        // TextLineBox's and FieldLineBox's reading of the alignment beneath the middle-* one they write inline.
+        internal static readonly EngineMember ComputedStyleUnityTextAlign =
+            ReadProperty(UIElements, ComputedStyleType, "unityTextAlign", "enum:UnityEngine.TextAnchor");
+
         // ProjectedCornerFace's reading of whether an element clips its content: the element's own computed style, inline
         // style included, since IResolvedStyle carries no overflow.
         internal static readonly EngineMember ComputedStyleOverflow =

@@ -51,8 +51,7 @@
 .not-italic { -unity-font-style: normal; }
 
 /* Text Align. The logical forms (Tailwind text-start/end) map to the LTR physical edges, since UI Toolkit
-   has no writing-direction: start = left, end = right. TextLineBox.AlignClassesInSheetOrder lists these rules in
-   this file's order. */
+   has no writing-direction: start = left, end = right. */
 .text-center { -unity-text-align: middle-center; }
 .text-end { -unity-text-align: middle-right; }
 .text-left { -unity-text-align: middle-left; }

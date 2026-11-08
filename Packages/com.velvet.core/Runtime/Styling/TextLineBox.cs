@@ -1,4 +1,7 @@
 #nullable enable
+using System;
+using System.Globalization;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -17,10 +20,11 @@ namespace Velvet
     //
     // So the element measures its text with the generator and replaces the height with that many line boxes,
     // reading the line count off the generator's height. CSS has no vertical alignment inside a line box, so the
-    // element is aligned middle-* with the horizontal part it resolves, and the placement is moved by a <voffset>
-    // around the whole shown text (Raise), which StyleTextEffectResolver writes: a raise of the content height less
-    // the line boxes' puts the first line's glyphs half a leading below the content box's top at any box height.
-    // TextLineBoxPlaybackTests pins it.
+    // element is aligned middle-* with the horizontal part it resolves (MiddleAlignment), and the placement is moved
+    // by a <voffset> around the whole shown text (Raise), which StyleTextEffectResolver writes: a raise of the content
+    // height less the line boxes' puts the first line's glyphs half a leading below the content box's top at any box
+    // height. A button's are centred in its box instead, as a browser centres a button's content.
+    // TextLineBoxPlaybackTests pins both.
     internal sealed class TextLineBox
     {
         // The marker whose rule in _typography.uss makes UI Toolkit send an element CustomStyleResolvedEvent, so the
@@ -33,20 +37,6 @@ namespace Velvet
         private const string Probe = "M";
         private const string TwoLines = "M\nM";
 
-        // The utilities that write -unity-text-align, in the order the bundled sheets declare them, since among
-        // several on one element the later rule is the one UI Toolkit applies. TextAlignSheetOrderTests reads the
-        // sheets to pin it.
-        internal static readonly System.Collections.Generic.KeyValuePair<string, TextAnchor>[] AlignClassesInSheetOrder =
-        {
-            new("text-center", TextAnchor.MiddleCenter),
-            new("text-end", TextAnchor.MiddleRight),
-            new("text-left", TextAnchor.MiddleLeft),
-            new("text-right", TextAnchor.MiddleRight),
-            new("text-start", TextAnchor.MiddleLeft),
-            new("text-top-center", TextAnchor.UpperCenter),
-            new("text-top-left", TextAnchor.UpperLeft),
-        };
-
         private float _fontSize = float.NaN;
         private float _pixelsPerPoint = float.NaN;
         private FontDefinition _font;
@@ -56,11 +46,21 @@ namespace Velvet
         private float _advance = float.NaN;
 
         private readonly TextElement _element;
+        private readonly bool _centred;
+        private readonly MiddleAlignment _alignment = new();
         private ReconcilerContext? _context;
         private string? _unraised;
 
-        // The alignment this wrote inline, or null while the element's alignment is its own.
-        private TextAnchor? _owned;
+        // Whether the shown text carries a line height tag, and whether it carries rich text of the app's own, whose
+        // tags can space or size a line past what a count of line boxes gives.
+        private bool _tagged;
+        private bool _ownMarkup;
+
+        // Whether the generator has laid the untagged text out in more than one line, so that it is shown with the
+        // preflight's tag until the text changes, whether it has been shown again for it, and the text it was.
+        private bool _spansLines;
+        private bool _retagged;
+        private string? _linesOf;
 
         // What the last settle read, so a geometry or style event that changed none of it measures nothing.
         private Rect _settledContent;
@@ -72,11 +72,16 @@ namespace Velvet
         private readonly Vector2[] _measured = { new(float.NaN, float.NaN), new(float.NaN, float.NaN), new(float.NaN, float.NaN), new(float.NaN, float.NaN) };
         private int _measuredNext;
 
-        public TextLineBox(TextElement element)
+        public TextLineBox(TextElement element, bool centred)
         {
             _element = element;
+            _centred = centred;
             element.RegisterCallback<GeometryChangedEvent>(_ =>
             {
+                if (Retag())
+                {
+                    return;
+                }
                 if (!SizedByItsMeasure())
                 {
                     Settle();
@@ -85,6 +90,10 @@ namespace Velvet
             element.RegisterCallback<CustomStyleResolvedEvent>(_ => Settle());
         }
 
+        // A TextElement's own DoMeasure.
+        public delegate Vector2 BaseMeasure(float desiredWidth, VisualElement.MeasureMode widthMode, float desiredHeight,
+            VisualElement.MeasureMode heightMode);
+
         // How far the shown text is raised, in pixels; negative lowers it.
         public float Raise { get; private set; }
 
@@ -92,24 +101,57 @@ namespace Velvet
         // line count and the box never depend on the raise they decide.
         public string? Unraised => Raise != 0f ? _unraised : null;
 
-        // Read before the element's own measure, so that the width the text handle keeps from its last measure is
-        // the element's text's rather than the probe's.
-        public static Lines Before(TextElement element, TextLineBox box, VisualElement.MeasureMode heightMode)
+        // Whether raw has been laid out in more than one line, and so is shown in the preflight's line height. Another
+        // text is measured afresh.
+        public bool SpansLines(string? raw)
         {
-            if (heightMode == VisualElement.MeasureMode.Exactly || string.IsNullOrEmpty(element.text))
+            if (!string.Equals(raw, _linesOf, StringComparison.Ordinal))
+            {
+                _linesOf = raw;
+                _spansLines = false;
+                _retagged = false;
+            }
+            return _spansLines;
+        }
+
+        // The context the element's text is shown in, for an element created with no text effect to apply.
+        public void Bind(ReconcilerContext context) => _context = context;
+
+        // Measures the element in line boxes. measure is the element's own measure, which is asked with no height
+        // constraint, since a height the generator capped is not a count of its lines.
+        public Vector2 Measure(float desiredWidth, VisualElement.MeasureMode widthMode, float desiredHeight,
+            VisualElement.MeasureMode heightMode, BaseMeasure measure)
+        {
+            if (heightMode == VisualElement.MeasureMode.Exactly)
+            {
+                return measure(desiredWidth, widthMode, desiredHeight, heightMode);
+            }
+            var lines = Before(_element, this);
+            var generated = Unraised is { } text
+                ? _element.MeasureTextSize(text, desiredWidth, widthMode, float.NaN, VisualElement.MeasureMode.Undefined)
+                : measure(desiredWidth, widthMode, float.NaN, VisualElement.MeasureMode.Undefined);
+            NoteLines(lines, generated);
+            var fit = lines.Fit(generated);
+            // The uncapped height is recorded, which is the one a settle compares the box with.
+            Record(widthMode == VisualElement.MeasureMode.Exactly ? desiredWidth : fit.x, fit.y);
+            if (heightMode == VisualElement.MeasureMode.AtMost) Record(widthMode == VisualElement.MeasureMode.Exactly ? desiredWidth : fit.x, Mathf.Min(fit.y, desiredHeight));
+            return heightMode == VisualElement.MeasureMode.AtMost ? new Vector2(fit.x, Mathf.Min(fit.y, desiredHeight)) : fit;
+        }
+
+        private static Lines Before(TextElement element, TextLineBox box)
+        {
+            if (string.IsNullOrEmpty(element.text))
             {
                 return default;
             }
-            var lineHeight = StyleTextEffectResolver.LineHeightOf(element, out var declared);
+            var lineHeight = StyleTextEffectResolver.LineHeightOf(element);
             if (float.IsNaN(lineHeight))
             {
                 return default;
             }
             var single = box.SingleLine(element);
-            // Rich text carries the line height as a tag (StyleTextEffectResolver writes the preflight's where the text
-            // can span lines); without one the lines advance by the font's own.
-            var tagged = element.enableRichText && (declared || StyleTextEffectResolver.CanSpanLines(element.text));
-            return new Lines(lineHeight, single, tagged ? lineHeight : box._advance);
+            var tagged = box._tagged && element.enableRichText;
+            return new Lines(lineHeight, single, tagged ? lineHeight : box._advance, tagged && box._ownMarkup);
         }
 
         // The height text takes at a width, in the line boxes of an element Velvet created and in the generator's
@@ -117,121 +159,77 @@ namespace Velvet
         public static float HeightAt(TextElement element, string text, float width)
         {
             var box = (element as ILineBoxed)?.LineBox;
-            var lines = box != null ? Before(element, box, VisualElement.MeasureMode.Undefined) : default;
+            var lines = box != null ? Before(element, box) : default;
             var generated = element.MeasureTextSize(box?.Unraised ?? text, width, VisualElement.MeasureMode.Exactly, float.NaN,
                 VisualElement.MeasureMode.Undefined);
-            return lines.Fit(generated, float.NaN, VisualElement.MeasureMode.Undefined).y;
+            return lines.Fit(generated).y;
         }
 
-        // The raise the shown text is written with, the context that wrote it and the text it raises.
-        public float Shown(ReconcilerContext context, string display)
+        // The raise the shown text is written with. tagged is whether display carries a line height tag and ownMarkup
+        // whether the app's text carries rich text of its own.
+        public float Shown(ReconcilerContext context, string display, bool tagged, bool ownMarkup)
         {
             _context = context;
-            if (!string.Equals(display, _unraised, System.StringComparison.Ordinal))
+            _tagged = tagged;
+            _ownMarkup = ownMarkup;
+            if (!string.Equals(display, _unraised, StringComparison.Ordinal))
             {
                 // Another text measures differently at every width.
-                System.Array.Fill(_measured, new Vector2(float.NaN, float.NaN));
+                Array.Fill(_measured, new Vector2(float.NaN, float.NaN));
             }
             _unraised = display;
             return Raise;
         }
 
-        // A pooled element starts its next use unraised, unowned and with its own alignment.
+        // A pooled element starts its next use unraised, untagged, unowned and with its own alignment.
         public void Reset()
         {
             Raise = 0f;
             _context = null;
             _unraised = null;
             _settledShown = null;
-            if (_owned != null)
-            {
-                _owned = null;
-                _element.style.unityTextAlign = StyleKeyword.Null;
-            }
+            Array.Fill(_measured, new Vector2(float.NaN, float.NaN));
+            _tagged = false;
+            _ownMarkup = false;
+            _spansLines = false;
+            _retagged = false;
+            _linesOf = null;
+            _alignment.Release(_element);
         }
 
-        // Aligns the element middle-* with the horizontal part it resolves. While the inline value is this one's, the
-        // part is read from the element's own alignment classes and otherwise inherited from its parent, since the
-        // resolved value is the inline one. An inline value somebody else wrote is left alone.
-        private void Align()
+        // An untagged text the generator wrapped is shown again with the preflight's tag. Read on a geometry change,
+        // which follows the measure that found the lines.
+        private bool Retag()
         {
-            if (float.IsNaN(StyleTextEffectResolver.LineHeightOf(_element)))
+            if (!_spansLines || _tagged || _retagged || _context == null || !_element.enableRichText)
             {
-                Release();
-                return;
+                return false;
             }
-            var inline = _element.style.unityTextAlign;
-            if (inline.keyword == StyleKeyword.Undefined && inline.value != _owned)
-            {
-                _owned = null;
-                return;
-            }
-            var underlying = _owned == null ? _element.resolvedStyle.unityTextAlign : Underlying();
-            var wanted = Middle(underlying);
-            if (_owned == null && wanted == underlying)
-            {
-                return;
-            }
-            if (_owned == wanted)
-            {
-                return;
-            }
-            _owned = wanted;
-            _element.style.unityTextAlign = wanted;
+            _retagged = true;
+            _settledShown = null;
+            StyleTextEffectResolver.ReapplyElement(_context, _element);
+            Settle();
+            return true;
         }
 
-        private void Release()
+        private void NoteLines(in Lines lines, Vector2 generated)
         {
-            if (_owned == null)
+            if (!_tagged && lines.Count(generated) > 1)
             {
-                return;
+                _spansLines = true;
             }
-            _owned = null;
-            _element.style.unityTextAlign = StyleKeyword.Null;
         }
-
-        private TextAnchor Underlying()
-        {
-            TextAnchor? plain = null;
-            TextAnchor? important = null;
-            var rank = -1;
-            var importantRank = -1;
-            foreach (var cls in _element.GetClasses())
-            {
-                var core = StyleArbitraryValueResolver.StripImportant(cls, out var isImportant);
-                for (var i = 0; i < AlignClassesInSheetOrder.Length; i++)
-                {
-                    if (core != AlignClassesInSheetOrder[i].Key)
-                    {
-                        continue;
-                    }
-                    if (isImportant && i > importantRank)
-                    {
-                        importantRank = i;
-                        important = AlignClassesInSheetOrder[i].Value;
-                    }
-                    else if (!isImportant && i > rank)
-                    {
-                        rank = i;
-                        plain = AlignClassesInSheetOrder[i].Value;
-                    }
-                }
-            }
-            return important ?? plain ?? _element.hierarchy.parent?.resolvedStyle.unityTextAlign ?? TextAnchor.UpperLeft;
-        }
-
-        // The middle-* anchor with the horizontal part of align.
-        internal static TextAnchor Middle(TextAnchor align) => align switch
-        {
-            TextAnchor.UpperCenter or TextAnchor.LowerCenter => TextAnchor.MiddleCenter,
-            TextAnchor.UpperRight or TextAnchor.LowerRight => TextAnchor.MiddleRight,
-            TextAnchor.UpperLeft or TextAnchor.LowerLeft => TextAnchor.MiddleLeft,
-            _ => align,
-        };
 
         private void Settle()
         {
-            Align();
+            if (float.IsNaN(StyleTextEffectResolver.LineHeightOf(_element)))
+            {
+                _alignment.Release(_element);
+            }
+            else
+            {
+                _alignment.Settle(_element);
+            }
             var context = _context;
             if (context == null || _element.panel == null)
             {
@@ -242,7 +240,7 @@ namespace Velvet
             {
                 return;
             }
-            var lines = Before(_element, this, VisualElement.MeasureMode.Undefined);
+            var lines = Before(_element, this);
             var shown = Unraised ?? StyleTextEffectResolver.DisplayedText(context, _element);
             var align = _element.resolvedStyle.unityTextAlign;
             if (content == _settledContent && ReferenceEquals(shown, _settledShown) && align == _settledAlign
@@ -264,6 +262,11 @@ namespace Velvet
             var generated = _element.MeasureTextSize(shown, content.width, VisualElement.MeasureMode.Exactly, float.NaN,
                 VisualElement.MeasureMode.Undefined);
             if (!(generated.y > 0f))
+            {
+                return;
+            }
+            NoteLines(lines, generated);
+            if (Retag())
             {
                 return;
             }
@@ -304,37 +307,34 @@ namespace Velvet
         private static bool IsMiddle(TextAnchor align)
             => align is TextAnchor.MiddleLeft or TextAnchor.MiddleCenter or TextAnchor.MiddleRight;
 
-        // Records a measure, whose width is the content box's when the layout sizes the element by it. A height the
-        // layout dictated is not one the text gave, so it is not recorded.
-        public Vector2 Measured(float width, VisualElement.MeasureMode widthMode, VisualElement.MeasureMode heightMode, Vector2 measure)
+        // Records the height the text measured at a width, keyed by the content box's width when the layout sizes the
+        // element by it.
+        private void Record(float width, float height)
         {
-            if (heightMode == VisualElement.MeasureMode.Exactly)
-            {
-                return measure;
-            }
-            var key = widthMode == VisualElement.MeasureMode.Exactly ? width : measure.x;
             for (var i = 0; i < _measured.Length; i++)
             {
-                if (Mathf.Abs(_measured[i].x - key) < 0.5f)
+                if (Mathf.Abs(_measured[i].x - width) < 0.5f)
                 {
-                    _measured[i] = new Vector2(key, measure.y);
-                    return measure;
+                    _measured[i] = new Vector2(width, height);
+                    return;
                 }
             }
-            _measured[_measuredNext] = new Vector2(key, measure.y);
+            _measured[_measuredNext] = new Vector2(width, height);
             _measuredNext = (_measuredNext + 1) % _measured.Length;
-            return measure;
         }
 
-        private static float Target(TextAnchor align, Lines lines, Rect content, Vector2 generated)
+        // The raise that puts the first line's glyphs half a leading below the top of the first line box, which a
+        // button centres in its box. A raise under an upper alignment can only lower the glyphs.
+        private float Target(TextAnchor align, in Lines lines, Rect content, Vector2 generated)
         {
+            var spare = content.height - lines.Fit(generated).y;
             if (IsMiddle(align))
             {
-                return content.height - lines.Fit(generated, float.NaN, VisualElement.MeasureMode.Undefined).y;
+                return _centred ? 0f : spare;
             }
             if (align is TextAnchor.UpperLeft or TextAnchor.UpperCenter or TextAnchor.UpperRight)
             {
-                return lines.Leading > 0f ? -lines.Leading * 0.5f : 0f;
+                return Mathf.Min(0f, -((_centred ? spare * 0.5f : 0f) + lines.Leading * 0.5f));
             }
             return 0f;
         }
@@ -365,12 +365,16 @@ namespace Velvet
         {
             private readonly float _singleLine;
             private readonly float _advance;
+            private readonly bool _byGenerator;
 
-            public Lines(float lineHeight, float singleLine, float advance)
+            // byGenerator takes the height off the generator's own lines, for a text whose markup can make a line other
+            // than one line height tall.
+            public Lines(float lineHeight, float singleLine, float advance, bool byGenerator)
             {
                 LineHeight = lineHeight;
                 _singleLine = singleLine;
                 _advance = advance;
+                _byGenerator = byGenerator;
             }
 
             public float LineHeight { get; }
@@ -383,19 +387,257 @@ namespace Velvet
                 => _advance > 0f ? 1 + Mathf.Max(0, Mathf.RoundToInt((generated.y - _singleLine) / _advance)) : 1;
 
             // The generator's measure with its height replaced by the line boxes, or unchanged where the element has no
-            // line height.
-            public Vector2 Fit(Vector2 generated, float desiredHeight, VisualElement.MeasureMode heightMode)
+            // line height. Under markup of the app's own, the first line takes the line height and every later one the
+            // advance the generator gave it.
+            public Vector2 Fit(Vector2 generated)
             {
-                if (!(generated.y > 0f))
+                if (!(generated.y > 0f) || !(_singleLine > 0f))
                 {
                     return generated;
                 }
-                var height = _singleLine > 0f ? Count(generated) * Mathf.Max(0f, LineHeight) : generated.y;
-                if (heightMode == VisualElement.MeasureMode.AtMost)
+                var height = _byGenerator ? generated.y + Leading : Count(generated) * LineHeight;
+                return new Vector2(generated.x, Mathf.Max(0f, height));
+            }
+        }
+    }
+
+    // A text element's alignment written middle-* with the horizontal part its rules or its parent give it, since CSS
+    // has no vertical alignment inside a line box. The part is read from the rules beneath the inline value
+    // (StyleCascade.TextAlign), which writing nothing leaves untouched, so a rule outside Velvet's own and a theme's
+    // default both reach it. An inline value somebody else wrote is left alone, and where the rules cannot be read
+    // the alignment is given back rather than written once and kept.
+    internal sealed class MiddleAlignment
+    {
+        // The alignment this wrote inline, or null while the element's alignment is its own.
+        private TextAnchor? _owned;
+
+        public void Settle(VisualElement element)
+        {
+            if (!StyleCascade.ReadsTextAlign)
+            {
+                Release(element);
+                return;
+            }
+            var inline = element.style.unityTextAlign;
+            if (inline.keyword == StyleKeyword.Undefined && inline.value != _owned)
+            {
+                _owned = null;
+                return;
+            }
+            TextAnchor underlying;
+            if (_owned == null)
+            {
+                underlying = element.resolvedStyle.unityTextAlign;
+            }
+            else if (StyleCascade.TextAlign(element) is { } cascaded)
+            {
+                underlying = cascaded;
+            }
+            else
+            {
+                return;
+            }
+            var wanted = Middle(underlying);
+            if (wanted == underlying)
+            {
+                Release(element);
+                return;
+            }
+            if (_owned == wanted)
+            {
+                return;
+            }
+            _owned = wanted;
+            element.style.unityTextAlign = wanted;
+        }
+
+        public void Release(VisualElement element)
+        {
+            if (_owned == null)
+            {
+                return;
+            }
+            _owned = null;
+            element.style.unityTextAlign = StyleKeyword.Null;
+        }
+
+        // The middle-* anchor with the horizontal part of align.
+        internal static TextAnchor Middle(TextAnchor align) => align switch
+        {
+            TextAnchor.UpperCenter or TextAnchor.LowerCenter => TextAnchor.MiddleCenter,
+            TextAnchor.UpperRight or TextAnchor.LowerRight => TextAnchor.MiddleRight,
+            TextAnchor.UpperLeft or TextAnchor.LowerLeft => TextAnchor.MiddleLeft,
+            _ => align,
+        };
+    }
+
+    // The app's own <voffset> and <line-height> tags inside the ones Velvet writes: the raise is added to each of the
+    // app's offsets and opened again after each of them closes, and Velvet's line height is opened again after each of
+    // the app's closes (Given_AnOffsetOfTheAppsUnderARaise_When_Shown_Then_TheRaiseIsAddedToItAndOpenedAgainAfterIt,
+    // Given_ALineHeightOfTheAppsThatCloses_When_Shown_Then_ThePreflightLineHeightIsOpenedAgainAfterIt). Text inside
+    // <noparse> is shown as written, and left so.
+    internal static class TextLineBoxMarkup
+    {
+        private const string NoParse = "noparse";
+
+        // display with every offset of the app's raised by raise pixels and the raise opened again after each one
+        // closes. fontSize is the element's, which an em offset and a <size> tag are taken of.
+        public static string Raised(string display, float raise, float fontSize)
+        {
+            var reopen = "<voffset=" + Pixels(raise) + "px>";
+            var sb = new StringBuilder(display.Length + 32);
+            var sizes = new System.Collections.Generic.List<float>();
+            var size = fontSize;
+            var copied = 0;
+            foreach (var tag in Tags(display))
+            {
+                var name = tag.Name;
+                if (name.Equals("size", StringComparison.OrdinalIgnoreCase))
                 {
-                    height = Mathf.Min(height, desiredHeight);
+                    if (tag.Value != null)
+                    {
+                        sizes.Add(size);
+                        size = SizeOf(tag.Value, fontSize, size);
+                    }
+                    continue;
                 }
-                return new Vector2(generated.x, height);
+                if (name.Equals("/size", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (sizes.Count > 0)
+                    {
+                        size = sizes[sizes.Count - 1];
+                        sizes.RemoveAt(sizes.Count - 1);
+                    }
+                    continue;
+                }
+                string? replacement = null;
+                var offset = name.Equals("voffset", StringComparison.OrdinalIgnoreCase) ? OffsetOf(tag.Value ?? string.Empty, size) : null;
+                if (offset != null)
+                {
+                    replacement = "<voffset=" + Pixels(offset.Value + raise) + "px>";
+                }
+                else if (name.Equals("/voffset", StringComparison.OrdinalIgnoreCase))
+                {
+                    replacement = "</voffset>" + reopen;
+                }
+                if (replacement != null)
+                {
+                    sb.Append(display, copied, tag.Start - copied).Append(replacement);
+                    copied = tag.End;
+                }
+            }
+            return sb.Append(display, copied, display.Length - copied).ToString();
+        }
+
+        // text with open written again after each of its own closing line height tags.
+        public static string Reopened(string text, string open)
+        {
+            if (text.IndexOf("</line-height", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return text;
+            }
+            var sb = new StringBuilder(text.Length + 32);
+            var copied = 0;
+            foreach (var tag in Tags(text))
+            {
+                if (tag.Name.Equals("/line-height", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append(text, copied, tag.End - copied).Append(open);
+                    copied = tag.End;
+                }
+            }
+            return sb.Append(text, copied, text.Length - copied).ToString();
+        }
+
+        private static string Pixels(float px) => px.ToString("0.##", CultureInfo.InvariantCulture);
+
+        // An offset in pixels: a bare number or px as written, an em of the font size in effect. Null for a percentage,
+        // which the generator refuses, and anything it cannot read.
+        private static float? OffsetOf(string value, float size)
+        {
+            if (value.EndsWith("em", StringComparison.OrdinalIgnoreCase))
+            {
+                return Number(value.Substring(0, value.Length - 2)) * size;
+            }
+            if (value.EndsWith("%", StringComparison.Ordinal))
+            {
+                return null;
+            }
+            if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+            {
+                value = value.Substring(0, value.Length - 2);
+            }
+            return Number(value);
+        }
+
+        // The font size a <size> tag sets, which the generator takes of the element's own size for a relative one.
+        private static float SizeOf(string value, float fontSize, float current)
+        {
+            if (value.EndsWith("em", StringComparison.OrdinalIgnoreCase))
+            {
+                return Number(value.Substring(0, value.Length - 2)) is { } em ? fontSize * em : current;
+            }
+            if (value.EndsWith("%", StringComparison.Ordinal))
+            {
+                return Number(value.Substring(0, value.Length - 1)) is { } percent ? fontSize * percent / 100f : current;
+            }
+            var relative = value.StartsWith("+", StringComparison.Ordinal) || value.StartsWith("-", StringComparison.Ordinal);
+            if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+            {
+                value = value.Substring(0, value.Length - 2);
+            }
+            return Number(value) is { } px ? (relative ? fontSize + px : px) : current;
+        }
+
+        private static float? Number(string value)
+            => float.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : null;
+
+        private readonly struct Tag
+        {
+            public Tag(int start, int end, string name, string? value)
+            {
+                Start = start;
+                End = end;
+                Name = name;
+                Value = value;
+            }
+
+            public int Start { get; }
+            public int End { get; }
+            public string Name { get; }
+            public string? Value { get; }
+        }
+
+        // Each tag outside <noparse>, its name before any '=' and its value after it, unquoted.
+        private static System.Collections.Generic.IEnumerable<Tag> Tags(string text)
+        {
+            var noParse = false;
+            for (var i = text.IndexOf('<'); i >= 0 && i < text.Length; i = text.IndexOf('<', i + 1))
+            {
+                var close = text.IndexOf('>', i + 1);
+                if (close < 0)
+                {
+                    yield break;
+                }
+                var body = text.Substring(i + 1, close - i - 1);
+                var equals = body.IndexOf('=');
+                var name = (equals < 0 ? body : body.Substring(0, equals)).Trim();
+                if (noParse)
+                {
+                    if (name.Equals("/" + NoParse, StringComparison.OrdinalIgnoreCase))
+                    {
+                        noParse = false;
+                    }
+                    continue;
+                }
+                if (name.Equals(NoParse, StringComparison.OrdinalIgnoreCase))
+                {
+                    noParse = true;
+                    continue;
+                }
+                var value = equals < 0 ? null : body.Substring(equals + 1).Trim().Trim('"', '\'');
+                yield return new Tag(i, close + 1, name, value);
+                i = close;
             }
         }
     }

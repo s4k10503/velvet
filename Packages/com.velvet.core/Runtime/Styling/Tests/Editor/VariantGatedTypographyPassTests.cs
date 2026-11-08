@@ -239,6 +239,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the control label carries no size class, so its shown string reads as its text did on the base.
         [Test]
         public void Given_AChildCombinatorTextEffectOverATextChild_When_Mounted_Then_TheTransformReachesIt()
         {
@@ -266,7 +267,7 @@ namespace Velvet.Tests
             // Assert — the element child rides along, so a walk that reached neither fails here rather than
             // reading as a transform the resolver declined to write.
             Assert.That((textAtMount, RenderedTextProbe.Of(scope.Root.Q<Label>("elem")), RenderedTextProbe.Of(text)),
-                Is.EqualTo(("<line-height=1.5em>TEXT-CHILD</line-height>", "<line-height=1.5em>LABEL-CHILD</line-height>", "<line-height=1.5em>TEXT-CHILD</line-height>")));
+                Is.EqualTo(("TEXT-CHILD", "LABEL-CHILD", "TEXT-CHILD")));
         }
 
         [Test]

@@ -180,6 +180,32 @@ namespace Velvet
         }
 #endif
 
+        // The text alignment the rules give, or the one inherited where none does; null where the cached style cannot be
+        // read. Read by an accessor compiled once, as RulesHash is, since a text element reads it in every style pass that
+        // resolves it.
+        public static UnityEngine.TextAnchor? TextAlign(VisualElement element)
+        {
+#if !ENABLE_IL2CPP
+            if (s_compiledTextAlign != null)
+            {
+                var read = s_compiledTextAlign(element);
+                return read == NotCached ? null : read;
+            }
+#endif
+            if (s_textAlign == null) return null;
+            return Of(element) is { } style ? (UnityEngine.TextAnchor)s_textAlign.GetValue(style) : null;
+        }
+
+        // Whether TextAlign can be read at all, so that a caller writing over the alignment can give it back instead.
+        public static bool ReadsTextAlign => s_textAlign != null && s_style != null && s_hash != null && s_tryGet != null;
+
+        private static readonly PropertyInfo? s_textAlign = EngineMember.ComputedStyleUnityTextAlign.ResolveProperty();
+        private const UnityEngine.TextAnchor NotCached = (UnityEngine.TextAnchor)(-1);
+#if !ENABLE_IL2CPP
+        private static readonly Func<VisualElement, UnityEngine.TextAnchor>? s_compiledTextAlign =
+            s_textAlign == null ? null : Compile(s_textAlign, NotCached);
+#endif
+
         // A corner's radius as the rules declare it, in LayoutIdLook's corner order; null where the cached style cannot
         // be read. Read by an accessor compiled once, as RulesHash is, since a layoutId projection can read it on every pass
         // (Given_AHolderRoundedByItsRules_When_ItsRadiiAreReadAgain_Then_NothingIsAllocated).

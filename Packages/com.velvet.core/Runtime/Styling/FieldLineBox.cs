@@ -1,20 +1,22 @@
 #nullable enable
-using UnityEngine;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
     // A single-line field's input text in a CSS line box: its text element is UI Toolkit's own, which Velvet cannot
     // measure for, so the line box is written to it as an inline height of the line height plus its own padding and
-    // border, and its text is aligned middle-* with the horizontal part it resolves, which CSS's half-leading places
-    // the same. A multiline field is left in the font's own lines: its text element shows no rich text, so nothing
-    // spaces its lines by the line height.
+    // border, and its text is aligned middle-* (MiddleAlignment), which CSS's half-leading places the same. A
+    // multiline field is left in the font's own lines: its text element shows no rich text, so nothing spaces its
+    // lines by the line height.
     internal sealed class FieldLineBox
     {
+        private static readonly ConditionalWeakTable<TextField, FieldLineBox> s_boxes = new();
+
         private readonly TextField _field;
         private readonly TextElement _text;
+        private readonly MiddleAlignment _alignment = new();
         private float? _ownedHeight;
-        private TextAnchor? _ownedAlign;
 
         private FieldLineBox(TextField field, TextElement text)
         {
@@ -29,7 +31,16 @@ namespace Velvet
         {
             if (field.textEdition is TextElement text)
             {
-                _ = new FieldLineBox(field, text);
+                s_boxes.Add(field, new FieldLineBox(field, text));
+            }
+        }
+
+        // A pooled field starts its next use with its input text's own height and alignment.
+        public static void Reset(TextField field)
+        {
+            if (s_boxes.TryGetValue(field, out var box))
+            {
+                box.Release();
             }
         }
 
@@ -50,18 +61,7 @@ namespace Velvet
                 _ownedHeight = height;
                 _text.style.height = height;
             }
-            var inlineAlign = _text.style.unityTextAlign;
-            if (inlineAlign.keyword == StyleKeyword.Undefined && inlineAlign.value != _ownedAlign)
-            {
-                return;
-            }
-            var align = style.unityTextAlign;
-            var wanted = TextLineBox.Middle(align);
-            if (wanted != align)
-            {
-                _ownedAlign = wanted;
-                _text.style.unityTextAlign = wanted;
-            }
+            _alignment.Settle(_text);
         }
 
         private void Release()
@@ -71,11 +71,7 @@ namespace Velvet
                 _text.style.height = StyleKeyword.Null;
             }
             _ownedHeight = null;
-            if (_ownedAlign != null && _text.style.unityTextAlign.value == _ownedAlign)
-            {
-                _text.style.unityTextAlign = StyleKeyword.Null;
-            }
-            _ownedAlign = null;
+            _alignment.Release(_text);
         }
     }
 }

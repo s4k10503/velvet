@@ -228,6 +228,31 @@ namespace Velvet.Tests
             // Assert
             Assert.That(difference[0], Is.EqualTo(0f).Within(1f));
         }
+    
+        private static VNode TextButton(string className)
+            => V.Button(name: "text", className: "w-[150px] border-0 bg-white text-black " + className, text: "HxgH");
+
+        [UnityTest]
+        public IEnumerator Given_TwoButtonHeights_When_Rendered_Then_TheGlyphsMoveByHalfTheirDifference()
+        {
+            // Arrange & Act — a browser centres a button's content in the button.
+            var difference = new float[1];
+            yield return Difference(TextButton("text-base h-[80px]"), TextButton("text-base h-[40px]"), difference);
+
+            // Assert
+            Assert.That(difference[0], Is.EqualTo(20f).Within(1f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ALabelWithNoTextEffectInATallBox_When_Rendered_Then_TheGlyphsStayInTheFirstLineBox()
+        {
+            // Arrange & Act — no class the text effect pass reads, so nothing but the line box places the glyphs.
+            var difference = new float[1];
+            yield return Difference(Text("h-[80px]"), Text(string.Empty), difference);
+
+            // Assert
+            Assert.That(difference[0], Is.EqualTo(0f).Within(1f));
+        }
     }
 }
 #endif
