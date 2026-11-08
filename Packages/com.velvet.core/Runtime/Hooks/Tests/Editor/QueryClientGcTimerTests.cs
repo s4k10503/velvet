@@ -701,9 +701,9 @@ namespace Velvet.Tests
         }
 
         private static IDictionary<QueryKey, QueryEntry> Entries()
-            => (IDictionary<QueryKey, QueryEntry>)typeof(QueryClient)
+            => (IDictionary<QueryKey, QueryEntry>)typeof(QueryCache)
                 .GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .GetValue(s_client)!;
+                .GetValue(s_client.GetQueryCache())!;
 
         private static int EntryCount() => Entries().Count;
 
