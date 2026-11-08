@@ -271,10 +271,11 @@ namespace Velvet
             return unmatched.Count == 0;
         }
 
-        // A string, a number, a bool and an enum are written as text no part unequal to them writes, and a sequence
-        // and a record or tuple by what they hold; anything else — a part compared by its own Equals, a dictionary, a
-        // set — is the number opaque gives it, one number for each set of parts Matches holds equal, so that a
-        // dictionary with its own key comparer and a value with its own equality hash as they compare.
+        // A string, a number, a bool and an enum are written as text no part unequal to them writes; a sequence, a
+        // record or tuple, a dictionary and a set by what they hold, a dictionary's entries and a set's elements in
+        // ordinal order of their text, so the order they were added in does not show, as v5's hashKey sorts an
+        // object's keys. Only a part compared by its own Equals is the number opaque gives it, one number for each
+        // set of parts Matches holds equal.
         internal static void AppendHash(StringBuilder builder, object? part, Func<object, int> opaque)
         {
             if (part == null)
@@ -283,21 +284,65 @@ namespace Velvet
                 return;
             }
             var kind = KindOf(part);
-            if (kind == QueryKeyPartKind.Value && TryAppendScalar(builder, part)) return;
-            if (kind != QueryKeyPartKind.Members && kind != QueryKeyPartKind.Sequence)
+            if (kind == QueryKeyPartKind.Value)
             {
+                if (TryAppendScalar(builder, part)) return;
                 builder.Append('#').Append(opaque(part).ToString(System.Globalization.CultureInfo.InvariantCulture));
                 return;
             }
             using var guard = new DepthGuard(true);
-            if (kind == QueryKeyPartKind.Members)
+            switch (kind)
             {
-                builder.Append(part.GetType().FullName);
-                AppendHashedItems(builder, '(', MembersOf(part), ')', opaque);
-                return;
+                case QueryKeyPartKind.Members:
+                    builder.Append(part.GetType().FullName);
+                    AppendHashedItems(builder, '(', MembersOf(part), ')', opaque);
+                    return;
+                case QueryKeyPartKind.Sequence:
+                    AppendHashedItems(builder, '[', (IEnumerable)part, ']', opaque);
+                    return;
+                case QueryKeyPartKind.Dictionary:
+                    AppendSortedEntries(builder, (IDictionary)part, opaque);
+                    return;
+                default:
+                    builder.Append("Set");
+                    AppendSorted(builder, '[', HashedTexts((IEnumerable)part, opaque), ']');
+                    return;
             }
-            AppendHashedItems(builder, '[', (IEnumerable)part, ']', opaque);
         }
+
+        private static List<string> HashedTexts(IEnumerable items, Func<object, int> opaque)
+        {
+            var texts = new List<string>();
+            foreach (var item in items)
+            {
+                var text = new StringBuilder();
+                AppendHash(text, item, opaque);
+                texts.Add(text.ToString());
+            }
+            return texts;
+        }
+
+        private static void AppendSortedEntries(StringBuilder builder, IDictionary dictionary, Func<object, int> opaque)
+        {
+            var entries = new List<string>();
+            var enumerator = dictionary.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                var entry = new StringBuilder();
+                AppendHash(entry, enumerator.Key, opaque);
+                entry.Append(':');
+                AppendHash(entry, enumerator.Value, opaque);
+                entries.Add(entry.ToString());
+            }
+            AppendSorted(builder, '{', entries, '}');
+        }
+
+        private static void AppendSorted(StringBuilder builder, char open, List<string> texts, char close)
+        {
+            texts.Sort(StringComparer.Ordinal);
+            builder.Append(open).Append(string.Join(",", texts)).Append(close);
+        }
+
 
         private static IEnumerable MembersOf(object part)
         {

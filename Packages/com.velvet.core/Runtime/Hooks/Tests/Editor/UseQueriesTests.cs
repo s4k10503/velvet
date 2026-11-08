@@ -315,6 +315,41 @@ namespace Velvet.Tests
             Assert.That(s_warnings, Is.EqualTo(2), "v5's setQueries warns each time it runs over duplicate queries");
         }
 
+        [Test]
+        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_TheyShareOneObserver()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(Reader);
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
+                Is.EqualTo(1), "v5's map of observers by hash keeps one for each entry");
+        }
+
+        [Test]
+        public void Given_AReadFromAQueryListingItsProps_When_AnotherQuerysDataChanges_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            using var mounted = Mount(ListedReader);
+            Settle(mounted, () =>
+            {
+                Source("a").TrySetResult(1);
+                Source("b").TrySetResult(2);
+            });
+            var renders = s_renders.Count;
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("b"), 9));
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders),
+                "v5 hands back the result of a query listing notifyOnChangeProps untracked, so its read tracks nothing");
+        }
+
         #endregion
 
         #region Suspense
@@ -473,6 +508,15 @@ namespace Velvet.Tests
 
         private static readonly Func<QueryResult<int>, QueryResult<string>, string> s_typedCombine
             = (number, text) => number.Data + "+" + text.Data;
+
+        [Component]
+        private static VNode ListedReader()
+        {
+            var (first, second) = Hooks.UseQueries(
+                Options("a") with { NotifyOnChangeProps = QueryProperties.Data }, Options("b"), s_client);
+            s_renders.Add(new[] { first, second });
+            return V.Label(text: "listed:" + first.Data + ":" + second.Status);
+        }
 
         [Component]
         private static VNode TypedReader()

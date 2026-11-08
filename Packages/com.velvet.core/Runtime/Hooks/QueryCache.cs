@@ -23,9 +23,9 @@ namespace Velvet
         /// <summary>
         /// TanStack Query's <c>queryHash</c>, what <see cref="QueryCache.Get"/> finds the entry by: the string the
         /// query's <see cref="QueryOptionsBase{TQueryFnData, TData}.QueryKeyHashFn"/> made of the key, or the key written
-        /// as text that equal keys write alike, as v5's <c>hashKey</c> writes JSON. A part the text cannot write by
-        /// value — one compared by its own <c>Equals</c>, a dictionary, a set — is written as a number the cache gives
-        /// every part equal to it while an entry holding one is in the cache.
+        /// as text that equal keys write alike, as v5's <c>hashKey</c> writes JSON, a dictionary's entries and a set's
+        /// elements sorted. A part compared by its own <c>Equals</c> is written as a number the cache gives every
+        /// part equal to it while an entry holding one is in the cache.
         /// </summary>
         public string QueryHash => Entry.Hash;
 
@@ -74,7 +74,8 @@ namespace Velvet
         /// <summary>
         /// Replaces the entry's state, TanStack Query's <c>setState</c>: its readers re-render and the cache announces
         /// a <see cref="QueryActionType.SetState"/>. Write <c>query.SetState(query.State with { ... })</c> to change
-        /// some fields. A request in flight is left as it is.
+        /// some fields. The whole state is written, <see cref="QueryState.FetchStatus"/> included, which stands until
+        /// the entry's next request, settling or cancellation sets it; a request in flight keeps running.
         /// </summary>
         /// <exception cref="InvalidOperationException">The state holds data of a type the entry cannot.</exception>
         public void SetState(QueryState state) => Entry.WriteState(state);
@@ -90,8 +91,8 @@ namespace Velvet
         /// <summary>
         /// Cancels the entry's request, TanStack Query's <c>cancel</c>. <paramref name="revert"/> puts the entry back
         /// as the request found it, and otherwise the cancellation is its error, as
-        /// <see cref="QueryClient.CancelQueries"/> describes; <paramref name="silent"/> stops the request and announces
-        /// nothing.
+        /// <see cref="QueryClient.CancelQueries"/> describes; <paramref name="silent"/> stops the request, leaves the
+        /// state as it stood, fetching included, and announces nothing, so a later fetch joins the cancelled request.
         /// </summary>
         /// <returns>A completed task.</returns>
         public VelvetTask Cancel(bool revert = false, bool silent = false)
@@ -150,6 +151,7 @@ namespace Velvet
         internal abstract object ResultOf(IQueryResultSource source);
         // v5's shouldSkipCombine: a suspending query whose result holds no data yet.
         internal abstract bool SuspendsWithoutData { get; }
+        internal abstract bool ListsNotifyProps { get; }
         // Whether the result differs from the one UseQueries last recorded, and recording it.
         internal abstract bool ResultChangedSinceRecorded { get; }
         internal abstract void RecordResult();
@@ -172,7 +174,8 @@ namespace Velvet
         Pause,
         /// <summary>The request stopped waiting.</summary>
         Continue,
-        /// <summary>The state was replaced: initial data taken, a cancelled request reverted, or a reset.</summary>
+        /// <summary>The state was replaced: by <see cref="Query.SetState"/>, initial data taken, a cancelled request
+        /// reverted, or a reset.</summary>
         SetState,
     }
 

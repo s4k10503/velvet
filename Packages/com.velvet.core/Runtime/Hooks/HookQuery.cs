@@ -651,8 +651,8 @@ namespace Velvet
         /// <see cref="QueryStatus.Pending"/>, TanStack Query's <c>isRefetching</c>; an infinite query's request for its
         /// next or previous page is not one.</summary>
         public bool IsRefetching => Read(QueryProperties.IsRefetching, _snapshot.IsRefetching);
-        /// <summary>True when the result is <see cref="QueryStatus.Error"/> over an entry that holds data, TanStack
-        /// Query's <c>isRefetchError</c>; an infinite query's failure to fetch its next or previous page is not
+        /// <summary>True when the result is <see cref="QueryStatus.Error"/> and holds data, TanStack Query's
+        /// <c>isRefetchError</c>; an infinite query's failure to fetch its next or previous page is not
         /// one.</summary>
         public bool IsRefetchError => Read(QueryProperties.IsRefetchError, _snapshot.IsRefetchError);
 
@@ -690,13 +690,11 @@ namespace Velvet
         internal int FailureCount { get; init; }
         internal Exception? FailureReason { get; init; }
         internal bool IsPlaceholderData { get; init; }
-        // Whether the entry holds data, where v5 reads whether its dataUpdatedAt is other than zero.
-        internal bool EntryHasData { get; init; }
-
-        // TanStack's isRefetching and isRefetchError, with an infinite query's paging requests taken out as its
-        // InfiniteQueryObserver takes them out; any other query has no FetchDirection.
+        // TanStack's isRefetching and isRefetchError, the latter over the result's own data as v5's hasData reads it,
+        // with an infinite query's paging requests taken out as its InfiniteQueryObserver takes them out; any other
+        // query has no FetchDirection.
         internal bool IsRefetching => FetchStatus == QueryFetchStatus.Fetching && Status != QueryStatus.Pending && FetchDirection == null;
-        internal bool IsRefetchError => Status == QueryStatus.Error && EntryHasData && FetchDirection == null;
+        internal bool IsRefetchError => Status == QueryStatus.Error && HasData && FetchDirection == null;
         // An infinite query's: whether its paging names a page either side, and the end the entry's latest request
         // was asked for, TanStack's fetchMeta.fetchMore.direction.
         internal bool HasNextPage { get; init; }
@@ -1106,6 +1104,21 @@ namespace Velvet
 
         internal void SetRetry(RetryRule retry) => Retry = retry;
 
+        // What a fetch of an entry handed no options runs, TanStack's ensureQueryFn over no queryFn: a function that
+        // fails, with the client's retries.
+        internal static QueryFetchOptions<T> Missing(QueryClient client, string hash)
+        {
+            var missing = new InvalidOperationException($"Missing queryFn: '{hash}'");
+            return new QueryFetchOptions<T>
+            {
+                QueryFn = QueryFunction.Of(() => VelvetTask.FromException<T>(missing)),
+                Retry = client.DefaultRetry ?? 3,
+                RetryDelay = client.DefaultRetryDelay,
+                NetworkMode = client.DefaultNetworkMode,
+                KeyHashFn = client.DefaultQueryKeyHashFn,
+            };
+        }
+
         internal void SetBehavior(IQueryBehavior<T>? behavior) => Behavior = behavior;
 
         internal QueryFetchOptions<T> Copy() => (QueryFetchOptions<T>)MemberwiseClone();
@@ -1486,6 +1499,8 @@ namespace Velvet
 
         internal override bool SuspendsWithoutData => _settings.Suspense && !_current.HasData;
 
+        internal override bool ListsNotifyProps => _settings.Options?.NotifyOnChangeProps != null;
+
         private QuerySnapshot<TData> _recorded;
         private bool _hasRecorded;
 
@@ -1584,7 +1599,6 @@ namespace Velvet
                 FailureCount = failureCount,
                 FailureReason = failureReason,
                 IsPlaceholderData = isPlaceholderData,
-                EntryHasData = hasSource,
 
                 // v5 reads the paging off the entry's own data, not the selected or placeholder data.
                 HasNextPage = paging != null && hasSource && paging.HasNextPage(source),

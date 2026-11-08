@@ -478,17 +478,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoKeysHoldingEqualDictionariesBuiltInAnotherOrder_When_TheirHashesAreRead_Then_TheDictionariesHashAlike()
+        public void Given_ADictionaryBuiltOutOfOrder_When_ItsHashIsRead_Then_ItsEntriesAreWrittenSorted()
         {
             // Arrange
-            s_client.SetQueryData(new QueryKey("first", new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }), 1);
             s_client.SetQueryData(new QueryKey("second", new Dictionary<string, int> { ["b"] = 2, ["a"] = 1 }), 1);
 
             // Act
             var hash = s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("second"), Exact = false })!.QueryHash;
 
             // Assert
-            Assert.That(hash, Is.EqualTo("[\"second\",#1]"), "Equal parts the hash cannot write by value share one number");
+            Assert.That(hash, Is.EqualTo("[\"second\",{\"a\":1,\"b\":2}]"),
+                "A dictionary's entries are written sorted, as v5's hashKey sorts an object's keys");
         }
 
         [Test]
@@ -601,6 +601,7 @@ namespace Velvet.Tests
         public void Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_ItFaultsForTheMissingFunction()
         {
             // Arrange
+            s_client = new QueryClient(new QueryClientOptions { QueryCache = s_client.GetQueryCache(), Retry = 0, Clock = () => s_now });
             s_client.SetQueryData(Todos, 1);
 
             // Act
@@ -608,6 +609,62 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ExceptionOf(task)?.Message, Does.StartWith("Missing queryFn"));
+        }
+
+        [Test]
+        public void Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_TheEntryTakesTheMissingFunctionsError()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { QueryCache = s_client.GetQueryCache(), Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(Todos, 1);
+
+            // Act
+            _ = Find().Fetch();
+
+            // Assert
+            Assert.That(Find().State.Status, Is.EqualTo(QueryStatus.Error),
+                "v5 runs the fetch with a function that rejects as missing, which settles as an error");
+        }
+
+        [Test]
+        public void Given_ARequestInFlight_When_SetStateWritesIdle_Then_TheEntryReadsIdle()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            var query = Find();
+
+            // Act
+            query.SetState(query.State with { FetchStatus = QueryFetchStatus.Idle });
+
+            // Assert
+            Assert.That(Find().State.FetchStatus, Is.EqualTo(QueryFetchStatus.Idle), "v5's setState replaces fetchStatus too");
+        }
+
+        [Test]
+        public void Given_ARequestInFlight_When_CancelIsSilent_Then_TheEntryStillReadsFetching()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+
+            // Act
+            _ = Find().Cancel(silent: true);
+
+            // Assert
+            Assert.That(Find().State.FetchStatus, Is.EqualTo(QueryFetchStatus.Fetching));
+        }
+
+        [Test]
+        public void Given_ARequestCancelledSilently_When_FetchRuns_Then_NoRequestStarts()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            _ = Find().Cancel(silent: true);
+
+            // Act
+            _ = Find().Fetch();
+
+            // Assert
+            Assert.That(s_sources.Count, Is.EqualTo(1), "v5 joins the cancelled retryer while its status is not idle");
         }
 
         [Test]

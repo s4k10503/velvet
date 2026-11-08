@@ -686,8 +686,8 @@ connection or the application's visibility (below), and `Idle` otherwise. `Predi
 **The query cache.** `QueryCache` holds the client's entries, one `Query` each, the same instance for as long
 as the entry stays. `Subscribe` hears an entry `Added` and `Removed` — by `RemoveQueries`, `Clear` and garbage
 collection alike — `Updated` with the `QueryActionType` that changed it (`Fetch`, `Success`, `Error`,
-`Failed`, `Pause`, `Continue`, `Invalidate`, and `SetState` for initial data, a reverted cancellation and a
-reset), and a mounted query `ObserverAdded`, `ObserverRemoved`, `ObserverResultsUpdated` whenever its result
+`Failed`, `Pause`, `Continue`, `Invalidate`, and `SetState` for `Query.SetState`, initial data, a reverted
+cancellation and a reset), and a mounted query `ObserverAdded`, `ObserverRemoved`, `ObserverResultsUpdated` whenever its result
 changes, whatever the component reads, and `ObserverOptionsUpdated` when a commit hands it options unequal
 to the previous commit's. `OnSuccess` and then `OnSettled` run once a request's data has landed, with the
 data the query function returned; a throw from either turns the request into a failure over the data it
@@ -696,20 +696,21 @@ data the entry holds, and when `CancelQueries(revert: false)` cancels one; a thr
 `OnSettled` and is what a `FetchQuery` caller is handed. `SetQueryData` runs none of them. `Find` matches
 exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `Get` finds an entry by its
 `QueryHash`: the string its `QueryKeyHashFn` made, or the key written as JSON is — `["todos",1]` — with each
-number other than an `int` suffixed by its type, and a part that cannot be written by value (one compared by
-its own `Equals`, a dictionary, a set) written `#` and a number the cache gives every part equal to it, so equal
-keys hash alike. An invalidation tells the entry's mounted queries before the cache, as v5's dispatch does, so a
+number other than an `int` suffixed by its type, a dictionary's entries and a set's elements sorted by their
+text as v5 sorts an object's keys, and a part compared by its own `Equals` written `#` and a number the cache
+gives every part equal to it while an entry holds one, so equal keys hash alike. An invalidation tells the entry's mounted queries before the cache, as v5's dispatch does, so a
 result reading `IsStale` turns stale with it. `IsFetching` and `Hooks.UseIsFetching` count the entries selected
 that are `Fetching`, a paused one left out.
 
 **Several queries in one hook.** `UseQueries` reads each query of its list as `UseQuery` would and returns the
 results in the list's order, so the number of queries can change between renders. A query keeps its observer
 while some query of the list reads the same entry, whatever its position, as v5 matches observers by
-`queryHash`; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
+`queryHash`, and queries of one list over one entry share one observer, as v5's map of them keeps one; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
 entry logs a warning, in the Editor and a development build, as v5 warns outside production. Two to four
 queries passed as their own arguments keep their own data types, and the hook returns a tuple of their results
 or hands `combine` each result as its own argument; a list built at run time holds queries of one type. A
-property read from any result is tracked for all of them, as v5's `trackResult` shares one set. The first
+property read from a result is tracked for all of them, as v5's `trackResult` shares one set, except from the
+result of a query that lists `NotifyOnChangeProps`, which v5 hands back untracked. The first
 query whose error its `ThrowOnError` throws is thrown from the hook. With a `combine`, the hook returns what it
 makes of the results: it runs again only when a query's result has changed, the queries' keys have changed or
 it is another instance, what it returns keeps the previous instance where the two are deeply equal, and the

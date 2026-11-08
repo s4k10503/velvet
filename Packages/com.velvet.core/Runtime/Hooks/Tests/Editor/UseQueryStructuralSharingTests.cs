@@ -97,7 +97,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True, "Deeply equal data is the instance already held");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheHeldListAndRecordAreKept_ReferenceEqualsResultHeld()
         {
@@ -113,7 +112,6 @@ namespace Velvet.Tests
                 "A record whose fields are all equal is the instance already held");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheHeldListAndRecordAreKept_0Held0()
         {
@@ -129,7 +127,6 @@ namespace Velvet.Tests
                 "A record whose fields are all equal is the instance already held");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AListSharingOneRecordInstanceAndHoldingAChangedOne_When_Replaced_Then_TheSharedRecordIsKeptAndTheChangedOneIsNew_Result0Shared()
         {
@@ -146,7 +143,6 @@ namespace Velvet.Tests
                 "A record changed in place of the held one is the new instance");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AListSharingOneRecordInstanceAndHoldingAChangedOne_When_Replaced_Then_TheSharedRecordIsKeptAndTheChangedOneIsNew_1Arrived1()
         {
@@ -163,7 +159,6 @@ namespace Velvet.Tests
                 "A record changed in place of the held one is the new instance");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_TheEqualRecordKeepsItsInstance_0Held0()
         {
@@ -179,7 +174,6 @@ namespace Velvet.Tests
                 "The record with every field equal is the held one and the changed one is the new instance");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_TheEqualRecordKeepsItsInstance_1Arrived1()
         {
@@ -209,7 +203,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AListLongerThanTheHeldOne_When_Replaced_Then_TheSharedPrefixKeepsItsInstances_0Held0()
         {
@@ -226,7 +219,6 @@ namespace Velvet.Tests
                 "A list is not the held one because the part it shares with it is equal");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AListLongerThanTheHeldOne_When_Replaced_Then_TheSharedPrefixKeepsItsInstances_ResultCount()
         {
@@ -243,7 +235,6 @@ namespace Velvet.Tests
                 "A list is not the held one because the part it shares with it is equal");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AListShorterThanTheHeldOne_When_Replaced_Then_ItIsNotTheHeldListButKeepsTheEqualRecord_0Held0()
         {
@@ -260,7 +251,6 @@ namespace Velvet.Tests
                 "Everything the new list holds equals the held list's, yet the held list holds more");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AListShorterThanTheHeldOne_When_Replaced_Then_ItIsNotTheHeldListButKeepsTheEqualRecord_ResultCount()
         {
@@ -277,7 +267,6 @@ namespace Velvet.Tests
                 "Everything the new list holds equals the held list's, yet the held list holds more");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADictionaryWithOneChangedValue_When_Replaced_Then_TheEqualValueKeepsItsInstanceAndTheChangedOneIsNew_AHeldA()
         {
@@ -293,7 +282,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result["a"], held["a"]), Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADictionaryWithOneChangedValue_When_Replaced_Then_TheEqualValueKeepsItsInstanceAndTheChangedOneIsNew_BArrivedB()
         {
@@ -345,7 +333,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ListsNestedInAList_When_OneInnerListIsEqual_Then_ItKeepsItsInstance_0Held0()
         {
@@ -361,7 +348,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result[0], held[0]), Is.EqualTo(true), "Equal parts are found at any depth");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ListsNestedInAList_When_OneInnerListIsEqual_Then_ItKeepsItsInstance_1Arrived1()
         {
@@ -391,7 +377,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True, "A class is shared through its fields, not through its Equals");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AClassEqualByItsOwnEqualsButWithADifferingField_When_Replaced_Then_ItIsNotTheHeldInstance_ReferenceEqualsResultHeld()
         {
@@ -407,7 +392,6 @@ namespace Velvet.Tests
                 "An Equals that means less than every field does not stand in for them");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AClassEqualByItsOwnEqualsButWithADifferingField_When_Replaced_Then_ItIsNotTheHeldInstance_ResultNote()
         {
@@ -478,7 +462,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, arrived), Is.True, "An array and a list are not the same shape of data");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance_ReferenceEqualsShallowHeldShallow()
         {
@@ -496,7 +479,6 @@ namespace Velvet.Tests
                 "Sharing stops descending at the depth v5 stops at and takes the new data there");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance_ReferenceEqualsDeepHeldDeep()
         {
@@ -630,7 +612,6 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(handedHeld, first), Is.True);
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFunctionThatThrows_When_TheRequestLands_Then_TheQueryReportsTheError_Status()
         {
@@ -648,7 +629,6 @@ namespace Velvet.Tests
                 "A function that fails is a failed request, as v5 reports a structural sharing that throws");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFunctionThatThrows_When_TheRequestLands_Then_TheQueryReportsTheError_ErrorMessage()
         {

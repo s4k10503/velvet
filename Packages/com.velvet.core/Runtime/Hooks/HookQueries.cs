@@ -12,6 +12,8 @@ namespace Velvet
     {
         internal abstract QueryKey KeyId { get; }
         internal abstract QueryObserver Observer { get; }
+        // TanStack's trackResult hands back a result whose query lists notifyOnChangeProps untracked.
+        internal abstract bool ListsNotifyProps { get; }
         internal abstract void Settle(QueryClient client, bool suspense);
         internal abstract void Match(QueryObserver? held, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
@@ -33,6 +35,7 @@ namespace Velvet
 
         internal override QueryKey KeyId => _settings.KeyId;
         internal override QueryObserver Observer => _observer;
+        internal override bool ListsNotifyProps => _options.NotifyOnChangeProps != null;
 
         internal override void Settle(QueryClient client, bool suspense)
             => _settings = new QuerySettings<TQueryFnData, TData>(_options, client, suspense);
@@ -91,17 +94,20 @@ namespace Velvet
     {
         private readonly QueryObserver[] _observers;
         private readonly int _index;
+        private readonly bool _untracked;
 
-        internal QueriesResultSource(QueryObserver[] observers, int index)
+        internal QueriesResultSource(QueryObserver[] observers, int index, bool untracked)
         {
             _observers = observers;
             _index = index;
+            _untracked = untracked;
         }
 
         public void Refetch() => ((IQueryResultSource)_observers[_index]).Refetch();
 
         public void Track(QueryProperties property)
         {
+            if (_untracked) return;
             foreach (var observer in _observers)
             {
                 observer.TrackFor(property);
@@ -177,27 +183,25 @@ namespace Velvet
             for (var i = 0; i < items.Length; i++)
             {
                 read.Keys[i] = items[i].KeyId;
-                read.Results[i] = items[i].Read(client, boundary, new QueriesResultSource(read.Observers, i));
+                read.Results[i] = items[i].Read(client, boundary, new QueriesResultSource(read.Observers, i, items[i].ListsNotifyProps));
             }
             return read;
         }
 
-        // TanStack's #findMatchingObservers: a query takes the first observer the last commit held over the same entry
-        // that no earlier query took, and a new observer otherwise.
+        // TanStack's #findMatchingObservers: a query takes the observer the last commit held over the same entry, the
+        // last of them where several did, as v5's Map keeps the last; queries over one entry share it, and a query
+        // over an entry no observer held takes a new one.
         private void Match(QueriesRead read)
         {
-            var byKey = new Dictionary<QueryKey, Queue<QueryObserver>>();
+            var byKey = new Dictionary<QueryKey, QueryObserver>();
             foreach (var observer in _observers)
             {
-                if (observer.CommittedKeyId is not { } id) continue;
-                if (!byKey.TryGetValue(id, out var queue)) byKey.Add(id, queue = new Queue<QueryObserver>());
-                queue.Enqueue(observer);
+                if (observer.CommittedKeyId is { } id) byKey[id] = observer;
             }
             for (var i = 0; i < read.Items.Length; i++)
             {
                 var item = read.Items[i];
-                var held = byKey.TryGetValue(item.KeyId, out var queue) && queue.Count > 0 ? queue.Dequeue() : null;
-                item.Match(held, OnObserverChanged);
+                item.Match(byKey.TryGetValue(item.KeyId, out var held) ? held : null, OnObserverChanged);
                 read.Observers[i] = item.Observer;
             }
         }
@@ -303,7 +307,7 @@ namespace Velvet
             var results = new object[_observers.Length];
             for (var i = 0; i < results.Length; i++)
             {
-                results[i] = _observers[i].ResultOf(new QueriesResultSource(_observers, i));
+                results[i] = _observers[i].ResultOf(new QueriesResultSource(_observers, i, _observers[i].ListsNotifyProps));
             }
             return results;
         }

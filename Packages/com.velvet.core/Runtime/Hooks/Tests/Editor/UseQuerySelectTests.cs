@@ -115,7 +115,6 @@ namespace Velvet.Tests
                 "The entry keeps what the query function returned; only the result is selected");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AStableSelect_When_TheComponentRendersAgain_Then_ItDoesNotRunAgain_Runs()
         {
@@ -131,7 +130,6 @@ namespace Velvet.Tests
             Assert.That(runs, Is.EqualTo(1), "The select runs again only for new data or a new select");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AStableSelect_When_TheComponentRendersAgain_Then_ItDoesNotRunAgain_Selects()
         {
@@ -163,7 +161,6 @@ namespace Velvet.Tests
             Assert.That(s_selects, Is.EqualTo(runs + 1), "A select is remembered by instance, as v5 compares it with ===");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ASelectionEqualToTheLast_When_NewDataLands_Then_TheResultKeepsTheSelectedInstance_Selects()
         {
@@ -182,7 +179,6 @@ namespace Velvet.Tests
                 "What the select returns is shared structurally with the result's data, as v5's replaceData does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ASelectionEqualToTheLast_When_NewDataLands_Then_TheResultKeepsTheSelectedInstance_ReferenceEqualsDataSelected()
         {
@@ -228,7 +224,6 @@ namespace Velvet.Tests
             Assert.That(s_counts[s_counts.Count - 1].Data, Is.EqualTo(103), "The selected data goes through the function as v5's replaceData does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ASelectThatThrows_When_TheRequestLands_Then_TheResultIsAnErrorCarryingItsException_Status()
         {
@@ -243,7 +238,6 @@ namespace Velvet.Tests
                 "A failing select is the result's error");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ASelectThatThrows_When_TheRequestLands_Then_TheResultIsAnErrorCarryingItsException_ErrorMessage()
         {
@@ -324,7 +318,6 @@ namespace Velvet.Tests
                 "A select error goes with the data it ran on, as v5 clears it once the data is undefined");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AStableSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain_Status()
         {
@@ -343,7 +336,6 @@ namespace Velvet.Tests
                 "The memo goes with the cleared error, so the data that comes back is selected and fails again");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AStableSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain_ErrorMessage()
         {

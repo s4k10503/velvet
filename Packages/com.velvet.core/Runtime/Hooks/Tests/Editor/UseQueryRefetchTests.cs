@@ -156,7 +156,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "The interval fetches once it has passed, not before");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARefetchInterval_When_ARefetchLandsPartWay_Then_TheIntervalStartsOverFromIt_AtTheFirstInterval()
             => VelvetTask.ToCoroutine(async () =>
@@ -179,7 +178,6 @@ namespace Velvet.Tests
                 "Each change of the entry restarts the interval, as v5's onQueryUpdate restarts its timers");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARefetchInterval_When_ARefetchLandsPartWay_Then_TheIntervalStartsOverFromIt_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -393,7 +391,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "A tick skipped while hidden is skipped, as v5's setInterval only checks at its ticks");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARefetchInFlightOverData_When_TheIntervalPasses_Then_ItJoinsTheRefetch_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -411,7 +408,6 @@ namespace Velvet.Tests
                 "The interval's fetch joins a request in flight rather than starting it over");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARefetchInFlightOverData_When_TheIntervalPasses_Then_ItJoinsTheRefetch_Tokens1IsCancellationRequested()
             => VelvetTask.ToCoroutine(async () =>
@@ -571,7 +567,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0), "A disabled query does not refetch on focus");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARefetchInFlightOverData_When_TheApplicationBecomesVisible_Then_ItIsJoined_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -588,7 +583,6 @@ namespace Velvet.Tests
                 "A refetch on focus joins the request in flight rather than starting it over, as v5's cancelRefetch: false");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARefetchInFlightOverData_When_TheApplicationBecomesVisible_Then_ItIsJoined_Tokens1IsCancellationRequested()
             => VelvetTask.ToCoroutine(async () =>
@@ -782,7 +776,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "A function returning no interval, like false in v5, sets none");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenQueryKeyToString()
         {
@@ -802,7 +795,6 @@ namespace Velvet.Tests
                 "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenStatusToString()
         {
@@ -822,7 +814,6 @@ namespace Velvet.Tests
                 "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenDataToString()
         {
@@ -842,7 +833,6 @@ namespace Velvet.Tests
                 "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenIsFetchingToString()
         {
@@ -974,7 +964,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "IfStale from a function fetches only stale data, as the mode does");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AWindowFocusFunction_When_TheApplicationBecomesVisible_Then_ItIsHandedTheEntry_SeenStatusToString()
             => VelvetTask.ToCoroutine(async () =>
@@ -996,7 +985,6 @@ namespace Velvet.Tests
                 "The function reads the entry the signal refetches");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AWindowFocusFunction_When_TheApplicationBecomesVisible_Then_ItIsHandedTheEntry_SeenDataToString()
             => VelvetTask.ToCoroutine(async () =>
@@ -1188,7 +1176,6 @@ namespace Velvet.Tests
             Assert.That(IsPolling(), Is.True, "Watching a client marks the poll as running, so the next watch joins it");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_EveryWatchedClientsReadersUnmounted_When_FramesPass_Then_ThePollingStops_WatcherCount()
             => VelvetTask.ToCoroutine(async () =>
@@ -1205,7 +1192,6 @@ namespace Velvet.Tests
                 "With nothing left to watch, the poll ends rather than reading on every frame");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_EveryWatchedClientsReadersUnmounted_When_FramesPass_Then_ThePollingStops_IsPolling()
             => VelvetTask.ToCoroutine(async () =>
@@ -1358,7 +1344,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "The refetch a throwing observer interrupted still runs the query function");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_WatcherCount()
         {
@@ -1378,7 +1363,6 @@ namespace Velvet.Tests
                 "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_IsPolling()
         {
@@ -1398,7 +1382,6 @@ namespace Velvet.Tests
                 "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_SignalsStaticVisibleFailureLogged()
         {
@@ -1418,7 +1401,6 @@ namespace Velvet.Tests
                 "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_SignalsStaticOnlineFailureLogged()
         {
@@ -1438,7 +1420,6 @@ namespace Velvet.Tests
                 "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_NetworkSignalsIsVisible()
         {
@@ -1458,7 +1439,6 @@ namespace Velvet.Tests
                 "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_NetworkSignalsIsOnline()
         {

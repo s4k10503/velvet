@@ -33,6 +33,7 @@ namespace Velvet.Tests
             s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => TimeSpan.Zero });
             s_sources.Clear();
             s_renders.Clear();
+            s_selected.Clear();
         }
 
         [Test]
@@ -86,6 +87,37 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Last().IsRefetchError, Is.False, "v5's isRefetchError needs data to have landed before");
+        }
+
+        [Test]
+        public void Given_ASelectThatThrows_When_TheDataLands_Then_ItIsNotARefetchError()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(FailingSelectReader, key: "reader"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_selected[s_selected.Count - 1].IsRefetchError, Is.False,
+                "v5 reads the result's data, which a select that threw leaves without");
+        }
+
+        private static readonly List<QueryResult<string>> s_selected = new();
+
+        [Component]
+        private static VNode FailingSelectReader()
+        {
+            s_selected.Add(Hooks.UseQuery(
+                new QueryOptions<int, string>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
+                {
+                    Select = _ => throw new InvalidOperationException("select"),
+                    NotifyOnChangeProps = QueryProperties.All,
+                },
+                s_client));
+            return V.Label(text: "reader");
         }
 
         private MountedTree Mount()

@@ -66,7 +66,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AComponentReadingIsStale_When_TheStaleTimeElapses_Then_ItRerendersAsStale_EarlyRendersBefore()
             => VelvetTask.ToCoroutine(async () =>
@@ -87,7 +86,6 @@ namespace Velvet.Tests
                 "Fresh data turns stale when its age reaches the stale time, and not before");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AComponentReadingIsStale_When_TheStaleTimeElapses_Then_ItRerendersAsStale_ResultIsStale()
             => VelvetTask.ToCoroutine(async () =>
@@ -184,7 +182,6 @@ namespace Velvet.Tests
             Assert.That(s_result.IsStale, Is.True, "The commit that follows the first read of IsStale starts the wait");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_FreshDataLandingAgainLater_When_TheFirstStaleTimeElapses_Then_ItIsStillFreshUntilTheSecond_AtTheFirstDeadlineRendersBefore()
             => VelvetTask.ToCoroutine(async () =>
@@ -209,7 +206,6 @@ namespace Velvet.Tests
                 "Data that landed later is stale a stale time after it did");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_FreshDataLandingAgainLater_When_TheFirstStaleTimeElapses_Then_ItIsStillFreshUntilTheSecond_ResultIsStale()
             => VelvetTask.ToCoroutine(async () =>

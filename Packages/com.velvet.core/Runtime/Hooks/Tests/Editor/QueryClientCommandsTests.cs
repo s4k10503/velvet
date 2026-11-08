@@ -64,7 +64,6 @@ namespace Velvet.Tests
             Assert.That(state, Is.Null);
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateStatus()
         {
@@ -78,7 +77,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Success));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateHasData()
         {
@@ -92,7 +90,6 @@ namespace Velvet.Tests
             Assert.That(state.HasData, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateData()
         {
@@ -106,7 +103,6 @@ namespace Velvet.Tests
             Assert.That(state.Data, Is.EqualTo(7));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateIsFetching()
         {
@@ -120,7 +116,6 @@ namespace Velvet.Tests
             Assert.That(state.IsFetching, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestInFlight_When_GetQueryStateReads_Then_ItIsFetching_StateStatus()
         {
@@ -134,7 +129,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestInFlight_When_GetQueryStateReads_Then_ItIsFetching_StateIsFetching()
         {
@@ -148,7 +142,6 @@ namespace Velvet.Tests
             Assert.That(state.IsFetching, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount_StateStatus()
         {
@@ -163,7 +156,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Error));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount_StateErrorMessage()
         {
@@ -178,7 +170,6 @@ namespace Velvet.Tests
             Assert.That(state.Error?.Message, Is.EqualTo("boom"));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount_StateFailureCount()
         {
@@ -273,7 +264,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Pending));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestFromFetchQuery_When_ItLands_Then_TheTaskHoldsTheData_TaskStatus()
         {
@@ -287,7 +277,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestFromFetchQuery_When_ItLands_Then_TheTaskHoldsTheData_TaskResult()
         {
@@ -314,7 +303,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(5));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_FreshData_When_FetchQueryRuns_Then_ItReturnsItWithoutARequest_Calls()
         {
@@ -328,7 +316,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_FreshData_When_FetchQueryRuns_Then_ItReturnsItWithoutARequest_TaskResult()
         {
@@ -382,7 +369,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestInFlightOverData_When_FetchQueryRunsAgain_Then_ItJoinsIt_Calls()
         {
@@ -398,7 +384,6 @@ namespace Velvet.Tests
                 "fetchQuery never cancels a request to start over, which only an explicit refetch does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestInFlightOverData_When_FetchQueryRunsAgain_Then_ItJoinsIt_Tokens0IsCancellationRequested()
         {
@@ -414,7 +399,6 @@ namespace Velvet.Tests
                 "fetchQuery never cancels a request to start over, which only an explicit refetch does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoCallsJoiningOneRequest_When_ItLands_Then_BothTasksHoldTheData_FirstResult()
         {
@@ -429,7 +413,6 @@ namespace Velvet.Tests
             Assert.That(first.GetAwaiter().GetResult(), Is.EqualTo(5));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoCallsJoiningOneRequest_When_ItLands_Then_BothTasksHoldTheData_SecondResult()
         {
@@ -457,7 +440,6 @@ namespace Velvet.Tests
             Assert.That(() => task.GetAwaiter().GetResult(), Throws.InvalidOperationException.With.Message.EqualTo("boom"));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailingRequest_When_FetchQueryRuns_Then_ItIsNotRetriedByDefault_Calls()
         {
@@ -472,7 +454,6 @@ namespace Velvet.Tests
                 "v5's fetchQuery sets retry to false, where a mounted query takes the client's default of three");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailingRequest_When_FetchQueryRuns_Then_ItIsNotRetriedByDefault_IntTodosStatus()
         {
@@ -564,7 +545,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataInTheEntry_When_EnsureQueryDataRuns_Then_ItReturnsItWithoutARequest_Calls()
         {
@@ -578,7 +558,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataInTheEntry_When_EnsureQueryDataRuns_Then_ItReturnsItWithoutARequest_TaskResult()
         {
@@ -616,7 +595,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StaleDataInTheEntry_When_EnsureQueryDataRunsWithRevalidate_Then_ItFetchesAndReturnsTheDataHeld_Calls()
         {
@@ -631,7 +609,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StaleDataInTheEntry_When_EnsureQueryDataRunsWithRevalidate_Then_ItFetchesAndReturnsTheDataHeld_TaskResult()
         {
@@ -689,7 +666,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Canceled));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle_StateStatus()
         {
@@ -704,7 +680,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle_StateHasData()
         {
@@ -719,7 +694,6 @@ namespace Velvet.Tests
             Assert.That(state.HasData, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle_StateIsFetching()
         {
@@ -734,7 +708,6 @@ namespace Velvet.Tests
             Assert.That(state.IsFetching, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData_StateStatus()
         {
@@ -750,7 +723,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Success));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData_StateData()
         {
@@ -766,7 +738,6 @@ namespace Velvet.Tests
             Assert.That(state.Data, Is.EqualTo(5));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData_StateIsFetching()
         {
@@ -782,7 +753,6 @@ namespace Velvet.Tests
             Assert.That(state.IsFetching, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError_StateStatus()
         {
@@ -798,7 +768,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Error));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError_StateData()
         {
@@ -814,7 +783,6 @@ namespace Velvet.Tests
             Assert.That(state.Data, Is.EqualTo(5));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError_StateErrorOperationCanceledException()
         {
@@ -830,7 +798,6 @@ namespace Velvet.Tests
             Assert.That(state.Error is OperationCanceledException, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain_StateStatus()
         {
@@ -848,7 +815,6 @@ namespace Velvet.Tests
                 "The state the request found is what comes back, not the one it set when it started");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain_StateErrorMessage()
         {
@@ -866,7 +832,6 @@ namespace Velvet.Tests
                 "The state the request found is what comes back, not the one it set when it started");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain_StateFailureCount()
         {
@@ -898,7 +863,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryState<int>(Todos)!.IsInvalidated, Is.True, "The next reader fetches it again");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheFailureReasonAndCounts_StateFailureReasonOperationCanceledException()
         {
@@ -914,7 +878,6 @@ namespace Velvet.Tests
             Assert.That(state.FetchFailureReason is OperationCanceledException, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheFailureReasonAndCounts_StateFailureCount()
         {
@@ -946,7 +909,6 @@ namespace Velvet.Tests
             Assert.That(state, Is.Not.Null, "A request that ends starts the entry's removal timer over, as a request landing does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoRequests_When_CancelQueriesNamesOneKey_Then_TheOtherKeepsRunning_Tokens0IsCancellationRequested()
         {
@@ -961,7 +923,6 @@ namespace Velvet.Tests
             Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoRequests_When_CancelQueriesNamesOneKey_Then_TheOtherKeepsRunning_Tokens1IsCancellationRequested()
         {
@@ -990,7 +951,6 @@ namespace Velvet.Tests
 
         #region removeQueries and resetQueries
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoEntries_When_RemoveQueriesNamesOne_Then_OnlyItIsGone_QueryStateIntTodos()
         {
@@ -1005,7 +965,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryState<int>(Todos), Is.EqualTo((QueryState<int>?)null));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoEntries_When_RemoveQueriesNamesOne_Then_OnlyItIsGone_QueryDataIntUsers()
         {
@@ -1020,7 +979,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryData<int>(Users), Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AKeyAndOneBelowIt_When_RemoveQueriesIsExact_Then_TheOneBelowStays_QueryStateIntTodos()
         {
@@ -1035,7 +993,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryState<int>(Todos), Is.EqualTo((QueryState<int>?)null));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AKeyAndOneBelowIt_When_RemoveQueriesIsExact_Then_TheOneBelowStays_QueryDataIntTodoOne()
         {
@@ -1109,7 +1066,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueriesData<int>().Count, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData_StateStatus()
         {
@@ -1125,7 +1081,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData_StateHasData()
         {
@@ -1141,7 +1096,6 @@ namespace Velvet.Tests
             Assert.That(state.HasData, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData_StateIsInvalidated()
         {
@@ -1157,7 +1111,6 @@ namespace Velvet.Tests
             Assert.That(state.IsInvalidated, Is.EqualTo(false));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateStatus()
         {
@@ -1173,7 +1126,6 @@ namespace Velvet.Tests
             Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateError()
         {
@@ -1189,7 +1141,6 @@ namespace Velvet.Tests
             Assert.That(state.Error == null, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateFailureCount()
         {
@@ -1205,7 +1156,6 @@ namespace Velvet.Tests
             Assert.That(state.FetchFailureCount, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateFailureReason()
         {
@@ -1293,7 +1243,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Pending));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetch_When_ItLands_Then_TheTaskOfRefetchQueriesCompletesAndTheEntryHoldsTheData_TaskStatus()
         {
@@ -1309,7 +1258,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetch_When_ItLands_Then_TheTaskOfRefetchQueriesCompletesAndTheEntryHoldsTheData_QueryDataIntTodos()
         {
@@ -1355,7 +1303,6 @@ namespace Velvet.Tests
             Assert.That(() => task.GetAwaiter().GetResult(), Throws.InvalidOperationException.With.Message.EqualTo("boom"));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverDataInFlight_When_RefetchQueriesRuns_Then_ItCancelsAndStartsOver_Calls()
         {
@@ -1370,7 +1317,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverDataInFlight_When_RefetchQueriesRuns_Then_ItCancelsAndStartsOver_Tokens0IsCancellationRequested()
         {
@@ -1385,7 +1331,6 @@ namespace Velvet.Tests
             Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverDataInFlight_When_RefetchQueriesDoesNotCancel_Then_ItJoinsTheRequest_Calls()
         {
@@ -1400,7 +1345,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverDataInFlight_When_RefetchQueriesDoesNotCancel_Then_ItJoinsTheRequest_Tokens0IsCancellationRequested()
         {
@@ -1431,7 +1375,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(3));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched_IntTodosIsInvalidated()
         {
@@ -1445,7 +1388,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryState<int>(Todos)!.IsInvalidated, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched_Calls()
         {
@@ -1459,7 +1401,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched_TaskStatus()
         {
@@ -1473,7 +1414,6 @@ namespace Velvet.Tests
             Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_FiltersNamingAnExactKey_When_InvalidateQueriesRuns_Then_OnlyThatEntryIsInvalidated_IntTodosIsInvalidated()
         {
@@ -1488,7 +1428,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryState<int>(Todos)!.IsInvalidated, Is.EqualTo(true));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_FiltersNamingAnExactKey_When_InvalidateQueriesRuns_Then_OnlyThatEntryIsInvalidated_IntTodoOneIsInvalidated()
         {
@@ -1679,7 +1618,6 @@ namespace Velvet.Tests
             Assert.That(string.Join(",", selected.Select(pair => pair.Value)), Is.EqualTo("1"));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoEntries_When_SetQueriesDataRuns_Then_EachIsHandedItsDataAndWritten_QueryDataIntTodos()
         {
@@ -1694,7 +1632,6 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(11));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoEntries_When_SetQueriesDataRuns_Then_EachIsHandedItsDataAndWritten_QueryDataIntTodoOne()
         {

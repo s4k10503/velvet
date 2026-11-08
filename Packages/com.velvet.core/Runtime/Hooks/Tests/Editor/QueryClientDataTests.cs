@@ -222,7 +222,6 @@ namespace Velvet.Tests
             Assert.That(write, Throws.ArgumentNullException.With.Property("ParamName").EqualTo("updater"));
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenByHand_When_AQueryMountsWithinItsStaleTime_Then_NothingIsFetched_Calls()
         {
@@ -240,7 +239,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0), "Written data is fresh from the moment it was written");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenByHand_When_AQueryMountsWithinItsStaleTime_Then_NothingIsFetched_Data()
         {
@@ -292,7 +290,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0), "A write clears the invalidation, as v5's success action does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError_Status()
         {
@@ -311,7 +308,6 @@ namespace Velvet.Tests
                 "A write is a success: it replaces the error and re-renders the readers");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError_Data()
         {
@@ -330,7 +326,6 @@ namespace Velvet.Tests
                 "A write is a success: it replaces the error and re-renders the readers");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError_Error()
         {
@@ -349,7 +344,6 @@ namespace Velvet.Tests
                 "A write is a success: it replaces the error and re-renders the readers");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestInFlight_When_SetQueryDataWrites_Then_TheRequestKeepsRunning_Data()
         {
@@ -366,7 +360,6 @@ namespace Velvet.Tests
                 "A write by hand leaves the request in flight running, as v5's manual setData does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestInFlight_When_SetQueryDataWrites_Then_TheRequestKeepsRunning_IsFetching()
         {
@@ -383,7 +376,6 @@ namespace Velvet.Tests
                 "A write by hand leaves the request in flight running, as v5's manual setData does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenOverARequestInFlight_When_TheRequestLands_Then_ItsDataReplacesTheWrite_Data()
         {
@@ -400,7 +392,6 @@ namespace Velvet.Tests
             Assert.That(Last().Data, Is.EqualTo(9), "The request lands over the written data");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_DataWrittenOverARequestInFlight_When_TheRequestLands_Then_ItsDataReplacesTheWrite_IsFetching()
         {

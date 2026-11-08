@@ -1255,7 +1255,14 @@ namespace Velvet
         // TanStack's fetchStatus: a request in flight is paused while it waits for the connection or the
         // application's visibility, and fetching otherwise.
         internal override QueryFetchStatus FetchStatus
-            => _inFlight == null ? QueryFetchStatus.Idle : _paused ? QueryFetchStatus.Paused : QueryFetchStatus.Fetching;
+            => _writtenFetchStatus ?? (_inFlight == null ? QueryFetchStatus.Idle : _paused ? QueryFetchStatus.Paused : QueryFetchStatus.Fetching);
+
+        // TanStack's state.fetchStatus where it no longer follows a request: written by SetState, or left fetching by
+        // a silent cancellation, until the next action that sets it.
+        private QueryFetchStatus? _writtenFetchStatus;
+        // TanStack's #retryer.promise once its request has settled or been cancelled: what a fetch over a fetch
+        // status that is not idle joins when no request is in flight.
+        private VelvetTask<T>? _settled;
 
         internal override TimeSpan DataUpdatedAt => _dataUpdatedAt;
 
@@ -1389,7 +1396,7 @@ namespace Velvet
         internal VelvetTask<T> FetchAndWait(QueryFetchOptions<T> options, bool cancelRefetch, FetchDirection? direction = null)
         {
             Fetch(options, cancelRefetch, direction);
-            if (_inFlight == null) return VelvetTask.FromException<T>(new OperationCanceledException());
+            if (_inFlight == null) return !IsRemoved && _settled.HasValue ? _settled.Value : VelvetTask.FromException<T>(new OperationCanceledException());
             var waiter = new VelvetTaskCompletionSource<T>();
             (_waiters ??= new List<VelvetTaskCompletionSource<T>>()).Add(waiter);
             return waiter.Task;
@@ -1436,15 +1443,25 @@ namespace Velvet
         internal void Fetch(QueryFetchOptions<T> options, bool cancelRefetch, FetchDirection? direction = null)
         {
             if (IsRemoved) return;
-            if (_inFlight != null)
+            // v5 asks the state's fetchStatus, not whether a request runs: a status left fetching joins the request,
+            // or the settled one, and a status written idle over a running request starts another.
+            if (FetchStatus != QueryFetchStatus.Idle)
             {
-                if (!cancelRefetch || !HasData)
+                if (cancelRefetch && HasData)
+                {
+                    CancelInFlight();
+                }
+                else if (_inFlight != null || _settled != null)
                 {
                     _retriesStopped = false;
                     return;
                 }
+            }
+            else
+            {
                 CancelInFlight();
             }
+            _writtenFetchStatus = null;
             // v5's fetch takes the options it is handed only once it is not joining a request in flight.
             TakeOptions(options);
 
@@ -1609,6 +1626,7 @@ namespace Velvet
         {
             if (!ReferenceEquals(_inFlight, request) || _paused == paused) return;
             _paused = paused;
+            _writtenFetchStatus = null;
             Notify(paused ? QueryActionType.Pause : QueryActionType.Continue);
         }
 
@@ -1665,6 +1683,7 @@ namespace Velvet
                 ReleaseSuspended();
             }
             if (callbackFailure != null) FailLanded(callbackFailure);
+            else _settled = VelvetTask.FromResult(shared);
         }
 
         private Exception? RunSuccessCallbacks(T data)
@@ -1699,6 +1718,7 @@ namespace Velvet
             }
             finally
             {
+                _settled = VelvetTask.FromException<T>(error);
                 RejectWaiters(error);
                 ReleaseSuspended();
             }
@@ -1766,6 +1786,7 @@ namespace Velvet
             }
             finally
             {
+                _settled = VelvetTask.FromException<T>(error);
                 RejectWaiters(error);
                 ReleaseSuspended();
             }
@@ -1783,6 +1804,7 @@ namespace Velvet
         {
             _inFlight = null;
             _paused = false;
+            _writtenFetchStatus = null;
             RescheduleCollection(Client.Now);
             // MUTANT_SURVIVES(equivalent, line removed): nothing cancels a settled request again, so its source only waits for collection.
             request.Dispose();
@@ -1848,6 +1870,7 @@ namespace Velvet
         {
             if (_inFlight == null) return;
             CancelInFlight();
+            _writtenFetchStatus = null;
             if (revert)
             {
                 Revert();
@@ -1883,6 +1906,7 @@ namespace Velvet
         internal override void ResetState()
         {
             CancelInFlight();
+            _writtenFetchStatus = null;
             Restore(_initialState);
             Notify(QueryActionType.SetState);
             ReleaseSuspended();
@@ -1926,8 +1950,8 @@ namespace Velvet
             FetchDirection = _fetchDirection,
         };
 
-        // TanStack's setState: the state is replaced and the readers and the cache told. Whether a request is in
-        // flight is the entry's own, since a state written by hand starts or stops none.
+        // TanStack's setState: the whole state is replaced, its fetch status included, and the readers and the cache
+        // told. A request in flight keeps running; the status written stands until the next action sets it.
         internal override void WriteState(QueryState state)
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
@@ -1948,6 +1972,7 @@ namespace Velvet
             FailureCount = state.FetchFailureCount;
             FailureReason = state.FetchFailureReason;
             _fetchDirection = state.FetchDirection;
+            _writtenFetchStatus = state.FetchStatus;
             _fetched = DataUpdateCount + ErrorUpdateCount > 0;
             Notify(QueryActionType.SetState);
             ReleaseSuspended();
@@ -1957,17 +1982,20 @@ namespace Velvet
         // which v5 reports as a missing queryFn.
         internal override VelvetTask<object?> FetchBoxed(bool cancelRefetch)
         {
-            if (_options == null)
-            {
-                return VelvetTask.FromException<object?>(new InvalidOperationException($"Missing queryFn: '{Hash}'"));
-            }
-            return Box(FetchAndWait(_options, cancelRefetch));
+            // v5 runs a fetch whose function fails as missing, retried and settled as any other.
+            return Box(FetchAndWait(_options ?? QueryFetchOptions<T>.Missing(Client, Hash), cancelRefetch));
         }
 
         private static async VelvetTask<object?> Box(VelvetTask<T> task) => await task;
 
-        // TanStack's cancel({ silent: true }): the request stops and nothing about the state is announced.
-        internal override void CancelSilently() => CancelInFlight();
+        // TanStack's cancel({ silent: true }): the request stops, the state stays as it stood, fetching or paused
+        // included, and nothing is announced.
+        internal override void CancelSilently()
+        {
+            var status = FetchStatus;
+            CancelInFlight();
+            if (status != QueryFetchStatus.Idle) _writtenFetchStatus = status;
+        }
 
         // TanStack's query.invalidate: marks the entry stale and tells its readers, and fetches nothing.
         internal override void MarkInvalidated()
@@ -2018,6 +2046,7 @@ namespace Velvet
             if (cts == null) return;
             _inFlight = null;
             _paused = false;
+            _settled = VelvetTask.FromException<T>(new OperationCanceledException());
             // Contained on FiberAsyncResource.Dispose's terms: the token went to the query function, so a
             // callback firing here can be the application's.
             try

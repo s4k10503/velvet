@@ -157,7 +157,6 @@ namespace Velvet.Tests
                 "Two components reading one key share the request the first one started");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoComponentsReadingOneKey_When_TheRequestResolves_Then_BothRenderItsData_RendersAData()
         {
@@ -174,7 +173,6 @@ namespace Velvet.Tests
                 "Every component reading the entry re-renders with the result");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoComponentsReadingOneKey_When_TheRequestResolves_Then_BothRenderItsData_RendersBData()
         {
@@ -191,7 +189,6 @@ namespace Velvet.Tests
                 "Every component reading the entry re-renders with the result");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoComponentsAwaitingOneRequest_When_OneUnmounts_Then_TheOtherStillReceivesTheResult_TokenIsCancellationRequested()
         {
@@ -210,7 +207,6 @@ namespace Velvet.Tests
                 "The request belongs to the entry, so a reader leaving neither cancels it nor keeps it from the other");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoComponentsAwaitingOneRequest_When_OneUnmounts_Then_TheOtherStillReceivesTheResult_RendersBData()
         {
@@ -229,7 +225,6 @@ namespace Velvet.Tests
                 "The request belongs to the entry, so a reader leaving neither cancels it nor keeps it from the other");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchInFlightOverData_When_AnotherReaderMounts_Then_ItJoinsTheRefetch_FetchedCount()
         {
@@ -246,7 +241,6 @@ namespace Velvet.Tests
                 "Mounting is not an explicit refetch, so it joins the request in flight rather than starting over");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchInFlightOverData_When_AnotherReaderMounts_Then_ItJoinsTheRefetch_Tokens1IsCancellationRequested()
         {
@@ -299,7 +293,6 @@ namespace Velvet.Tests
                 "v5 lets a request whose function never read the signal run on, and its result lands in the entry");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFirstRequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheEntryIsPendingAndIdle_EntryStatus()
         {
@@ -316,7 +309,6 @@ namespace Velvet.Tests
                 "Cancelling with revert puts the entry back as it was before the request, which is not fetching");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFirstRequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheEntryIsPendingAndIdle_EntryIsFetching()
         {
@@ -333,7 +325,6 @@ namespace Velvet.Tests
                 "Cancelling with revert puts the entry back as it was before the request, which is not fetching");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_Tokens1IsCancellationRequested()
         {
@@ -350,7 +341,6 @@ namespace Velvet.Tests
                 "The refetch is cancelled and the data it would have replaced stays");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_EntryStatus()
         {
@@ -367,7 +357,6 @@ namespace Velvet.Tests
                 "The refetch is cancelled and the data it would have replaced stays");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_EntryData()
         {
@@ -384,7 +373,6 @@ namespace Velvet.Tests
                 "The refetch is cancelled and the data it would have replaced stays");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_EntryIsFetching()
         {
@@ -401,7 +389,6 @@ namespace Velvet.Tests
                 "The refetch is cancelled and the data it would have replaced stays");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ACancelledRequest_When_ItsFunctionCompletesAfterwards_Then_TheEntryIsNotChanged_EntryStatus()
         {
@@ -419,7 +406,6 @@ namespace Velvet.Tests
                 "A request cancelled by its last reader leaving lands nothing");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ACancelledRequest_When_ItsFunctionCompletesAfterwards_Then_TheEntryIsNotChanged_EntryData()
         {
@@ -452,7 +438,6 @@ namespace Velvet.Tests
             Assert.That(s_fetched.Count, Is.EqualTo(2), "The entry is pending again, so the next reader fetches it");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestWithTwoReaders_When_OneLeavesAndThenTheOther_Then_TheTokenIsCancelledOnlyAtTheSecond_AfterTheFirst()
         {
@@ -471,7 +456,6 @@ namespace Velvet.Tests
                 "The request is cancelled when the last observer leaves, not the first");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARequestWithTwoReaders_When_OneLeavesAndThenTheOther_Then_TheTokenIsCancelledOnlyAtTheSecond_TokenIsCancellationRequested()
         {
@@ -608,7 +592,6 @@ namespace Velvet.Tests
                 "The request is gone, so nothing keeps the entry past its gcTime");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest_FetchedCount()
         {
@@ -626,7 +609,6 @@ namespace Velvet.Tests
                 "The first setup's request is cancelled by the cleanup and the second setup fetches again, as v5 does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest_Tokens0IsCancellationRequested()
         {
@@ -644,7 +626,6 @@ namespace Velvet.Tests
                 "The first setup's request is cancelled by the cleanup and the second setup fetches again, as v5 does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest_RendersAData()
         {
@@ -666,7 +647,6 @@ namespace Velvet.Tests
 
         #region What a render reports
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale_RendersA0Status()
         {
@@ -678,7 +658,6 @@ namespace Velvet.Tests
                 "The render before the subscription reports the fetch the subscription is about to start");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale_RendersA0IsFetching()
         {
@@ -690,7 +669,6 @@ namespace Velvet.Tests
                 "The render before the subscription reports the fetch the subscription is about to start");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale_RendersA0IsStale()
         {
@@ -702,7 +680,6 @@ namespace Velvet.Tests
                 "The render before the subscription reports the fetch the subscription is about to start");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsPending()
         {
@@ -715,7 +692,6 @@ namespace Velvet.Tests
                 "A subscribed query with nothing in flight reports no fetch, even with its result stale");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsSuccess()
         {
@@ -728,7 +704,6 @@ namespace Velvet.Tests
                 "A subscribed query with nothing in flight reports no fetch, even with its result stale");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsError()
         {
@@ -741,7 +716,6 @@ namespace Velvet.Tests
                 "A subscribed query with nothing in flight reports no fetch, even with its result stale");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsFetching()
         {
@@ -754,7 +728,6 @@ namespace Velvet.Tests
                 "A subscribed query with nothing in flight reports no fetch, even with its result stale");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching_RendersAStatus()
         {
@@ -770,7 +743,6 @@ namespace Velvet.Tests
                 "A refetch keeps the status and the data, and reports the request in flight");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching_RendersAData()
         {
@@ -786,7 +758,6 @@ namespace Velvet.Tests
                 "A refetch keeps the status and the data, and reports the request in flight");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching_RendersAIsFetching()
         {
@@ -802,7 +773,6 @@ namespace Velvet.Tests
                 "A refetch keeps the status and the data, and reports the request in flight");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultStatus()
         {
@@ -820,7 +790,6 @@ namespace Velvet.Tests
                 "A failure keeps the last good data, as TanStack does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultIsError()
         {
@@ -838,7 +807,6 @@ namespace Velvet.Tests
                 "A failure keeps the last good data, as TanStack does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultData()
         {
@@ -856,7 +824,6 @@ namespace Velvet.Tests
                 "A failure keeps the last good data, as TanStack does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultErrorMessage()
         {
@@ -891,7 +858,6 @@ namespace Velvet.Tests
                 "A failure flags the data it leaves in place as stale, so the next reader asks again");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFirstRequest_When_ItFails_Then_TheQueryRendersTheError_RendersAStatus()
         {
@@ -908,7 +874,6 @@ namespace Velvet.Tests
                 "A subscribed query with no data reports its failure rather than a pending fetch");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFirstRequest_When_ItFails_Then_TheQueryRendersTheError_RendersAErrorMessage()
         {
@@ -925,7 +890,6 @@ namespace Velvet.Tests
                 "A subscribed query with no data reports its failure rather than a pending fetch");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionReturningACompletedResult_When_AFrameAdvances_Then_ItRendersTheResult_RendersAStatus()
             => VelvetTask.ToCoroutine(async () =>
@@ -945,7 +909,6 @@ namespace Velvet.Tests
                 "A result the query function hands back already completed settles the entry a frame later");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionReturningACompletedResult_When_AFrameAdvances_Then_ItRendersTheResult_RendersAData()
             => VelvetTask.ToCoroutine(async () =>
@@ -965,7 +928,6 @@ namespace Velvet.Tests
                 "A result the query function hands back already completed settles the entry a frame later");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_AFrameAdvances_Then_ItRendersTheError_RendersAStatus()
             => VelvetTask.ToCoroutine(async () =>
@@ -985,7 +947,6 @@ namespace Velvet.Tests
                 "A query function that throws is a failed request, not a crash");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_AFrameAdvances_Then_ItRendersTheError_RendersAErrorMessage()
             => VelvetTask.ToCoroutine(async () =>
@@ -1005,7 +966,6 @@ namespace Velvet.Tests
                 "A query function that throws is a failed request, not a crash");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionReturningACompletedFault_When_AFrameAdvances_Then_ItRendersTheError_RendersAStatus()
             => VelvetTask.ToCoroutine(async () =>
@@ -1025,7 +985,6 @@ namespace Velvet.Tests
                 "A fault the query function hands back already completed settles the entry a frame later");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AQueryFunctionReturningACompletedFault_When_AFrameAdvances_Then_ItRendersTheError_RendersAErrorMessage()
             => VelvetTask.ToCoroutine(async () =>
@@ -1080,7 +1039,6 @@ namespace Velvet.Tests
 
         #region Retaining a result
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedEntryWhoseOnlyReaderUnmounted_When_AReaderMountsAgain_Then_ItsFirstRenderShowsTheData_RendersA0Status()
         {
@@ -1097,7 +1055,6 @@ namespace Velvet.Tests
                 "The entry outlives its readers, so a reader mounting over it renders the result at once");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AResolvedEntryWhoseOnlyReaderUnmounted_When_AReaderMountsAgain_Then_ItsFirstRenderShowsTheData_RendersA0Data()
         {
@@ -1208,7 +1165,6 @@ namespace Velvet.Tests
 
         #region Garbage collection
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnUnreadEntry_When_TheClientSweepsAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_KeptJustBefore()
         {
@@ -1229,7 +1185,6 @@ namespace Velvet.Tests
                 "An entry nothing reads is kept until it has gone unread for its gcTime, and removed from then on");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnUnreadEntry_When_TheClientSweepsAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_RemovedAt()
         {
@@ -1265,7 +1220,6 @@ namespace Velvet.Tests
             Assert.That(s_client.PeekById<int>(Todos), Is.Null, "A subscription sweeps the client");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoExpiredUnreadEntries_When_ReadersOfBothMountInOneCommit_Then_TheSecondRendersNoData_RendersB0Status()
         {
@@ -1283,7 +1237,6 @@ namespace Velvet.Tests
                 "An expired entry reads as absent before a sweep removes it");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_TwoExpiredUnreadEntries_When_ReadersOfBothMountInOneCommit_Then_TheSecondRendersNoData_RendersB0Data()
         {
@@ -1301,7 +1254,6 @@ namespace Velvet.Tests
                 "An expired entry reads as absent before a sweep removes it");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry_RendersAStatus()
         {
@@ -1319,7 +1271,6 @@ namespace Velvet.Tests
                 "Subscribing sweeps before it looks the key up, so the expired entry is not handed back");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry_RendersAData()
         {
@@ -1337,7 +1288,6 @@ namespace Velvet.Tests
                 "Subscribing sweeps before it looks the key up, so the expired entry is not handed back");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver_FetchedCount()
         {
@@ -1360,7 +1310,6 @@ namespace Velvet.Tests
                 "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver_RendersAStatus()
         {
@@ -1383,7 +1332,6 @@ namespace Velvet.Tests
                 "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver_RendersAData()
         {
@@ -1406,7 +1354,6 @@ namespace Velvet.Tests
                 "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndAZeroGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_FetchedCount()
         {
@@ -1427,7 +1374,6 @@ namespace Velvet.Tests
                 "The resubscription takes the entry back, however short its gcTime, and joins its request");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndAZeroGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_RendersAData()
         {
@@ -1448,7 +1394,6 @@ namespace Velvet.Tests
                 "The resubscription takes the entry back, however short its gcTime, and joins its request");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_FetchedCount()
         {
@@ -1467,7 +1412,6 @@ namespace Velvet.Tests
                 "A request whose function takes no token is not cancelled by the last reader leaving, so the resubscription joins it");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_RendersAData()
         {
@@ -1774,7 +1718,6 @@ namespace Velvet.Tests
                 "Moving to a new key stops reading the old one");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AKeyChangeNotYetSubscribed_When_TheOldKeysRequestResolves_Then_TheQueryShowsNoData_RendersAStatus()
         {
@@ -1794,7 +1737,6 @@ namespace Velvet.Tests
                 "A render reads the entry its own key names, so page 1's result is never shown as page 2's");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AKeyChangeNotYetSubscribed_When_TheOldKeysRequestResolves_Then_TheQueryShowsNoData_RendersAData()
         {
@@ -1889,7 +1831,6 @@ namespace Velvet.Tests
                 "A request that may predate the change behind the invalidation is started over");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFirstRequestInFlight_When_TheEntryIsInvalidated_Then_ItIsJoined_FetchedCount()
         {
@@ -1905,7 +1846,6 @@ namespace Velvet.Tests
                 "With no data to protect, the request in flight is joined, as TanStack's cancelRefetch does");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFirstRequestInFlight_When_TheEntryIsInvalidated_Then_ItIsJoined_Tokens0IsCancellationRequested()
         {

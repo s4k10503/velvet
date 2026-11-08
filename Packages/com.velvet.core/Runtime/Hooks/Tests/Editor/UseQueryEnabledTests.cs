@@ -69,7 +69,6 @@ namespace Velvet.Tests
             Assert.That(s_fetched, Is.Empty, "A disabled query does not fetch on mount");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADisabledQueryWithNothingCached_When_ItFirstRenders_Then_ItIsPendingAndNotFetching_Renders0Status()
         {
@@ -81,7 +80,6 @@ namespace Velvet.Tests
                 "A render whose subscription will not fetch does not report a fetch");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADisabledQueryWithNothingCached_When_ItFirstRenders_Then_ItIsPendingAndNotFetching_Renders0IsFetching()
         {
@@ -93,7 +91,6 @@ namespace Velvet.Tests
                 "A render whose subscription will not fetch does not report a fetch");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADisabledQueryOverStaleData_When_ItRenders_Then_ItIsNotStale_Data()
         {
@@ -110,7 +107,6 @@ namespace Velvet.Tests
                 "v5's isStale is false for a disabled query, whatever the age of its data");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADisabledQueryOverStaleData_When_ItRenders_Then_ItIsNotStale_IsStale()
         {
@@ -239,7 +235,6 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", s_fetched), Is.EqualTo("toggled"), "A query turned on over no data fetches");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADisabledQuery_When_TheRenderTurningItOnReads_Then_ItReportsTheFetch_FetchedCount()
         {
@@ -256,7 +251,6 @@ namespace Velvet.Tests
                 "The render before the commit's effect already reports the fetch that effect will start");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ADisabledQuery_When_TheRenderTurningItOnReads_Then_ItReportsTheFetch_IsFetching()
         {
@@ -289,7 +283,6 @@ namespace Velvet.Tests
             Assert.That(s_fetched, Is.Empty, "A query turned on fetches only data that is stale");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchInFlightOverData_When_ADisabledQueryIsTurnedOn_Then_ItJoinsTheRefetch_FetchedCount()
         {
@@ -307,7 +300,6 @@ namespace Velvet.Tests
                 "Turning a query on joins a request in flight, as v5's executeFetch passes no cancelRefetch");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARefetchInFlightOverData_When_ADisabledQueryIsTurnedOn_Then_ItJoinsTheRefetch_Tokens0IsCancellationRequested()
         {
@@ -344,7 +336,7 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options(string reader, bool enabled)
-            => new(Todos, context =>
+            => new(Todos, (QueryFunctionContext context) =>
             {
                 s_fetched.Add(reader);
                 s_tokens.Add(context.CancellationToken);

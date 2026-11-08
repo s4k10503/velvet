@@ -71,7 +71,6 @@ namespace Velvet.Tests
             s_setShow = default;
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -95,7 +94,6 @@ namespace Velvet.Tests
                 "Three retries follow the first request, each after twice the wait before it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError_Status()
             => VelvetTask.ToCoroutine(async () =>
@@ -119,7 +117,6 @@ namespace Velvet.Tests
                 "Three retries follow the first request, each after twice the wait before it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError_FailureCount()
             => VelvetTask.ToCoroutine(async () =>
@@ -143,7 +140,6 @@ namespace Velvet.Tests
                 "Three retries follow the first request, each after twice the wait before it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheFirstDelayIsOneMillisecondShort_Then_ItIsRetriedOnlyOnceItHasPassed_BeforeTheDelay()
             => VelvetTask.ToCoroutine(async () =>
@@ -163,7 +159,6 @@ namespace Velvet.Tests
                 "A wait of one second ends when one second has passed, not before");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheFirstDelayIsOneMillisecondShort_Then_ItIsRetriedOnlyOnceItHasPassed_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -183,7 +178,6 @@ namespace Velvet.Tests
                 "A wait of one second ends when one second has passed, not before");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ASecondFailure_When_OnlyTheFirstDelayPassesAgain_Then_ItIsRetriedAfterTwiceThat_AfterOneSecond()
             => VelvetTask.ToCoroutine(async () =>
@@ -204,7 +198,6 @@ namespace Velvet.Tests
             Assert.That(afterOneSecond, Is.EqualTo(2), "The wait doubles at each failure");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ASecondFailure_When_OnlyTheFirstDelayPassesAgain_Then_ItIsRetriedAfterTwiceThat_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -225,7 +218,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(3), "The wait doubles at each failure");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ASixthFailure_When_TwentyNineSecondsPass_Then_ItWaitsOneMoreSecondBeforeTheRetry_AfterTwentyNineSeconds()
             => VelvetTask.ToCoroutine(async () =>
@@ -250,7 +242,6 @@ namespace Velvet.Tests
             Assert.That(afterTwentyNineSeconds, Is.EqualTo(6), "A wait never exceeds thirty seconds");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ASixthFailure_When_TwentyNineSecondsPass_Then_ItWaitsOneMoreSecondBeforeTheRetry_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -275,7 +266,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(7), "A wait never exceeds thirty seconds");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARetryOfOne_When_BothRequestsFail_Then_TheQueryReportsTheErrorAfterTwoRuns_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -296,7 +286,6 @@ namespace Velvet.Tests
                 "A query's own retry count replaces the client's");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARetryOfOne_When_BothRequestsFail_Then_TheQueryReportsTheErrorAfterTwoRuns_Status()
             => VelvetTask.ToCoroutine(async () =>
@@ -317,7 +306,6 @@ namespace Velvet.Tests
                 "A query's own retry count replaces the client's");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AClientRetryOfOne_When_ABareQueryFailsTwice_Then_TheQueryReportsTheErrorAfterTwoRuns_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -338,7 +326,6 @@ namespace Velvet.Tests
                 "A query that sets no retry count takes the client's");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AClientRetryOfOne_When_ABareQueryFailsTwice_Then_TheQueryReportsTheErrorAfterTwoRuns_Status()
             => VelvetTask.ToCoroutine(async () =>
@@ -359,7 +346,6 @@ namespace Velvet.Tests
                 "A query that sets no retry count takes the client's");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce_Calls()
         {
@@ -377,7 +363,6 @@ namespace Velvet.Tests
                 "Zero retries make the first failure the entry's error, whatever the client retries by default");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce_Status()
         {
@@ -395,7 +380,6 @@ namespace Velvet.Tests
                 "Zero retries make the first failure the entry's error, whatever the client retries by default");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce_FailureCount()
         {
@@ -413,7 +397,6 @@ namespace Velvet.Tests
                 "Zero retries make the first failure the entry's error, whatever the client retries by default");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ACustomRetryDelay_When_TheFailureIsRetried_Then_ItWaitsThatLong_AfterNineSeconds()
             => VelvetTask.ToCoroutine(async () =>
@@ -433,7 +416,6 @@ namespace Velvet.Tests
             Assert.That(afterNineSeconds, Is.EqualTo(1), "The delay function replaces the doubling");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ACustomRetryDelay_When_TheFailureIsRetried_Then_ItWaitsThatLong_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -453,7 +435,6 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "The delay function replaces the doubling");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARetryDelayOfZero_When_TheRequestFails_Then_TheRetryRunsOnlyAFrameLater_OnTheFailingStack()
             => VelvetTask.ToCoroutine(async () =>
@@ -473,7 +454,6 @@ namespace Velvet.Tests
                 "A retry never starts inside the completion of the request that failed");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_ARetryDelayOfZero_When_TheRequestFails_Then_TheRetryRunsOnlyAFrameLater_Calls()
             => VelvetTask.ToCoroutine(async () =>
@@ -518,7 +498,6 @@ namespace Velvet.Tests
                 "The count is the failures before this one, as v5 passes it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultStatus()
         {
@@ -536,7 +515,6 @@ namespace Velvet.Tests
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultIsFetching()
         {
@@ -554,7 +532,6 @@ namespace Velvet.Tests
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultErrorMessage()
         {
@@ -572,7 +549,6 @@ namespace Velvet.Tests
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultFailureCount()
         {
@@ -590,7 +566,6 @@ namespace Velvet.Tests
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultFailureReasonMessage()
         {
@@ -608,7 +583,6 @@ namespace Velvet.Tests
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultStatus()
             => VelvetTask.ToCoroutine(async () =>
@@ -629,7 +603,6 @@ namespace Velvet.Tests
                 "A request that lands clears the failures that preceded it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultData()
             => VelvetTask.ToCoroutine(async () =>
@@ -650,7 +623,6 @@ namespace Velvet.Tests
                 "A request that lands clears the failures that preceded it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultIsFetching()
             => VelvetTask.ToCoroutine(async () =>
@@ -671,7 +643,6 @@ namespace Velvet.Tests
                 "A request that lands clears the failures that preceded it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultFailureCount()
             => VelvetTask.ToCoroutine(async () =>
@@ -692,7 +663,6 @@ namespace Velvet.Tests
                 "A request that lands clears the failures that preceded it");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
         public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultFailureReason()
             => VelvetTask.ToCoroutine(async () =>
@@ -810,7 +780,6 @@ namespace Velvet.Tests
                 "Cancelling during the wait puts back the reason the request started from");
         });
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching_Status()
         {
@@ -828,7 +797,6 @@ namespace Velvet.Tests
                 "A delay function that fails ends the request rather than leaving it in flight");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching_ErrorMessage()
         {
@@ -846,7 +814,6 @@ namespace Velvet.Tests
                 "A delay function that fails ends the request rather than leaving it in flight");
         }
 
-        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
         public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching_IsFetching()
         {
