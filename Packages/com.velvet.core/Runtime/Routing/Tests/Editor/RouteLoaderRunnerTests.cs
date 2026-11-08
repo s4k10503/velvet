@@ -123,6 +123,9 @@ namespace Velvet.Tests
             Assert.That(settled.Errors.GetValueOrDefault("cancelled"), Is.InstanceOf<OperationCanceledException>());
         });
 
+        // GREEN_ON_BASE(characterization): the base records no error for a cancelled loader whatever
+        // cancelled it, so it records none here either. What the case adds is that a cancelled navigation
+        // still records none now that a loader's own cancellation records one.
         [UnityTest]
         public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsRoundIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
             => VelvetTask.ToCoroutine(async () =>
@@ -171,6 +174,9 @@ namespace Velvet.Tests
                 Is.EqualTo("running=0 errors=1"));
         });
 
+        // GREEN_ON_BASE(characterization): the base records no error for a cancelled loader whatever
+        // cancelled it, so it records none here either. What the case adds is that a cancelled navigation
+        // still records none now that a loader's own cancellation records one.
         [UnityTest]
         public IEnumerator Given_ASuspendLoader_When_ItsRoundIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
             => VelvetTask.ToCoroutine(async () =>
