@@ -99,6 +99,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AColourOnTheFramerDefaults_When_AGestureHandsItBackMidway_Then_ItHeadsBackOnTheDefaultEase()
+        {
+            // Arrange — the colour runs the 0.3 s default ease, which lands within 0.3 s where the play's own 100 / 10
+            // spring would not.
+            var element = new VisualElement();
+            var from = new[] { "bg-black", "translate-x-[0px]" };
+            var to = new[] { "bg-white", "translate-x-[64px]" };
+            var state = MotionSpringDriver.Create(MotionSpringClassParser.Resolve(from, to), 100f, 10f, 1f,
+                perValueDefaults: true)!;
+            MotionSpringDriver.ApplyCurrentValues(element, state);
+            MotionSpringDriver.Step(element, state, 0.1f);
+            var colour = state.Colors![0];
+            colour.Progress.Masked = true;
+            MotionSpringDriver.ReturnChannels(element, state, StyleArbitraryLonghands.Of(colour.Property),
+                MotionSlotContext.ReadImportant(element, from, to));
+
+            // Act
+            MotionSpringDriver.Step(element, state, 0.31f);
+
+            // Assert
+            Assert.That(state.Colors[0].Progress.Integrator.Value, Is.EqualTo(1f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_AnEasedOpacityOnTheFramerDefaults_When_AGestureHandsTranslateBackMidway_Then_OpacityRunsAsIfNoGestureHadBeen()
         {
             // Arrange — opacity runs the 0.3 s default ease; a gesture held translate and lets it go 0.15 s in.

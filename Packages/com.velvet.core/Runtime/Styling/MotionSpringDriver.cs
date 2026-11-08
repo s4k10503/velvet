@@ -951,8 +951,14 @@ namespace Velvet
                     }
                     var from = shown.TryReadShown(c.Property, LengthUnit.Pixel, out var color) ? color.Color
                         : MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value);
-                    state.Colors[i] = new SpringColorChannel(c.Property, from, c.To);
-                    back.Add(state.Colors[i].Progress);
+                    var returned = new SpringColorChannel(c.Property, from, c.To);
+                    // The fresh channel keeps the timing the play gave the colour: an entry's tween or the default
+                    // ease, fixed physics, and whether it plays once, as the bezier driver's ContinueFrom keeps it.
+                    var (was, now) = (c.Progress, returned.Progress);
+                    (now.Timing, now.EaseSec, now.FixedPhysics, now.RestSpeed, now.Once) =
+                        (was.Timing, was.EaseSec, was.FixedPhysics, was.RestSpeed, was.Once);
+                    state.Colors[i] = returned;
+                    back.Add(now);
                 }
             }
             if (state.Lengths != null)
