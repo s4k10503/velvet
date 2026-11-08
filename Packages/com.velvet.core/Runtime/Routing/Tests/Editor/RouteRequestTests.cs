@@ -128,7 +128,7 @@ namespace Velvet.Tests
             var data = ActionData(request => request.Url, body, "application/x-www-form-urlencoded", "/items?x=1#here");
 
             // Assert
-            Assert.That(data, Is.EqualTo("/items?x=1"));
+            Assert.That(data, Is.EqualTo("http://localhost/items?x=1"));
         }
 
         [Test]
@@ -376,7 +376,7 @@ namespace Velvet.Tests
             var router = LoaderRouter(context => context.Request.Url);
 
             // Assert
-            Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("/items?q=1"));
+            Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("http://localhost/items?q=1"));
         }
 
         [Test]
@@ -387,6 +387,68 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("GET"));
+        }
+
+        [Test]
+        public void Given_ALoader_When_ItReadsItsRequestTextTwice_Then_BothReadsAreEmpty()
+        {
+            // Arrange / Act — a request with no body is never used up, as a fetch request's null body is not.
+            var router = LoaderRouter(context => "[" + context.Request.Text() + context.Request.Text() + "]");
+
+            // Assert
+            Assert.That(router.CurrentLoaderData.GetValueOrDefault("0-0"), Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void Given_AJsonBodyHoldingItself_When_Posted_Then_NoNavigationIsReported()
+        {
+            // Arrange
+            var router = ItemsRouter(_ => "ran");
+            var body = new List<object>();
+            body.Add(body);
+            var reported = new List<NavigationLifecycle>();
+            router.OnNavigationChanged += navigation => reported.Add(navigation.State);
+
+            // Act
+            try
+            {
+                router.SubmitAsync(body, new SubmitOptions { Method = "post", Action = "/items", EncType = Json })
+                    .GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(string.Join(",", reported), Is.Empty);
+        }
+
+        [Test]
+        public void Given_AJsonBodyHoldingItself_When_Posted_Then_NoGuardRuns()
+        {
+            // Arrange
+            var guards = 0;
+            var router = BuildRouter("/other", Route("/", children: new[]
+            {
+                V.Route("items", V.Component(StubA), guard: _ => { guards++; return null; },
+                    action: (_, _) => VelvetTask.FromResult<object>("ran")),
+                Route("other"),
+            }));
+            var body = new List<object>();
+            body.Add(body);
+
+            // Act
+            try
+            {
+                router.SubmitAsync(body, new SubmitOptions { Method = "post", Action = "/items", EncType = Json })
+                    .GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(guards, Is.EqualTo(0));
         }
 
         [Test]

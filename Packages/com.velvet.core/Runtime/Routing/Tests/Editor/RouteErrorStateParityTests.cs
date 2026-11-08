@@ -157,6 +157,57 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_TwoSuspendLoadersFailingLowerFirst_When_BothHaveFailed_Then_TheHigherRoutesErrorStays()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — `b`'s failure arrives first and is keyed by the root; `a`'s, the higher route's, arrives
+            // after it.
+            var a = new VelvetTaskCompletionSource<object>();
+            var b = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/a/b", Route("/", children: new[]
+            {
+                Route("a", loader: (_, _) => a.Task, loaderMode: LoaderMode.Suspend, children: new[]
+                {
+                    Route("b", loader: (_, _) => b.Task, loaderMode: LoaderMode.Suspend),
+                }),
+            }));
+            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("b-boom"));
+            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("a-boom"));
+
+            // Act
+            b.TrySetException(new InvalidOperationException("b-boom"));
+            await VelvetTask.Yield();
+            a.TrySetException(new InvalidOperationException("a-boom"));
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0")?.Message, Is.EqualTo("a-boom"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderFailingAboveACommittedLoaderError_When_ItFails_Then_ItsErrorTakesTheBoundary()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — `b`'s awaited loader fails and commits at the root; `a`, above it, fails afterwards.
+            var a = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/a/b", Route("/", children: new[]
+            {
+                Route("a", loader: (_, _) => a.Task, loaderMode: LoaderMode.Suspend, children: new[]
+                {
+                    Route("b", loader: Fails("b-boom")),
+                }),
+            }));
+            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("a-boom"));
+
+            // Act
+            a.TrySetException(new InvalidOperationException("a-boom"));
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0")?.Message, Is.EqualTo("a-boom"));
+        });
+
+        [UnityTest]
         public IEnumerator Given_ASuspendLoaderFailingUnderNoErrorElement_When_ItFails_Then_ItsErrorIsKeyedByTheRoot()
             => VelvetTask.ToCoroutine(async () =>
         {

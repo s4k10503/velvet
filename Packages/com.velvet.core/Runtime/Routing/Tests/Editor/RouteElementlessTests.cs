@@ -57,6 +57,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoRoutesWithNoElement_When_NavigatingFromOneToTheOther_Then_TheOutletTakesTheNewRoutesScope()
+        {
+            // Arrange — the two element-less routes sit at one depth over children rendering one component, so
+            // only the element-less level can tell them apart.
+            var factory = new TestRouteScopeFactory();
+            var router = new Router(new[]
+            {
+                V.Route("/", children: new[]
+                {
+                    V.Route("a", scopeId: "A", children: new[] { V.Route("x", V.Component(StubA)) }),
+                    V.Route("b", scopeId: "B", children: new[] { V.Route("x", V.Component(StubA)) }),
+                }),
+            }, factory, new RouterOptions { InitialEntries = new[] { "/a/x" } });
+            using var mounted = V.Mount(_root, V.RouterProvider(router));
+            mounted.FlushEffectsForTest();
+            var before = factory.CreateScopeCount;
+
+            // Act
+            router.NavigateSync("/b/x");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(factory.CreateScopeCount - before, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Given_ARouteWithNoElementUnderALayoutOutletContext_When_ItsChildReadsTheContext_Then_ItIsTheLayouts()
         {
             // Arrange

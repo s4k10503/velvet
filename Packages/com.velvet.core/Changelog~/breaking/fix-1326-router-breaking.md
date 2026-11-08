@@ -15,7 +15,7 @@
   flight as React Router's `navigation` does.
 
 - `RouteLoaderContext.Request` is React Router's loader `request`: a GET `RouteRequest` with no body whose
-  `Url` is the location's path and query.
+  `Url` is `http://localhost` and the location's path and query, as memory history's createURL makes it.
 - `ErrorResponse.Internal`, React Router's `internal`, is true on the responses the router makes.
 - `SearchParams.Set`, `Delete`, `Sort` and `ToString`, and `ISearchParams.Values`, as URLSearchParams has them.
 
@@ -63,7 +63,7 @@
 - Routes are ranked as React Router's `flattenRoutes`, `rankRouteBranches` and `computeScore` rank them: each
   segment of a joined path scores one beside its own value, a path with optional segments makes a branch for
   each way of keeping or dropping them in place of a bonus for each optional segment, and equal scores are
-  ordered as React Router's comparator orders them under V8's sort, over branches listed each child's ahead of
+  ordered as React Router's comparator orders them under V8 14.0's sort, over branches listed each child's ahead of
   its parent's where declaration order listed the parent first. An absolute child path must start with its
   parents' joined path and is matched after it; one that does not makes the tree throw `ArgumentException`.
 - Every submission reads its body as React Router does, a `post` included: the default encoding reads it

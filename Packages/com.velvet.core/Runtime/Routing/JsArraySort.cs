@@ -3,22 +3,28 @@ using System;
 
 namespace Velvet
 {
-    // V8's Array.prototype.sort, the TimSort of its array-sort.tq, step for step. React Router ranks route
-    // branches with a comparator that is not a strict weak ordering -- it orders siblings by index and calls
-    // every other pair of equal score equal -- so which order comes out depends on the algorithm and not only
-    // on the comparator, and a sort that merely agrees on consistent comparators would rank such a tree
-    // differently.
+    // Array.prototype.sort as V8 14.0 runs it -- the V8 of Chrome 140, the stable Chrome when React Router 7.9.0
+    // was published -- step for step from that branch's array-sort.tq: binary insertion alone below eight
+    // elements, TimSort otherwise. React Router ranks route branches with a comparator that is not a strict weak
+    // ordering -- it orders siblings by index and calls every other pair of equal score equal -- so which order
+    // comes out depends on the algorithm and not only on the comparator, and a sort that merely agrees on
+    // consistent comparators would rank such a tree differently.
     internal static class JsArraySort
     {
         private const int MinGallopWins = 7;
 
+        // Below this many elements the sort is one binary insertion sort.
+        private const int SmallArrayLength = 8;
+
         internal static void Sort<T>(T[] array, Comparison<T> compare)
         {
-            if (array.Length < 2)
+            var state = new State<T>(array, compare);
+            if (array.Length < SmallArrayLength)
             {
+                state.BinaryInsertionSort(0, 0, array.Length);
                 return;
             }
-            new State<T>(array, compare).Run();
+            state.Run();
         }
 
         private sealed class State<T>
@@ -100,7 +106,7 @@ namespace Velvet
                 return runLength;
             }
 
-            private void BinaryInsertionSort(int low, int startArg, int high)
+            internal void BinaryInsertionSort(int low, int startArg, int high)
             {
                 for (var start = low == startArg ? startArg + 1 : startArg; start < high; start++)
                 {

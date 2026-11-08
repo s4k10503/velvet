@@ -20,6 +20,10 @@ namespace Velvet
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
         private Dictionary<string?, Exception> _loaderErrors = new();
+        // For each key of _loaderErrors, the depth in the committed matches of the route whose failure it holds,
+        // so a later failure reaching the same boundary is ordered by match order as processRouteLoaderData
+        // orders them, rather than by when it arrived.
+        private Dictionary<string?, int> _errorDepths = new();
         private Dictionary<string?, object> _actionData = EmptyActionData;
         private static readonly Dictionary<string?, object> EmptyActionData = new();
         private const int MaxRedirects = 5;
@@ -245,10 +249,13 @@ namespace Velvet
             {
                 UnityEngine.Debug.LogException(ex);
                 var matches = CurrentLocation?.Matches;
-                var boundaryId = matches == null ? routeId : matches[FindNearestBoundary(matches, routeId)].RouteId;
-                if (!_loaderErrors.ContainsKey(boundaryId))
+                var depth = matches == null ? 0 : IndexOfRoute(matches, routeId);
+                var boundaryId = matches == null ? routeId : matches[RouteOutlet.NearestErrorBoundary(matches, depth)].RouteId;
+                var held = _errorDepths.TryGetValue(boundaryId, out var heldDepth) ? heldDepth : int.MaxValue;
+                if (depth < held)
                 {
                     _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [boundaryId] = ex };
+                    _errorDepths = new Dictionary<string?, int>(_errorDepths) { [boundaryId] = depth };
                 }
                 RepublishCurrentLocation(routeId);
             };
@@ -293,10 +300,7 @@ namespace Velvet
             matches ??= _routeTree.NotFoundMatches;
             if (unmatched)
             {
-                _loaderErrors = new Dictionary<string?, Exception>
-                {
-                    [matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(start.Path)),
-                };
+                CommitNotFound(matches, start.Path);
             }
             CurrentLocation = BuildLocation(start.Path, start.Hash, matches, Visit.Step(_historyIndex));
             Initialized = unmatched || !NeedsInitialLoad(matches);
@@ -864,6 +868,26 @@ namespace Velvet
             return new PendingNavigation(sequence, visit.IsStep ? visit.Landing : _historyIndex, redirects: 0);
         }
 
+        // A mutation's request, built before anything is reported or a guard runs, as React Router's
+        // startNavigation builds it ahead of handleAction: a JSON body that cannot be stringified throws out of
+        // the submission with the navigation left as it was.
+        private RouteRequest? RequestFor(Submission? submission, bool unmatched, string path, PendingNavigation pending)
+        {
+            if (unmatched || submission?.IsMutation != true)
+            {
+                return null;
+            }
+            try
+            {
+                return submission.BuildRequest(path);
+            }
+            catch (Exception)
+            {
+                ReleaseClaim(pending);
+                throw;
+            }
+        }
+
         // The commit of a navigation that changes only the fragment: the history entry and the location move,
         // and the loader state stays as it is.
         private NavigationResult CommitHashChange(
@@ -941,10 +965,12 @@ namespace Velvet
             var location = BuildLocation(path, hash, matches, visit);
             // Only the fragment changes: nothing runs and nothing loads, as React Router's startNavigation completes
             // a hash change at once. A redirect is never one, its target being the Guard's.
-            if (!initiator.HasValue && !visit.Hydrating && IsHashChangeOnly(path, hash, submission))
+            if (!initiator.HasValue && IsHashChangeOnly(path, hash, submission, visit))
             {
                 return CommitHashChange(location, matches, mode, pending);
             }
+
+            var request = RequestFor(submission, unmatched, path, pending);
 
             // A redirect keeps its initiator's submission on show while it loads, as React Router's navigation
             // does while it follows a redirect out of an action.
@@ -974,7 +1000,7 @@ namespace Velvet
                         return NavigationResult.Cancelled;
                     }
 
-                    action = await RunAction(matches, path, submission, cancellationToken);
+                    action = await RunAction(matches, path, submission, request, cancellationToken);
                     PublishActionData(matches, action);
                     if (cancellationToken.IsCancellationRequested)
                     {
@@ -1033,9 +1059,14 @@ namespace Velvet
             // Copied rather than aliased: a Suspend loader of this round that resolves after the commit writes
             // into round.Results, and CurrentLoaderData publishes whatever this field holds as a read-only
             // snapshot.
-            _loaderErrors = unmatched
-                ? new Dictionary<string?, Exception> { [matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(path)) }
-                : CommittedErrors(matches, round, action);
+            if (unmatched)
+            {
+                CommitNotFound(matches, path);
+            }
+            else
+            {
+                _loaderErrors = CommittedErrors(matches, round, action, out _errorDepths);
+            }
             _loaderData = new Dictionary<string?, object>(round.Results);
             CurrentLocation = location;
             Initialized = true;
@@ -1285,10 +1316,11 @@ namespace Velvet
 
         // React Router's isHashChangeOnly: the same pathname and search, and a fragment that is new, changed, or
         // kept, but not one removed. A mutation submission or a pending revalidation is never one.
-        private bool IsHashChangeOnly(string path, string hash, Submission? submission)
+        // Never the initial load, which loads the location the router already stands on.
+        private bool IsHashChangeOnly(string path, string hash, Submission? submission, Visit visit)
         {
             var current = CurrentLocation;
-            if (current?.Path != path || _revalidationRequired || submission?.IsMutation == true)
+            if (visit.Hydrating || current?.Path != path || _revalidationRequired || submission?.IsMutation == true)
             {
                 return false;
             }
@@ -1554,6 +1586,9 @@ namespace Velvet
 
             private static readonly string[] FormMethods = { "GET", "POST", "PUT", "PATCH", "DELETE" };
 
+            // The request an action is called with, as createClientSideRequest builds it for a mutation.
+            internal RouteRequest BuildRequest(string path) => new(Method, path, EncType, FormData, Json, Text);
+
             // A refused submission runs no action and its refusal takes the action's place. A get that is not
             // refused runs nothing at all.
             internal bool Runs => Method != "GET" || Refusal != null;
@@ -1622,13 +1657,15 @@ namespace Velvet
         // dropped below the first boundary an error is committed at. Writes into round, whose results are both
         // what commits and what the next navigation keeps from.
         private static Dictionary<string?, Exception> CommittedErrors(
-            IReadOnlyList<RouteMatch> matches, RouteLoaderRunner.LoaderRound round, ActionOutcome? action)
+            IReadOnlyList<RouteMatch> matches, RouteLoaderRunner.LoaderRound round, ActionOutcome? action,
+            out Dictionary<string?, int> depths)
         {
             var errors = new Dictionary<string?, Exception>();
+            depths = new Dictionary<string?, int>();
             var pending = action?.Error;
-            foreach (var match in matches)
+            for (var depth = 0; depth < matches.Count; depth++)
             {
-                if (!round.Errors.TryGetValue(match.RouteId, out var error))
+                if (!round.Errors.TryGetValue(matches[depth].RouteId, out var error))
                 {
                     continue;
                 }
@@ -1637,15 +1674,18 @@ namespace Velvet
                     error = pending;
                     pending = null;
                 }
-                var boundaryId = matches[FindNearestBoundary(matches, match.RouteId)].RouteId;
+                var boundaryId = matches[RouteOutlet.NearestErrorBoundary(matches, depth)].RouteId;
                 if (!errors.ContainsKey(boundaryId))
                 {
                     errors[boundaryId] = error;
+                    depths[boundaryId] = depth;
                 }
             }
             if (pending != null)
             {
-                errors[matches[RouteOutlet.NearestErrorBoundary(matches, action!.Target)].RouteId] = pending;
+                var boundaryId = matches[RouteOutlet.NearestErrorBoundary(matches, action!.Target)].RouteId;
+                errors[boundaryId] = pending;
+                depths[boundaryId] = action.Target;
                 if (action.Ran)
                 {
                     round.Results[matches[action.Target].RouteId] = null!;
@@ -1664,36 +1704,44 @@ namespace Velvet
             return errors;
         }
 
-        // React Router's findNearestBoundary from the route with that id: its index in matches.
-        private static int FindNearestBoundary(IReadOnlyList<RouteMatch> matches, string? routeId)
+        // The depth of the route with that id in matches, the root's where none has it, as findNearestBoundary
+        // falls back to the root.
+        private static int IndexOfRoute(IReadOnlyList<RouteMatch> matches, string? routeId)
         {
             var index = matches.Count - 1;
             while (index > 0 && matches[index].RouteId != routeId)
             {
                 index--;
             }
-            return RouteOutlet.NearestErrorBoundary(matches, index);
+            return index;
+        }
+
+        private void CommitNotFound(IReadOnlyList<RouteMatch> matches, string path)
+        {
+            _loaderErrors = new Dictionary<string?, Exception>
+            {
+                [matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(path)),
+            };
+            _errorDepths = new Dictionary<string?, int> { [matches[0].RouteId] = 0 };
         }
 
         // Null for a navigation with no action to run.
         private VelvetTask<ActionOutcome?> RunAction(
-            IReadOnlyList<RouteMatch> matches, string path, Submission? submission, CancellationToken cancellationToken)
+            IReadOnlyList<RouteMatch> matches, string path, Submission? submission, RouteRequest? request,
+            CancellationToken cancellationToken)
             => submission?.Runs == true
-                ? RunActionCore(matches, path, submission, cancellationToken)
+                ? RunActionCore(matches, path, submission, request!, cancellationToken)
                 : VelvetTask.FromResult<ActionOutcome?>(null);
 
         private async VelvetTask<ActionOutcome?> RunActionCore(
-            IReadOnlyList<RouteMatch> matches, string path, Submission submission, CancellationToken cancellationToken)
+            IReadOnlyList<RouteMatch> matches, string path, Submission submission, RouteRequest request,
+            CancellationToken cancellationToken)
         {
             if (submission.Refusal != null)
             {
                 // React Router commits the refusal at the boundary nearest the leaf, running no action.
                 return new ActionOutcome { Target = matches.Count - 1, Error = submission.Refusal };
             }
-            // Ahead of the action, as React Router builds the request before handleAction: a JSON body that cannot
-            // be stringified throws out of the submission rather than committing as the action's error.
-            var request = new RouteRequest(
-                submission.Method, path, submission.EncType, submission.FormData, submission.Json, submission.Text);
             _revalidationRequired = true;
             var outcome = new ActionOutcome { Target = ActionTargetIndex(matches, path), Ran = true };
             var match = matches[outcome.Target];

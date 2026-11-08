@@ -9,8 +9,8 @@ namespace Velvet
     /// The request a loader or an action is called with, React Router's <c>request</c>, built as React Router's
     /// <c>createClientSideRequest</c> builds it: a loader's is a <c>GET</c> of the location with no body, and an
     /// action's carries the submission's method, target and body in the encoding it was submitted with. As with a fetch <c>Request</c>, the body is read once:
-    /// <see cref="FormData()"/>, <see cref="Json()"/> and <see cref="Text()"/> each consume it, and a second read
-    /// throws.
+    /// <see cref="FormData()"/>, <see cref="Json()"/> and <see cref="Text()"/> each consume a body, and a second read
+    /// of one throws; a request with no body reads as empty every time.
     /// </summary>
     public sealed class RouteRequest
     {
@@ -22,17 +22,20 @@ namespace Velvet
         private readonly global::Velvet.FormData? _multipart;
         private readonly string? _essence;
 
+        // Memory history's createURL resolves every href against this origin.
+        private const string Origin = "http://localhost";
+
         // A loader's: a GET with no body.
         internal RouteRequest(string url)
         {
             Method = "GET";
-            Url = url;
+            Url = Origin + url;
         }
 
         internal RouteRequest(string method, string url, string encType, global::Velvet.FormData? formData, object? json, string? text)
         {
             Method = method;
-            Url = url;
+            Url = Origin + url;
             if (encType == JsonType)
             {
                 _body = JsonText.Stringify(json);
@@ -63,7 +66,10 @@ namespace Velvet
         /// <c>DELETE</c> for an action's.</summary>
         public string Method { get; }
 
-        /// <summary>The path and query string of the request, without the fragment.</summary>
+        /// <summary>
+        /// The request's URL, as memory history's <c>createURL</c> makes it: <c>http://localhost</c> and the path and
+        /// query string, without the fragment.
+        /// </summary>
         public string Url { get; }
 
         /// <summary>

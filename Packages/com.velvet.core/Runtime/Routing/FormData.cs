@@ -8,9 +8,9 @@ namespace Velvet
     /// <summary>
     /// An ordered list of name/value entries, the web's <c>FormData</c>: what a submission encoded as
     /// <c>application/x-www-form-urlencoded</c> or <c>multipart/form-data</c> carries, read through
-    /// <see cref="RouteRequest.FormData"/> and <see cref="NavigationState.FormData"/>. Unlike
-    /// <see cref="SearchParams"/>, a repeated name keeps each entry where it was appended. Enumeration yields
-    /// the entries in order, as <c>formData.entries()</c> does.
+    /// <see cref="RouteRequest.FormData"/> and <see cref="NavigationState.FormData"/>. A repeated name keeps each
+    /// entry where it was appended, and enumeration yields the entries in order, as <c>formData.entries()</c>
+    /// does.
     /// </summary>
     public sealed class FormData : IEnumerable<KeyValuePair<string, string>>
     {

@@ -43,9 +43,19 @@ namespace Velvet
 
             // A route with no element renders its child route in its place, as React Router renders the outlet,
             // under the Outlet context it was itself rendered with.
-            routeElement ??= V.Outlet(outletContext);
-            FiberOutletScope.SyncRenderingOutletScope(match!.Route, routeElement.ResolvedIdentity,
-                router?.ScopeFactory);
+            // The route itself identifies an element-less one: every Outlet shares one component identity, and the
+            // scope this Outlet holds is the one a different route must replace.
+            object identity;
+            if (routeElement == null)
+            {
+                routeElement = V.Outlet(outletContext);
+                identity = (object?)match!.Route ?? routeElement.ResolvedIdentity;
+            }
+            else
+            {
+                identity = routeElement.ResolvedIdentity;
+            }
+            FiberOutletScope.SyncRenderingOutletScope(match!.Route, identity, router?.ScopeFactory);
 
             // Depth+1 so a nested Outlet in the route's subtree resolves the following match, and the
             // Outlet's own context value so the route can read it back through Hooks.UseOutletContext.

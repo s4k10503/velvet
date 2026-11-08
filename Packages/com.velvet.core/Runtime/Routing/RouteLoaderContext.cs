@@ -12,7 +12,8 @@ namespace Velvet
 
         /// <summary>
         /// The navigation as a request, React Router's <c>request</c>: a <c>GET</c> whose
-        /// <see cref="RouteRequest.Url"/> is the location's path and query, so a loader reads the search from it.
+        /// <see cref="RouteRequest.Url"/> carries the location's path and query, so a loader reads the search from
+        /// it.
         /// </summary>
         public RouteRequest Request { get; init; } = null!;
     }

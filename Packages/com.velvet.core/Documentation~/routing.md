@@ -84,7 +84,8 @@ where React Router's `<Outlet context>` lives too. The root Outlet takes none.
 
 A route's `loader` runs when the route matches, and `RouteDefinition.LoaderMode` decides how the
 navigation is sequenced against it. Its `RouteLoaderContext.Request` is React Router's `request`, a GET
-`RouteRequest` with no body whose `Url` is the location's path and query, so a loader reads the search from it.
+`RouteRequest` with no body whose `Url` is `http://localhost` and the location's path and query, as memory
+history's createURL makes it, so a loader reads the search from it.
 
 A route with no `element` renders its matched child route in its place, as React Router renders the outlet,
 under the `V.Outlet` context it was itself rendered with.
@@ -208,7 +209,8 @@ route's position, throws `ArgumentException` when the `Router` is built.
 A path is matched as React Router's `matchRoutes` matches it. Every route that can end a chain is a branch: the
 route with the routes above it, scored by `computeScore` over their paths joined, and the branches are tried
 highest score first. Equal scores are ordered by React Router's comparator, which ranks siblings by declaration and
-calls any other two equal, in the order V8's sort leaves them, so the outcome is React Router's even where those
+calls any other two equal, in the order V8 14.0's sort leaves them — the V8 of the Chrome that was stable when
+React Router 7.9.0 was published — so the outcome is React Router's even where those
 two rules alone do not settle it; flattening lists a child's branch before its parent's. A path with optional
 segments (`:lang?`, `docs?`) makes one branch for each way of keeping or dropping them, the kept ones first.
 
@@ -294,8 +296,8 @@ action's path with its query.
   `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `Request`, React
   Router's `request`, built as its `createClientSideRequest` builds one. `RouteRequest.FormData()`,
   `RouteRequest.Json()` and `RouteRequest.Text()` are `request.formData()`, `.json()` and `.text()`, and
-  each reads the body once, as a fetch request's body is read: a second read throws
-  `InvalidOperationException`. `Text()` returns a JSON body as JavaScript's JSON.stringify writes it, a form body as the
+  each reads a body once, as a fetch request's body is read: a second read of one throws
+  `InvalidOperationException`, and a request with no body, a loader's, reads as empty every time. `Text()` returns a JSON body as JavaScript's JSON.stringify writes it, a form body as the
   query string above or, for `multipart/form-data`, as that encoding with a boundary of its own. `Json()`
   parses that text as JavaScript's JSON.parse does, an object as a `Dictionary<string, object?>` in a JavaScript
   object's key order, an array as a `List<object?>`, a number as a `double`, and throws `FormatException` on
