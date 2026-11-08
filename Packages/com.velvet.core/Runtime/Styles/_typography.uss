@@ -51,7 +51,8 @@
 .not-italic { -unity-font-style: normal; }
 
 /* Text Align. The logical forms (Tailwind text-start/end) map to the LTR physical edges, since UI Toolkit
-   has no writing-direction: start = left, end = right. */
+   has no writing-direction: start = left, end = right. TextLineBox.AlignClassesInSheetOrder lists these rules in
+   this file's order. */
 .text-center { -unity-text-align: middle-center; }
 .text-end { -unity-text-align: middle-right; }
 .text-left { -unity-text-align: middle-left; }
@@ -77,6 +78,10 @@
 /* Gives an element declaring an em or percentage leading-[…] the custom property that makes UI Toolkit
    send it CustomStyleResolvedEvent; see LeadingLengthProbe. */
 .velvet-leading-length { --velvet-leading-length: 1; }
+
+/* Gives a text element Velvet creates the custom property that makes UI Toolkit send it CustomStyleResolvedEvent;
+   see TextLineBox. */
+.velvet-line-box { --velvet-line-box: 1; }
 
 /* Text Overflow (Tailwind: text-ellipsis / text-clip; `truncate` is declared in _layout.uss).
    The ellipsis only renders with hidden overflow and no wrapping. `-unity-text-overflow-position`

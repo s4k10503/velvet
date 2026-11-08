@@ -99,10 +99,13 @@ namespace Velvet
         // so the pool's side-table sweep needs no step here.
         private static readonly ConditionalWeakTable<VisualElement, ReconcilerContext> s_effectContexts = new();
 
+        // Tailwind's preflight gives the root a line height of 1.5, which every element inherits as a number.
+        internal static readonly LeadingValue PreflightLeading = new(LeadingUnit.Em, 1.5f);
+
         // The line height CSS computes on element, in pixels, from the nearest leading on it or an ancestor
         // (ResolveEffective's walk): a number times the element's own font size, an em or percentage length
-        // times its declaring element's, or a length as written. NaN where none sets one, which is CSS's
-        // `normal`, and where a measured length cannot be measured yet.
+        // times its declaring element's, or a length as written, and the preflight's 1.5 times the element's font
+        // size where none sets one. NaN for `leading-[normal]`, and where a measured length cannot be measured yet.
         internal static float LineHeightOf(VisualElement element)
         {
             for (var e = element; e != null; e = e.hierarchy.parent)
@@ -122,7 +125,7 @@ namespace Velvet
                     };
                 }
             }
-            return float.NaN;
+            return PreflightLeading.Value * element.resolvedStyle.fontSize;
         }
 
         // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
@@ -151,9 +154,10 @@ namespace Velvet
         // The create-time entry to Apply. A freshly created element is detached and its side tables are empty, so
         // with no effect class of its own there is nothing for Apply to resolve, write or remove, and its
         // descendants are not walked either: an ancestor's effect reaches the element from the ancestor's own pass.
+        // A text element Velvet creates is the exception, since it shows the preflight's line height.
         public static void ApplyOnCreate(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
-            if (element.hierarchy.parent == null && StyleTextEffectClass.Parse(classNames).IsEmpty)
+            if (element.hierarchy.parent == null && element is not ILineBoxed && StyleTextEffectClass.Parse(classNames).IsEmpty)
             {
                 return;
             }
@@ -226,6 +230,11 @@ namespace Velvet
             if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
             {
                 var effect = ResolveEffective(ctx, te);
+                // A text element Velvet creates is shown in the preflight's line height where nothing sets one.
+                if (effect.Leading == null && te is ILineBoxed)
+                {
+                    effect.Leading = PreflightLeading;
+                }
                 var breaker = SyncBalance(ctx, te, effect.WrapStyle);
                 TextBreakRequest? breaks = breaker != null && breaker.CanBreak
                     ? new TextBreakRequest(breaker, effect.Preserves)
@@ -313,7 +322,7 @@ namespace Velvet
             {
                 return display;
             }
-            var raise = boxed.LineBox.Shown(ctx);
+            var raise = boxed.LineBox.Shown(ctx, display);
             return raise == 0f
                 ? display
                 : string.Concat("<voffset=", raise.ToString(System.Globalization.CultureInfo.InvariantCulture), "px>", display, "</voffset>");

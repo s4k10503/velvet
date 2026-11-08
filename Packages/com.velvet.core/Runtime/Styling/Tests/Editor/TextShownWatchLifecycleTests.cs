@@ -27,6 +27,8 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.TextShownWatches.ContainsKey(scope.Root[0]), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): on the base a label left with leading-[normal] shows its text as written and
+        // drops its watch, as here; the preflight line height that every other label now carries keeps one.
         [Test]
         public void Given_AWatchedLabel_When_TheEffectIsPatchedAway_Then_ItIsNoLongerWatched()
         {
@@ -36,8 +38,8 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
             var label = scope.Root[0];
 
-            // Act
-            scope.Reconciler.Reconcile(scope.Root, first, new[] { Leaf("p-2") });
+            // Act — leading-[normal] takes the preflight's line height away too, so the label shows its text as written.
+            scope.Reconciler.Reconcile(scope.Root, first, new[] { Leaf("leading-[normal]") });
 
             // Assert
             Assert.That(scope.Reconciler.Context.TextShownWatches.ContainsKey(label), Is.False);

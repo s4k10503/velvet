@@ -277,7 +277,6 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [TestCase("hover:text-sm/6")]
         [TestCase("hover:text-[14px]/6")]
         public void Given_AHoverGatedSlashTextSize_When_TheElementIsHoveredAndLeft_Then_TheLineHeightAppliesOnlyWhileHovered(
@@ -303,17 +302,16 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, hovered, RenderedTextProbe.Of(label)),
-                Is.EqualTo(("hi", "<line-height=24px>hi</line-height>", "hi")));
+                Is.EqualTo(("<line-height=1.5em>hi</line-height>", "<line-height=24px>hi</line-height>", "<line-height=1.5em>hi</line-height>")));
         }
 
-        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AHoverGatedBareTextSize_When_TheElementIsHoveredAndLeft_Then_ThePairAppliesOnlyWhileHovered()
         {
             // Arrange
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
-                new VNode[] { V.Label(className: "hover:text-base", text: "hi", name: "label") });
+                new VNode[] { V.Label(className: "hover:text-5xl", text: "hi", name: "label") });
             var label = scope.Root.Q<Label>("label");
             var before = RenderedTextProbe.Of(label);
 
@@ -330,7 +328,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((before, hovered, RenderedTextProbe.Of(label)),
-                Is.EqualTo(("hi", "<line-height=1.5em>hi</line-height>", "hi")));
+                Is.EqualTo(("<line-height=1.5em>hi</line-height>", "<line-height=1em>hi</line-height>", "<line-height=1.5em>hi</line-height>")));
         }
 
         // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
@@ -350,7 +348,6 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1em>hi</line-height>"));
         }
 
-        // GREEN_ON_BASE(characterization): the base reads no size class, so the shown string is plain before and after.
         [Test]
         public void Given_ALabelWithATextSize_When_ItsSizeClassIsPatchedAway_Then_TheTextIsPlainAgain()
         {
@@ -364,7 +361,7 @@ namespace Velvet.Tests
                 new VNode[] { V.Label(className: "p-1", text: "hi", name: "label") });
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("hi"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<Label>("label")), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
         }
 
         // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.

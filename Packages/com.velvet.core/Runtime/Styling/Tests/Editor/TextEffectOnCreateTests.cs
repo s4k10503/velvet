@@ -19,9 +19,8 @@ namespace Velvet.Tests
             return StyleTextEffectResolver.DisplayedText(scope.Reconciler.Context, label);
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the full pass for every created leaf; this holds the skipped one to its result.
         [Test]
-        public void Given_ALabelWithNoEffectClass_When_Created_Then_ItShowsItsText()
+        public void Given_ALabelWithNoEffectClass_When_Created_Then_ItShowsItsTextInThePreflightLineHeight()
         {
             // Arrange
             using var scope = new ReconcilerScope();
@@ -30,10 +29,9 @@ namespace Velvet.Tests
             var shown = ShownBy(scope, V.Label(className: "p-2", text: "hi"));
 
             // Assert
-            Assert.AreEqual("hi", shown);
+            Assert.AreEqual("<line-height=1.5em>hi</line-height>", shown);
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the full pass for every created leaf; this holds the leaf that must not skip it.
         [Test]
         public void Given_ALabelWithAnEffectClass_When_Created_Then_ItShowsTheEffect()
         {
@@ -44,10 +42,9 @@ namespace Velvet.Tests
             var shown = ShownBy(scope, V.Label(className: "uppercase", text: "hi"));
 
             // Assert
-            Assert.AreEqual("HI", shown);
+            Assert.AreEqual("<line-height=1.5em>HI</line-height>", shown);
         }
 
-        // GREEN_ON_BASE(characterization): the base resolves the ancestor's effect onto the leaf as well; this holds the skipped leaf to it.
         [Test]
         public void Given_AnEffectFreeLabelBelowAContainerWithAnEffect_When_Created_Then_ItShowsTheEffect()
         {
@@ -58,18 +55,19 @@ namespace Velvet.Tests
             var shown = ShownBy(scope, V.Div("uppercase", V.Label(className: "p-2", text: "hi")));
 
             // Assert
-            Assert.AreEqual("HI", shown);
+            Assert.AreEqual("<line-height=1.5em>HI</line-height>", shown);
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the full pass and the leaf is left without a repaint watch either way.
+        // GREEN_ON_BASE(characterization): on the base a created label under leading-[normal] has no repaint watch, as
+        // here; it is the one label that shows its text without the preflight's tag.
         [Test]
-        public void Given_ALabelWithNoEffectClass_When_Created_Then_ItIsNotWatched()
+        public void Given_ALabelUnderANormalLineHeight_When_Created_Then_ItIsNotWatched()
         {
             // Arrange
             using var scope = new ReconcilerScope();
 
-            // Act
-            ShownBy(scope, V.Label(className: "p-2", text: "hi"));
+            // Act — leading-[normal] is the only state in which a label shows its text without a tag.
+            ShownBy(scope, V.Label(className: "leading-[normal]", text: "hi"));
 
             // Assert
             Assert.AreEqual(0, scope.Reconciler.Context.TextShownWatches.Count);

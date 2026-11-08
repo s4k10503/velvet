@@ -71,7 +71,10 @@ namespace Velvet
         protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
         {
             var lines = TextLineBox.Before(this, LineBox, heightMode);
-            return lines.Fit(base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode), desiredHeight, heightMode);
+            var generated = LineBox.Unraised is { } text
+                ? MeasureTextSize(text, desiredWidth, widthMode, desiredHeight, heightMode)
+                : base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode);
+            return LineBox.Measured(desiredWidth, widthMode, heightMode, lines.Fit(generated, desiredHeight, heightMode));
         }
     }
 
@@ -94,7 +97,10 @@ namespace Velvet
         protected override Vector2 DoMeasure(float desiredWidth, MeasureMode widthMode, float desiredHeight, MeasureMode heightMode)
         {
             var lines = TextLineBox.Before(this, LineBox, heightMode);
-            return lines.Fit(base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode), desiredHeight, heightMode);
+            var generated = LineBox.Unraised is { } text
+                ? MeasureTextSize(text, desiredWidth, widthMode, desiredHeight, heightMode)
+                : base.DoMeasure(desiredWidth, widthMode, desiredHeight, heightMode);
+            return LineBox.Measured(desiredWidth, widthMode, heightMode, lines.Fit(generated, desiredHeight, heightMode));
         }
     }
 }

@@ -165,6 +165,69 @@ namespace Velvet.Tests
             // Assert
             Assert.That(difference[0], Is.EqualTo(0f).Within(1f));
         }
+
+        [UnityTest]
+        public IEnumerator Given_ALineHeightBelowTheFontsUnderTheDefaultAlignment_When_Rendered_Then_TheGlyphsMoveByHalfTheDifference()
+        {
+            // Arrange & Act — 40px is below the content height of a 36px font and 48px above it.
+            var difference = new float[1];
+            yield return Difference(Text("text-4xl leading-[48px]"), Text("text-4xl leading-[40px]"), difference);
+
+            // Assert
+            Assert.That(difference[0], Is.EqualTo(4f).Within(1f));
+        }
+
+        // GREEN_ON_BASE(characterization): on the base both boxes are the font's height and both put the glyphs at
+        // its top. A default alignment left upper-left, which cannot raise its glyphs, reads two pixels low here.
+        [UnityTest]
+        public IEnumerator Given_ALineHeightBelowTheFontsUnderTheDefaultAlignment_When_Rendered_Then_TheGlyphsSitWhereAMiddleAlignmentPutsThem()
+        {
+            // Arrange & Act
+            var difference = new float[1];
+            yield return Difference(Text("text-4xl leading-none"), Text("text-4xl leading-none text-left"), difference);
+
+            // Assert
+            Assert.That(difference[0], Is.EqualTo(0f).Within(1f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ThreeLinesUnderThePreflightLineHeight_When_Shown_Then_TheirAdvanceIsThePreflights()
+        {
+            // Arrange
+            var theme = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(ThemePath);
+            Assume.That(theme, Is.Not.Null, "Precondition: the project's runtime theme is at " + ThemePath);
+            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings.themeStyleSheet = theme;
+            _host = new GameObject(nameof(TextLineBoxPlaybackTests));
+            var document = _host.AddComponent<UIDocument>();
+            document.panelSettings = _settings;
+            yield return null;
+            VelvetStyleUtilities.AttachTo(document.rootVisualElement);
+
+            // Act
+            _mounted = V.Mount(document.rootVisualElement, V.Label(name: "text", className: "whitespace-pre text-[16px]", text: "a\nb\nc"));
+            for (var frame = 0; frame < 5; frame++)
+            {
+                yield return null;
+            }
+
+            // Assert
+            Assert.That(RenderedTextProbe.Of(document.rootVisualElement.Q<Label>("text")), Does.Contain("<line-height=1.5em>"));
+        }
+
+        // GREEN_ON_BASE(characterization): on the base an upper-left label draws at the top of any box. Here it is
+        // aligned middle-left, and a stretched box that left it unraised would centre it 24px lower.
+        [UnityTest]
+        public IEnumerator Given_ALineStretchedByAFlexRowUnderTheDefaultAlignment_When_Rendered_Then_TheGlyphsStayInTheFirstLineBox()
+        {
+            // Arrange & Act
+            var difference = new float[1];
+            var row = V.Div(className: "flex flex-row h-[80px]", children: new VNode[] { Text("text-base leading-8") });
+            yield return Difference(row, Text("text-base leading-8"), difference);
+
+            // Assert
+            Assert.That(difference[0], Is.EqualTo(0f).Within(1f));
+        }
     }
 }
 #endif

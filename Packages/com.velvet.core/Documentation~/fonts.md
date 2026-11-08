@@ -254,14 +254,18 @@ generator and the Advanced Text Generator) implement the tag natively, feeding i
 line-advance math at every line-break site; a following `</line-height>` restores the natural
 metric.
 
-The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text leaf or a `V.Button` under a line
-height measures one line box of that height per line, as CSS does, single lines included and whether the line
-height is above or below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and
-`text-sm/6` 24px. Padding and border sit outside the line boxes, and `resolvedStyle.height` reads the result. The
-glyphs sit half the difference between the line height and the font's content height below the top of the first
-line box: under a `middle-*` alignment (`text-left`, `text-center`, `text-right`, `text-start`, `text-end`) at any box height, a box its flex row stretches or an `h-*` sets included, and under an `upper-*`
-alignment (a label with no text alignment class, `text-top-*`) where the line height is at least the font's
-content height.
+The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text leaf or a `V.Button` measures one
+line box of its line height per line, as CSS does, single lines included and whether the line height is above or
+below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and `text-sm/6` 24px. Text that
+no `leading-*` or `text-<size>` reaches takes the 1.5 Tailwind's preflight gives the root, so a 16px text is 24px
+tall, and its shown string carries the `1.5em` tag as a `leading-normal` one would. Padding and border sit outside the line
+boxes, and `resolvedStyle.height` reads the result. The glyphs sit half the difference between the line height and
+the font's content height below the top of the first line box, whatever the box's height, a box its flex row
+stretches or an `h-*` sets included. CSS has no vertical alignment inside a line box, so such an element is
+aligned `middle-*` with the horizontal part it resolves, inherited or its own: `text-top-left` and an element with no
+alignment class read `middle-left`, and a parent's `text-center` still reaches it. An alignment written inline by
+the application is left as it is. A field's input text is UI Toolkit's own element, which shows no rich text and
+measures in the font's own lines.
 
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim
@@ -269,7 +273,8 @@ as `<line-height=1.625em>…</line-height>`. The bracket form takes CSS `line-he
 unitless number (`leading-[1.5]`), an `em` length (`leading-[1.5em]`), a percentage
 (`leading-[150%]`), and `px`, `rem` (1rem = 16px, as `w-[…]` takes it) or an absolute unit (`in`, `cm`,
 `mm`, `pt`, `pc`, `Q`), which emit an absolute `<line-height=Npx>`. `leading-[inherit]` takes the parent's
-line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, and
+line height over the element's own, and `leading-[normal]` is the font's own line advance: it writes no tag, sizes
+the box in the font's own lines, and
 takes an ancestor's line height away from the text. A math function is read where it
 comes to one of those pixel lengths or one percentage
 ([styling-arbitrary-lengths.md](styling-arbitrary-lengths.md)). A length that reads more than the element's

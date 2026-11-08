@@ -169,13 +169,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OneLhUnderNoLeading_When_Settled_Then_ItIsTheFontsLineHeight()
+        public void Given_OneLhUnderNoLeading_When_Settled_Then_ItIsThePreflightLineHeight()
         {
             // Act
             Mount("text-[20px] w-[300px] h-[200px]", "w-[1lh] h-[10px]");
 
-            // Assert
-            Assert.That(Written, Is.EqualTo(FacePixels(_font.faceInfo.lineHeight, 20f)).Within(1e-3f));
+            // Assert — Tailwind's preflight line height of 1.5 at 20px.
+            Assert.That(Written, Is.EqualTo(30f).Within(1e-3f));
         }
 
         [Test]

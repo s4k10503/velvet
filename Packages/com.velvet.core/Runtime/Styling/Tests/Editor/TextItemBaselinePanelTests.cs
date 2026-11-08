@@ -207,16 +207,13 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base already holds StyleFlexMinSizeManipulator's minimum, so this
-        // passes there; what reddens it is that write going away.
         [Test]
         public void Given_ALargeLabelInAShorterFixedHeightCenteredCard_When_Resolved_Then_TheTextIsCenteredOnTheCard()
         {
-            // Arrange
+            // Arrange — the line box is the preflight's 1.5 times the 40px font.
             var label = MountLabel("flex flex-col items-center justify-center h-[20px] w-[200px]", "text-[40px]", "Title");
             var card = label.parent;
-            var contentWidth = label.resolvedStyle.width - HorizontalFrame(label);
-            var textHeight = MeasuredHeight(label, "Title", contentWidth);
+            var textHeight = 1.5f * 40f;
 
             // Act
             var textTop = label.worldBound.yMin + label.resolvedStyle.borderTopWidth + label.resolvedStyle.paddingTop;
@@ -239,12 +236,15 @@ namespace Velvet.Tests
             var oneLine = label.MeasureTextSize(
                 "aa", float.NaN, VisualElement.MeasureMode.Undefined,
                 float.NaN, VisualElement.MeasureMode.Undefined).y;
+            // The generator's line count, each line a line box of the preflight's 1.5 times the font size.
+            var advance = MeasuredHeight(label, "aa\naa", width) - oneLine;
+            var lineBoxes = (1 + Mathf.RoundToInt((wrapped - oneLine) / advance)) * 1.5f * label.resolvedStyle.fontSize;
 
             // Assert — the wrap is folded in: a container wide enough for one line cannot tell a wrapped
             // height from a single line's.
             Assert.That(
                 (label.style.minHeight.value.value, wrapped > oneLine),
-                Is.EqualTo((Mathf.Ceil(wrapped) + VerticalFrame(label), true)));
+                Is.EqualTo((Mathf.Ceil(lineBoxes) + VerticalFrame(label), true)));
         }
 
         [Test]
@@ -493,10 +493,15 @@ namespace Velvet.Tests
         {
             // Arrange / Act
             var label = MountLabel("flex flex-col h-[10px] w-[60px]", "min-h-[auto]", ManyShortWords);
-            var wrapped = MeasuredHeight(label, ManyShortWords, label.resolvedStyle.width - HorizontalFrame(label));
+            var width = label.resolvedStyle.width - HorizontalFrame(label);
+            var oneLine = MeasuredHeight(label, "aa", width);
+            // The generator's line count, each line a line box of the preflight's 1.5 times the font size.
+            var lines = 1 + Mathf.RoundToInt((MeasuredHeight(label, ManyShortWords, width) - oneLine)
+                / (MeasuredHeight(label, "aa\naa", width) - oneLine));
 
             // Assert
-            Assert.That(label.style.minHeight.value.value, Is.EqualTo(Mathf.Ceil(wrapped) + VerticalFrame(label)));
+            Assert.That(label.style.minHeight.value.value,
+                Is.EqualTo(Mathf.Ceil(lines * 1.5f * label.resolvedStyle.fontSize) + VerticalFrame(label)));
         }
 
         [Test]
@@ -562,10 +567,15 @@ namespace Velvet.Tests
         {
             // Arrange / Act
             var label = MountLabel("flex flex-col h-[10px] w-[60px]", "min-h-auto", ManyShortWords);
-            var wrapped = MeasuredHeight(label, ManyShortWords, label.resolvedStyle.width - HorizontalFrame(label));
+            var width = label.resolvedStyle.width - HorizontalFrame(label);
+            var oneLine = MeasuredHeight(label, "aa", width);
+            // The generator's line count, each line a line box of the preflight's 1.5 times the font size.
+            var lines = 1 + Mathf.RoundToInt((MeasuredHeight(label, ManyShortWords, width) - oneLine)
+                / (MeasuredHeight(label, "aa\naa", width) - oneLine));
 
             // Assert
-            Assert.That(label.style.minHeight.value.value, Is.EqualTo(Mathf.Ceil(wrapped) + VerticalFrame(label)));
+            Assert.That(label.style.minHeight.value.value,
+                Is.EqualTo(Mathf.Ceil(lines * 1.5f * label.resolvedStyle.fontSize) + VerticalFrame(label)));
         }
 
         // Tailwind orders min-w-0 before min-w-[auto] and min-w-auto, whatever order the classes are written in.
