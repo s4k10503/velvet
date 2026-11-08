@@ -242,8 +242,9 @@ namespace Velvet
         /// </summary>
         public Exception? FailureReason { get; private set; }
         /// <summary>
-        /// True while the call waits for a connection or for the application to become visible again, as TanStack's
-        /// <c>isPaused</c>. See <see cref="RetryPolicy.NetworkMode"/>.
+        /// True while the call waits for a connection, for an earlier mutation of its
+        /// <see cref="MutationOptionsBase.Scope"/> to settle, or, before a retry, for the application to become
+        /// visible again, as TanStack's <c>isPaused</c>. See <see cref="RetryPolicy.NetworkMode"/>.
         /// </summary>
         public bool IsPaused { get; private set; }
 

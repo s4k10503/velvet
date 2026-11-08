@@ -53,6 +53,7 @@ namespace Velvet.Tests
             s_gates.Clear();
             s_captured = null;
             s_rerender = default;
+            s_handed = null;
             s_client = NewClient(null);
             s_options = Labelled("A");
         }
@@ -135,29 +136,45 @@ namespace Velvet.Tests
         #region Function context
 
         [UnityTest]
-        public IEnumerator Given_OptionsWithMetaAndAKey_When_TheFunctionRuns_Then_ItIsHandedTheClientMetaAndKey()
+        public IEnumerator Given_AMountedHandle_When_TheFunctionRuns_Then_ItIsHandedTheClient()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            MutationFunctionContext? handed = null;
-            s_options = new MutationOptions<int, int, string>(MutationFn: (v, context) =>
-            {
-                handed = context;
-                return VelvetTask.FromResult(v);
-            })
-            {
-                MutationKey = TodoOne,
-                Meta = new Dictionary<string, object?> { ["toast"] = "saved" },
-            };
-            using var mounted = Mount();
+            using var mounted = Mount(KeyedAndCarryingMeta());
 
             // Act
             await s_captured!.MutateAsync(1);
 
             // Assert
-            Assert.That(
-                new[] { ReferenceEquals(handed?.Client, s_client), Equals(handed?.Meta?["toast"], "saved"), TodoOne.Equals(handed?.MutationKey) },
-                Is.EqualTo(new[] { true, true, true }));
+            Assert.That(s_handed?.Client, Is.SameAs(s_client));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_OptionsWithMeta_When_TheFunctionRuns_Then_ItIsHandedTheMeta()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount(KeyedAndCarryingMeta());
+
+            // Act
+            await s_captured!.MutateAsync(1);
+
+            // Assert
+            Assert.That(s_handed?.Meta?["toast"], Is.EqualTo("saved"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_OptionsWithAKey_When_TheFunctionRuns_Then_ItIsHandedTheKey()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount(KeyedAndCarryingMeta());
+
+            // Act
+            await s_captured!.MutateAsync(1);
+
+            // Assert
+            Assert.That(s_handed?.MutationKey, Is.EqualTo(TodoOne));
         });
 
         [UnityTest]
@@ -190,8 +207,8 @@ namespace Velvet.Tests
             // Act
             await s_captured!.MutateAsync(1);
 
-            // Assert
-            Assert.That(new[] { handed.Count, handed.Distinct().Count() }, Is.EqualTo(new[] { 3, 1 }));
+            // Assert — counted only once all three were handed one, so a callback that never ran cannot pass it.
+            Assert.That(handed.Count == 3 ? handed.Distinct().Count() : -1, Is.EqualTo(1));
         });
 
         [UnityTest]
@@ -236,26 +253,61 @@ namespace Velvet.Tests
         #region Defaults
 
         [Test]
-        public void Given_ClientKeyAndOwnOptions_When_AMutationIsBuilt_Then_EachLayerFillsOnlyWhatTheOneAboveLeftNull()
+        public void Given_ClientDefaults_When_NeitherTheKeyDefaultsNorTheOptionsSetAField_Then_TheClientsValueIsTaken()
         {
             // Arrange
-            var scope = new MutationScope("key-scope");
-            s_client = NewClient(null, new MutationDefaults
-            {
-                Meta = new Dictionary<string, object?> { ["layer"] = "client" },
-                Scope = new MutationScope("client-scope"),
-                GcTime = TimeSpan.FromSeconds(1),
-            });
-            s_client.SetMutationDefaults(Todos, new MutationDefaults { Scope = scope, GcTime = TimeSpan.FromSeconds(2) });
-            s_options = Labelled("A") with { MutationKey = TodoOne, GcTime = TimeSpan.FromSeconds(3) };
+            LayerDefaults();
 
             // Act
             var options = s_client.DefaultMutationOptions(s_options);
 
             // Assert
-            Assert.That(new object?[] { options.Meta?["layer"], options.Scope, options.GcTime },
-                Is.EqualTo(new object?[] { "client", scope, TimeSpan.FromSeconds(3) }));
+            Assert.That(options.Meta?["layer"], Is.EqualTo("client"));
         }
+
+        [Test]
+        public void Given_KeyDefaults_When_TheOptionsLeaveAFieldTheClientAlsoSets_Then_TheKeysValueIsTaken()
+        {
+            // Arrange
+            LayerDefaults();
+
+            // Act
+            var options = s_client.DefaultMutationOptions(s_options);
+
+            // Assert
+            Assert.That(options.Scope?.Id, Is.EqualTo("key-scope"));
+        }
+
+        [Test]
+        public void Given_OptionsSettingAField_When_BothDefaultsSetItToo_Then_TheOptionsValueIsKept()
+        {
+            // Arrange
+            LayerDefaults();
+
+            // Act
+            var options = s_client.DefaultMutationOptions(s_options);
+
+            // Assert
+            Assert.That(options.GcTime, Is.EqualTo(TimeSpan.FromSeconds(3)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AFunctionInTheClientsTypedDefaults_When_AKeyRegistrationOfAnotherTypeAlsoMatches_Then_TheClientsFunctionRuns()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — v5 spreads the two objects together, so a registration of another shape removes nothing
+            // the client's defaults supply.
+            s_client = NewClient(null, new MutationOptions<int, int, string>(MutationFn: (v, _) => VelvetTask.FromResult(v * 5)));
+            s_client.SetMutationDefaults(Todos, new MutationOptions<string, string>(MutationFn: (v, _) => VelvetTask.FromResult(v)));
+            s_options = new MutationOptions<int, int, string>(MutationFn: null) { MutationKey = TodoOne };
+            using var mounted = Mount();
+
+            // Act
+            var result = await s_captured!.MutateAsync(3);
+
+            // Assert
+            Assert.That(result, Is.EqualTo(15));
+        });
 
         [Test]
         public void Given_TwoRegistrationsLeadingAKey_When_TheDefaultsAreRead_Then_TheLaterOneWins()
@@ -403,7 +455,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(new object?[] { caught, s_captured.Error }, Is.EqualTo(new object?[] { null, failure }));
+            // Assert — read only once the handle shows the failure, so a call that never failed cannot pass it.
+            Assert.That(ReferenceEquals(s_captured.Error, failure) ? caught : (object)s_captured, Is.Null);
         });
 
         #endregion
@@ -450,10 +503,41 @@ namespace Velvet.Tests
 
         #endregion
 
+        private static MutationFunctionContext? s_handed;
+
+        private static MutationOptions<int, int, string> KeyedAndCarryingMeta() => new(MutationFn: (v, context) =>
+        {
+            s_handed = context;
+            return VelvetTask.FromResult(v);
+        })
+        {
+            MutationKey = TodoOne,
+            Meta = new Dictionary<string, object?> { ["toast"] = "saved" },
+        };
+
+        // Client defaults set Meta, Scope and GcTime; key defaults set Scope and GcTime; the options set GcTime.
+        private static void LayerDefaults()
+        {
+            s_client = NewClient(null, new MutationDefaults
+            {
+                Meta = new Dictionary<string, object?> { ["layer"] = "client" },
+                Scope = new MutationScope("client-scope"),
+                GcTime = TimeSpan.FromSeconds(1),
+            });
+            s_client.SetMutationDefaults(Todos, new MutationDefaults { Scope = new MutationScope("key-scope"), GcTime = TimeSpan.FromSeconds(2) });
+            s_options = Labelled("A") with { MutationKey = TodoOne, GcTime = TimeSpan.FromSeconds(3) };
+        }
+
         private static QueryClient NewClient(MutationCache? cache, MutationOptionsBase? mutations = null)
             => new(new QueryClientOptions { MutationCache = cache, Mutations = mutations, Clock = () => s_now });
 
         // The mount's passive effects run here, so the observer holds the first render's options committed.
+        private MountedTree Mount(MutationOptions<int, int, string> options)
+        {
+            s_options = options;
+            return Mount();
+        }
+
         private MountedTree Mount()
         {
             var mounted = V.Mount(_root, V.Component(MutationRender, key: "mutation"));
@@ -461,10 +545,13 @@ namespace Velvet.Tests
             return mounted;
         }
 
+        // FlushStateForTest runs the effects earlier commits left before it renders, so the re-render's own effects,
+        // where the observer takes the new options, are flushed after it.
         private static void Rerender(MountedTree mounted)
         {
             s_rerender.Invoke(v => v + 1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
         }
 
         // Logs "{label}:{data}" from OnSuccess; gated calls wait on s_gates[variables].

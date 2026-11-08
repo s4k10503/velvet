@@ -333,7 +333,8 @@ a call that fails before its function runs is never, as with v5's promise.
 **Scopes.** Mutations whose `Scope` ids are equal run one at a time, in the order they started, whichever
 handles started them: a later one is `Pending` with `IsPaused` true — after its `OnMutate` has run, as in v5 —
 until every earlier one of the scope has settled, successfully or not, and starts as soon as the one ahead of
-it settles, where its `NetworkMode` and the application's visibility let a paused mutation continue. Mutations of different scopes, or without one, run side by side.
+it settles, where its `NetworkMode` lets it start: a scope wait is a wait to start, so the application's
+visibility does not hold it. Mutations of different scopes, or without one, run side by side.
 
 **`UseMutationState` / `UseIsMutating`.** `UseMutationState` returns what `Select` makes of each mutation its
 `Filters` select, in the order the mutations were added — the `MutationState` without a `Select`, which the

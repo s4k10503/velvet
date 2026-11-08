@@ -549,10 +549,19 @@ namespace Velvet
         public T DefaultMutationOptions<T>(T options) where T : MutationOptionsBase
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            MutationOptionsBase defaults = new MutationDefaults();
-            if (_mutationOptions != null) defaults = Assign(defaults, _mutationOptions);
-            if (options.MutationKey != null) defaults = Assign(defaults, GetMutationDefaults(options.MutationKey));
-            return (T)options.WithDefaults(defaults);
+            // Filled from each layer in turn, the one v5's spread puts last first: filling only what is still null,
+            // that gives the spread's result, and a layer of another record type cannot take away what one of the
+            // options' own type supplies, as merging the layers into one record first would.
+            MutationOptionsBase filled = options;
+            if (options.MutationKey is { } mutationKey)
+            {
+                for (var i = _mutationDefaults.Count - 1; i >= 0; i--)
+                {
+                    if (mutationKey.Matches(_mutationDefaults[i].Key)) filled = filled.WithDefaults(_mutationDefaults[i].Value);
+                }
+            }
+            if (_mutationOptions != null) filled = filled.WithDefaults(_mutationOptions);
+            return (T)filled;
         }
 
         // Object.assign(target, source) over two option records: what source sets wins. The result takes source's

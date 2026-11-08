@@ -258,13 +258,15 @@ namespace Velvet.Tests
             var call = s_captured!.MutateAsync(1);
             s_mutationFn = (v, _) => VelvetTask.FromResult(v * 100);
             mounted.Render(V.Component(CaptureMutationRender, key: "retry-latest-fn"));
+            // The commit's passive effects are where the pending call the handle shows takes the new options.
+            mounted.FlushEffectsForTest();
 
             // Act
             gate.TrySetResult();
             var result = await call;
 
             // Assert
-            Assert.That(result, Is.EqualTo(100), "The retry calls the MutationFn of the latest render, as v5 does");
+            Assert.That(result, Is.EqualTo(100), "The retry calls the MutationFn of the latest commit, as v5's setOptions hands it to the pending call");
         });
 
         [UnityTest]
@@ -616,8 +618,10 @@ namespace Velvet.Tests
         [Component]
         public static VNode CaptureMutationRender()
         {
+            // Captured here rather than read when the call runs, so a render's options carry that render's function.
+            var mutationFn = s_mutationFn;
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                MutationFn: (v, context) => mutationFn(v, context.CancellationToken),
                 OnError: ForThisCase<Exception, int>((_, _) => s_onErrorCount++)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }

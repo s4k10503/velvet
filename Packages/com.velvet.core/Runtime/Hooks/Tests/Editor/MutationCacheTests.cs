@@ -86,7 +86,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_AnExactFilter_When_ItNamesTheKeyAndAPrefixOfIt_Then_OnlyTheWholeKeySelects()
+        public IEnumerator Given_AnExactFilterNamingAPrefixOfTheKey_When_Applied_Then_ItSelectsNothing()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -94,18 +94,14 @@ namespace Velvet.Tests
             await s_captured!.MutateAsync(1);
 
             // Act
-            var counts = new[]
-            {
-                s_cache.FindAll(new MutationFilters { MutationKey = Todos, Exact = true }).Count,
-                s_cache.FindAll(new MutationFilters { MutationKey = TodoOne, Exact = true }).Count,
-            };
+            var selected = s_cache.FindAll(new MutationFilters { MutationKey = Todos, Exact = true }).Count;
 
-            // Assert
-            Assert.That(counts, Is.EqualTo(new[] { 0, 1 }));
+            // Assert — read only over a cache holding the mutation, so a cache holding none cannot pass it.
+            Assert.That(s_cache.GetAll().Count == 1 ? selected : -1, Is.EqualTo(0));
         });
 
         [UnityTest]
-        public IEnumerator Given_Find_When_ExactIsUnset_Then_APrefixFindsNothingUntilExactIsFalse()
+        public IEnumerator Given_AnExactFilterNamingTheWholeKey_When_Applied_Then_ItSelectsTheMutation()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -113,14 +109,40 @@ namespace Velvet.Tests
             await s_captured!.MutateAsync(1);
 
             // Act
-            var found = new[]
-            {
-                s_cache.Find(new MutationFilters { MutationKey = Todos }) != null,
-                s_cache.Find(new MutationFilters { MutationKey = Todos, Exact = false }) != null,
-            };
+            var selected = s_cache.FindAll(new MutationFilters { MutationKey = TodoOne, Exact = true }).Count;
 
             // Assert
-            Assert.That(found, Is.EqualTo(new[] { false, true }));
+            Assert.That(selected, Is.EqualTo(1));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_Find_When_ExactIsUnset_Then_APrefixOfTheKeyFindsNothing()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount();
+            await s_captured!.MutateAsync(1);
+
+            // Act
+            var found = s_cache.Find(new MutationFilters { MutationKey = Todos });
+
+            // Assert — read only over a cache holding the mutation, so a cache holding none cannot pass it.
+            Assert.That(s_cache.GetAll().Count == 1 ? found : (object)s_cache, Is.Null);
+        });
+
+        [UnityTest]
+        public IEnumerator Given_Find_When_ExactIsFalse_Then_APrefixOfTheKeyFindsTheMutation()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount();
+            await s_captured!.MutateAsync(1);
+
+            // Act
+            var found = s_cache.Find(new MutationFilters { MutationKey = Todos, Exact = false });
+
+            // Assert
+            Assert.That(found, Is.SameAs(s_cache.GetAll().Single()));
         });
 
         [UnityTest]
@@ -133,14 +155,14 @@ namespace Velvet.Tests
             await s_captured!.MutateAsync(1);
 
             // Act
-            var counts = new[] { s_cache.FindAll(new MutationFilters { MutationKey = Todos }).Count, s_cache.FindAll().Count };
+            var selected = s_cache.FindAll(new MutationFilters { MutationKey = Todos }).Count;
 
-            // Assert
-            Assert.That(counts, Is.EqualTo(new[] { 0, 1 }));
+            // Assert — read only over a cache holding the mutation, so a cache holding none cannot pass it.
+            Assert.That(s_cache.GetAll().Count == 1 ? selected : -1, Is.EqualTo(0));
         });
 
         [Test]
-        public void Given_APendingMutation_When_FilteredByStatus_Then_OnlyThePendingStatusSelectsIt()
+        public void Given_APendingMutation_When_FilteredByThePendingStatus_Then_ItIsSelected()
         {
             // Arrange
             s_gate = new VelvetTaskCompletionSource<int>();
@@ -148,14 +170,25 @@ namespace Velvet.Tests
             s_captured!.Mutate(1);
 
             // Act
-            var counts = new[]
-            {
-                s_cache.FindAll(new MutationFilters { Status = MutationStatus.Pending }).Count,
-                s_cache.FindAll(new MutationFilters { Status = MutationStatus.Success }).Count,
-            };
+            var selected = s_cache.FindAll(new MutationFilters { Status = MutationStatus.Pending }).Count;
 
             // Assert
-            Assert.That(counts, Is.EqualTo(new[] { 1, 0 }));
+            Assert.That(selected, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_APendingMutation_When_FilteredByAnotherStatus_Then_ItIsLeftOut()
+        {
+            // Arrange
+            s_gate = new VelvetTaskCompletionSource<int>();
+            using var mounted = Mount();
+            s_captured!.Mutate(1);
+
+            // Act
+            var selected = s_cache.FindAll(new MutationFilters { Status = MutationStatus.Success }).Count;
+
+            // Assert — read only over a cache holding the mutation, so a cache holding none cannot pass it.
+            Assert.That(s_cache.GetAll().Count == 1 ? selected : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -167,14 +200,25 @@ namespace Velvet.Tests
             s_captured!.Mutate(1);
 
             // Act
-            var counts = new[]
-            {
-                s_cache.FindAll(new MutationFilters { Predicate = _ => false }).Count,
-                s_cache.FindAll(new MutationFilters { Predicate = _ => true }).Count,
-            };
+            var selected = s_cache.FindAll(new MutationFilters { Predicate = _ => false }).Count;
+
+            // Assert — read only over a cache holding the mutation, so a cache holding none cannot pass it.
+            Assert.That(s_cache.GetAll().Count == 1 ? selected : -1, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_APredicate_When_ItAcceptsTheMutation_Then_TheMutationIsSelected()
+        {
+            // Arrange
+            s_gate = new VelvetTaskCompletionSource<int>();
+            using var mounted = Mount();
+            s_captured!.Mutate(1);
+
+            // Act
+            var selected = s_cache.FindAll(new MutationFilters { Predicate = _ => true }).Count;
 
             // Assert
-            Assert.That(counts, Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(selected, Is.EqualTo(1));
         }
 
         [UnityTest]
@@ -412,17 +456,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMountedHandle_When_ARenderPassesTheOptionsItCommitted_Then_NothingIsAnnounced()
+        public void Given_AMountedHandle_When_ACommitPassesAnEqualRecordAndThenAnUnequalOne_Then_OnlyTheUnequalOneIsAnnounced()
         {
-            // Arrange
+            // Arrange — the unequal commit is what shows the listener hears a commit at all; v5's shallow
+            // comparison of the options is what keeps the equal one silent.
             using var mounted = Mount();
             s_cache.Subscribe(Record);
 
             // Act
+            s_options = s_options with { };
+            Rerender(mounted);
+            s_options = Logged(TodoOne);
             Rerender(mounted);
 
             // Assert
-            Assert.That(s_events, Is.Empty);
+            Assert.That(s_events, Is.EqualTo(new[] { "ObserverOptionsUpdated none" }));
         }
 
         [UnityTest]
@@ -500,7 +548,7 @@ namespace Velvet.Tests
         #region Garbage collection
 
         [UnityTest]
-        public IEnumerator Given_AnUnmountedHandlesSettledCall_When_FramesPassAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt()
+        public IEnumerator Given_AnUnmountedHandlesSettledCall_When_FramesPassJustShortOfItsGcTime_Then_ItIsKept()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -510,11 +558,26 @@ namespace Velvet.Tests
 
             // Act
             await Pass(GcTime - Tick);
-            var keptJustBefore = s_cache.GetAll().Count;
-            await Pass(Tick);
 
             // Assert
-            Assert.That(new[] { keptJustBefore, s_cache.GetAll().Count }, Is.EqualTo(new[] { 1, 0 }));
+            Assert.That(s_cache.GetAll().Count, Is.EqualTo(1));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnUnmountedHandlesSettledCall_When_ItsGcTimeHasPassed_Then_ItIsRemoved()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var mounted = Mount();
+            await s_captured!.MutateAsync(1);
+            mounted.Dispose();
+            s_cache.Subscribe(Record);
+
+            // Act
+            await Pass(GcTime);
+
+            // Assert — the removal's own event, so a mutation never added cannot pass it.
+            Assert.That(s_events, Is.EqualTo(new[] { "Removed 1" }));
         });
 
         [UnityTest]
@@ -558,15 +621,16 @@ namespace Velvet.Tests
             var mounted = Mount();
             s_captured!.Mutate(1);
             mounted.Dispose();
+            s_cache.Subscribe(Record);
 
             // Act
             await Pass(GcTime);
-            var keptWhilePending = s_cache.GetAll().Count;
             s_gate.TrySetResult(1);
             await Pass(GcTime);
 
-            // Assert
-            Assert.That(new[] { keptWhilePending, s_cache.GetAll().Count }, Is.EqualTo(new[] { 1, 0 }));
+            // Assert — one sequence: a removal heard before the success would be the pending call collected.
+            Assert.That(s_events.Where(e => e.StartsWith("Removed") || e.StartsWith("Updated:Success")),
+                Is.EqualTo(new[] { "Updated:Success 1", "Removed 1" }));
         });
 
         #endregion
@@ -585,10 +649,13 @@ namespace Velvet.Tests
             return mounted;
         }
 
+        // FlushStateForTest runs the effects earlier commits left before it renders, so the re-render's own effects,
+        // where the observer takes the new options, are flushed after it.
         private static void Rerender(MountedTree mounted)
         {
             s_rerender.Invoke(v => v + 1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
         }
 
         private static async VelvetTask Pass(TimeSpan time)

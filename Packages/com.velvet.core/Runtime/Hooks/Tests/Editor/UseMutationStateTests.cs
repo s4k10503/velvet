@@ -177,8 +177,8 @@ namespace Velvet.Tests
             await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(new[] { whilePending, s_mutating }, Is.EqualTo(new[] { 1, 0 }));
+            // Assert — read only when the pending call was counted, so a count that never moved cannot pass it.
+            Assert.That(whilePending == 1 ? s_mutating : -1, Is.EqualTo(0));
         });
 
         [Test]
