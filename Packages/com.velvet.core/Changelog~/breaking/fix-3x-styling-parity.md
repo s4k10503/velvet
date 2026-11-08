@@ -10,9 +10,9 @@
   single lines included. A single line used to take the font's own content height, so in the runtime theme's font
   `text-base` was 20px tall rather than 24px, `text-base leading-8` 20px rather than 32px, and `text-4xl` 44px
   rather than 40px. Text no `leading-*` or `text-<size>` reaches takes Tailwind's preflight line height of 1.5,
-  where it used to take the font's own, and an `lh` length under it is 1.5 times the font size. The string such text
-  shows therefore carries a `<line-height=1.5em>` tag where it used to be the text as written; `leading-[normal]`
-  takes it away.
+  where it used to take the font's own, and an `lh` length under it is 1.5 times the font size. Where such text has a
+  place a line can break at, the string it shows carries a `<line-height=1.5em>` tag where it used to be the text as
+  written; `leading-[normal]` takes it away. A single-line `V.TextField`'s input text is one line box tall too.
 - The glyphs of such text sit half the leading below the top of the first line box at any box height, as in CSS.
   The element is aligned `middle-*` with the horizontal part of its own or inherited alignment, so `text-top-left`,
   `text-top-center` and the default alignment now place text as `text-left` and `text-center` do, and text in a box

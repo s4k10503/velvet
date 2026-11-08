@@ -100,15 +100,16 @@ namespace Velvet
             {
                 return default;
             }
-            var lineHeight = StyleTextEffectResolver.LineHeightOf(element);
+            var lineHeight = StyleTextEffectResolver.LineHeightOf(element, out var declared);
             if (float.IsNaN(lineHeight))
             {
                 return default;
             }
             var single = box.SingleLine(element);
-            // Rich text carries the line height as a tag (StyleTextEffectResolver writes the preflight's where
-            // nothing sets one); without it the lines advance by the font's own.
-            return new Lines(lineHeight, single, element.enableRichText ? lineHeight : box._advance);
+            // Rich text carries the line height as a tag (StyleTextEffectResolver writes the preflight's where the text
+            // can span lines); without one the lines advance by the font's own.
+            var tagged = element.enableRichText && (declared || StyleTextEffectResolver.CanSpanLines(element.text));
+            return new Lines(lineHeight, single, tagged ? lineHeight : box._advance);
         }
 
         // The height text takes at a width, in the line boxes of an element Velvet created and in the generator's

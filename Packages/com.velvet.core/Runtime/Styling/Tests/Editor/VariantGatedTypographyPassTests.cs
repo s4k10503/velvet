@@ -136,6 +136,7 @@ namespace Velvet.Tests
                 Is.EqualTo((false, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ADarkGatedUnderline_When_TheThemeTurnsDark_Then_TheTextIsWrappedInTheUnderlineTag()
         {
@@ -149,9 +150,10 @@ namespace Velvet.Tests
             VelvetTheme.IsDark = true;
 
             // Assert
-            Assert.That((textWhileLight, RenderedTextProbe.Of(card)), Is.EqualTo(("<line-height=1.5em>Docs</line-height>", "<line-height=1.5em><u>Docs</u></line-height>")));
+            Assert.That((textWhileLight, RenderedTextProbe.Of(card)), Is.EqualTo(("Docs", "<u>Docs</u>")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ADarkGatedUnderlineApplied_When_TheThemeTurnsLight_Then_TheTagIsRemoved()
         {
@@ -165,9 +167,10 @@ namespace Velvet.Tests
             VelvetTheme.IsDark = false;
 
             // Assert — a label that never got the tag would satisfy the light half alone.
-            Assert.That((textWhileDark, RenderedTextProbe.Of(card)), Is.EqualTo(("<line-height=1.5em><u>Docs</u></line-height>", "<line-height=1.5em>Docs</line-height>")));
+            Assert.That((textWhileDark, RenderedTextProbe.Of(card)), Is.EqualTo(("<u>Docs</u>", "Docs")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ALitDarkGatedUppercase_When_AnUnrelatedClassPatches_Then_TheTransformSurvives()
         {
@@ -185,9 +188,10 @@ namespace Velvet.Tests
             scope.Reconciler.Reconcile(scope.Root, first, second);
 
             // Assert
-            Assert.That((textBeforePatch, RenderedTextProbe.Of(card)), Is.EqualTo(("<line-height=1.5em>DOCS</line-height>", "<line-height=1.5em>DOCS</line-height>")));
+            Assert.That((textBeforePatch, RenderedTextProbe.Of(card)), Is.EqualTo(("DOCS", "DOCS")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AHasClassGatedUppercase_When_TheElementMounts_Then_TheDescendantTextIsTransformed()
         {
@@ -205,7 +209,7 @@ namespace Velvet.Tests
                 });
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(scope.Root.Q<VisualElement>("card").Q<Label>()), Is.EqualTo("<line-height=1.5em>DOCS</line-height>"));
+            Assert.That(RenderedTextProbe.Of(scope.Root.Q<VisualElement>("card").Q<Label>()), Is.EqualTo("DOCS"));
         }
 
         [Test]
@@ -323,6 +327,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "<line-height=24px>Docs</line-height>")));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AHoverChannelUppercase_When_ThePointerLeaves_Then_TheTextComesBack()
         {
@@ -335,7 +340,7 @@ namespace Velvet.Tests
                 card.SimulateEvent(over);
             }
             // Whether the transform comes on while hovered.
-            var shown = RenderedTextProbe.Of(card) == "<line-height=1.5em>DOCS</line-height>";
+            var shown = RenderedTextProbe.Of(card) == "DOCS";
 
             // Act
             using (var leave = PointerOutEvent.GetPooled())
@@ -344,7 +349,7 @@ namespace Velvet.Tests
             }
 
             // Assert — read as null where the transform never came on, which the expected text is not.
-            Assert.That(shown ? RenderedTextProbe.Of(card) : null, Is.EqualTo("<line-height=1.5em>Docs</line-height>"));
+            Assert.That(shown ? RenderedTextProbe.Of(card) : null, Is.EqualTo("Docs"));
         }
     }
 
@@ -361,6 +366,7 @@ namespace Velvet.Tests
         private const float MdBreakpoint = 768f;
         private const float WidePanel = 1000f;
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AResponsiveUnderline_When_TheRootIsWiderThanMd_Then_TheTextIsWrappedInTheUnderlineTag()
         {
@@ -381,7 +387,7 @@ namespace Velvet.Tests
             // here rather than reporting inconclusive.
             Assert.That(
                 (card.panel.visualTree.resolvedStyle.width >= MdBreakpoint, RenderedTextProbe.Of(card)),
-                Is.EqualTo((true, "<line-height=1.5em><u>Docs</u></line-height>")));
+                Is.EqualTo((true, "<u>Docs</u>")));
         }
     }
 

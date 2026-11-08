@@ -183,6 +183,7 @@ namespace Velvet.Tests
                 Is.EqualTo((UnityEngine.FontStyle.Bold, UnityEngine.FontStyle.Normal)));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AnImportantTransformAndAnImportantHoverTransform_When_Hovered_Then_TheHoverTransformWins()
         {
@@ -195,7 +196,7 @@ namespace Velvet.Tests
             using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
 
             // Assert
-            Assert.That((atRest, RenderedTextProbe.Of(leaf)), Is.EqualTo(("<line-height=1.5em>AB</line-height>", "<line-height=1.5em>ab</line-height>")));
+            Assert.That((atRest, RenderedTextProbe.Of(leaf)), Is.EqualTo(("AB", "ab")));
         }
 
         [Test]

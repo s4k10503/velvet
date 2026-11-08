@@ -455,7 +455,12 @@ namespace Velvet
         // Pooled TextFields have been reset via FiberTextFieldPoolHelper.ResetTextFieldForReuse,
         // guaranteeing no PII (password / email / player name) ghosting from a prior consumer.
         private static readonly ElementPool<TextField> s_textFieldPool =
-            new(() => new TextField(), FiberTextFieldPoolHelper.ResetTextFieldForReuse, MaxTextFieldPoolSize);
+            new(() =>
+            {
+                var field = new TextField();
+                FieldLineBox.Attach(field);
+                return field;
+            }, FiberTextFieldPoolHelper.ResetTextFieldForReuse, MaxTextFieldPoolSize);
 
         public static TextField RentTextField() => s_textFieldPool.Rent();
 

@@ -265,6 +265,7 @@ namespace Velvet.Tests
             Assert.That((arranged, broken, RenderedTextProbe.Of(balanced).Contains('\n')), Is.EqualTo((true, true, false)), measured);
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_ABalancedLabel_When_ItsTextBecomesOneWord_Then_ItsBreaksGoAway()
         {
@@ -277,7 +278,7 @@ namespace Velvet.Tests
             Settle();
 
             // Assert
-            Assert.That((arranged, broken, RenderedTextProbe.Of(balanced)), Is.EqualTo((true, true, "<line-height=1.5em>aaaa</line-height>")), measured);
+            Assert.That((arranged, broken, RenderedTextProbe.Of(balanced)), Is.EqualTo((true, true, "aaaa")), measured);
         }
 
         // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.

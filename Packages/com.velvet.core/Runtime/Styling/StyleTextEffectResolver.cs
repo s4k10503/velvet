@@ -106,8 +106,12 @@ namespace Velvet
         // (ResolveEffective's walk): a number times the element's own font size, an em or percentage length
         // times its declaring element's, or a length as written, and the preflight's 1.5 times the element's font
         // size where none sets one. NaN for `leading-[normal]`, and where a measured length cannot be measured yet.
-        internal static float LineHeightOf(VisualElement element)
+        internal static float LineHeightOf(VisualElement element) => LineHeightOf(element, out _);
+
+        // declared is false where the line height is the preflight's.
+        internal static float LineHeightOf(VisualElement element, out bool declared)
         {
+            declared = true;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (s_effectContexts.TryGetValue(e, out var ctx) && ctx.TextEffects.TryGetValue(e, out var eff)
@@ -125,7 +129,27 @@ namespace Velvet
                     };
                 }
             }
+            declared = false;
             return PreflightLeading.Value * element.resolvedStyle.fontSize;
+        }
+
+        // Whether the text has a place a line can break at, so that it can wrap and the preflight's line height has to
+        // space its lines. A text with none is shown without the tag, which a single line does not need; TextLineBox
+        // sizes its box either way.
+        internal static bool CanSpanLines(string? text)
+        {
+            if (text == null)
+            {
+                return false;
+            }
+            foreach (var c in text)
+            {
+                if (char.IsWhiteSpace(c) || c == '-' || c == '\u00AD' || c == '\u200B' || c >= '\u2E80')
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
@@ -154,15 +178,19 @@ namespace Velvet
         // The create-time entry to Apply. A freshly created element is detached and its side tables are empty, so
         // with no effect class of its own there is nothing for Apply to resolve, write or remove, and its
         // descendants are not walked either: an ancestor's effect reaches the element from the ancestor's own pass.
-        // A text element Velvet creates is the exception, since it shows the preflight's line height.
+        // A text element Velvet creates whose text can span lines is the exception, since it shows the preflight's line
+        // height.
         public static void ApplyOnCreate(ReconcilerContext ctx, VisualElement element, string[] classNames)
         {
-            if (element.hierarchy.parent == null && element is not ILineBoxed && StyleTextEffectClass.Parse(classNames).IsEmpty)
+            if (element.hierarchy.parent == null && !ShowsPreflight(ctx, element) && StyleTextEffectClass.Parse(classNames).IsEmpty)
             {
                 return;
             }
             Apply(ctx, element, classNames);
         }
+
+        private static bool ShowsPreflight(ReconcilerContext ctx, VisualElement element)
+            => element is ILineBoxed && ctx.TextRawText.TryGetValue(element, out var raw) && CanSpanLines(raw);
 
         // A line height a sheet declares under a selector is the cascade's to give once the element's style pass has run,
         // so the element is applied again when the engine hands it another variable context.
@@ -231,7 +259,7 @@ namespace Velvet
             {
                 var effect = ResolveEffective(ctx, te);
                 // A text element Velvet creates is shown in the preflight's line height where nothing sets one.
-                if (effect.Leading == null && te is ILineBoxed)
+                if (effect.Leading == null && te is ILineBoxed && CanSpanLines(raw))
                 {
                     effect.Leading = PreflightLeading;
                 }

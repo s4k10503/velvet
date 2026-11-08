@@ -63,29 +63,32 @@ namespace Velvet.Tests
             return _window.rootVisualElement.Q<Label>();
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UppercaseOnParent_When_Mounted_Then_ChildTextLeafIsUppercased()
         {
             // The text leaf has no class; the transform cascades from the parent (CSS inheritance).
             var label = MountAndFindLabel(V.Div(className: "uppercase", V.Text("hello")));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>HELLO</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("HELLO"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_LowercaseOnLabelItself_When_Mounted_Then_OwnTextIsLowercased()
         {
             var label = MountAndFindLabel(V.Label(className: "lowercase", text: "HELLO"));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>hello</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hello"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UnderlineOnParent_When_Mounted_Then_ChildTextWrappedInUTag()
         {
             var label = MountAndFindLabel(V.Div(className: "underline", V.Text("hi")));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em><u>hi</u></line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<u>hi</u>"));
         }
 
         [Test]
@@ -96,9 +99,10 @@ namespace Velvet.Tests
                 V.Div(className: "underline", V.Label(className: "no-underline", text: "hi")));
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em><u>hi</u></line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<u>hi</u>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_NormalCaseUnderUppercase_When_Mounted_Then_InnerResetsToRawText()
         {
@@ -106,22 +110,24 @@ namespace Velvet.Tests
             var label = MountAndFindLabel(
                 V.Div(className: "uppercase", V.Div(className: "normal-case", V.Text("hi"))));
 
-            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("hi"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UppercaseParent_When_TextChanges_Then_NewTextIsReTransformed()
         {
             // A text change must re-cascade the transform onto the leaf, from the new raw value.
             Mount(V.Component(RenderCard));
-            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>ONE</line-height>"), "Precondition: initial transform");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("ONE"), "Precondition: initial transform");
 
             s_setText.Invoke("two");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>TWO</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("TWO"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_UppercaseAncestor_When_InnerComponentReRendersInIsolation_Then_LeafStaysUppercased()
         {
@@ -129,14 +135,15 @@ namespace Velvet.Tests
             // re-render when the inner state changes. The leaf must still re-apply the inherited transform on its
             // isolated re-render (RED before PatchText resolves the cascade itself: would show "two").
             Mount(V.Div(className: "uppercase", V.Component(RenderInner)));
-            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>ONE</line-height>"), "Precondition: initial cascade");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("ONE"), "Precondition: initial cascade");
 
             s_setInnerText.Invoke("two");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>TWO</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("TWO"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AncestorUppercaseClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
         {
@@ -146,12 +153,12 @@ namespace Velvet.Tests
             // prop itself changes), so a gate that skips that walk whenever the ancestor's OWN effect is now
             // empty would leave the leaf stuck showing the removed transform forever.
             Mount(V.Component(RenderUppercaseAncestorToggle));
-            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>HI</line-height>"), "Precondition: initial uppercase");
+            Assume.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("HI"), "Precondition: initial uppercase");
 
             s_setUppercaseAncestorClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -453,6 +460,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("<line-height=1em>hi</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
         public void Given_AncestorLeadingClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
         {
@@ -468,7 +476,7 @@ namespace Velvet.Tests
             s_setLeadingAncestorClass.Invoke("");
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("hi"));
         }
 
         // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
@@ -487,8 +495,9 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.625em>there</line-height>"));
         }
 
+        // GREEN_ON_BASE(refactor): the shown string it reads through RenderedTextProbe is the leaf's text on the base.
         [Test]
-        public void Given_LabelPooledWithLeadingState_When_RentedAgainWithoutTheClass_Then_NewLabelHasOnlyThePreflightLineHeight()
+        public void Given_LabelPooledWithLeadingState_When_RentedAgainWithoutTheClass_Then_NewLabelHasNoLineHeightTag()
         {
             // Arrange — mount a leading-loose Label, then hide it (a Label -> Div swap removes it,
             // returning it to VNodePool while its text still carries the <line-height> tag), then show a
@@ -512,7 +521,7 @@ namespace Velvet.Tests
             // wrapped tag here, not the fixture's raw "there"). The pool round-trip is asserted alongside
             // it for the same reason as the PreLine sibling above.
             Assert.That((pooledWhileHidden, RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>("leaf"))),
-                Is.EqualTo((true, "<line-height=1.5em>there</line-height>")));
+                Is.EqualTo((true, "there")));
         }
 
         [Test]

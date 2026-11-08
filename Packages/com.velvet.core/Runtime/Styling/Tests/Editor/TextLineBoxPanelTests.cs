@@ -179,5 +179,15 @@ namespace Velvet.Tests
             // Assert
             Assert.That(label.resolvedStyle.unityTextAlign, Is.EqualTo(TextAnchor.MiddleRight));
         }
+
+        [Test]
+        public void Given_ASingleLineFieldsInput_When_LaidOut_Then_ItsTextIsOneLineHeightTall()
+        {
+            // Act
+            var field = (TextField)Mount(V.TextField(name: "field", className: "text-sm/6", value: "hello"), "field");
+
+            // Assert
+            Assert.That(((TextElement)field.textEdition).contentRect.height, Is.EqualTo(24f).Within(0.01f));
+        }
     }
 }

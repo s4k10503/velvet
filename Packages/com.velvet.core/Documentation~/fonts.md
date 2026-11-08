@@ -258,14 +258,16 @@ The tag only spaces lines apart, so the box is Velvet's: a `V.Label`, a text lea
 line box of its line height per line, as CSS does, single lines included and whether the line height is above or
 below the font's own content height — `text-base` is 24px tall, `text-4xl` 40px, and `text-sm/6` 24px. Text that
 no `leading-*` or `text-<size>` reaches takes the 1.5 Tailwind's preflight gives the root, so a 16px text is 24px
-tall, and its shown string carries the `1.5em` tag as a `leading-normal` one would. Padding and border sit outside the line
+tall, and where its text has a place a line can break at (a space, a hyphen, a CJK character) its shown string
+carries the `1.5em` tag as a `leading-normal` one would, which spaces the lines it wraps into. Padding and border sit outside the line
 boxes, and `resolvedStyle.height` reads the result. The glyphs sit half the difference between the line height and
 the font's content height below the top of the first line box, whatever the box's height, a box its flex row
 stretches or an `h-*` sets included. CSS has no vertical alignment inside a line box, so such an element is
 aligned `middle-*` with the horizontal part it resolves, inherited or its own: `text-top-left` and an element with no
 alignment class read `middle-left`, and a parent's `text-center` still reaches it. An alignment written inline by
-the application is left as it is. A field's input text is UI Toolkit's own element, which shows no rich text and
-measures in the font's own lines.
+the application is left as it is. A single-line field's input text is UI Toolkit's own element: it is given one line box by an inline height of
+the line height plus its own padding and border, and is aligned the same way. A multiline field's input shows no
+rich text, so its lines advance by the font's own line height.
 
 The named presets (`leading-none` 1 · `leading-tight` 1.25 · `leading-snug` 1.375 ·
 `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their multiplier verbatim

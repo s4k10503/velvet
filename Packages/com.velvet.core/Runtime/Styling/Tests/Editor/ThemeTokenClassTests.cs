@@ -1107,7 +1107,7 @@ namespace Velvet.Tests
             DriveTicks(outside.panel);
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(outside), Is.EqualTo("<line-height=1.5em>hi</line-height>"));
+            Assert.That(RenderedTextProbe.Of(outside), Is.EqualTo("hi"));
         }
 
         [Test]

@@ -30,7 +30,7 @@ namespace Velvet.Tests
             var label = _window.rootVisualElement.Q<Label>();
 
             // Assert
-            Assert.That((label.text, RenderedTextProbe.Of(label)), Is.EqualTo(("hello", "<line-height=1.5em>HELLO</line-height>")));
+            Assert.That((label.text, RenderedTextProbe.Of(label)), Is.EqualTo(("hello", "HELLO")));
         }
 
         // GREEN_ON_BASE(characterization): the engine behaviour this pins involves no Velvet code, so the base shows it too.
@@ -49,6 +49,7 @@ namespace Velvet.Tests
             Assert.That(RenderedTextProbe.Of(label), Is.EqualTo("b"));
         }
 
+        // GREEN_ON_BASE(characterization): an uppercase label shows upper case after a text change, as the base does.
         [Test]
         public void Given_AnUppercaseLabelProp_When_ItsTextChangesToAnotherCasing_Then_TheShownStringIsStillUppercased()
         {
@@ -61,7 +62,7 @@ namespace Velvet.Tests
             _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>ONE</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("ONE"));
         }
 
         [Test]
@@ -122,7 +123,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(panel);
 
             // Assert
-            Assert.That(label.text, Is.EqualTo("<line-height=1.5em>HELLO</line-height>"));
+            Assert.That(label.text, Is.EqualTo("HELLO"));
         }
 
         [Test]
@@ -136,7 +137,7 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.DriveSchedulerOnce(panel);
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(label), Does.StartWith("<line-height=1.5em><mspace=").And.EndWith(">11</mspace></line-height>"));
+            Assert.That(RenderedTextProbe.Of(label), Does.StartWith("<mspace=").And.EndWith(">11</mspace>"));
         }
 
         [Test]
@@ -148,7 +149,7 @@ namespace Velvet.Tests
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert
-            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("<line-height=1.5em>11</line-height>"));
+            Assert.That(RenderedTextProbe.Of(_window.rootVisualElement.Q<Label>()), Is.EqualTo("11"));
         }
 
         [Component]
