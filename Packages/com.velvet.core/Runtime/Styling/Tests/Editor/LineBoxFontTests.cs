@@ -243,5 +243,43 @@ namespace Velvet.Tests
             // Assert
             Assert.That(LineBoxFont.Count, Is.EqualTo(before + 1));
         }
+
+        [Test]
+        public void Given_TwoFontsWhoseWeightTablesNameEachOtherAndWhichHaveFallbacks_When_OneIsCopied_Then_ItsTableNamesACopyOfTheOther()
+        {
+            // Arrange
+            var label = Add(TextGeneratorType.Standard);
+            var regular = Fresh(label);
+            var bold = Fresh(label);
+            regular.fontWeightTable[7].regularTypeface = bold;
+            bold.fontWeightTable[4].regularTypeface = regular;
+            regular.fallbackFontAssetTable = new List<FontAsset> { Fresh(label) };
+            bold.fallbackFontAssetTable = new List<FontAsset> { Fresh(label) };
+
+            // Act
+            var copy = Acquire(regular);
+
+            // Assert
+            Assert.That(LineBoxFont.SourceOf(copy.fontWeightTable[7].regularTypeface), Is.SameAs(bold));
+        }
+
+        [Test]
+        public void Given_AnIdleCopyWhoseSourceIsDestroyed_When_AnotherCopyIsAskedFor_Then_TheIdleOneIsGone()
+        {
+            // Arrange — a source no text was drawn in, so destroying it reaches nothing the text system holds.
+            var label = Add(TextGeneratorType.Standard);
+            var gone = Fresh(label);
+            var other = Fresh(label);
+            var before = LineBoxFont.Count;
+            LineBoxFont.Release(_user, LineBoxFont.Acquire(_user, gone, 24f, 16f));
+            Object.DestroyImmediate(gone);
+
+            // Act
+            Acquire(other);
+
+            // Assert — the other's copy alone remains of the two.
+            Assert.That(LineBoxFont.Count, Is.EqualTo(before + 1));
+        }
+
     }
 }

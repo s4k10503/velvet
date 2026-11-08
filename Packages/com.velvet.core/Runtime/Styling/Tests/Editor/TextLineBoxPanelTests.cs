@@ -663,5 +663,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(TwoLineHeight(label), Is.EqualTo(64f).Within(0.01f));
         }
+
+        [Test]
+        public void Given_APooledLabel_When_ItsRichTextIsTurnedOffAfterLayout_Then_ItsLinesAreItsLineHeightApartTheFrameAfter()
+        {
+            // Arrange
+            var first = MountLabel("text-[16px] leading-8", "a");
+            _mounted.Dispose();
+            var label = (Label)MountLabel("text-[16px] leading-8", "a");
+
+            // Act — the repaint, the scheduler tick after it, and the style pass after that.
+            label.enableRichText = false;
+            ForcePanelUpdate(label.panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(label.panel);
+            ForcePanelUpdate(label.panel);
+
+            // Assert — NaN where the pool handed back another label, which 64 can never equal.
+            Assert.That(ReferenceEquals(label, first) ? TwoLineHeight(label) : float.NaN, Is.EqualTo(64f).Within(0.01f));
+        }
+
     }
 }

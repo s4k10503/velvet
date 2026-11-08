@@ -201,9 +201,10 @@ namespace Velvet
         private static readonly MethodInfo? s_settingsOf = EngineMember.TextSettingsOfElement.ResolveMethod();
         private static readonly MethodInfo? s_cachedFontAsset = EngineMember.TextSettingsCachedFontAsset.ResolveMethod();
 
-        // The font asset the rules and the parent give element beneath its inline font, read as UI Toolkit reads an
-        // element's own; null where the cached style cannot be read.
-        public static UnityEngine.TextCore.Text.FontAsset? UnderlyingFontAsset(VisualElement element)
+        // The font asset the rules and the parent give element beneath its inline font definition, read as UI Toolkit
+        // reads an element's own, with inlineFont, a legacy Font written inline, in place of the rules' one; null where
+        // the cached style cannot be read.
+        public static UnityEngine.TextCore.Text.FontAsset? UnderlyingFontAsset(VisualElement element, UnityEngine.Font? inlineFont)
         {
             var style = s_fontDefinition != null && s_unityFont != null ? Of(element) : null;
             if (style == null)
@@ -215,7 +216,11 @@ namespace Velvet
             {
                 return definition.fontAsset;
             }
-            return CachedFontAsset(element, definition.font != null ? definition.font : (UnityEngine.Font?)s_unityFont.GetValue(style));
+            if (definition.font != null)
+            {
+                return CachedFontAsset(element, definition.font);
+            }
+            return CachedFontAsset(element, inlineFont != null ? inlineFont : (UnityEngine.Font?)s_unityFont.GetValue(style));
         }
 
         // The font asset UI Toolkit draws font in for element, or its text settings' default where font is null.

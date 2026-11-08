@@ -48,7 +48,8 @@ namespace Velvet
         private readonly TextElement _element;
         private readonly bool _centred;
         private readonly MiddleAlignment _alignment = new();
-        private readonly LineBoxFontOwner _font = new();
+        // Made the first time the element shows text without tags.
+        private LineBoxFontOwner? _font;
         private ReconcilerContext? _context;
         private string? _unraised;
         // The app's text the element was last shown with, null before its first.
@@ -88,7 +89,15 @@ namespace Velvet
         {
             _element = element;
             _centred = centred;
-            element.generateVisualContent += s_onRepaint;
+            WatchRepaints();
+        }
+
+        // Adds the repaint enableRichText is looked for at, again after a pool reset gives the element its type's own
+        // painter back.
+        public void WatchRepaints()
+        {
+            _element.generateVisualContent -= s_onRepaint;
+            _element.generateVisualContent += s_onRepaint;
         }
 
         // enableRichText changes what the text is shown with and how its lines are spaced, and neither the element's
@@ -248,7 +257,7 @@ namespace Velvet
             _shownRaw = null;
             _richText = true;
             _alignment.Release(_element);
-            _font.Release(_element);
+            _font?.Release(_element);
         }
 
         // Settles a laid-out element whose app text has changed, since a text that keeps the element's box raises no
@@ -309,20 +318,20 @@ namespace Velvet
             if (float.IsNaN(lineHeight))
             {
                 _alignment.Release(_element);
-                _font.Release(_element);
+                _font?.Release(_element);
             }
             else if (!_element.enableRichText)
             {
                 // Text shown without tags is spaced by its font, whose lines are then the line boxes, so it is placed
                 // at the top of the box as the first line box is, and centred in a button.
-                _font.Settle(_element, lineHeight);
+                (_font ??= new LineBoxFontOwner()).Settle(_element, lineHeight);
                 _alignment.Settle(_element, upper: !_centred);
                 Raise = 0f;
                 return;
             }
             else
             {
-                _font.Release(_element);
+                _font?.Release(_element);
                 _alignment.Settle(_element);
             }
             var context = _context;

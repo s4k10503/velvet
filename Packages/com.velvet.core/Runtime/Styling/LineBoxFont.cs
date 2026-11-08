@@ -21,7 +21,7 @@ namespace Velvet
     //
     // A copy is held by the elements written in it and by the copies naming it. One nothing holds is spread to the next
     // line height asked of its source rather than destroyed and made again, so a source has no more copies than were
-    // held at once. One whose source is gone is destroyed.
+    // held at once. One whose source is gone is destroyed the next time any copy is asked for or given back.
     internal static class LineBoxFont
     {
         private sealed class Entry
@@ -52,6 +52,9 @@ namespace Velvet
 
         private static readonly FieldInfo? s_sourcePath = EngineMember.FontAssetSourceFontFilePath.ResolveField();
         private static readonly MethodInfo? s_uploadQueued = EngineMember.FontAssetUpdateAtlasTexturesInQueue.ResolveMethod();
+        private static readonly FieldInfo? s_nativeAsset = EngineMember.FontAssetNativeFontAsset.ResolveField();
+        private static readonly MethodInfo? s_updateFallbacks = EngineMember.FontAssetUpdateFallbacks.ResolveMethod();
+        private static readonly MethodInfo? s_updateWeightFallbacks = EngineMember.FontAssetUpdateWeightFallbacks.ResolveMethod();
 
         static LineBoxFont()
         {
@@ -66,6 +69,7 @@ namespace Velvet
         // can be made.
         public static FontAsset? Acquire(object user, FontAsset source, float lineHeight, float fontSize)
         {
+            SweepGone();
             var entry = EntryFor(source, lineHeight, fontSize);
             if (entry?.Copy == null)
             {
@@ -91,6 +95,7 @@ namespace Velvet
             }
             entry.Users.RemoveAll(held => !held.TryGetTarget(out var target) || ReferenceEquals(target, user));
             Idle(entry);
+            SweepGone();
         }
 
         // The asset copy was made of, or null for an asset that is not a copy.
@@ -218,6 +223,10 @@ namespace Velvet
             var copy = entry.Copy!;
             var previous = entry.Children.ToArray();
             entry.Children.Clear();
+            // Taken before any face is copied, so a face whose tables name this source back finds its copy current and
+            // takes it as it stands rather than copying its tables again.
+            var fallbacks = entry.Source.fallbackFontAssetTable;
+            entry.Fallbacks = fallbacks != null ? fallbacks.ToArray() : Array.Empty<FontAsset>();
             var weights = entry.Source.fontWeightTable;
             var copied = copy.fontWeightTable;
             for (var i = 0; weights != null && copied != null && i < weights.Length && i < copied.Length; i++)
@@ -225,8 +234,6 @@ namespace Velvet
                 copied[i].regularTypeface = Face(entry, weights[i].regularTypeface, lineHeight, fontSize);
                 copied[i].italicTypeface = Face(entry, weights[i].italicTypeface, lineHeight, fontSize);
             }
-            var fallbacks = entry.Source.fallbackFontAssetTable;
-            entry.Fallbacks = fallbacks != null ? fallbacks.ToArray() : Array.Empty<FontAsset>();
             var table = new List<FontAsset>(entry.Fallbacks.Length);
             foreach (var fallback in entry.Fallbacks)
             {
@@ -237,6 +244,15 @@ namespace Velvet
             }
             copy.fallbackFontAssetTable = table;
             copy.ReadFontAssetDefinition();
+            // The advanced generator reads the tables off the copy's native asset, which takes them in when it is
+            // created and not when they are written; one created already is handed them here, before a face it named
+            // can be released below.
+            var native = s_nativeAsset?.GetValue(copy) as IntPtr?;
+            if (native.HasValue && native.Value != IntPtr.Zero)
+            {
+                s_updateFallbacks?.Invoke(copy, null);
+                s_updateWeightFallbacks?.Invoke(copy, null);
+            }
             foreach (var child in previous)
             {
                 child.Parents--;
@@ -304,7 +320,11 @@ namespace Velvet
                 return;
             }
             s_idle.AddLast(entry);
-            // A copy whose source is gone is not asked for again.
+        }
+
+        // Destroys each copy nothing holds whose source is gone, which is not asked for again.
+        private static void SweepGone()
+        {
             for (var node = s_idle.First; node != null;)
             {
                 var next = node.Next;
@@ -360,8 +380,8 @@ namespace Velvet
     }
 
     // An element's inline font written as LineBoxFont's copy of the font it would otherwise take, and given back. The
-    // font it would otherwise take is its inline one where somebody else wrote it, and else the one its rules and its
-    // parent give it beneath the inline value (StyleCascade.UnderlyingFontAsset).
+    // font it would otherwise take is its inline font definition where somebody else wrote one, and else the one its
+    // rules, its parent and an inline legacy Font give it beneath that (StyleCascade.UnderlyingFontAsset).
     internal sealed class LineBoxFontOwner
     {
         private FontAsset? _written;
@@ -384,7 +404,9 @@ namespace Velvet
             }
             else
             {
-                source = StyleCascade.UnderlyingFontAsset(element);
+                var legacy = element.style.unityFont;
+                source = StyleCascade.UnderlyingFontAsset(element,
+                    legacy.keyword == StyleKeyword.Undefined ? legacy.value : null);
             }
             var variant = source != null && !float.IsNaN(lineHeight)
                 ? LineBoxFont.Acquire(this, source, lineHeight, element.resolvedStyle.fontSize)

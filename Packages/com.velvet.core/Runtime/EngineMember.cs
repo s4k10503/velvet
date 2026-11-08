@@ -430,6 +430,16 @@ namespace Velvet
         internal static readonly EngineMember FontAssetUpdateAtlasTexturesInQueue = Method(TextCore,
             "UnityEngine.TextCore.Text.FontAsset", "UpdateAtlasTexturesInQueue", "System.Void");
 
+        // LineBoxFont's hand-over of a copy's rewritten fallback and weight tables to a native asset created already.
+        internal static readonly EngineMember FontAssetNativeFontAsset =
+            Field(TextCore, "UnityEngine.TextCore.Text.FontAsset", "m_NativeFontAsset", "System.IntPtr");
+
+        internal static readonly EngineMember FontAssetUpdateFallbacks = Method(TextCore,
+            "UnityEngine.TextCore.Text.FontAsset", "UpdateFallbacks", "System.Void");
+
+        internal static readonly EngineMember FontAssetUpdateWeightFallbacks = Method(TextCore,
+            "UnityEngine.TextCore.Text.FontAsset", "UpdateWeightFallbacks", "System.Void");
+
         // LineBoxFont's reading of whether a dynamic asset without a source font can still rasterise from a file path.
         internal static readonly EngineMember FontAssetSourceFontFilePath =
             Field(TextCore, "UnityEngine.TextCore.Text.FontAsset", "m_SourceFontFilePath", "System.String");
