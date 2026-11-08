@@ -6,7 +6,8 @@ namespace Velvet
 {
     // The timing one channel of a driven Tween runs on where a PropertyOverrides entry names its property, or one a
     // gesture state hands back to a bezier play (BezierTweenDriver.ReturnChannels). The delay counts from the
-    // tick's start. Curve: eased on the play's own cubic-bezier rather than Easing.
+    // tick's start. Curve: eased on the play's own cubic-bezier rather than Easing. Bezier: eased on that curve
+    // instead. Spring: run on that spring until it rests, DurationSec being where it does.
     internal readonly struct TweenChannelTiming
     {
         public TweenChannelTiming(float delaySec, float durationSec, EasingMode easing, bool curve = false)
@@ -15,12 +16,44 @@ namespace Velvet
             DurationSec = durationSec;
             Easing = easing;
             Curve = curve;
+            Bezier = null;
+            Spring = null;
+            RestSpeed = null;
         }
 
-        public float DelaySec { get; }
-        public float DurationSec { get; }
+        public float DelaySec { get; init; }
+        public float DurationSec { get; init; }
         public EasingMode Easing { get; }
         public bool Curve { get; }
+        public BezierCurve? Bezier { get; init; }
+        public (float Stiffness, float Damping, float Mass)? Spring { get; init; }
+        public float? RestSpeed { get; init; }
+
+        // The share of the way from the channel's start to its end activeSec after its delay, for a channel that
+        // travels `travel` in its own units, which a spring is measured over as Framer measures a value's.
+        public float SpringOrBezierFraction(double activeSec, float travel)
+        {
+            if (activeSec <= 0.0)
+            {
+                return 0f;
+            }
+            if (Spring is { } spring)
+            {
+                return activeSec >= DurationSec || travel == 0f
+                    ? 1f
+                    : MotionSpringDriver.SampleSpring(0f, 1f, Math.Abs(travel), 0f, activeSec, spring, null, RestSpeed);
+            }
+            var progress = DurationSec > 0f ? Math.Min(1f, (float)(activeSec / DurationSec)) : 1f;
+            return Bezier is { } curve
+                ? CubicBezierEvaluator.Evaluate(curve.X1, curve.Y1, curve.X2, curve.Y2, progress)
+                : UssEasing.Evaluate(Easing, progress);
+        }
+
+        // This timing over a travel of `travel`, where a spring rests elsewhere than the travel it was measured on.
+        public TweenChannelTiming OverTravel(float travel)
+            => Spring is { } spring
+                ? this with { DurationSec = MotionSpringDriver.SpringRestSec(spring, RestSpeed, Math.Abs(travel)) }
+                : this;
     }
 
     // The timing of a Tween a mount's clock drives (StyleAnimationScheduler.StartDrivenTween), read off the list
@@ -62,17 +95,22 @@ namespace Velvet
         public float DurationSec { get; }
         public EasingMode Easing { get; }
 
-        // Null where no entry names any of the longhands, which leaves the channel on the top-level timing.
-        public TweenChannelTiming? For(StyleLonghandSet longhands)
+        // Null where no entry names any of the longhands, which leaves the channel on the top-level timing. kind,
+        // from and to: the default an entry naming no timing takes, and the channel's travel a spring is measured on.
+        public TweenChannelTiming? For(StyleLonghandSet longhands, ValueDefault kind, float from, float to)
+            => LastNaming(_overrides, longhands) is { } entry
+                ? entry.TimingFor(Entry(entry).delaySec - StartDelaySec, kind, from, to)
+                : null;
+
+        // The last entry naming any of the longhands, which UI Toolkit's transition and Framer both let win.
+        internal static StylePropertyTransition? LastNaming(IReadOnlyList<StylePropertyTransition>? overrides,
+            StyleLonghandSet longhands)
         {
-            var count = _overrides?.Count ?? 0;
-            for (var i = count - 1; i >= 0; i--)
+            for (var i = (overrides?.Count ?? 0) - 1; i >= 0; i--)
             {
-                var entry = _overrides![i];
-                if (Named(entry.Property).Overlaps(longhands))
+                if (Named(overrides![i].Property).Overlaps(longhands))
                 {
-                    var (delaySec, durationSec) = Entry(entry);
-                    return new TweenChannelTiming(delaySec - StartDelaySec, durationSec, entry.EasingOrDefault);
+                    return overrides[i];
                 }
             }
             return null;
@@ -81,6 +119,28 @@ namespace Velvet
         // A negative duration runs as none, as UI Toolkit floors it (StyleFilterTransitionDriver.TryFindTransition).
         private (float delaySec, float durationSec) Entry(StylePropertyTransition entry)
             => (entry.DelaySec ?? _topDelaySec, Math.Max(0f, entry.DurationOrDefaultSec));
+
+        // The channels of a spring or bezier play a PropertyOverrides entry can name, each with the longhands that name
+        // it and the default transition Framer gives its value.
+        internal static IEnumerable<(T Channel, StyleLonghandSet Longhands, ValueDefault Kind)> OverridableChannels<T>(
+            IGestureMaskableState state) where T : class, IGestureMaskable
+        {
+            var (opacity, translateX, translateY, scale, rotate) = state.Scalars;
+            if (opacity is T o) yield return (o, StyleLonghandSet.Of(StyleLonghand.Opacity), ValueDefault.Ease);
+            if (translateX is T x) yield return (x, StyleLonghandSet.Of(StyleLonghand.Translate), ValueDefault.Transform);
+            if (translateY is T y) yield return (y, StyleLonghandSet.Of(StyleLonghand.Translate), ValueDefault.Transform);
+            if (scale is T s) yield return (s, StyleLonghandSet.Of(StyleLonghand.Scale), ValueDefault.Scale);
+            if (state.ScaleY is T sy) yield return (sy, StyleLonghandSet.Of(StyleLonghand.Scale), ValueDefault.Scale);
+            if (rotate is T r) yield return (r, StyleLonghandSet.Of(StyleLonghand.Rotate), ValueDefault.Transform);
+            foreach (var property in state.ColorChannels ?? Array.Empty<IPropertyChannel>())
+            {
+                yield return ((T)property.Channel, StyleArbitraryLonghands.Of(property.Property), ValueDefault.Ease);
+            }
+            foreach (var property in state.LengthChannels ?? Array.Empty<IPropertyChannel>())
+            {
+                yield return ((T)property.Channel, StyleArbitraryLonghands.Of(property.Property), ValueDefault.Ease);
+            }
+        }
 
         internal static StyleLonghandSet Named(string property)
             => s_named.TryGetValue(property, out var named) ? named : StyleLonghandSet.Empty;

@@ -12,7 +12,8 @@ namespace Velvet.Tests
     internal sealed class PropertyOverrideReplacementTests
     {
         private static TweenChannelTiming? OpacityTiming(params StylePropertyTransition[] overrides)
-            => new DrivenTweenTiming(0f, 1f, EasingMode.Linear, overrides).For(StyleLonghandSet.Of(StyleLonghand.Opacity));
+            => BezierTweenDriver.CreateTween(MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" }),
+                new DrivenTweenTiming(0f, 1f, EasingMode.Linear, overrides)).Opacity?.Timing;
 
         [Test]
         public void Given_AnEntryNamingOnlyADelay_When_ItsChannelTimingIsRead_Then_ItRunsThreeTenthsOfASecond()

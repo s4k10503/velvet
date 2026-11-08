@@ -608,7 +608,7 @@ namespace Velvet
                 for (var i = 0; i < overrides.Count; i++)
                 {
                     var o = overrides[i];
-                    var overrideHold = o.DurationOrDefaultSec + (o.DelaySec ?? transition.DelaySec);
+                    var overrideHold = transition.DelaySec + o.EndAfterSec(transition.DelaySec);
                     if (overrideHold > hold)
                     {
                         hold = overrideHold;

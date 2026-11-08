@@ -717,6 +717,8 @@ namespace Velvet
             var onComplete = play.OnComplete;
             var delaySec = play.DelaySec;
             var additionalDelaySec = play.AdditionalDelaySec;
+            // The driver starts at the earliest entry's delay where one is sooner than the play's (WithOverrides).
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(play.PropertyOverrides, play.DelaySec);
             var isExit = play.IsExit;
             var map = isExit ? _pendingExits : _pendingEnters;
 
@@ -807,7 +809,7 @@ namespace Velvet
                 {
                     return;
                 }
-                var totalDelaySec = delaySec + additionalDelaySec;
+                var totalDelaySec = delaySec + additionalDelaySec + earliestSec;
                 if (NeverStarts(totalDelaySec))
                 {
                     return;
@@ -876,7 +878,8 @@ namespace Velvet
                     ? BezierTweenDriver.WithOverrides(
                         BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides, delaySec)
                     : null,
-                play.DelaySec + play.AdditionalDelaySec, removesToClasses: false);
+                play.DelaySec + play.AdditionalDelaySec + StylePropertyTransition.EarliestAfterSec(overrides, delaySec),
+                removesToClasses: false);
         }
 
         // A Tween that UI Toolkit's transition cannot play as asked: one on a mount whose clock is not the panel's,
@@ -900,9 +903,11 @@ namespace Velvet
         // UI Toolkit's transition cannot move a skew angle, which no style slot holds, so a Tween that
         // moves one runs on the driver that writes it, as a Tween on another clock does. A Tween on a playback
         // or with passes to repeat has no transition to hand either: the transition runs on the panel's time, once.
+        // Nor can it run a value on a spring or an arbitrary cubic-bezier, which an entry naming no timing takes.
         private bool RunsDriven(in VariantPlay play, float durationSec)
             => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec)
-                || (IsPlayableDuration(durationSec) && (play.Playback != null || play.Repeat.Count > 0f))
+                || (IsPlayableDuration(durationSec) && (play.Playback != null || play.Repeat.Count > 0f
+                    || StylePropertyTransition.AnyUndefined(play.PropertyOverrides)))
                 || (play.IsExit && InsidePinnedGhost(play.Element));
 
         // An exit inside a pinned PopLayout ghost runs on the driver, whose inline values and recurring tick outlive the

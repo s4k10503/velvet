@@ -43,13 +43,15 @@ namespace Velvet.Tests
             Assert.That(delays is { Count: > 0 } ? delays[0].value : float.NaN, Is.EqualTo(-100f));
         }
 
+        // GREEN_ON_BASE(characterization): the native transition list this case reads, kept by naming a duration
+        // on an entry that would otherwise run its value on Framer's default transition off that list.
         [Test]
         public void Given_APropertyOverrideWithTheOnlyNegativeDelay_When_Started_Then_TheInlineTransitionDelayCarriesIt()
         {
             // Arrange
             var element = MountOnRealPanel();
             var scheduler = _scheduler = new StyleAnimationScheduler();
-            var overrides = new[] { new StylePropertyTransition("opacity", delaySec: -0.1f) };
+            var overrides = new[] { new StylePropertyTransition("opacity", durationSec: 0.3f, delaySec: -0.1f) };
 
             // Act
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
@@ -390,6 +392,8 @@ namespace Velvet.Tests
             Assert.That(binding.Overlay.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the native transition list this case reads, kept by naming a duration
+        // on an entry that would otherwise run its value on Framer's default transition off that list.
         [Test]
         public void Given_APropertyOverrideWhoseEntriesAllHaveNegativeDelays_When_Started_Then_TheDelayListIsWritten()
         {
@@ -400,7 +404,7 @@ namespace Velvet.Tests
             // Act
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
                 durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0f,
-                propertyOverrides: new[] { new StylePropertyTransition("opacity") });
+                propertyOverrides: new[] { new StylePropertyTransition("opacity", durationSec: 1f) });
 
             // Assert
             var delays = element.style.transitionDelay.value;

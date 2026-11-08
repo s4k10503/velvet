@@ -304,9 +304,11 @@ Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"tr
 `"scale"`, `"rotate"`, `"background-color"`, …). An entry replaces the enclosing config for its property,
 as Framer's `getValueTransition` hands a value its own transition whole: a null `DelaySec` takes the enclosing
 config's, and a null `DurationSec` or `Easing` takes 0.3 s and an ease-out, Framer's keyframes defaults, not
-the enclosing config's. An entry naming neither runs 0.3 s on an ease-out as well, where Framer runs that value on
-its default transition (*Transition semantics*). A property no override names animates on the enclosing config's
-timing.
+the enclosing config's. An entry naming neither is no transition, as `isTransitionDefined` reads one, so its value
+takes the default Framer picks for it (*Transition semantics*), after the entry's delay and once whatever the play
+repeats; a `Tween` holding such an entry plays on the per-frame driver a `Bezier` plays on. Where an entry's delay
+is shorter than the play's, the entry's value starts then and the rest wait out the play's own. A property no
+override names animates on the enclosing config's timing.
 Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
@@ -353,7 +355,7 @@ new StyleTransitionConfig
   spring as far as the time it covers.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike.
 - `ExitSpring` (`new SpringPhysics(stiffness, damping, mass)`) gives an exit physics of its own, and
-  `PropertyOverrides` gives the channels it names a tween of its own on each entry's timing (*Per-property
+  `PropertyOverrides` gives the channels it names each entry's timing in place of the spring (*Per-property
   transition overrides*), which that channel plays once whatever the play repeats.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
@@ -537,7 +539,7 @@ algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` 
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
 one-curve-per-direction contract: `ExitBezier` gives an exit its own curve (`new BezierCurve(x1, y1, x2, y2)`),
-and `PropertyOverrides` gives the channels it names a tween of their own on each entry's timing (*Per-property
+and `PropertyOverrides` gives the channels it names each entry's timing in place of the curve (*Per-property
 transition overrides*), which that channel plays once whatever the play repeats. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
 with the `ease-in-out` keyword. `BezierX1` / `BezierX2` accept any finite value, as Motion's `cubicBezier` does; when either lies outside

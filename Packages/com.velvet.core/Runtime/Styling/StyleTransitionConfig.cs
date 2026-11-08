@@ -425,7 +425,7 @@ namespace Velvet
         /// transition's own USS-declared transition-property is untouched — and in <see cref="Animator"/>, which reads
         /// an entry as a per-value transition. Null (default) preserves today's behavior unchanged.
         /// On a <see cref="TransitionType.Spring"/> or <see cref="TransitionType.Bezier"/> play, a channel an entry
-        /// names runs a tween on that entry's timing in place of the play's curve, once whatever the play repeats;
+        /// names runs on that entry's timing in place of the play's curve, once whatever the play repeats;
         /// <c>Documentation~/motion.md</c> owns the rule.
         /// </summary>
         public IReadOnlyList<StylePropertyTransition>? PropertyOverrides
@@ -670,7 +670,8 @@ namespace Velvet
     /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>. It
     /// replaces the enclosing config for its property, as Framer Motion's per-value transition does: only a null
     /// <see cref="DelaySec"/> takes the enclosing config's, and a null <see cref="DurationSec"/> or
-    /// <see cref="Easing"/> takes Framer's keyframes defaults of 0.3 s and an ease-out.
+    /// <see cref="Easing"/> takes Framer's keyframes defaults of 0.3 s and an ease-out. An entry naming neither is no
+    /// transition, and its value takes the default transition Framer Motion picks for it.
     /// </summary>
     public readonly struct StylePropertyTransition
     {
@@ -680,10 +681,10 @@ namespace Velvet
         /// </summary>
         public string Property { get; }
 
-        /// <summary>Duration (seconds). Null runs 0.3 s.</summary>
+        /// <summary>Duration (seconds). Null runs 0.3 s where <see cref="Easing"/> is set.</summary>
         public float? DurationSec { get; }
 
-        /// <summary>Easing. Null eases out.</summary>
+        /// <summary>Easing. Null eases out where <see cref="DurationSec"/> is set.</summary>
         public EasingMode? Easing { get; }
 
         /// <summary>Delay override (seconds). Null falls back to <see cref="StyleTransitionConfig.DelaySec"/>.</summary>
@@ -704,6 +705,98 @@ namespace Velvet
         // The entry's delay counted from the end of playDelaySec, the play's own, which it replaces where it names
         // one: negative where it names a shorter one.
         internal float DelayAfterSec(float playDelaySec) => (DelaySec ?? playDelaySec) - playDelaySec;
+
+        // Framer runs an entry naming a duration or an easing on its keyframes generator; one naming neither is no
+        // transition (isTransitionDefined), and its value takes the one getDefaultTransition picks for it.
+        internal bool IsDefined => DurationSec != null || Easing != null;
+
+        // The timing a channel of `kind` runs on, starting delaySec after its driver does and travelling from `from`
+        // to `to`.
+        internal TweenChannelTiming TimingFor(float delaySec, ValueDefault kind, float from, float to)
+        {
+            if (IsDefined)
+            {
+                return new TweenChannelTiming(delaySec, Math.Max(0f, DurationOrDefaultSec), EasingOrDefault);
+            }
+            if (kind == ValueDefault.Ease)
+            {
+                return new TweenChannelTiming(delaySec, MotionSpringDriver.DefaultEaseSec, EasingMode.EaseOut)
+                {
+                    Bezier = MotionSpringDriver.DefaultEase,
+                };
+            }
+            var spring = MotionSpringDriver.DefaultSpringOf(kind, to);
+            return new TweenChannelTiming(delaySec, MotionSpringDriver.DefaultSpringRestSec(spring, Math.Abs(to - from)),
+                EasingMode.EaseOut)
+            {
+                Spring = spring,
+                RestSpeed = MotionSpringDriver.DefaultSpringRestSpeed,
+            };
+        }
+
+        // Where the entry ends, from the end of playDelaySec, for a play whose travel is not known: a default spring
+        // is measured over 100, the travel Framer's sequence takes when it cannot read one.
+        internal float EndAfterSec(float playDelaySec)
+        {
+            var durationSec = Math.Max(0f, DurationOrDefaultSec);
+            if (!IsDefined)
+            {
+                var named = DrivenTweenTiming.Named(Property);
+                durationSec = 0f;
+                foreach (var (longhand, kind) in s_defaultKinds)
+                {
+                    if (named.Overlaps(StyleLonghandSet.Of(longhand)))
+                    {
+                        durationSec = Math.Max(durationSec, TimingFor(0f, kind, 0f, UnknownTravel).DurationSec);
+                    }
+                }
+                if (!named.IsEmpty && named.Union(s_springLonghands) != s_springLonghands)
+                {
+                    durationSec = Math.Max(durationSec, MotionSpringDriver.DefaultEaseSec);
+                }
+            }
+            return DelayAfterSec(playDelaySec) + durationSec;
+        }
+
+        private const float UnknownTravel = 100f;
+
+        private static readonly (StyleLonghand, ValueDefault)[] s_defaultKinds =
+        {
+            (StyleLonghand.Translate, ValueDefault.Transform),
+            (StyleLonghand.Rotate, ValueDefault.Transform),
+            (StyleLonghand.Scale, ValueDefault.Scale),
+        };
+
+        private static readonly StyleLonghandSet s_springLonghands = StyleLonghandSet.Of(StyleLonghand.Translate)
+            .Union(StyleLonghandSet.Of(StyleLonghand.Rotate)).Union(StyleLonghandSet.Of(StyleLonghand.Scale));
+
+        // How far before the play's own delay ends its earliest entry starts: 0 where none starts sooner.
+        internal static float EarliestAfterSec(IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec)
+        {
+            var earliest = 0f;
+            foreach (var entry in overrides ?? Array.Empty<StylePropertyTransition>())
+            {
+                earliest = Math.Min(earliest, entry.DelayAfterSec(playDelaySec));
+            }
+            return earliest;
+        }
+
+        // Whether an entry runs its value on a default transition that UI Toolkit's own transition cannot express.
+        internal static bool AnyUndefined(IReadOnlyList<StylePropertyTransition>? overrides)
+        {
+            var undefined = false;
+            foreach (var entry in overrides ?? Array.Empty<StylePropertyTransition>()) undefined |= !entry.IsDefined;
+            return undefined;
+        }
+    }
+
+    // Which default transition Framer gives a value no transition names: the ease, the transform spring, or the
+    // scale spring.
+    internal enum ValueDefault
+    {
+        Ease,
+        Transform,
+        Scale,
     }
 
     /// <summary>

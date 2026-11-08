@@ -205,86 +205,49 @@ namespace Velvet
             state.DelaySec = timing.DelaySec;
             state.DelayBaseSec = timing.StartDelaySec;
             state.SlowestTimingEndSec = timing.SlowestEntryEndSec;
-            var translate = timing.For(StyleLonghandSet.Of(StyleLonghand.Translate));
-            AssignTiming(state.Opacity, timing.For(StyleLonghandSet.Of(StyleLonghand.Opacity)));
-            AssignTiming(state.TranslateX, translate);
-            AssignTiming(state.TranslateY, translate);
-            AssignTiming(state.Scale, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
-            AssignTiming(state.ScaleY, timing.For(StyleLonghandSet.Of(StyleLonghand.Scale)));
-            AssignTiming(state.Rotate, timing.For(StyleLonghandSet.Of(StyleLonghand.Rotate)));
-            foreach (var c in state.Colors ?? s_noColors)
+            foreach (var (channel, longhands, kind) in DrivenTweenTiming.OverridableChannels<BezierTweenChannel>(state))
             {
-                AssignTiming(c.Progress, timing.For(StyleArbitraryLonghands.Of(c.Property)));
-            }
-            foreach (var l in state.Lengths ?? s_noLengths)
-            {
-                AssignTiming(l.Value, timing.For(StyleArbitraryLonghands.Of(l.Property)));
+                if (timing.For(longhands, kind, channel.From, channel.To) is { } own)
+                {
+                    channel.Timing = own;
+                    state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, own.DelaySec + own.DurationSec);
+                }
             }
             return state;
         }
 
         /// <summary>
         /// Gives each channel a <see cref="StylePropertyTransition"/> names the timing that entry carries in place of the
-        /// play's, the last entry naming it winning. <paramref name="playDelaySec"/> is the delay the play waits before
-        /// the driver runs, which an entry's own delay replaces. Such a channel plays its entry once whatever the play
-        /// repeats.
+        /// play's, the last entry naming it winning: a tween of its delay, duration and easing, or the default transition
+        /// Framer Motion gives the value where it names neither duration nor easing. <paramref name="playDelaySec"/> is
+        /// the delay the play waits, which an entry's own delay replaces. The driver starts at the earliest of them
+        /// (<see cref="StylePropertyTransition.EarliestAfterSec"/> before the play's delay ends), so the play's own curve
+        /// waits the rest. Such a channel plays its entry once whatever the play repeats.
         /// </summary>
         public static BezierTweenState? WithOverrides(BezierTweenState? state, IReadOnlyList<StylePropertyTransition>? overrides,
             float playDelaySec)
         {
-            if (state == null || overrides == null || overrides.Count == 0)
+            if (state == null)
             {
-                return state;
+                return null;
             }
-            Override(state, playDelaySec, state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity), overrides);
-            Override(state, playDelaySec, state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
-            Override(state, playDelaySec, state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
-            Override(state, playDelaySec, state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
-            Override(state, playDelaySec, state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
-            Override(state, playDelaySec, state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate), overrides);
-            foreach (var c in state.Colors ?? s_noColors)
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec);
+            state.DelaySec -= earliestSec;
+            foreach (var (channel, longhands, kind) in DrivenTweenTiming.OverridableChannels<BezierTweenChannel>(state))
             {
-                Override(state, playDelaySec, c.Progress, StyleArbitraryLonghands.Of(c.Property), overrides);
-            }
-            foreach (var l in state.Lengths ?? s_noLengths)
-            {
-                Override(state, playDelaySec, l.Value, StyleArbitraryLonghands.Of(l.Property), overrides);
+                if (DrivenTweenTiming.LastNaming(overrides, longhands) is { } entry)
+                {
+                    var timing = entry.TimingFor(entry.DelayAfterSec(playDelaySec) - earliestSec, kind, channel.From, channel.To);
+                    channel.Timing = timing;
+                    state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, timing.DelaySec + timing.DurationSec);
+                }
             }
             return state;
-        }
-
-        private static void Override(BezierTweenState state, float playDelaySec, BezierTweenChannel? channel,
-            StyleLonghandSet longhands, IReadOnlyList<StylePropertyTransition> overrides)
-        {
-            if (channel == null)
-            {
-                return;
-            }
-            for (var i = overrides.Count - 1; i >= 0; i--)
-            {
-                var entry = overrides[i];
-                if (!DrivenTweenTiming.Named(entry.Property).Overlaps(longhands))
-                {
-                    continue;
-                }
-                var delaySec = entry.DelayAfterSec(playDelaySec);
-                var durationSec = Mathf.Max(0f, entry.DurationOrDefaultSec);
-                channel.Timing = new TweenChannelTiming(delaySec, durationSec, entry.EasingOrDefault);
-                state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, delaySec + durationSec);
-                return;
-            }
         }
 
         private static readonly List<BezierColorChannel> s_noColors = new();
         private static readonly List<BezierLengthChannel> s_noLengths = new();
 
-        private static void AssignTiming(BezierTweenChannel? channel, TweenChannelTiming? timing)
-        {
-            if (channel != null)
-            {
-                channel.Timing = timing;
-            }
-        }
 
         private static BezierTweenState Build(MotionSpringClassParser.SpringPlan plan)
         {
@@ -590,11 +553,12 @@ namespace Velvet
         {
             var timing = own ?? channel.Timing;
             var duration = timing?.DurationSec ?? state.DurationSec;
-            channel.Timing = timing is { } given
-                ? new TweenChannelTiming(state.ElapsedSec, duration, given.Easing, given.Curve)
+            var restarted = timing is { } given
+                ? (given with { DelaySec = state.ElapsedSec, DurationSec = duration }).OverTravel(channel.To - channel.From)
                 : new TweenChannelTiming(state.ElapsedSec, duration, state.Easing ?? EasingMode.Linear,
                     curve: !state.Easing.HasValue);
-            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, state.ElapsedSec + duration);
+            channel.Timing = restarted;
+            state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, restarted.DelaySec + restarted.DurationSec);
         }
 
         // The bezier sibling of MotionSpringDriver.HoldTranslate.
@@ -684,6 +648,13 @@ namespace Velvet
                 continued.Progress.Timing = color.Progress.Timing;
                 return continued;
             });
+            foreach (var (channel, _, _) in DrivenTweenTiming.OverridableChannels<BezierTweenChannel>(next))
+            {
+                if (channel.Timing is { } own)
+                {
+                    next.SlowestTimingEndSec = Mathf.Max(next.SlowestTimingEndSec, own.DelaySec + own.DurationSec);
+                }
+            }
         }
 
         private static void Continue(BezierTweenChannel? next, (float Value, float Velocity)? interrupted)
@@ -691,6 +662,8 @@ namespace Velvet
             if (next != null && interrupted is { } drawn)
             {
                 next.From = next.RestingTarget = drawn.Value;
+                // A spring an entry gave the channel rests over the travel left.
+                next.Timing = next.Timing?.OverTravel(next.To - next.From);
             }
         }
 
@@ -743,12 +716,25 @@ namespace Velvet
                 return;
             }
             var eased = Eased(state, channel, shared);
-            if (state.Easing is { } easing)
+            var fresh = channel.Timing?.Spring != null || channel.Timing?.Bezier != null;
+            if (fresh)
+            {
+                // A value on a default transition of its own starts that transition again toward the resting value, as
+                // Framer starts a value's next animation, rather than shortening it as a CSS transition reverses.
+                channel.Timing = channel.Timing!.Value with { DelaySec = 0f };
+            }
+            else if (state.Easing is { } easing)
             {
                 Shorten(state, channel, eased, easing);
             }
             channel.From = Mathf.LerpUnclamped(channel.From, channel.To, eased);
             channel.To = channel.RestingTarget;
+            if (fresh)
+            {
+                var restarted = channel.Timing!.Value.OverTravel(channel.To - channel.From);
+                channel.Timing = restarted;
+                state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, restarted.DurationSec);
+            }
         }
 
         // A driven Tween's reversal takes the transition its native counterpart would start: CSS Transitions' reversing
@@ -804,6 +790,10 @@ namespace Velvet
             {
                 return shared;
             }
+            if (own.Spring != null || own.Bezier != null)
+            {
+                return own.SpringOrBezierFraction(state.ElapsedSec - own.DelaySec, channel.To - channel.From);
+            }
             var progress = Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec);
             return own.Curve
                 ? CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress)
@@ -841,20 +831,25 @@ namespace Velvet
             return mirrored ? 1f - eased : eased;
         }
 
-        // A bezier play's curve over every pass Repeat adds. It has no delay of its own (DelaySec is a driven Tween's),
-        // so elapsed time is the time into the play. A finished play shows the end MotionRepeat.EndsAtFrom names, as
-        // Framer Motion's getFinalKeyframe overrides its last sample.
+        // A bezier play's curve over every pass Repeat adds, after DelaySec, which is how much earlier than its own
+        // delay a PropertyOverrides entry started the driver (WithOverrides). A finished play shows the end
+        // MotionRepeat.EndsAtFrom names, as Framer Motion's getFinalKeyframe overrides its last sample.
         private static float RepeatedBezierFraction(BezierTweenState state)
         {
+            var activeSec = state.ElapsedSec - state.DelaySec;
+            if (state.DelaySec > 0f && activeSec < 0f)
+            {
+                return 0f;
+            }
             if (state.DurationSec <= 0f)
             {
                 return state.SeekedToStart ? 0f : CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, 1f);
             }
-            if (state.ElapsedSec >= state.EndSec)
+            if (activeSec >= state.Repeat.TotalSec(state.DurationSec))
             {
                 return state.Repeat.EndsAtFrom ? 0f : 1f;
             }
-            var progress = (float)(state.Repeat.PassTime(state.ElapsedSec, state.DurationSec, out var mirrored)
+            var progress = (float)(state.Repeat.PassTime(activeSec, state.DurationSec, out var mirrored)
                 / state.DurationSec);
             var eased = CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress);
             return mirrored ? 1f - eased : eased;

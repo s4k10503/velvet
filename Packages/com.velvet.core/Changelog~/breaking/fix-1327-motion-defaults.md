@@ -17,7 +17,9 @@
 - A `StylePropertyTransition` replaces the enclosing config for its property, as Framer Motion's per-value
   transition does: a null `DurationSec` runs 0.3 s and a null `Easing` eases out rather than taking the
   enclosing config's, and on a `Spring` or `Bezier` play an entry's `DelaySec` replaces the play's rather than
-  adding to it. `Animator.Animate` reads `PropertyOverrides` as per-value transitions.
+  adding to it, an entry with a shorter delay starting before the play's own. An entry naming neither duration nor
+  easing runs its value on Framer Motion's default transition for it, a spring for a transform, a `Tween` holding
+  one moving off UI Toolkit's transition onto the per-frame driver. `Animator.Animate` reads `PropertyOverrides` as per-value transitions.
 - A `Spring` on a single `Animator.Animate` call ends where it comes to rest rather than at 20 s.
 - A `layoutId` move on a `V.Motion` given only `delay:` runs 0.3 s on an ease-out after it rather than the
   `Fade` preset's timing.

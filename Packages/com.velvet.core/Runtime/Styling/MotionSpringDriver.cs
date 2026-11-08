@@ -51,6 +51,10 @@ namespace Velvet
         public float EaseSec;
         public (float Stiffness, float Damping)? FixedPhysics;
         public float? RestSpeed;
+        // How long after the driver starts the channel's spring or ease begins (MotionSpringDriver.WithOverrides),
+        // and whether it plays once whatever the play repeats, as a value given a transition of its own does.
+        public float DelaySec;
+        public bool Once;
 
         public SpringChannel(float initialValue, float target)
         {
@@ -259,43 +263,62 @@ namespace Velvet
         internal static float ScaleSpringDamping(float target)
             => target == 0f ? 2f * Mathf.Sqrt(ScaleSpringStiffness) : 30f;
 
+        internal static readonly BezierCurve DefaultEase = new(DefaultEaseX1, DefaultEaseY1, DefaultEaseX2, DefaultEaseY2);
+
+        internal static (float Stiffness, float Damping, float Mass) DefaultSpringOf(ValueDefault kind, float target)
+            => kind == ValueDefault.Scale
+                ? (ScaleSpringStiffness, ScaleSpringDamping(target), 1f)
+                : (TransformSpringStiffness, TransformSpringDamping, 1f);
+
+        internal static float DefaultSpringRestSec((float Stiffness, float Damping, float Mass) spring, float travel)
+            => SpringRestSec(spring, DefaultSpringRestSpeed, travel);
+
+        // Where a spring a value runs on alone comes to rest, however long that takes, as Framer's JSAnimation ends
+        // when its generator is done.
+        internal static float SpringRestSec((float Stiffness, float Damping, float Mass) spring, float? restSpeed, float travel)
+            => PassDurationSec(travel, spring.Stiffness, spring.Damping, spring.Mass, 0f, restSpeed, UncappedPassMs);
+
         // A transform value runs on a spring, scale on a critically damped one that is stiffer, and any other value
         // on the ease above.
         private static void AssignFramerDefaults(MotionSpringState state)
         {
-            if (state.Opacity != null) state.Opacity.EaseSec = DefaultEaseSec;
-            if (state.PaintProgress != null) state.PaintProgress.EaseSec = DefaultEaseSec;
-            Spring(state.TranslateX, TransformSpringStiffness, TransformSpringDamping);
-            Spring(state.TranslateY, TransformSpringStiffness, TransformSpringDamping);
-            Spring(state.Rotate, TransformSpringStiffness, TransformSpringDamping);
-            Spring(state.SkewX, TransformSpringStiffness, TransformSpringDamping);
-            Spring(state.SkewY, TransformSpringStiffness, TransformSpringDamping);
-            if (state.Scale != null)
+            foreach (var (channel, kind) in DefaultKinds(state))
             {
-                Spring(state.Scale, ScaleSpringStiffness, ScaleSpringDamping(state.Scale.Target));
-            }
-            if (state.ScaleY != null)
-            {
-                Spring(state.ScaleY, ScaleSpringStiffness, ScaleSpringDamping(state.ScaleY.Target));
-            }
-            if (state.Colors != null)
-            {
-                foreach (var c in state.Colors) c.Progress.EaseSec = DefaultEaseSec;
-            }
-            if (state.Lengths != null)
-            {
-                foreach (var l in state.Lengths) l.Value.EaseSec = DefaultEaseSec;
+                AssignFramerDefault(channel, kind);
             }
         }
 
-        private static void Spring(SpringChannel? channel, float stiffness, float damping)
+        private static void AssignFramerDefault(SpringChannel channel, ValueDefault kind)
         {
-            if (channel != null)
+            channel.Timing = null;
+            if (kind == ValueDefault.Ease)
             {
-                channel.FixedPhysics = (stiffness, damping);
-                channel.RestSpeed = DefaultSpringRestSpeed;
+                channel.EaseSec = DefaultEaseSec;
+                return;
             }
+            var (stiffness, damping, _) = DefaultSpringOf(kind, channel.Target);
+            channel.FixedPhysics = (stiffness, damping);
+            channel.RestSpeed = DefaultSpringRestSpeed;
         }
+
+        private static IEnumerable<(SpringChannel Channel, ValueDefault Kind)> DefaultKinds(MotionSpringState state)
+        {
+            if (state.Opacity != null) yield return (state.Opacity, ValueDefault.Ease);
+            if (state.PaintProgress != null) yield return (state.PaintProgress, ValueDefault.Ease);
+            if (state.TranslateX != null) yield return (state.TranslateX, ValueDefault.Transform);
+            if (state.TranslateY != null) yield return (state.TranslateY, ValueDefault.Transform);
+            if (state.Rotate != null) yield return (state.Rotate, ValueDefault.Transform);
+            if (state.SkewX != null) yield return (state.SkewX, ValueDefault.Transform);
+            if (state.SkewY != null) yield return (state.SkewY, ValueDefault.Transform);
+            if (state.Scale != null) yield return (state.Scale, ValueDefault.Scale);
+            if (state.ScaleY != null) yield return (state.ScaleY, ValueDefault.Scale);
+            foreach (var c in state.Colors ?? s_noColors) yield return (c.Progress, ValueDefault.Ease);
+            foreach (var l in state.Lengths ?? s_noLengths) yield return (l.Value, ValueDefault.Ease);
+        }
+
+        // The settle time a channel's spring takes from the play: none for one on physics of its own.
+        private static double? SettleOf(MotionSpringState state, SpringChannel channel)
+            => channel.FixedPhysics != null ? null : state.SettleSec;
 
         // Releases the channel's spring at `origin` with `velocity`, in the channel's own units per second, toward its
         // Target, as Framer Motion starts a value's animation. Framer runs each value as an animation of its own, so
@@ -332,7 +355,7 @@ namespace Velvet
             c.MirroredPhysics = c.FixedPhysics ?? PhysicsAt(state, -valueVelocity);
             // A spring with a settle time runs exactly that long on the main thread, and on the browser for the
             // easing Framer samples from it, which ends at the first sample at or past it.
-            var pass = state.SettleSec is { } settleSec
+            var pass = SettleOf(state, c) is { } settleSec
                 ? accelerated ? SampledEndSec(settleSec) : (float)settleSec
                 : PassDurationSec(travel * c.Scale, c.FixedPhysics?.Stiffness ?? state.Stiffness,
                     c.FixedPhysics?.Damping ?? state.Damping, state.Mass, c.StartVelocity, c.RestSpeed);
@@ -390,7 +413,8 @@ namespace Velvet
                 return 0.0;
             }
             var span = 0.0;
-            ForEachActiveChannel(state, c => span = System.Math.Max(span, c.Timing != null ? c.PassSec : repeat.TotalSec(c.PassSec)));
+            ForEachActiveChannel(state, c => span = System.Math.Max(span,
+                c.Timing != null ? c.PassSec : c.DelaySec + (c.Once ? c.PassSec : repeat.TotalSec(c.PassSec))));
             return span;
         }
 
@@ -578,18 +602,25 @@ namespace Velvet
             {
                 return TweenValueAt(channel, own, elapsedSec, out ended);
             }
+            var localSec = elapsedSec - channel.DelaySec;
+            if (channel.DelaySec > 0f && localSec < 0.0)
+            {
+                ended = false;
+                return channel.Origin;
+            }
+            var repeat = channel.Once ? default : state.Repeat;
             // An instant spring (SettleSec 0) has not ended at time 0, which a play on a playback is sampled at
             // through its delay: Framer leaves the value where it is until that delay ends.
-            ended = elapsedSec >= state.Repeat.TotalSec(channel.PassSec) && !(state.SettleSec == 0.0 && elapsedSec <= 0.0);
+            ended = localSec >= repeat.TotalSec(channel.PassSec) && !(SettleOf(state, channel) == 0.0 && localSec <= 0.0);
             if (ended)
             {
-                return state.Repeat.EndsAtFrom ? channel.Origin : channel.Target;
+                return repeat.EndsAtFrom ? channel.Origin : channel.Target;
             }
             // A spring that does not rest within 20 s has no pass to repeat, so it plays its first pass on.
             var mirrored = false;
             var passTime = float.IsPositiveInfinity(channel.PassSec)
-                ? elapsedSec
-                : state.Repeat.PassTime(elapsedSec, channel.PassSec, out mirrored);
+                ? localSec
+                : repeat.PassTime(localSec, channel.PassSec, out mirrored);
             return SamplePass(state, channel, passTime, mirrored);
         }
 
@@ -606,9 +637,12 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's delay, duration and easing in
-        /// place of the state's spring, the last entry naming a channel winning. <paramref name="playDelaySec"/> is the
-        /// delay the play waits before the driver runs, which an entry's own delay replaces.
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's timing in place of the state's
+        /// spring, the last entry naming a channel winning: a tween of its delay, duration and easing, or the default
+        /// transition Framer Motion gives the value where it names neither duration nor easing.
+        /// <paramref name="playDelaySec"/> is the delay the play waits, which an entry's own delay replaces. The driver
+        /// starts at the earliest of them (<see cref="StylePropertyTransition.EarliestAfterSec"/> before the play's
+        /// delay ends), so every channel's delay counts from there.
         /// </summary>
         public static MotionSpringState? WithOverrides(MotionSpringState? state,
             IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec)
@@ -617,40 +651,30 @@ namespace Velvet
             {
                 return state;
             }
-            foreach (var (channel, longhands) in OverridableChannels(state))
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec);
+            ForEachActiveChannel(state, c => c.DelaySec = -earliestSec);
+            foreach (var (channel, longhands, kind) in DrivenTweenTiming.OverridableChannels<SpringChannel>(state))
             {
-                for (var i = overrides.Count - 1; i >= 0; i--)
+                if (DrivenTweenTiming.LastNaming(overrides, longhands) is not { } entry)
                 {
-                    var entry = overrides[i];
-                    if (!DrivenTweenTiming.Named(entry.Property).Overlaps(longhands))
-                    {
-                        continue;
-                    }
-                    channel.Timing = new TweenChannelTiming(entry.DelayAfterSec(playDelaySec),
-                        Mathf.Max(0f, entry.DurationOrDefaultSec), entry.EasingOrDefault);
-                    Release(state, channel, channel.Origin, 0f);
-                    break;
+                    continue;
                 }
+                var delaySec = entry.DelayAfterSec(playDelaySec) - earliestSec;
+                if (entry.IsDefined)
+                {
+                    channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target);
+                }
+                else
+                {
+                    // A spring of the value's own, or its ease, run once after the entry's delay, as Framer runs a value
+                    // whose transition names none.
+                    AssignFramerDefault(channel, kind);
+                    channel.DelaySec = delaySec;
+                    channel.Once = true;
+                }
+                Release(state, channel, channel.Origin, 0f);
             }
             return state;
-        }
-
-        private static IEnumerable<(SpringChannel Channel, StyleLonghandSet Longhands)> OverridableChannels(MotionSpringState state)
-        {
-            if (state.Opacity != null) yield return (state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity));
-            if (state.TranslateX != null) yield return (state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate));
-            if (state.TranslateY != null) yield return (state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate));
-            if (state.Scale != null) yield return (state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale));
-            if (state.ScaleY != null) yield return (state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale));
-            if (state.Rotate != null) yield return (state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate));
-            foreach (var c in state.Colors ?? s_noColors)
-            {
-                yield return (c.Progress, StyleArbitraryLonghands.Of(c.Property));
-            }
-            foreach (var l in state.Lengths ?? s_noLengths)
-            {
-                yield return (l.Value, StyleArbitraryLonghands.Of(l.Property));
-            }
         }
 
         private static readonly List<SpringColorChannel> s_noColors = new();
@@ -672,9 +696,9 @@ namespace Velvet
                 : (state.Stiffness, state.Damping, state.Mass);
             return mirrored
                 ? SampleSpring(channel.Target, channel.Origin, channel.Scale, -channel.StartVelocity, passTime, spring,
-                    state.SettleSec, channel.RestSpeed)
+                    SettleOf(state, channel), channel.RestSpeed)
                 : SampleSpring(channel.Origin, channel.Target, channel.Scale, channel.StartVelocity, passTime, spring,
-                    state.SettleSec, channel.RestSpeed);
+                    SettleOf(state, channel), channel.RestSpeed);
         }
 
         // Framer Motion's spring generator released at `from` toward `to` with `velocity` on the scaled travel: the

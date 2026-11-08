@@ -1239,5 +1239,142 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { pastTopLevel, completions }, Is.EqualTo(new[] { 0, 1 }));
         }
+
+        // A play whose own delay is eight frames and whose opacity entry names four: opacity moves from four frames
+        // in, as Framer starts each value at its own delay, and the rest waits out the play's eight.
+        private static StyleTransitionConfig ShorterEntryDelay(TransitionType type) => new()
+        {
+            Type = type, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+            DelaySec = (float)(8 * FrameSec),
+            PropertyOverrides = new[]
+            {
+                new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: (float)(4 * FrameSec)),
+            },
+        };
+
+        private float OpacityTwoFramesPastFourFrameDelay(StyleTransitionConfig config)
+        {
+            var clock = new HeldMotionClock();
+            var element = OnPanel("earlier");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" }, config);
+            HeldTicks(10);
+            Step(clock, 4 * FrameSec);
+            Step(clock, 2 * FrameSec);
+            return element.style.opacity.value;
+        }
+
+        [Test]
+        public void Given_ABezierPlayWhoseOpacityEntryHasAShorterDelay_When_TheClockStepsTwoFramesPastIt_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange
+            var config = ShorterEntryDelay(TransitionType.Bezier);
+
+            // Act
+            var opacity = OpacityTwoFramesPastFourFrameDelay(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWhoseOpacityEntryHasAShorterDelay_When_TheClockStepsTwoFramesPastIt_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange
+            var config = ShorterEntryDelay(TransitionType.Spring);
+
+            // Act
+            var opacity = OpacityTwoFramesPastFourFrameDelay(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ABezierPlayWhoseTranslateWaitsItsOwnDelay_When_AnEarlierEntryHasStartedTheDriver_Then_TranslateHasNotMoved()
+        {
+            // Arrange — the opacity entry starts the driver four frames before the play's own delay ends.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("waiting");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" }, ShorterEntryDelay(TransitionType.Bezier));
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 6 * FrameSec);
+
+            // Assert — opacity has moved, so the driver runs; translate waits for the eighth frame.
+            Assert.That(element.style.opacity.value > 0f ? element.style.translate.value.x.value : float.NaN, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWhoseTranslateEntryNamesOnlyADelay_When_TheClockStepsATenthOfASecond_Then_TranslateIsOnTheTransformSpring()
+        {
+            // Arrange — the entry names no timing, so translate runs on Framer's 500 / 25 spring, not the play's.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("sprung");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring,
+                PropertyOverrides = new[] { new StylePropertyTransition("translate", delaySec: 0f) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[64px]" }, config);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 0.1);
+
+            // Assert
+            Assert.That(element.style.translate.value.x.value,
+                Is.EqualTo(MotionSpringDriver.SampleSpring(0f, 64f, 1f, 0f, 0.1, (500f, 25f, 1f), null, 10f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABezierPlayWhoseOpacityEntryNamesOnlyADelay_When_HalfOfThreeTenthsOfASecondPasses_Then_OpacityIsOnTheDefaultEase()
+        {
+            // Arrange — the entry names no timing, so opacity runs Framer's 0.3 s cubic-bezier(0.25, 0.1, 0.35, 1).
+            var clock = new HeldMotionClock();
+            var element = OnPanel("eased");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", delaySec: 0f) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 0.15);
+
+            // Assert
+            Assert.That(element.style.opacity.value,
+                Is.EqualTo(CubicBezierEvaluator.Evaluate(0.25f, 0.1f, 0.35f, 1f, 0.5f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ATweenOnThePanelsClockWhoseEntryNamesNoTiming_When_Started_Then_TheDriverPlaysIt()
+        {
+            // Arrange — UI Toolkit's transition can run neither the spring nor the ease such an entry takes.
+            var element = OnPanel("routed");
+            _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0.4f, PropertyOverrides = new[] { new StylePropertyTransition("translate") },
+            };
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[64px]" }, config);
+
+            // Assert
+            var enters = (System.Collections.IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .GetValue(_scheduler);
+            var pending = enters.Contains(element) ? enters[element] : null;
+            Assert.That(pending?.GetType().GetField("Bezier")?.GetValue(pending), Is.Not.Null);
+        }
     }
 }
