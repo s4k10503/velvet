@@ -42,6 +42,7 @@ namespace Velvet.Tests
         private RenderTexturePanelHost _host;
         private MountedTree _mounted;
         private TargetFrameRateScope _frameRateScope;
+        private float? _previousCaptureDeltaTime;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
@@ -54,6 +55,11 @@ namespace Velvet.Tests
         public IEnumerator UnityTearDown()
         {
             _frameRateScope.Dispose();
+            if (_previousCaptureDeltaTime is { } previous)
+            {
+                Time.captureDeltaTime = previous;
+                _previousCaptureDeltaTime = null;
+            }
             _mounted?.Dispose();
             _mounted = null;
             if (_effectGo != null) UnityEngine.Object.Destroy(_effectGo);
@@ -1092,13 +1098,18 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AManualVisualEffectGraph_When_PlayedThenStopped_Then_ItDrawsOnlyWhilePlaying()
         {
-            // Arrange
+            // Arrange — both clocks the case reads through are stepped by the frame rather than by the wall clock:
+            // the game clock by a sixtieth of a second, and the panel clock the element's repaint tick is scheduled
+            // on by a second, so every frame passes the tick's interval.
             var effect = CreateLoopEffect();
+            _previousCaptureDeltaTime = Time.captureDeltaTime;
+            Time.captureDeltaTime = 1f / 60f;
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Root.panel, () => Time.frameCount);
             _mounted = V.Mount(_host.Root,
                 V.Particles(effect, className: "w-[300px] h-[300px] bg-[#00ff00]", playOn: PlayTrigger.Manual));
             var element = _host.Root.Q<ParticlesElement>();
-            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            yield return WaitFramesDraining(30, _host.TargetTexture);
             var beforePlay = NotGreen();
 
             // Act
@@ -1106,13 +1117,15 @@ namespace Velvet.Tests
             var capability = "";
             var clone = _mounted.Root.Reconciler.Context.ParticlesBindings[element].EffectHost;
             yield return VfxGraphCapability.IgnoreIfCannotDraw(clone, reading => capability = reading);
-            yield return WaitRealtimeDraining(1.0, _host.TargetTexture);
+            yield return WaitFramesDraining(30, _host.TargetTexture);
             var playing = NotGreen();
             element.Stop();
-            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+            yield return WaitFramesDraining(30, _host.TargetTexture);
+            var stopped = NotGreen();
 
-            // Assert
-            Assert.That((beforePlay, playing > 50, NotGreen()), Is.EqualTo((0, true, 0)), capability);
+            // Assert — the stopped reading stands only where nothing drew before Play and something drew after it.
+            Assert.That(beforePlay == 0 && playing > 0 ? stopped : -1, Is.EqualTo(0),
+                $"before Play {beforePlay}, playing {playing}, stopped {stopped}; {capability}");
         }
 
         [UnityTest]

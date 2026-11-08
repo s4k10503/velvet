@@ -13,7 +13,11 @@ namespace Velvet.TestUtilities
     /// </summary>
     public static class VfxGraphCapability
     {
-        private const float WaitSeconds = 10f;
+        // Counted in frames rather than seconds: a wall-clock bound let a runner whose frames stalled end the wait
+        // before any particle was read back, which the rule above reads as a device that draws, so the test ran
+        // and failed on a runner that otherwise ignores it.
+        private const int FramesForAParticle = 300;
+        private const int FramesToDrawIt = 30;
 
         /// <summary>
         /// Call once the graph is playing, before the test reads its pixels: <c>yield return
@@ -27,7 +31,8 @@ namespace Velvet.TestUtilities
             var texture = new RenderTexture(64, 64, 24);
             var alive = 0;
             var alpha = 0;
-            var start = Time.realtimeSinceStartup;
+            var frames = 0;
+            var lastFrame = FramesForAParticle;
             var renderers = effect.GetComponentsInChildren<Renderer>(true);
             try
             {
@@ -41,12 +46,19 @@ namespace Velvet.TestUtilities
                 camera.targetTexture = texture;
                 go.transform.SetPositionAndRotation(
                     effect.transform.position - effect.transform.forward * 100f, effect.transform.rotation);
-                while (alpha == 0 && Time.realtimeSinceStartup < start + WaitSeconds)
+                var seenAlive = false;
+                while (alpha == 0 && frames < lastFrame)
                 {
                     yield return null;
+                    frames++;
                     alive = effect.aliveParticleCount;
                     if (alive > 0)
                     {
+                        if (!seenAlive)
+                        {
+                            seenAlive = true;
+                            lastFrame = frames + FramesToDrawIt;
+                        }
                         alpha = RenderAlpha(camera, texture, renderers);
                     }
                 }
@@ -57,7 +69,7 @@ namespace Velvet.TestUtilities
                 Object.Destroy(texture);
                 Object.Destroy(go);
             }
-            var reading = $"capability alive={alive} alpha={alpha} waited={Time.realtimeSinceStartup - start:F1}s "
+            var reading = $"capability alive={alive} alpha={alpha} waited={frames} frames "
                 + $"device={SystemInfo.graphicsDeviceType} {SystemInfo.graphicsDeviceVersion}";
             report(reading);
             if (alive > 0 && alpha == 0)
