@@ -39,6 +39,10 @@ namespace Velvet.Tests
         private static int s_combineCalls;
         private static bool s_throwOnError;
         private static StateUpdater<int> s_setTick;
+        private static int s_warnings;
+        private static string s_typed = string.Empty;
+        private static readonly List<VelvetTaskCompletionSource<string>> s_textSources = new();
+
 
         [SetUp]
         public void SetUp()
@@ -50,6 +54,9 @@ namespace Velvet.Tests
             s_renders.Clear();
             s_combined.Clear();
             s_combineCalls = 0;
+            s_warnings = 0;
+            s_typed = string.Empty;
+            s_textSources.Clear();
             s_throwOnError = false;
             s_setTick = default;
         }
@@ -246,6 +253,70 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Queries of their own types
+
+        [Test]
+        public void Given_QueriesOfTwoDataTypes_When_TheirRequestsLand_Then_EachResultKeepsItsType()
+        {
+            // Arrange
+            using var mounted = Mount(TypedReader);
+
+            // Act
+            Settle(mounted, () =>
+            {
+                Source("a").TrySetResult(1);
+                s_textSources[0].TrySetResult("b");
+            });
+
+            // Assert
+            Assert.That(s_typed, Is.EqualTo("1:b"), "v5 types each query of the array by its own options");
+        }
+
+        [Test]
+        public void Given_QueriesOfTwoDataTypes_When_ACombineReadsThem_Then_ItIsHandedEachResultTyped()
+        {
+            // Arrange
+            using var mounted = Mount(TypedCombineReader);
+
+            // Act
+            Settle(mounted, () =>
+            {
+                Source("a").TrySetResult(1);
+                s_textSources[0].TrySetResult("b");
+            });
+
+            // Assert
+            Assert.That(s_typed, Is.EqualTo("1+b"));
+        }
+
+        #endregion
+
+        #region Duplicates
+
+        [Test]
+        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsTwice_Then_ItWarnsAtEachCommit()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            UnityEngine.Application.logMessageReceived += CountDuplicateWarnings;
+            try
+            {
+                using var mounted = Mount(Reader);
+
+                // Act
+                Rerender(mounted);
+            }
+            finally
+            {
+                UnityEngine.Application.logMessageReceived -= CountDuplicateWarnings;
+            }
+
+            // Assert
+            Assert.That(s_warnings, Is.EqualTo(2), "v5's setQueries warns each time it runs over duplicate queries");
+        }
+
+        #endregion
+
         #region Suspense
 
         [Test]
@@ -259,6 +330,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("loading"), "v5 suspends on every pending query at once");
+        }
+
+        [Test]
+        public void Given_ACombinedSuspendingQueryThatLosesItsData_When_ItsObserverTellsOfIt_Then_CombineDoesNotRun()
+        {
+            // Arrange
+            using var mounted = Mount(SuspendingSumReader);
+            Settle(mounted, () => Source("a").TrySetResult(1));
+            Settle(mounted, () => Source("b").TrySetResult(2));
+            var calls = s_combineCalls;
+
+            // Act
+            Settle(mounted, () => s_client.ResetQueries(new QueryFilters { QueryKey = new QueryKey("a") }).Forget());
+
+            // Assert
+            Assert.That(s_combineCalls, Is.EqualTo(calls), "v5's shouldSkipCombine passes over combine while a suspense query has no data");
         }
 
         [Test]
@@ -367,6 +454,46 @@ namespace Velvet.Tests
             s_combined.Add(Hooks.UseQueries(Queries(), s_landed, s_client));
 
             return V.Label(text: "statuses");
+        }
+
+        private static void CountDuplicateWarnings(string message, string stackTrace, UnityEngine.LogType type)
+        {
+            if (type == UnityEngine.LogType.Warning && message.Contains("Duplicate Queries found")) s_warnings++;
+        }
+
+        private static QueryOptions<string> TextOptions() => new(new QueryKey("text"), (CancellationToken _) =>
+        {
+            var source = new VelvetTaskCompletionSource<string>();
+            s_textSources.Add(source);
+            return source.Task;
+        })
+        {
+            StaleTime = TimeSpan.MaxValue,
+        };
+
+        private static readonly Func<QueryResult<int>, QueryResult<string>, string> s_typedCombine
+            = (number, text) => number.Data + "+" + text.Data;
+
+        [Component]
+        private static VNode TypedReader()
+        {
+            var (number, text) = Hooks.UseQueries(Options("a"), TextOptions(), s_client);
+            s_typed = number.Data + ":" + text.Data;
+            return V.Label(text: "typed");
+        }
+
+        [Component]
+        private static VNode TypedCombineReader()
+        {
+            s_typed = Hooks.UseQueries(Options("a"), TextOptions(), s_typedCombine, s_client);
+            return V.Label(text: "typed");
+        }
+
+        [Component]
+        private static VNode SuspendingSumReader()
+        {
+            var sum = Hooks.UseSuspenseQueries(Queries(), s_sum, s_client);
+            return V.Label(text: "sum:" + sum);
         }
 
         [Component]

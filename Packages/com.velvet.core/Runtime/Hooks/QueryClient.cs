@@ -459,9 +459,27 @@ namespace Velvet
         }
 
         /// <summary>
+        /// The pages the entry <paramref name="options"/> names holds, and otherwise the pages
+        /// <see cref="FetchInfiniteQuery{TQueryFnData, TPageParam}"/> fetches, TanStack Query's
+        /// <c>ensureInfiniteQueryData</c>.
+        /// </summary>
+        /// <param name="options">As <see cref="FetchInfiniteQuery{TQueryFnData, TPageParam}"/>.</param>
+        /// <param name="revalidateIfStale">True also fetches pages that are stale for the query's stale time, without
+        /// waiting for them.</param>
+        public VelvetTask<InfiniteData<TQueryFnData, TPageParam>> EnsureInfiniteQueryData<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, bool revalidateIfStale = false)
+        {
+            var entry = EntryFor(options, out _, out var staleTime);
+            if (!entry.HasData) return FetchInfiniteQuery(options);
+            if (revalidateIfStale && entry.IsStaleFor(staleTime.Read(entry, rethrow: true))) PrefetchInfiniteQuery(options).Forget();
+            return VelvetTask.FromResult(entry.Data);
+        }
+
+        /// <summary>
         /// The data the entry <paramref name="options"/> names holds, and otherwise the data a request for it
         /// returns, TanStack Query's <c>ensureQueryData</c>.
         /// </summary>
+
         /// <param name="options">As <see cref="FetchQuery{T}"/>.</param>
         /// <param name="revalidateIfStale">True also fetches an entry whose data is stale for the query's stale
         /// time, without waiting for it.</param>
@@ -792,11 +810,13 @@ namespace Velvet
             return new QueryKey(new HashedKeyIdentity(hash));
         }
 
-        private sealed class HashedKeyIdentity : IEquatable<HashedKeyIdentity>
+        internal sealed class HashedKeyIdentity : IEquatable<HashedKeyIdentity>
         {
             private readonly string _hash;
 
             internal HashedKeyIdentity(string hash) => _hash = hash;
+
+            internal string Hash => _hash;
 
             public bool Equals(HashedKeyIdentity? other) => other != null && string.Equals(_hash, other._hash, StringComparison.Ordinal);
 
@@ -1076,6 +1096,10 @@ namespace Velvet
         internal QueryClient Client { get; }
         // The entry as the cache's events, its filters and the options' functions are handed it.
         internal Query Query { get; }
+        // TanStack's queryHash, which the cache writes as it adds the entry: QueryKeyHashFn's string, or the key's.
+        internal string Hash { get; set; } = string.Empty;
+        // The parts QueryCache numbered to write Hash, which it lets go of when it removes the entry.
+        internal List<object>? NumberedParts { get; set; }
         internal QueryStatus Status { get; private protected set; } = QueryStatus.Pending;
         internal bool HasData { get; private protected set; }
         internal Exception? Error { get; private protected set; }
@@ -1744,10 +1768,11 @@ namespace Velvet
         // holds static, which v5's refetchQueries passes over.
         internal override VelvetTask Invalidate(bool cancelRefetch)
         {
+            // v5's invalidate dispatches only over an entry not yet invalidated, telling its readers and the cache.
             if (!IsInvalidated)
             {
                 IsInvalidated = true;
-                AnnounceUpdate(QueryActionType.Invalidate);
+                Notify(QueryActionType.Invalidate);
             }
             if (IsStatic) return VelvetTask.CompletedTask;
             foreach (var observer in _observers)

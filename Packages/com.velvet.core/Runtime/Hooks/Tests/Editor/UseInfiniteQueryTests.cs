@@ -334,6 +334,54 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_PagesHeld_When_EnsureInfiniteQueryDataRuns_Then_ItHandsThemBackWithoutFetching()
+        {
+            // Arrange
+            using var mounted = MountResolved();
+
+            // Act
+            var pages = s_client.EnsureInfiniteQueryData(Options()).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(s_requested.Count == 1 ? string.Join(",", pages.Pages) : "fetched", Is.EqualTo("p0"));
+        }
+
+        [Test]
+        public void Given_NoEntry_When_EnsureInfiniteQueryDataRuns_Then_ItFetchesTheFirstPage()
+        {
+            // Act
+            var task = s_client.EnsureInfiniteQueryData(Options());
+            s_sources[0].TrySetResult("p0");
+
+            // Assert
+            Assert.That(string.Join(",", task.GetAwaiter().GetResult().Pages), Is.EqualTo("p0"));
+        }
+
+        [Test]
+        public void Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsNotRefetching()
+        {
+            // Arrange
+            using var mounted = MountResolved();
+
+            // Act
+            _ = Last().FetchNextPage();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsRefetching, Is.False, "v5's infinite observer takes a page fetch out of isRefetching");
+        }
+
+        [Test]
+        public void Given_NoClient_When_TheQueryRenders_Then_TheErrorNamesUseInfiniteQuery()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ClientlessHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Does.StartWith("failed:UseInfiniteQuery found no QueryClient"));
+        }
+
+        [Test]
         public void Given_NothingCached_When_ASuspendingQueryMounts_Then_TheSuspenseShowsItsFallback()
         {
             // Act
@@ -430,6 +478,20 @@ namespace Velvet.Tests
             var result = Hooks.UseSuspenseInfiniteQuery(Options(), s_client);
             return V.Label(text: "pages:" + string.Join(",", result.Data!.Pages));
         }
+
+        [Component]
+        private static VNode ClientlessReader()
+        {
+            Hooks.UseInfiniteQuery(Options());
+            return V.Label(text: "reader");
+        }
+
+        [Component]
+        private static VNode ClientlessHost()
+            => V.ErrorBoundary(
+                error => V.Label(text: "failed:" + error.Message),
+                new VNode?[] { V.Component(ClientlessReader, key: "reader") },
+                key: "boundary");
 
         [Component]
         private static VNode SuspendingHost()

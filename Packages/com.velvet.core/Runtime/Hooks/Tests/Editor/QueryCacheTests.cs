@@ -448,6 +448,82 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region The query hash
+
+        [Test]
+        public void Given_AKeyHoldingAList_When_GetLooksUpItsHash_Then_TheEntryIsFound()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("todos", new List<int> { 1, 2 }), 1);
+
+            // Act
+            var found = s_client.GetQueryCache().Get("[\"todos\",[1,2]]");
+
+            // Assert
+            Assert.That(found?.QueryKey, Is.EqualTo(new QueryKey("todos", new[] { 1, 2 })),
+                "v5's hashKey writes the key as JSON, so equal keys hash alike");
+        }
+
+        [Test]
+        public void Given_AKeyHashFn_When_GetLooksUpItsString_Then_TheEntryIsFound()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options() with { QueryKeyHashFn = _ => "custom" });
+
+            // Act
+            var found = s_client.GetQueryCache().Get("custom");
+
+            // Assert
+            Assert.That(found?.QueryKey, Is.EqualTo(Todos));
+        }
+
+        [Test]
+        public void Given_TwoKeysHoldingEqualDictionariesBuiltInAnotherOrder_When_TheirHashesAreRead_Then_TheDictionariesHashAlike()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("first", new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }), 1);
+            s_client.SetQueryData(new QueryKey("second", new Dictionary<string, int> { ["b"] = 2, ["a"] = 1 }), 1);
+
+            // Act
+            var hash = s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("second"), Exact = false })!.QueryHash;
+
+            // Assert
+            Assert.That(hash, Is.EqualTo("[\"second\",#1]"), "Equal parts the hash cannot write by value share one number");
+        }
+
+        [Test]
+        public void Given_AnEntryThatWasRemoved_When_GetLooksUpItsHash_Then_NothingIsFound()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            s_client.RemoveQueries();
+
+            // Act
+            var found = s_client.GetQueryCache().Get("[\"todos\"]");
+
+            // Assert
+            Assert.That(found, Is.Null);
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_ItsEntryIsInvalidated_Then_ItsReaderIsToldBeforeTheCache()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(4);
+            s_events.Clear();
+
+            // Act
+            _ = s_client.InvalidateQueries(Todos);
+
+            // Assert
+            Assert.That(s_events[0].Type, Is.EqualTo(QueryCacheEventType.ObserverResultsUpdated),
+                "v5's invalidate dispatches, which updates the readers' results before the cache hears of it");
+        }
+
+        #endregion
+
         #region The query
 
         [Test]

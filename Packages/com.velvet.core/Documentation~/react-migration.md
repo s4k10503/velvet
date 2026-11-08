@@ -384,7 +384,7 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `queryKeyHashFn: (queryKey) => string` | `new QueryOptions<T>(...) { QueryKeyHashFn = key => ... }`, or `QueryClientOptions.QueryKeyHashFn` for every query |
 | `structuralSharing` as a function | `new QueryOptions<T>(...) { StructuralSharing = (held, arrived) => ... }`, over `object` values as v5's is over `unknown` |
 | `notifyOnChangeProps: ['data']` / `'all'` | `new QueryOptions<T>(...) { NotifyOnChangeProps = QueryProperties.Data }` / `QueryProperties.All` |
-| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `fetchStatus` / `isFetching` / `isPaused` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `FetchStatus` / `IsFetching` / `IsPaused` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` |
+| `status` / `isPending` / `isSuccess` / `isError` / `data` / `error` / `fetchStatus` / `isFetching` / `isPaused` / `isStale` / `failureCount` / `failureReason` / `isPlaceholderData` / `isRefetching` / `isRefetchError` | `Status` / `IsPending` / `IsSuccess` / `IsError` / `Data` / `Error` / `FetchStatus` / `IsFetching` / `IsPaused` / `IsStale` / `FailureCount` / `FailureReason` / `IsPlaceholderData` / `IsRefetching` / `IsRefetchError` |
 | `refetch()` | `result.Refetch()` |
 | `queryClient.getQueryData(queryKey)` / `setQueryData(queryKey, updater)` | `client.GetQueryData<T>(key)` / `client.SetQueryData(key, data)` or `SetQueryData<T>(key, held => ...)` |
 | `queryClient.invalidateQueries({ queryKey })` / `invalidateQueries(filters, options)` | `client.InvalidateQueries(new QueryKey(...))` / `client.InvalidateQueries(filters, new RefetchOptions { ... })`; both return a task that completes once the refetches settle |
@@ -397,17 +397,19 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `{ queryKey, exact, type, stale, fetchStatus, predicate }` filters | `new QueryFilters { QueryKey = ..., Exact = ..., Type = QueryTypeFilter.Active, Stale = ..., FetchStatus = QueryFetchStatus.Fetching, Predicate = query => ... }` |
 | `queryClient.clear()` | `client.Clear()` |
 | `new QueryCache({ onError, onSuccess, onSettled })` / `new QueryClient({ queryCache })` | `new QueryCache { OnError = (error, query) => ..., OnSuccess = (data, query) => ..., OnSettled = (data, error, query) => ... }` / `new QueryClientOptions { QueryCache = ... }` |
-| `queryClient.getQueryCache()` / `queryCache.subscribe(listener)` / `find(filters)` / `findAll(filters)` / `getAll()` / `remove(query)` / `clear()` | `client.GetQueryCache()` / `cache.Subscribe(e => ...)`, handed a `QueryCacheEvent` / `Find` / `FindAll` / `GetAll` / `Remove` / `Clear` |
+| `queryClient.getQueryCache()` / `queryCache.subscribe(listener)` / `find(filters)` / `findAll(filters)` / `getAll()` / `get(queryHash)` / `remove(query)` / `clear()` | `client.GetQueryCache()` / `cache.Subscribe(e => ...)`, handed a `QueryCacheEvent` / `Find` / `FindAll` / `GetAll` / `Get(query.QueryHash)` / `Remove` / `Clear` |
+
 | `useIsFetching(filters)` / `queryClient.isFetching(filters)` | `Hooks.UseIsFetching(filters)` / `client.IsFetching(filters)` |
-| `useQueries({ queries })` / `useQueries({ queries, combine })` | `Hooks.UseQueries(queries)` / `Hooks.UseQueries(queries, results => ...)`, over a list of `QueryOptions<TQueryFnData, TData>`; queries of several data types share `object` |
-| `useSuspenseQueries({ queries })` / `useSuspenseQueries({ queries, combine })` | `Hooks.UseSuspenseQueries(queries)` / `Hooks.UseSuspenseQueries(queries, results => ...)` |
-| `useInfiniteQuery({ queryKey, queryFn, initialPageParam, getNextPageParam })` | `Hooks.UseInfiniteQuery(new InfiniteQueryOptions<TPage, TPageParam>(key, context => ..., initialPageParam, (lastPage, pages, lastPageParam, pageParams) => ...))`, the function handed a `QueryFunctionContext<TPageParam>` with `PageParam` and `Direction` |
+| `useQueries({ queries: [a, b] })` / `useQueries({ queries: [a, b], combine })` | `Hooks.UseQueries(a, b)`, returning a tuple of each query's own `QueryResult` / `Hooks.UseQueries(a, b, (resultA, resultB) => ...)`, for two to four queries |
+| `useQueries({ queries })` over a list built at run time / with `combine` | `Hooks.UseQueries(queries)` / `Hooks.UseQueries(queries, results => ...)`, over a list of `QueryOptions<TQueryFnData, TData>` |
+| `useSuspenseQueries(...)` | `Hooks.UseSuspenseQueries(...)`, in the same forms |
+| `useInfiniteQuery({ queryKey, queryFn, initialPageParam, getNextPageParam })` | `Hooks.UseInfiniteQuery(new InfiniteQueryOptions<TPage, TPageParam>(key, context => ..., initialPageParam, (lastPage, pages, lastPageParam, pageParams) => ...))`, the page function, its `QueryFn`, handed a `QueryFunctionContext<TPageParam>` with `PageParam` and `Direction` |
 | `getPreviousPageParam` / `maxPages` | `GetPreviousPageParam = (firstPage, pages, firstPageParam, pageParams) => ...` / `MaxPages = ...` |
 | a page parameter function returning `undefined` or `null` | returning `PageParam<TPageParam>.None`; a value converts to `PageParam<TPageParam>` |
 | `data.pages` / `data.pageParams` | `result.Data.Pages` / `result.Data.PageParams`, an `InfiniteData<TPage, TPageParam>` |
 | `fetchNextPage()` / `fetchPreviousPage()` / `hasNextPage` / `hasPreviousPage` / `isFetchingNextPage` / `isFetchingPreviousPage` / `isFetchNextPageError` / `isFetchPreviousPageError` | `FetchNextPage()` / `FetchPreviousPage()` / `HasNextPage` / `HasPreviousPage` / `IsFetchingNextPage` / `IsFetchingPreviousPage` / `IsFetchNextPageError` / `IsFetchPreviousPageError` on the `InfiniteQueryResult<TData>` |
 | `useSuspenseInfiniteQuery(options)` | `Hooks.UseSuspenseInfiniteQuery(options)` |
-| `queryClient.fetchInfiniteQuery({ ..., pages })` / `prefetchInfiniteQuery(options)` | `client.FetchInfiniteQuery(options with { Pages = ... })` / `client.PrefetchInfiniteQuery(options)` |
+| `queryClient.fetchInfiniteQuery({ ..., pages })` / `prefetchInfiniteQuery(options)` / `ensureInfiniteQueryData(options)` | `client.FetchInfiniteQuery(options with { Pages = ... })` / `client.PrefetchInfiniteQuery(options)` / `client.EnsureInfiniteQueryData(options, revalidateIfStale)` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
 under `object.Equals`, so a key rebuilt every render names the same entry, and a string or a boxed
@@ -694,18 +696,27 @@ data the query function returned; a throw from either turns the request into a f
 landed, as v5's does. `OnError` and then `OnSettled` run once a request fails for good, the latter handed the
 data the entry holds, and when `CancelQueries(revert: false)` cancels one; a throw from `OnError` skips
 `OnSettled` and is what a `FetchQuery` caller is handed. `SetQueryData` runs none of them. `Find` matches
-exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `IsFetching` and
-`Hooks.UseIsFetching` count the entries selected that are `Fetching`, a paused one left out.
+exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `Get` finds an entry by its
+`QueryHash`: the string its `QueryKeyHashFn` made, or the key written as JSON is — `["todos",1]` — with each
+number other than an `int` suffixed by its type, and a part that cannot be written by value (one compared by
+its own `Equals`, a dictionary, a set) written `#` and a number the cache gives every part equal to it, so equal
+keys hash alike. An invalidation tells the entry's mounted queries before the cache, as v5's dispatch does, so a
+result reading `IsStale` turns stale with it. `IsFetching` and `Hooks.UseIsFetching` count the entries selected
+that are `Fetching`, a paused one left out.
 
 **Several queries in one hook.** `UseQueries` reads each query of its list as `UseQuery` would and returns the
 results in the list's order, so the number of queries can change between renders. A query keeps its observer
 while some query of the list reads the same entry, whatever its position, as v5 matches observers by
-`queryHash`; a query leaving the list leaves its entry, and the Editor warns once when two queries of one list
-read one entry. A property read from any result is tracked for all of them, as v5's `trackResult` shares one
-set. The first query whose error its `ThrowOnError` throws is thrown from the hook. With a `combine`, the hook
-returns what it makes of the results: it runs again only when a query's result has changed, the queries' keys
-have changed or it is another instance, what it returns keeps the previous instance where the two are deeply
-equal, and the component re-renders only when that instance changes. `UseSuspenseQueries` takes each query as
+`queryHash`; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
+entry logs a warning, in the Editor and a development build, as v5 warns outside production. Two to four
+queries passed as their own arguments keep their own data types, and the hook returns a tuple of their results
+or hands `combine` each result as its own argument; a list built at run time holds queries of one type. A
+property read from any result is tracked for all of them, as v5's `trackResult` shares one set. The first
+query whose error its `ThrowOnError` throws is thrown from the hook. With a `combine`, the hook returns what it
+makes of the results: it runs again only when a query's result has changed, the queries' keys have changed or
+it is another instance, what it returns keeps the previous instance where the two are deeply equal, and the
+component re-renders only when that instance changes, or without running it while a suspending query holds no
+data, as v5's `shouldSkipCombine` does. `UseSuspenseQueries` takes each query as
 `UseSuspenseQuery` does: a render with any result pending starts each pending query's request and suspends
 until all of them hold data or have settled.
 
@@ -759,12 +770,9 @@ another type, since a filter selects across keys.
 - A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
   previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
   is not seen.
-- `Query` carries its state's properties itself, where v5 nests them under `query.state`. It has no
-  `queryHash`, and `QueryCache` no `get(queryHash)`, since an entry is named by its key's equality rather
-  than by a string, and neither the query's methods that change it (`setState`, `fetch`, `cancel`, `reset`,
-  `invalidate`) nor its `options`; the client's commands do that work.
-- A query function written `_ => ...` is ambiguous between the token-taking and the context-taking
-  constructors, so its parameter needs a type.
+- `Query` carries its state's properties itself, where v5 nests them under `query.state`, and has neither the
+  query's methods that change it (`setState`, `fetch`, `cancel`, `reset`, `invalidate`) nor its `options`; the
+  client's commands do that work.
 
 
 ### 1-3. State Management (React + Zustand)

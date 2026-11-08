@@ -69,10 +69,14 @@ namespace Velvet
         IsFetchNextPageError = 1 << 17,
         /// <summary><see cref="InfiniteQueryResult{TData}.IsFetchPreviousPageError"/>.</summary>
         IsFetchPreviousPageError = 1 << 18,
+        /// <summary><see cref="QueryResult{T}.IsRefetching"/>.</summary>
+        IsRefetching = 1 << 19,
+        /// <summary><see cref="QueryResult{T}.IsRefetchError"/>.</summary>
+        IsRefetchError = 1 << 20,
         /// <summary>Every property, TanStack Query's <c>'all'</c>.</summary>
         All = Status | IsPending | IsSuccess | IsError | Data | Error | IsFetching | IsStale | FailureCount | FailureReason
             | IsPlaceholderData | FetchStatus | IsPaused | HasNextPage | HasPreviousPage | IsFetchingNextPage
-            | IsFetchingPreviousPage | IsFetchNextPageError | IsFetchPreviousPageError,
+            | IsFetchingPreviousPage | IsFetchNextPageError | IsFetchPreviousPageError | IsRefetching | IsRefetchError,
     }
 
     /// <summary>
@@ -588,7 +592,7 @@ namespace Velvet
         public bool Equals(QueryFunction<T> other) => Equals(_fn, other._fn);
 
         /// <inheritdoc/>
-        public override bool Equals(object? obj) => obj is QueryFunction<T> other && Equals(other);
+        public override bool Equals(object? obj) => obj is QueryFunction<T> && Equals((QueryFunction<T>)obj);
 
         /// <inheritdoc/>
         public override int GetHashCode() => _fn?.GetHashCode() ?? 0;
@@ -661,6 +665,14 @@ namespace Velvet
         /// <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/>'s rather than the entry's, TanStack
         /// Query's <c>isPlaceholderData</c>.</summary>
         public bool IsPlaceholderData => Read(QueryProperties.IsPlaceholderData, _snapshot.IsPlaceholderData);
+        /// <summary>True while a request is in flight and running over a result that is not
+        /// <see cref="QueryStatus.Pending"/>, TanStack Query's <c>isRefetching</c>; an infinite query's request for its
+        /// next or previous page is not one.</summary>
+        public bool IsRefetching => Read(QueryProperties.IsRefetching, _snapshot.IsRefetching);
+        /// <summary>True when the result is <see cref="QueryStatus.Error"/> over an entry that holds data, TanStack
+        /// Query's <c>isRefetchError</c>; an infinite query's failure to fetch its next or previous page is not
+        /// one.</summary>
+        public bool IsRefetchError => Read(QueryProperties.IsRefetchError, _snapshot.IsRefetchError);
 
         /// <summary>
         /// Fetches the entry again, TanStack Query's <c>refetch()</c>, whether or not the query is enabled: a
@@ -696,6 +708,13 @@ namespace Velvet
         internal int FailureCount { get; init; }
         internal Exception? FailureReason { get; init; }
         internal bool IsPlaceholderData { get; init; }
+        // Whether the entry holds data, where v5 reads whether its dataUpdatedAt is other than zero.
+        internal bool EntryHasData { get; init; }
+
+        // TanStack's isRefetching and isRefetchError, with an infinite query's paging requests taken out as its
+        // InfiniteQueryObserver takes them out; any other query has no FetchDirection.
+        internal bool IsRefetching => FetchStatus == QueryFetchStatus.Fetching && Status != QueryStatus.Pending && FetchDirection == null;
+        internal bool IsRefetchError => Status == QueryStatus.Error && EntryHasData && FetchDirection == null;
         // An infinite query's: whether its paging names a page either side, and the end the entry's latest request
         // was asked for, TanStack's fetchMeta.fetchMore.direction.
         internal bool HasNextPage { get; init; }
@@ -718,6 +737,8 @@ namespace Velvet
             if (FailureCount != other.FailureCount) changed |= QueryProperties.FailureCount;
             if (!ReferenceEquals(FailureReason, other.FailureReason)) changed |= QueryProperties.FailureReason;
             if (IsPlaceholderData != other.IsPlaceholderData) changed |= QueryProperties.IsPlaceholderData;
+            if (IsRefetching != other.IsRefetching) changed |= QueryProperties.IsRefetching;
+            if (IsRefetchError != other.IsRefetchError) changed |= QueryProperties.IsRefetchError;
             return changed | PagingDifferencesFrom(other);
         }
 
@@ -1473,17 +1494,32 @@ namespace Velvet
         }
 
         // The latest reading as a result, an infinite query's carrying its paging.
-        internal QueryResult<TData> CurrentResult(IQueryResultSource source) => ResultOf(_settings.Paging != null, source);
+        internal override object ResultOf(IQueryResultSource source) => ResultOf(_settings.Paging != null, source);
+
+        internal override void TrackFor(QueryProperties property) => Track(property);
+
+        internal override bool SuspendsWithoutData => _settings.Suspense && !_current.HasData;
+
+        private QuerySnapshot<TData> _recorded;
+        private bool _hasRecorded;
+
+        internal override bool ResultChangedSinceRecorded => !_hasRecorded || _current.DifferencesFrom(_recorded) != QueryProperties.None;
+
+        internal override void RecordResult()
+        {
+            _recorded = _current;
+            _hasRecorded = true;
+        }
 
         private QueryResult<TData> ResultOf(bool infinite, IQueryResultSource source)
             => infinite ? new InfiniteQueryResult<TData>(_current, source, this) : new QueryResult<TData>(_current, source);
 
         // What names the entry the latest commit subscribed to, which UseQueries matches a render's queries by;
         // null before the first commit.
-        internal QueryKey? CommittedKeyId => _settings.Options == null ? null : _settings.KeyId;
+        internal override QueryKey? CommittedKeyId => _settings.Options == null ? null : _settings.KeyId;
 
         // UseQueries drops an observer whose query left the list.
-        internal void Leave() => Unsubscribe();
+        internal override void Leave() => Unsubscribe();
 
 
         // The reading the latest render or update took, which UseQuery's error rule reads without marking any
@@ -1562,6 +1598,8 @@ namespace Velvet
                 FailureCount = failureCount,
                 FailureReason = failureReason,
                 IsPlaceholderData = isPlaceholderData,
+                EntryHasData = hasSource,
+
                 // v5 reads the paging off the entry's own data, not the selected or placeholder data.
                 HasNextPage = paging != null && hasSource && paging.HasNextPage(source),
                 HasPreviousPage = paging != null && hasSource && paging.HasPreviousPage(source),

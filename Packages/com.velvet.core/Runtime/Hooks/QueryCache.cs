@@ -20,6 +20,15 @@ namespace Velvet
         /// <summary>The entry's key.</summary>
         public QueryKey QueryKey => Entry.Key;
 
+        /// <summary>
+        /// TanStack Query's <c>queryHash</c>, what <see cref="QueryCache.Get"/> finds the entry by: the string the
+        /// query's <see cref="QueryOptionsBase{TQueryFnData, TData}.QueryKeyHashFn"/> made of the key, or the key written
+        /// as text that equal keys write alike, as v5's <c>hashKey</c> writes JSON. A part the text cannot write by
+        /// value — one compared by its own <c>Equals</c>, a dictionary, a set — is written as a number the cache gives
+        /// every part equal to it while an entry holding one is in the cache.
+        /// </summary>
+        public string QueryHash => Entry.Hash;
+
         /// <summary>The <see cref="QueryOptionsBase{TQueryFnData, TData}.Meta"/> of the options the entry was last
         /// handed; null while it holds none.</summary>
         public IReadOnlyDictionary<string, object?>? Meta => Entry.Meta;
@@ -86,6 +95,17 @@ namespace Velvet
         /// <summary>The entry the observer's latest commit subscribed to; null before its first commit and after
         /// it leaves.</summary>
         public abstract Query? GetCurrentQuery();
+
+        // What UseQueries reaches its observers through, whatever their data types.
+        internal abstract QueryKey? CommittedKeyId { get; }
+        internal abstract void TrackFor(QueryProperties property);
+        internal abstract void Leave();
+        internal abstract object ResultOf(IQueryResultSource source);
+        // v5's shouldSkipCombine: a suspending query whose result holds no data yet.
+        internal abstract bool SuspendsWithoutData { get; }
+        // Whether the result differs from the one UseQueries last recorded, and recording it.
+        internal abstract bool ResultChangedSinceRecorded { get; }
+        internal abstract void RecordResult();
     }
 
     /// <summary>What changed a <see cref="Query"/>: TanStack Query's query action types.</summary>
@@ -229,6 +249,12 @@ namespace Velvet
         private readonly Dictionary<QueryKey, QueryEntry> _entries = new();
         private readonly List<QueryEntry> _ordered = new();
         private readonly List<Action<QueryCacheEvent>> _listeners = new();
+        // TanStack's map by queryHash, beside the one by identity; the first entry added under a hash holds it.
+        private readonly Dictionary<string, QueryEntry> _byHash = new(StringComparer.Ordinal);
+        // The numbers a hash writes parts as, and how many entries hold each, under the equality a key compares
+        // parts with.
+        private readonly Dictionary<object, (int Number, int Holders)> _numbers = new(QueryKeyParts.PartComparer.Instance);
+        private int _nextNumber;
 
         /// <summary>Creates an empty cache.</summary>
         public QueryCache()
@@ -265,6 +291,14 @@ namespace Velvet
         /// <summary>Every entry in the cache, in the order they were added, those gone unread past their
         /// garbage-collection time left out.</summary>
         public IReadOnlyList<Query> GetAll() => FindAll();
+
+        /// <summary>The entry whose <see cref="Query.QueryHash"/> is <paramref name="queryHash"/>, TanStack Query's
+        /// <c>get</c>; null when there is none or it has gone unread past its garbage-collection time.</summary>
+        public Query? Get(string queryHash)
+        {
+            if (queryHash == null) throw new ArgumentNullException(nameof(queryHash));
+            return _byHash.TryGetValue(queryHash, out var entry) && !entry.Client.IsExpiredNow(entry) ? entry.Query : null;
+        }
 
         /// <summary>The first entry <paramref name="filters"/> selects, with <see cref="QueryFilters.Exact"/> true
         /// unless it is set; null when none is.</summary>
@@ -320,8 +354,10 @@ namespace Velvet
         // TanStack's add.
         internal void Add(QueryEntry entry)
         {
+            entry.Hash = HashOf(entry);
             _entries.Add(entry.Id, entry);
             _ordered.Add(entry);
+            if (!_byHash.ContainsKey(entry.Hash)) _byHash.Add(entry.Hash, entry);
             Notify(new QueryCacheEvent(QueryCacheEventType.Added, entry.Query));
         }
 
@@ -331,7 +367,54 @@ namespace Velvet
             if (!_entries.TryGetValue(entry.Id, out var held) || !ReferenceEquals(held, entry)) return false;
             _entries.Remove(entry.Id);
             _ordered.Remove(entry);
+            if (_byHash.TryGetValue(entry.Hash, out var hashed) && ReferenceEquals(hashed, entry)) RehomeHash(entry.Hash);
+            ReleaseNumbers(entry);
             return true;
+        }
+
+        // The hash passes to the next entry added under it, in the order they were added.
+        private void RehomeHash(string hash)
+        {
+            _byHash.Remove(hash);
+            foreach (var other in _ordered)
+            {
+                if (!string.Equals(other.Hash, hash, StringComparison.Ordinal)) continue;
+                _byHash.Add(hash, other);
+                return;
+            }
+        }
+
+        private string HashOf(QueryEntry entry)
+        {
+            if (entry.Id.OnlyPart is QueryClient.HashedKeyIdentity hashed) return hashed.Hash;
+            var numbered = new List<object>();
+            var hash = entry.Key.Hash(part =>
+            {
+                numbered.Add(part);
+                if (_numbers.TryGetValue(part, out var held))
+                {
+                    _numbers[part] = (held.Number, held.Holders + 1);
+                    return held.Number;
+                }
+                _numbers.Add(part, (++_nextNumber, 1));
+                return _nextNumber;
+            });
+            entry.NumberedParts = numbered;
+            return hash;
+        }
+
+        // A number no entry holds any more is let go, so the cache keeps no part alive; a part equal to it that comes
+        // later is given a new one.
+        private void ReleaseNumbers(QueryEntry entry)
+        {
+            if (entry.NumberedParts == null) return;
+            foreach (var part in entry.NumberedParts)
+            {
+                if (!_numbers.TryGetValue(part, out var held)) continue;
+                if (held.Holders <= 1) _numbers.Remove(part);
+                else _numbers[part] = (held.Number, held.Holders - 1);
+            }
+            entry.NumberedParts = null;
         }
 
         internal void Notify(QueryCacheEvent cacheEvent)
