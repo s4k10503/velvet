@@ -311,11 +311,13 @@ mutation takes the new options. `QueryClient.Clear` empties the mutation cache t
 render, v5's `defaultMutationOptions`: whatever they leave null is taken from the defaults
 `SetMutationDefaults(key, options)` registered for keys leading their `MutationKey` — merged in registration
 order, a later registration winning, a key registered again keeping its place — and then from
-`QueryClientOptions.Mutations`. `GetMutationDefaults(key)` returns that merge. A `MutationDefaults` carries the
-options every record shares (`MutationKey`, `Scope`, `Meta`, `GcTime`, `Retry`, `ThrowOnError`); a typed option
-record registered there also supplies its `MutationFn` and callbacks to options of its own type, so a
-`MutationFn` may be left null, and a call whose options still have none fails with `No mutationFn found`, as
-in v5. A call is built from the options the component last committed, as v5's observer receives them in an
+`QueryClientOptions.Mutations`. A `MutationDefaults` carries the options every record shares (`MutationKey`,
+`Scope`, `Meta`, `GcTime`, `Retry`, `ThrowOnError`), and `GetMutationDefaults(key)` returns those as the
+registrations for the key merge them. A typed option record registered there also supplies its `MutationFn` and
+callbacks to options of its own type, so a `MutationFn` may be left null, and a call whose options still have
+none fails with `No mutationFn found`, as in v5. A function a registration of another record type sets is
+passed over, since it could never be called with the mutation's types: the mutation takes its function from the
+next layer down of its own type. A call is built from the options the component last committed, as v5's observer receives them in an
 effect, and keeps them once a newer call supersedes it; a later commit hands its options only to the call the
 handle shows, while that call is pending.
 

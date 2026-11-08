@@ -295,10 +295,10 @@ namespace Velvet.Tests
         public IEnumerator Given_AFunctionInTheClientsTypedDefaults_When_AKeyRegistrationOfAnotherTypeAlsoMatches_Then_TheClientsFunctionRuns()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — v5 spreads the two objects together, so a registration of another shape removes nothing
-            // the client's defaults supply.
+            // Arrange — the key registration sets no function, so v5's spread keeps the client's too; a record of
+            // another type laid over the client's must not take away the function it supplies.
             s_client = NewClient(null, new MutationOptions<int, int, string>(MutationFn: (v, _) => VelvetTask.FromResult(v * 5)));
-            s_client.SetMutationDefaults(Todos, new MutationOptions<string, string>(MutationFn: (v, _) => VelvetTask.FromResult(v)));
+            s_client.SetMutationDefaults(Todos, new MutationOptions<string, string>(MutationFn: null) { GcTime = TimeSpan.FromSeconds(1) });
             s_options = new MutationOptions<int, int, string>(MutationFn: null) { MutationKey = TodoOne };
             using var mounted = Mount();
 

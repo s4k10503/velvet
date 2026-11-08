@@ -525,51 +525,45 @@ namespace Velvet
         }
 
         /// <summary>
-        /// The defaults <see cref="SetMutationDefaults"/> registered for keys leading <paramref name="mutationKey"/>,
-        /// merged in registration order with a later registration's options winning, TanStack Query's
-        /// <c>getMutationDefaults</c>. An empty <see cref="MutationDefaults"/> when none matches.
+        /// The options every record shares, as the defaults <see cref="SetMutationDefaults"/> registered for keys
+        /// leading <paramref name="mutationKey"/> set them, merged in registration order with a later registration
+        /// winning: TanStack Query's <c>getMutationDefaults</c>, and what <see cref="DefaultMutationOptions"/> fills
+        /// those options from. An empty <see cref="MutationDefaults"/> when none matches. A registration's function
+        /// and callbacks are not in it, since they reach only options of the registration's own type.
         /// </summary>
-        public MutationOptionsBase GetMutationDefaults(QueryKey mutationKey)
+        public MutationDefaults GetMutationDefaults(QueryKey mutationKey)
         {
             if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
-            MutationOptionsBase merged = new MutationDefaults();
-            foreach (var registered in _mutationDefaults)
-            {
-                if (mutationKey.Matches(registered.Key)) merged = Assign(merged, registered.Value);
-            }
-            return merged;
+            return (MutationDefaults)FillFromKeyDefaults(new MutationDefaults(), mutationKey);
         }
 
         /// <summary>
-        /// <paramref name="options"/> with what it leaves null taken from the defaults
-        /// <see cref="GetMutationDefaults"/> finds for its key and then from <see cref="QueryClientOptions.Mutations"/>,
-        /// TanStack Query's <c>defaultMutationOptions</c>. <see cref="Hooks.UseMutation{TVariables, TData}"/> runs its
-        /// options through this.
+        /// <paramref name="options"/> with what it leaves null taken from the defaults registered for keys leading
+        /// its key — the shared options as <see cref="GetMutationDefaults"/> reports them, and the function and
+        /// callbacks of registrations of the options' own type — and then from
+        /// <see cref="QueryClientOptions.Mutations"/>: TanStack Query's <c>defaultMutationOptions</c>.
+        /// <see cref="Hooks.UseMutation{TVariables, TData}"/> runs its options through this.
         /// </summary>
         public T DefaultMutationOptions<T>(T options) where T : MutationOptionsBase
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            // Filled from each layer in turn, the one v5's spread puts last first: filling only what is still null,
-            // that gives the spread's result, and a layer of another record type cannot take away what one of the
-            // options' own type supplies, as merging the layers into one record first would.
-            MutationOptionsBase filled = options;
-            if (options.MutationKey is { } mutationKey)
-            {
-                for (var i = _mutationDefaults.Count - 1; i >= 0; i--)
-                {
-                    if (mutationKey.Matches(_mutationDefaults[i].Key)) filled = filled.WithDefaults(_mutationDefaults[i].Value);
-                }
-            }
+            var filled = options.MutationKey is { } mutationKey ? FillFromKeyDefaults(options, mutationKey) : options;
             if (_mutationOptions != null) filled = filled.WithDefaults(_mutationOptions);
             return (T)filled;
         }
 
-        // Object.assign(target, source) over two option records: what source sets wins. The result takes source's
-        // type, except that a MutationDefaults laid over a typed record keeps the record and its callbacks.
-        private static MutationOptionsBase Assign(MutationOptionsBase target, MutationOptionsBase source)
-            => source is MutationDefaults && target is not MutationDefaults
-                ? target.WithSharedOverrides(source)
-                : source.WithDefaults(target);
+        // Fills from each matching registration in turn, the latest first, taking only what is still null. For the
+        // shared options, and for a function or callback among layers of the options' own type, that is the result
+        // of v5's spread. A layer of another record type fills only the shared options: a function it sets could
+        // never be called with these options' types, so it is passed over.
+        private MutationOptionsBase FillFromKeyDefaults(MutationOptionsBase filled, QueryKey mutationKey)
+        {
+            for (var i = _mutationDefaults.Count - 1; i >= 0; i--)
+            {
+                if (mutationKey.Matches(_mutationDefaults[i].Key)) filled = filled.WithDefaults(_mutationDefaults[i].Value);
+            }
+            return filled;
+        }
 
         /// <summary>
         /// Wakes the client's paused mutations while the device reads as online, TanStack Query's

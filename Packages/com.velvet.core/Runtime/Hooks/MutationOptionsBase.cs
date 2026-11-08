@@ -79,17 +79,6 @@ namespace Velvet
         // option the caller set wins. Internal, so no record outside this assembly derives from this one.
         internal abstract MutationOptionsBase WithDefaults(MutationOptionsBase defaults);
 
-        // The other direction, for a defaults record laid over this one: what overrides sets wins.
-        internal MutationOptionsBase WithSharedOverrides(MutationOptionsBase overrides) => this with
-        {
-            MutationKey = overrides.MutationKey ?? MutationKey,
-            Scope = overrides.Scope ?? Scope,
-            Meta = overrides.Meta ?? Meta,
-            GcTime = overrides.GcTime ?? GcTime,
-            Retry = overrides.Retry ?? Retry,
-            ThrowOnError = overrides.ThrowOnError ?? ThrowOnError,
-        };
-
         private protected MutationOptionsBase WithSharedDefaults(MutationOptionsBase defaults) => this with
         {
             MutationKey = MutationKey ?? defaults.MutationKey,
