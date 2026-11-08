@@ -2726,6 +2726,9 @@ namespace Velvet
         private sealed class AnchorExitStart
         {
             internal float Sec;
+            // The part of Sec a wait makes up (MotionOrchestrationFrame.WaitSec): an AfterChildren exit's wait for
+            // the exits below it, and any wait its claim carried.
+            internal float WaitSec;
         }
 
         // inheritedExit is the exit label an ancestor Motion hands down and frame the orchestration an
@@ -2773,6 +2776,8 @@ namespace Velvet
         {
             internal MotionNode? Motion { get; init; }
             internal float ClaimSec { get; init; }
+            // The part of ClaimSec a wait above makes up (MotionOrchestrationFrame.WaitSec).
+            internal float ClaimWaitSec { get; init; }
             internal int EntryIndex { get; init; }
             internal double SpanSec { get; init; }
         }
@@ -2790,11 +2795,15 @@ namespace Velvet
             var startSec = MotionOrchestrationWait.PlayStartSec(ownFrame, own.ClaimSec);
             if (own.EntryIndex >= 0)
             {
-                walk.Into![own.EntryIndex] = walk.Into[own.EntryIndex] with { DelaySec = startSec };
+                walk.Into![own.EntryIndex] = walk.Into[own.EntryIndex] with
+                {
+                    DelaySec = startSec, WaitSec = own.ClaimWaitSec + startSec - own.ClaimSec,
+                };
             }
             if (ReferenceEquals(own.Motion, walk.Anchor) && walk.AnchorStart != null)
             {
                 walk.AnchorStart.Sec = startSec;
+                walk.AnchorStart.WaitSec = own.ClaimWaitSec + startSec - own.ClaimSec;
             }
             if (MotionVariantResolver.IsVariantChild(own.Motion))
             {
@@ -2838,9 +2847,9 @@ namespace Velvet
             var label = MotionVariantResolver.IsControlling(motion) ? motion.Exit : inheritedExit;
             StyleTransitionConfig? exitTransition = null;
             string? exitPoseClass = null;
-            var claimSec = MotionVariantResolver.IsVariantChild(motion) && frame != null
-                ? frame.ClaimNextChildDelaySec()
-                : 0f;
+            var claims = MotionVariantResolver.IsVariantChild(motion) && frame != null;
+            var claimSec = claims ? frame!.ClaimNextChildDelaySec() : 0f;
+            var claimWaitSec = claims ? frame!.WaitSec : 0f;
             var reportsEnd = frame is { TracksEnds: true };
             var plays = 0;
             var entryIndex = -1;
@@ -2850,7 +2859,7 @@ namespace Velvet
                 var hasPose = motion.Variants != null && motion.Variants.TryGetValue(label, out pose);
                 // A label naming no pose plays the classic exit when the Motion names it itself, as an
                 // anchor's does; an inherited one names nothing this Motion can play.
-                exitTransition = hasPose ? pose.Transition ?? motion.VariantTransition
+                exitTransition = hasPose ? motion.PoseTransition(pose.Transition)
                     : motion.Exit != null ? motion.Transition : null;
                 exitPoseClass = hasPose ? pose.ClassName : null;
                 if (exitTransition?.HasExitAnimation == true)
@@ -2864,7 +2873,7 @@ namespace Velvet
                                 ? exitTransition.WithExitClasses(RestingVariantClass(element), pose.ClassName ?? string.Empty)
                                 : exitTransition,
                             RestoresResting: hasPose,
-                            DelaySec: claimSec));
+                            DelaySec: claimSec, WaitSec: claimWaitSec));
                     }
                 }
             }
@@ -2877,13 +2886,16 @@ namespace Velvet
                 var toClasses = V.ParseClassNames(exitPoseClass);
                 frame = FiberNodePatcher.ResolveChildOrchestration(motion, exitTransition,
                     childLabelChanged: label != null, frame, claimSec, fromClasses, toClasses, element,
-                    _ctx.StyleAnimationScheduler);
+                    _ctx.StyleAnimationScheduler, claimWaitSec);
                 spanSec = reportsEnd && entryIndex >= 0 && exitTransition != null
                     ? MotionPlaySpan.HeldBy(exitTransition, fromClasses, toClasses,
                         _ctx.StyleAnimationScheduler.SlotContext(element, fromClasses, toClasses))
                     : 0.0;
             }
-            own = new OwnExit { Motion = motion, ClaimSec = claimSec, EntryIndex = entryIndex, SpanSec = spanSec };
+            own = new OwnExit
+            {
+                Motion = motion, ClaimSec = claimSec, ClaimWaitSec = claimWaitSec, EntryIndex = entryIndex, SpanSec = spanSec,
+            };
             return plays;
         }
 
@@ -3065,7 +3077,7 @@ namespace Velvet
                 // variant rather than be left without it (interrupt handling).
                 _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, exitWait.CompleteAnchor,
                     restoreFromOnCancel: variantExit != null, additionalDelaySec: staggerSec + anchorStart.Sec,
-                    onSwap: onExitSwap);
+                    onSwap: onExitSwap, waitSec: anchorStart.WaitSec);
             }
             if (landsAfterExit != null)
             {
@@ -3121,6 +3133,7 @@ namespace Velvet
                 : null;
             _ctx.StyleAnimationScheduler.PlayExit(element, exit.Config, () => wait.CompleteDescendant(element),
                 restoreFromOnCancel: exit.RestoresResting, additionalDelaySec: staggerSec + exit.DelaySec,
+                waitSec: exit.WaitSec,
                 onSwap: onExitSwap);
             if (!landsBeforeExit)
             {
@@ -3918,7 +3931,7 @@ namespace Velvet
             motion.Variants.TryGetValue(animateLabel, out var to);
             fromClasses = V.ParseClassNames(from.ClassName ?? string.Empty);
             toClasses = V.ParseClassNames(to.ClassName ?? string.Empty);
-            transition = to.Transition ?? motion.VariantTransition;
+            transition = motion.PoseTransition(to.Transition);
             return transition != null;
         }
 
@@ -3955,7 +3968,7 @@ namespace Velvet
             motion.Variants.TryGetValue(motion.Animate, out var resting);
             restingClass = resting.ClassName ?? string.Empty;
             exitClass = exit.ClassName ?? string.Empty;
-            transition = exit.Transition ?? motion.VariantTransition;
+            transition = motion.PoseTransition(exit.Transition);
             return true;
         }
 

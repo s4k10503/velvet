@@ -20,6 +20,7 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setStep;
         private static StyleTransitionConfig s_transition;
         private static float? s_duration;
+        private static float? s_delay;
 
         private MountedTree _mounted;
 
@@ -31,7 +32,7 @@ namespace Velvet.Tests
             base.TearDown();
         }
 
-        // Step 1 moves the box 200px right on s_transition and s_duration.
+        // Step 1 moves the box 200px right on s_transition, s_duration and s_delay.
         [Component]
         private static VNode MovingBoxRender()
         {
@@ -39,16 +40,17 @@ namespace Velvet.Tests
             s_setStep = setStep;
             return V.Div(children: new VNode[]
             {
-                V.Motion(name: "shared", layoutId: "shared-box", transition: s_transition, duration: s_duration,
+                V.Motion(name: "shared", layoutId: "shared-box", transition: s_transition, duration: s_duration, delay: s_delay,
                     className: $"absolute left-[{step * 200}px] top-[0px] w-[100px] h-[100px]"),
             });
         }
 
         // Mounts MovingBoxRender and plays step 1 up to the frame its layout settles on.
-        private VisualElement MoveBox(StyleTransitionConfig transition, float? duration = null)
+        private VisualElement MoveBox(StyleTransitionConfig transition, float? duration = null, float? delay = null)
         {
             s_transition = transition;
             s_duration = duration;
+            s_delay = delay;
             _mounted = V.Mount(Root, V.Component(MovingBoxRender, key: "root"));
             Tick();
             s_setStep.Invoke(1);
@@ -247,10 +249,11 @@ namespace Velvet.Tests
         private static float TranslateX(VisualElement element) =>
             element.style.translate.keyword == StyleKeyword.Null ? 0f : element.style.translate.value.x.value;
 
+        // GREEN_ON_BASE(characterization): a move on the Layout transition, which outranks the Motion's own one.
         [Test]
-        public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItTweensThoughItsOwnTransitionLandsAtOnce()
+        public void Given_ALayoutIdMotionWithALayoutTransition_When_ItMoves_Then_ItMovesOnThatLayoutTransition()
         {
-            // Arrange / Act — the Motion's own transition has no duration; its Layout is a spring.
+            // Arrange / Act — the Motion's own transition names no timing; its Layout is a spring.
             var element = MoveBox(new StyleTransitionConfig { Layout = s_spring });
 
             // Assert
@@ -265,6 +268,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(TranslateX(element), Is.LessThan(-50f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionGivenOnlyADelay_When_ItMovesForEighteenFrames_Then_ItIsStillOnFramersKeyframesDefault()
+        {
+            // Arrange — a 0.1s delay, then Framer's 0.3s ease-out; the Fade preset V.Motion stands in would have
+            // run its 0.2s and nearly landed by now.
+            var element = MoveBox(null, delay: 0.1f);
+
+            // Act
+            for (var i = 0; i < 18; i++) Tick();
+
+            // Assert
+            Assert.That(TranslateX(element), Is.LessThan(-20f));
         }
 
         [Test]

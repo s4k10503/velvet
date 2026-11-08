@@ -772,6 +772,8 @@ namespace Velvet.Tests
             Assert.That(Opacity(box), Is.GreaterThan(0.8f));
         }
 
+        // GREEN_ON_BASE(characterization): the native transition list this case reads, kept by naming a duration
+        // on an entry that would otherwise run its value on Framer's default transition off that list.
         [Test]
         public void Given_ATweenSwapWithPropertyOverrides_When_AZeroDurationPoseRepeatingItsOpacityFollows_Then_OpacityLandsByTheSecondFrame()
         {
@@ -779,7 +781,11 @@ namespace Velvet.Tests
             var overrides = new StyleTransitionConfig
             {
                 DurationSec = 0.35f,
-                PropertyOverrides = new[] { new StylePropertyTransition("opacity"), new StylePropertyTransition("translate") },
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("opacity", durationSec: 0.35f),
+                    new StylePropertyTransition("translate", durationSec: 0.35f),
+                },
             };
             var (box, before, mounted) = PlayThenLand(new Poses(overrides, "opacity-0 translate-x-[0px]",
                 "opacity-100 translate-x-[40px]", "opacity-100 translate-x-[20px]"), Opacity);

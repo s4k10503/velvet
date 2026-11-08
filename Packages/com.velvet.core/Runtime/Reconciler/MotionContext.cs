@@ -97,8 +97,9 @@ namespace Velvet
         private double _childrenEndSec;
 
         public MotionOrchestrationFrame(float delayChildrenSec, float staggerChildrenSec, float baseDelaySec,
-            TransitionWhen when, bool tracksEnds, int reversedOver)
+            TransitionWhen when, bool tracksEnds, int reversedOver, float waitSec = 0f)
         {
+            WaitSec = waitSec;
             _delayChildrenSec = delayChildrenSec;
             _staggerChildrenSec = staggerChildrenSec;
             _baseDelaySec = baseDelaySec;
@@ -106,6 +107,10 @@ namespace Velvet
             TracksEnds = WaitsForChildren || tracksEnds;
             _reversedOver = reversedOver;
         }
+
+        // The part of every claim a BeforeChildren or AfterChildren wait above makes up: Framer sequences such a wait
+        // ahead of the children's plays rather than handing it as their delay, so a value's own delay counts after it.
+        public float WaitSec { get; }
 
         // The Motion this frame belongs to starts its own play once the plays of the children claiming from it have
         // ended (TransitionWhen.AfterChildren).

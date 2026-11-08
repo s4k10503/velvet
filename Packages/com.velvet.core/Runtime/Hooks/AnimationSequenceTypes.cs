@@ -27,10 +27,9 @@ namespace Velvet
         public string? Label { get; }
 
         /// <summary>
-        /// The transition driving this label change. Null means "reuse the most recent non-null transition
-        /// earlier in the sequence", falling back to <see cref="StyleTransition"/>'s <c>Fade</c> preset (the
-        /// same default <c>V.Motion</c> itself uses) if none has been set yet. Only meaningful on a
-        /// <see cref="To"/> step.
+        /// The transition driving this label change. Null, or one setting nothing but its delay, repeat and
+        /// orchestration, plays 0.3 s on an ease-out, as a segment of Framer Motion's sequence does. Only meaningful
+        /// on a <see cref="To"/> step.
         /// </summary>
         public StyleTransitionConfig? Transition { get; }
 

@@ -139,7 +139,10 @@ namespace Velvet
         /// <summary>True once <see cref="Stop"/> or <see cref="Cancel"/> ended it, or its scope unmounted.</summary>
         public bool IsStopped { get; private set; }
 
-        /// <summary>Completes when the animation finishes, and is canceled if it is stopped first (Framer's <c>then</c>).</summary>
+        /// <summary>
+        /// Completes when the animation finishes (Framer's <c>finished</c>). It never settles once <see cref="Stop"/> or
+        /// <see cref="Cancel"/> ends the animation first, as Framer's promise does not.
+        /// </summary>
         public VelvetTask Finished => _done.Task;
 
         /// <summary>Runs <paramref name="callback"/> when the animation finishes, at once if it has.</summary>
@@ -174,7 +177,6 @@ namespace Velvet
                 foreach (var track in _tracks) track.Restore();
             }
             _thens.Clear();
-            _done.TrySetCanceled();
         }
 
         // Moves time on by dt seconds at the current speed and writes each value; true once nothing is left to do.
@@ -189,7 +191,7 @@ namespace Velvet
                 _timeSec = Math.Min(_endSec, _timeSec + dt * _speed);
             }
             foreach (var track in _tracks) track.Sample(_timeSec);
-            if (_timeSec < _endSec)
+            if (!_tracks.TrueForAll(track => track.HasEnded(_timeSec)))
             {
                 return false;
             }
@@ -215,26 +217,39 @@ namespace Velvet
 
         internal Ref<VisualElement> Scope => _scope;
 
-        /// <summary>Animates <paramref name="target"/> through <paramref name="values"/> on <paramref name="transition"/> (0.3 s when null).</summary>
+        /// <summary>
+        /// Animates <paramref name="target"/> through <paramref name="values"/> on <paramref name="transition"/>. Where
+        /// that is null or sets nothing but <see cref="StyleTransitionConfig.DelaySec"/>, the repeat options and the
+        /// child-orchestration knobs, each value takes Framer Motion's default transition for it;
+        /// <c>Documentation~/motion.md</c> lists them.
+        /// </summary>
         public AnimateControls Animate(VisualElement target, AnimateValues values, StyleTransitionConfig? transition = null)
-            => Animate(new[] { new AnimateSegment(target, values, transition) });
+            => Play(new[] { new AnimateSegment(target, values, transition) }, ScopedTimeline.Kind.Single);
 
         /// <summary>
         /// Animates the elements <paramref name="selector"/> names inside the scope (<c>.class</c>, <c>#name</c>, a type name,
-        /// compounds of them, descendants joined by a space, groups joined by a comma). Throws when the scope is not mounted.
+        /// compounds of them, descendants joined by a space, groups joined by a comma), on the transition
+        /// <see cref="Animate(VisualElement, AnimateValues, StyleTransitionConfig)"/> takes. Throws when the scope is not
+        /// mounted.
         /// </summary>
         public AnimateControls Animate(string selector, AnimateValues values, StyleTransitionConfig? transition = null)
-            => Animate(new[] { new AnimateSegment(selector, values, transition) });
+            => Play(new[] { new AnimateSegment(selector, values, transition) }, ScopedTimeline.Kind.Single);
 
         /// <summary>
         /// Plays <paramref name="sequence"/>: each segment starts where its <see cref="AnimateAt"/> puts it, so segments
-        /// overlap. The default starts it when the previous one ends.
+        /// overlap. The default starts it when the previous one ends. A segment with no transition runs 0.3 s on an
+        /// ease-out, as a segment of Framer Motion's sequence does.
         /// </summary>
         public AnimateControls Animate(IReadOnlyList<AnimateSegment> sequence)
         {
             if (sequence == null) throw new ArgumentNullException(nameof(sequence));
+            return Play(sequence, ScopedTimeline.Kind.Sequence);
+        }
+
+        private AnimateControls Play(IReadOnlyList<AnimateSegment> sequence, ScopedTimeline.Kind kind)
+        {
             var tracks = new List<ScopedTrack>();
-            var end = ScopedTimeline.Place(sequence, ElementsOf, tracks);
+            var end = ScopedTimeline.Place(sequence, ElementsOf, tracks, kind);
             var controls = new AnimateControls(tracks, end);
             if (!controls.Tick(0f))
             {
@@ -280,11 +295,17 @@ namespace Velvet
     // Lays a sequence out on a timeline.
     internal static class ScopedTimeline
     {
-        private const float DefaultDurationSec = 0.3f;
+        // Framer's animate() of one target and its sequence choose a missing transition, a spring and a repeat
+        // differently.
+        internal enum Kind
+        {
+            Single,
+            Sequence,
+        }
 
         // Appends each segment's tracks and returns where the timeline ends.
         public static double Place(IReadOnlyList<AnimateSegment> sequence, Func<AnimateSegment, IReadOnlyList<VisualElement>> elementsOf,
-            List<ScopedTrack> tracks)
+            List<ScopedTrack> tracks, Kind kind)
         {
             double previousStart = 0, previousEnd = 0, end = 0;
             foreach (var segment in sequence)
@@ -293,7 +314,7 @@ namespace Velvet
                 var first = tracks.Count;
                 foreach (var element in elementsOf(segment))
                 {
-                    AddTracks(tracks, element, segment, start + (segment.Transition?.DelaySec ?? 0f));
+                    AddTracks(tracks, element, segment, start, kind);
                 }
                 var segmentEnd = start;
                 for (var i = first; i < tracks.Count; i++) segmentEnd = Math.Max(segmentEnd, tracks[i].EndSec);
@@ -312,24 +333,65 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
-        private static void AddTracks(List<ScopedTrack> tracks, VisualElement element, AnimateSegment segment, double start)
+        private static void AddTracks(List<ScopedTrack> tracks, VisualElement element, AnimateSegment segment, double start,
+            Kind kind)
         {
             var values = segment.Values;
-            Add(tracks, element, AnimateChannel.Opacity, values.Opacity, segment.Transition, start);
-            Add(tracks, element, AnimateChannel.X, values.X, segment.Transition, start);
-            Add(tracks, element, AnimateChannel.Y, values.Y, segment.Transition, start);
-            Add(tracks, element, AnimateChannel.Scale, values.Scale, segment.Transition, start);
-            Add(tracks, element, AnimateChannel.Rotate, values.RotateDeg, segment.Transition, start);
-        }
-
-        private static void Add(List<ScopedTrack> tracks, VisualElement element, AnimateChannel channel, float[]? keys,
-            StyleTransitionConfig? transition, double start)
-        {
-            if (keys is { Length: > 0 })
+            foreach (var (channel, keys) in new[]
             {
-                tracks.Add(new ScopedTrack(element, channel, keys, transition, start, DefaultDurationSec));
+                (AnimateChannel.Opacity, values.Opacity),
+                (AnimateChannel.X, values.X),
+                (AnimateChannel.Y, values.Y),
+                (AnimateChannel.Scale, values.Scale),
+                (AnimateChannel.Rotate, values.RotateDeg),
+            })
+            {
+                if (keys is { Length: > 0 })
+                {
+                    var transition = ValueTransition(segment.Transition, channel, kind);
+                    tracks.Add(new ScopedTrack(element, channel, keys, transition, start + (transition?.DelaySec ?? 0f), kind));
+                }
             }
         }
+
+        // The transition one value takes where a PropertyOverrides entry names its property, the last such entry
+        // winning: a single call takes the entry alone, as Framer's getValueTransition hands it, with the delay
+        // OwnOrCallDelaySec gives it; a sequence lays the entry over the transition, as its own getValueTransition does.
+        private static StyleTransitionConfig? ValueTransition(StyleTransitionConfig? transition, AnimateChannel channel,
+            Kind kind)
+        {
+            var overrides = transition?.PropertyOverrides;
+            for (var i = (overrides?.Count ?? 0) - 1; i >= 0; i--)
+            {
+                var entry = overrides![i];
+                if (!DrivenTweenTiming.Named(entry.Property).Overlaps(StyleLonghandSet.Of(LonghandOf(channel))))
+                {
+                    continue;
+                }
+                return kind == ScopedTimeline.Kind.Single
+                    ? s_undefined.With(entry.DurationSec, entry.Easing, delaySec: OwnOrCallDelaySec(entry, transition!))
+                    : transition!.With(entry.DurationSec, entry.Easing, delaySec: entry.DelaySec);
+            }
+            return transition;
+        }
+
+        private static readonly StyleTransitionConfig s_undefined = new();
+
+        // Framer's animateMotionValue: `valueTransition.delay || transition.delay`, so an entry's delay of 0, as one
+        // naming none, takes the call's.
+        private static float OwnOrCallDelaySec(StylePropertyTransition entry, StyleTransitionConfig transition)
+            => (entry.DelaySec ?? 0f) != 0f ? entry.DelaySec!.Value : transition.DelaySec;
+
+#pragma warning disable CS8524 // no discard arm: a new channel has to say which property names it
+        private static StyleLonghand LonghandOf(AnimateChannel channel) => channel switch
+        {
+            AnimateChannel.Opacity => StyleLonghand.Opacity,
+            AnimateChannel.X => StyleLonghand.Translate,
+            AnimateChannel.Y => StyleLonghand.Translate,
+            AnimateChannel.Scale => StyleLonghand.Scale,
+            AnimateChannel.Rotate => StyleLonghand.Rotate,
+        };
+#pragma warning restore CS8524
     }
 
     // The translate an element's x and y tracks compose into one inline value.
@@ -350,44 +412,155 @@ namespace Velvet
     // One value of one element over a stretch of the timeline.
     internal sealed class ScopedTrack
     {
+        // Framer's transition for more than two keyframes given no transition.
+        private const float DefaultKeyframesSec = 0.8f;
+
+        // The travel a sequence measures a spring over where a segment gives one keyframe, its start unknown then.
+        private const float UnknownSpringTravel = 100f;
+
         private const float MaxSpringSec = 20f;
 
         private readonly VisualElement _element;
         private readonly AnimateChannel _channel;
-        private readonly StyleTransitionConfig? _transition;
         private readonly double _startSec;
         private float[] _keys;
-        private readonly float _durationSec;
+        private readonly Func<float, float> _ease;
+        private readonly (float Stiffness, float Damping, float Mass)? _spring;
+        private readonly double? _springSettleSec;
+        private float? _springRestSpeed;
+        // The travel the spring is measured over; NaN where that is the value's own.
+        private readonly float _springTravel = float.NaN;
+        private readonly float _passSec;
+        private readonly MotionRepeat _repeat;
+        private readonly double _totalSec;
         private bool _begun;
+        private float _initial;
 
         public ScopedTrack(VisualElement element, AnimateChannel channel, float[] keys, StyleTransitionConfig? transition,
-            double startSec, float defaultDurationSec)
+            double startSec, ScopedTimeline.Kind kind)
         {
-            (_element, _channel, _keys, _transition, _startSec) = (element, channel, keys, transition, startSec);
-            _durationSec = DurationOf(keys, transition, defaultDurationSec);
+            (_element, _channel, _keys, _startSec) = (element, channel, keys, startSec);
+            _ease = EaseOut;
+            var single = kind == ScopedTimeline.Kind.Single;
+            if (single && (transition == null || !transition.IsDefined))
+            {
+                _passSec = DefaultTransition(out _ease, out _spring);
+            }
+            else if (transition?.Type == TransitionType.Spring && (single || _keys.Length <= 2))
+            {
+                var spring = transition!;
+                _spring = (spring.Stiffness, spring.Damping, spring.Mass);
+                _springSettleSec = spring.SpringSettleSec;
+                if (!single)
+                {
+                    _springTravel = _keys.Length == 2 ? Math.Abs(_keys[1] - _keys[0]) : UnknownSpringTravel;
+                }
+                _passSec = _springSettleSec is { } settle
+                    ? (float)settle
+                    : single
+                        ? RestSec(spring.Stiffness, spring.Damping, spring.Mass, null)
+                        : Mathf.Min(MotionSpringDriver.PassDurationSec(_springTravel, spring.Stiffness, spring.Damping,
+                            spring.Mass), MaxSpringSec);
+            }
+            else
+            {
+                _passSec = Mathf.Max(0f, transition?.DurationSec ?? StyleTransitionConfig.DefaultDurationSec);
+                if (transition is { Type: TransitionType.Bezier } bezier)
+                {
+                    var (x1, y1, x2, y2) = (bezier.BezierX1, bezier.BezierY1, bezier.BezierX2, bezier.BezierY2);
+                    _ease = t => CubicBezierEvaluator.Evaluate(x1, y1, x2, y2, t);
+                }
+                else if (transition != null)
+                {
+                    var easing = transition.Easing;
+                    _ease = t => UssEasing.Evaluate(easing, t);
+                }
+            }
+
+            _repeat = RepeatOf(transition, single, _spring.HasValue);
+            _totalSec = _repeat.Count > 0f ? _repeat.TotalSec(_passSec) : _passSec;
         }
 
-        public double EndSec => _startSec + _durationSec;
+        public double EndSec => _startSec + _totalSec;
 
-        private bool IsSpring => _transition is { Type: TransitionType.Spring } && _keys.Length <= 2;
+        private static float EaseOut(float t) => UssEasing.Evaluate(EasingMode.EaseOut, t);
 
-        // A spring runs until it rests, a tween for its duration.
-        private static float DurationOf(float[] keys, StyleTransitionConfig? transition, float defaultSec)
+        private static float DefaultEase(float t) => CubicBezierEvaluator.Evaluate(MotionSpringDriver.DefaultEaseX1,
+            MotionSpringDriver.DefaultEaseY1, MotionSpringDriver.DefaultEaseX2, MotionSpringDriver.DefaultEaseY2, t);
+
+        // Framer's getDefaultTransition.
+        private float DefaultTransition(out Func<float, float> ease, out (float Stiffness, float Damping, float Mass)? spring)
         {
-            if (transition == null)
+            ease = EaseOut;
+            spring = null;
+            if (_keys.Length > 2)
             {
-                return defaultSec;
+                return DefaultKeyframesSec;
             }
-            if (transition.Type != TransitionType.Spring || keys.Length > 2)
+            switch (_channel)
             {
-                return Mathf.Max(0f, transition.DurationSec);
+                case AnimateChannel.Opacity:
+                    ease = DefaultEase;
+                    return MotionSpringDriver.DefaultEaseSec;
+                case AnimateChannel.Scale:
+                    spring = (MotionSpringDriver.ScaleSpringStiffness, MotionSpringDriver.ScaleSpringDamping(_keys[^1]), 1f);
+                    break;
+                default:
+                    spring = (MotionSpringDriver.TransformSpringStiffness, MotionSpringDriver.TransformSpringDamping, 1f);
+                    break;
             }
-            return transition.SpringSettleSec is { } settle
-                ? (float)settle
-                : Mathf.Min(MotionSpringDriver.PassDurationSec(100f, transition.Stiffness, transition.Damping, transition.Mass), MaxSpringSec);
+            var (stiffness, damping, mass) = spring.Value;
+            return RestSec(stiffness, damping, mass, MotionSpringDriver.DefaultSpringRestSpeed);
         }
 
-        private float _initial;
+        // Where a single animation's spring rests, measured up to 20 s; one resting later, or never, runs on until it
+        // rests (HasEnded), as Framer's JSAnimation ends when its generator is done. A sequence's is cut at
+        // MaxSpringSec, as the easing Framer samples from it is.
+        private float RestSec(float stiffness, float damping, float mass, float? restSpeed)
+        {
+            _springRestSpeed = restSpeed;
+            return MotionSpringDriver.PassDurationSec(OwnTravel(), stiffness, damping, mass, 0f, restSpeed);
+        }
+
+        // Whether the track has nothing left to show at timeSec on the timeline.
+        public bool HasEnded(double timeSec)
+        {
+            var local = timeSec - _startSec;
+            if (!float.IsPositiveInfinity(_passSec))
+            {
+                return local >= _totalSec;
+            }
+            if (!_begun || _spring == null)
+            {
+                return false;
+            }
+            return MotionSpringDriver.SpringRestsAt(_keys[0], _keys[^1], local, _spring.Value, _springRestSpeed);
+        }
+
+        // A single animation's spring runs over the value's own travel, so a lone keyframe's start is read when the
+        // track is laid out rather than when it begins.
+        private float OwnTravel()
+        {
+            if (_keys.Length == 1)
+            {
+                _keys = new[] { Read(), _keys[0] };
+            }
+            return Math.Abs(_keys[^1] - _keys[0]);
+        }
+
+        // A sequence plays a reverse pass of a curve its ease names as a mirrored one: it reverses the keyframes, and
+        // reverses only an easing it built from a spring.
+        private static MotionRepeat RepeatOf(StyleTransitionConfig? transition, bool single, bool spring)
+        {
+            if (transition == null || transition.Repeat <= 0f || (!single && transition.Repeat >= SequenceWalker.MaxSegmentRepeat))
+            {
+                return default;
+            }
+            var type = !single && !spring && transition.RepeatType == TransitionRepeatType.Reverse
+                ? TransitionRepeatType.Mirror
+                : transition.RepeatType;
+            return new MotionRepeat(transition.Repeat, type, transition.RepeatDelaySec);
+        }
 
         // Reads the element's current value where a single keyframe names only where to head.
         private void Begin()
@@ -424,29 +597,42 @@ namespace Velvet
 
         private float ValueAt(double local)
         {
-            if (local >= _durationSec)
+            // A pass that never rests repeats nothing.
+            if (_repeat.Count <= 0f || float.IsPositiveInfinity(_passSec))
             {
-                return _keys[_keys.Length - 1];
+                return PassValue(Math.Min(local, _passSec), mirrored: false);
             }
-            if (IsSpring)
+            if (_totalSec == 0.0)
             {
-                var spring = _transition!;
-                return MotionSpringDriver.SampleSpring(_keys[0], _keys[1], 1f, 0f, local,
-                    (spring.Stiffness, spring.Damping, spring.Mass), spring.SpringSettleSec);
+                return _repeat.EndsAtFrom ? _keys[0] : _keys[^1];
             }
-            var progress = Ease(_durationSec > 0f ? (float)(local / _durationSec) : 1f);
-            var position = progress * (_keys.Length - 1);
-            var index = Mathf.Min(_keys.Length - 2, Mathf.FloorToInt(position));
-            return Mathf.LerpUnclamped(_keys[index], _keys[index + 1], position - index);
+            var passTime = _repeat.PassTime(Math.Min(local, _totalSec), _passSec, out var mirrored);
+            return PassValue(Math.Min(passTime, _passSec), mirrored);
         }
 
-        private float Ease(float t)
+        // The value a pass shows `t` into it; a mirrored pass runs the keyframes from the last back to the first.
+        private float PassValue(double t, bool mirrored)
         {
-            if (_transition is { Type: TransitionType.Bezier } bezier)
+            var last = _keys.Length - 1;
+            if (_spring is { } spring)
             {
-                return CubicBezierEvaluator.Evaluate(bezier.BezierX1, bezier.BezierY1, bezier.BezierX2, bezier.BezierY2, t);
+                var (from, to) = mirrored ? (_keys[last], _keys[0]) : (_keys[0], _keys[last]);
+                if (from == to)
+                {
+                    return to;
+                }
+                var scale = float.IsNaN(_springTravel) ? 1f : _springTravel / Math.Abs(to - from);
+                return MotionSpringDriver.SampleSpring(from, to, scale, 0f, t, spring, _springSettleSec, _springRestSpeed);
             }
-            return UssEasing.Evaluate(_transition?.Easing ?? EasingMode.EaseOut, t);
+            if (last == 0)
+            {
+                return _keys[0];
+            }
+            var progress = _passSec > 0f ? Mathf.Clamp01((float)(t / _passSec)) : 1f;
+            var position = progress * last;
+            var index = Mathf.Min(last - 1, Mathf.FloorToInt(position));
+            var (a, b) = mirrored ? (_keys[last - index], _keys[last - index - 1]) : (_keys[index], _keys[index + 1]);
+            return Mathf.LerpUnclamped(a, b, _ease(position - index));
         }
 
         private float Read()

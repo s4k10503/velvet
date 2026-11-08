@@ -157,6 +157,22 @@ namespace Velvet.Tests
             }),
         };
 
+        // An anchor whose exit waits for its children and whose opacity entry names 0.05 s of its own, which Framer
+        // counts from the end of that wait.
+        private static readonly Dictionary<string, MotionVariant> s_afterChildrenEntryCoordinator = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = new MotionVariant("opacity-0", new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 0.3f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                When = TransitionWhen.AfterChildren,
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("opacity", durationSec: 0.2f, easing: EasingMode.Linear, delaySec: 0.05f),
+                },
+            }),
+        };
+
         private static VNode SlowInheritingMotion(string name) => V.Motion(name: name, variants: s_fade,
             transition: new StyleTransitionConfig { DurationSec = 0.3f });
 
@@ -257,6 +273,9 @@ namespace Velvet.Tests
             "coordinator-nested" => V.Component(NestedCoordinatorRender, key: key),
             "coordinator-spring" => V.Component(SpringCoordinatorRender, key: key),
             "coordinator-after" => V.Component(AfterChildrenCoordinatorRender, key: key),
+            "anchor-after-entry" => V.Motion(name: "after-entry-coordinator", key: key,
+                variants: s_afterChildrenEntryCoordinator, animate: "visible", exit: "hidden",
+                children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false, transition: StyleTransition.Fade),
             "anchor-coordinator-after" => V.Motion(name: "after-coordinator", key: key,
                 variants: s_afterChildrenCoordinator, animate: "visible", exit: "hidden",
                 children: new[] { SlowInheritingMotion("slow-child") }, enterOnMount: false, transition: StyleTransition.Fade),
@@ -659,6 +678,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((swappedInsideTheChildsExit, swappedAfterIt), Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base added an entry's delay to the anchor's whole start, which put it
+        // after the children's exits as Framer's sequencing does.
+        [Test]
+        public void Given_AnAnchorWhoseExitWaitsForItsChildren_When_ItsChildIsStillExiting_Then_ItsOpacityEntryHasNotStarted()
+        {
+            // Arrange — the child exits over 0.3 s; the anchor's opacity entry starts 0.05 s after that.
+            using var mounted = MountSettled("anchor-after-entry", "a");
+            using var keys = s_keyStore;
+
+            // Act — ten frames in, inside the child's exit.
+            keys.Set(string.Empty);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            Frames(10);
+
+            // Assert — still at its resting opacity.
+            Assert.That(Root.Q<VisualElement>("after-entry-coordinator")?.style.opacity.value ?? float.NaN, Is.EqualTo(1f));
         }
 
         [Test]
