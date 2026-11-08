@@ -345,7 +345,8 @@ waits. The last reader leaving ends it as v5 does: a request whose function take
 renders it and fetches again in the background, with `IsFetching` true and `Status` still `Success`. A
 result is stale once its age reaches `StaleTime`, and `TimeSpan.MaxValue` keeps it fresh until it is
 invalidated. `Data` is the last successful result and stays through a later failure and through a
-refetch; a failed request marks it stale, so the next component to mount over it fetches again. Data
+refetch; a failed request marks it stale, so the next component to mount over it fetches again, unless its
+stale time is static (below). Data
 that turns stale by age re-renders a component that reads `IsStale`, when its age reaches `StaleTime`:
 the wait is polled once a frame on the client's `Clock`, as a retry's is, and ends when the component
 unmounts, the data is replaced or the client is cleared. `QueryClientOptions.Clock` replaces the client's stopwatch, for game time that pauses or a
@@ -354,13 +355,14 @@ test that advances time by hand.
 `QueryStaleTime.Static` is v5's `'static'`: data that never turns stale, not even once invalidated. A
 mount, focus or reconnect does not fetch it, `Always` included, and `InvalidateQueries`, `RefetchQueries`
 and `ResetQueries` pass over an entry holding data that one of its readers holds static — after a reset,
-an entry holds data only where it took initial data. `RefetchInterval` and `result.Refetch()` still fetch,
-and an entry with no data is fetched as any is.
+an entry holds data only where it took initial data. `RefetchInterval` and `result.Refetch()` still fetch.
+An entry with no data is loaded on mount and by those commands as any is, but not on focus or reconnect,
+which pass over a static query whatever its entry holds.
 
 **Refetching on mount.** `RefetchOnMount` is v5's `refetchOnMount`: whether a component mounting over an
 entry that holds data fetches it again — `IfStale`, the default, when the data is stale, `Always` whatever
-its age, `Never` not at all. An entry with no data is fetched on mount whatever it says, but for one held
-back after a thrown error (below), and a key change is not a mount: it fetches stale data under `Never` too. The render before the subscription already reports
+its age, `Never` not at all. An entry with no data is fetched on mount whatever it says, but for one whose
+request failed and that `RetryOnMount`, or a thrown error not yet reset, holds back (below), and a key change is not a mount: it fetches stale data under `Never` too. The render before the subscription already reports
 what the subscription will do.
 
 **Initial data.** `InitialData` is v5's `initialData` as a function: an entry with no data takes what it
@@ -535,7 +537,7 @@ any query asked for (five minutes by default), as v5's `scheduleGc` timer remove
 to come first. While an entry that can still expire is held, the client reads its clock once a frame, as a
 retry's wait does, so removal lands on the first frame whose reading is at or past the deadline; with only
 `TimeSpan.MaxValue` entries, or none, it reads nothing. A query reading the entry again before then keeps it,
-and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame. A query's render builds the entry it reads when there is none, as v5's observer does, and nothing collects that entry before the client's next frame poll, so a commit in the same frame finds it whatever its `GcTime`.
+and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame. A query's render builds the entry it reads when there is none, as v5's observer does, and nothing collects that entry before the client's next poll of its clock, whatever its `GcTime`.
 As in v5, an entry with a request in flight is kept, and readable, until a whole `GcTime` has passed since
 the request settled: the removal never cancels a request, so a request of a query function taking no token
 that never settles keeps its entry for as long as the client lives, and the client reads its clock every

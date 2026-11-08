@@ -1,9 +1,11 @@
 #nullable enable
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using NUnit.Framework;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -15,7 +17,9 @@ namespace Velvet.Tests
     /// <item>A reader with nothing cached suspends to the nearest Suspense, its render starting the request, and
     /// renders the data once it lands, or once the data is written by hand; a failure with no data reaches the
     /// error boundary instead, and undoes a reset of the reset boundary.</item>
-    /// <item>The update that settles the entry resumes the reader itself: no frame passes in any case here.</item>
+    /// <item>The update that settles the entry resumes the reader itself, with no frame passing. A reader whose own
+    /// render's fetch gave the entry data suspends all the same and resumes once the main thread turns, so it never
+    /// returns a pending result.</item>
     /// <item>A reader over fresh cached data renders it without suspending.</item>
     /// <item>The query is enabled whatever its options say, and a stale time under a second counts as a second, so
     /// the commit after the suspension does not fetch again.</item>
@@ -35,6 +39,8 @@ namespace Velvet.Tests
         private static QueryErrorResetBoundary s_resetBoundary = null!;
         private static bool s_enabled;
         private static int s_calls;
+        private static Func<int>? s_initialData;
+        private static readonly List<QueryStatus> s_statuses = new();
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
 
         [SetUp]
@@ -45,6 +51,8 @@ namespace Velvet.Tests
             s_resetBoundary = new QueryErrorResetBoundary();
             s_enabled = true;
             s_calls = 0;
+            s_initialData = null;
+            s_statuses.Clear();
             s_sources.Clear();
         }
 
@@ -125,6 +133,26 @@ namespace Velvet.Tests
             Assert.That(s_resetBoundary.IsReset, Is.False, "v5's fetchOptimistic clears the reset when its fetch fails");
         }
 
+        [UnityTest]
+        public IEnumerator Given_AnIdleEntryWithNoData_When_AReaderWhoseFetchGivesItInitialDataMounts_Then_NoRenderReturnsPending()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — a prefetch whose request is cancelled leaves the entry pending, idle and without data.
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.CancelQueries().Forget();
+            s_initialData = () => 3;
+
+            // Act
+            using var mounted = Mount();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
+            Settle(mounted, () => { });
+
+            // Assert
+            Assert.That(s_statuses, Has.No.Member(QueryStatus.Pending),
+                "The render whose fetch gave the entry data suspends and renders again, as v5's thrown promise settles later");
+        });
+
         [Test]
         public void Given_FreshCachedData_When_TheReaderMounts_Then_ItRendersItAtOnce()
         {
@@ -191,8 +219,9 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             var result = Hooks.UseSuspenseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = TimeSpan.Zero, Enabled = s_enabled },
+                new QueryOptions<int>(Todos, Fetch) { StaleTime = TimeSpan.Zero, Enabled = s_enabled, InitialData = s_initialData },
                 s_client);
+            s_statuses.Add(result.Status);
             return V.Label(text: "data:" + result.Data);
         }
 

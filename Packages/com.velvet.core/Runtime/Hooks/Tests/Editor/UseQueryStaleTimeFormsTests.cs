@@ -19,9 +19,9 @@ namespace Velvet.Tests
     /// entry without data, does.</item>
     /// <item>A function is asked with the entry and its answer is the stale time; the client's function applies to a
     /// query that sets neither form, and a query's own value stands ahead of it.</item>
-    /// <item>A function that throws while an entry changes is logged once, one that throws inside
-    /// <c>FetchQuery</c> throws from it, and one that throws during a render reaches
-    /// the error boundary.</item>
+    /// <item>A function that throws outside a render is logged once however often it is asked, one that throws
+    /// inside <c>FetchQuery</c> throws from it, and one that throws during a render, the first render included,
+    /// reaches the error boundary.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -40,6 +40,7 @@ namespace Velvet.Tests
         private static int s_calls;
         private static QueryStaleTime? s_staleTime;
         private static Func<QueryInfo, QueryStaleTime>? s_staleTimeFn;
+        private static Func<QueryInfo, QueryStaleTime>? s_secondStaleTimeFn;
         private static QueryRefetchMode? s_refetchOnMount;
         private static object? s_seenData;
         private static StateUpdater<bool> s_setShowSecond;
@@ -55,6 +56,7 @@ namespace Velvet.Tests
             s_calls = 0;
             s_staleTime = null;
             s_staleTimeFn = null;
+            s_secondStaleTimeFn = null;
             s_refetchOnMount = null;
             s_seenData = null;
             s_setShowSecond = default;
@@ -154,8 +156,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AStaleTimeFunction_When_ASecondReaderMounts_Then_ItIsHandedTheEntrysData()
         {
-            // Arrange
-            s_staleTimeFn = info =>
+            // Arrange — only the second reader sets the function.
+            s_secondStaleTimeFn = info =>
             {
                 s_seenData = info.Data;
                 return TimeSpan.MaxValue;
@@ -199,32 +201,29 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStaleTimeFunctionThatThrows_When_TheRequestLands_Then_TheReaderRendersTheBoundarysFallback()
+        public void Given_AStaleTimeFunctionThatThrows_When_TheReaderRenders_Then_TheBoundaryShowsTheFailure()
         {
             // Arrange
-            LogAssert.ignoreFailingMessages = true;
             s_staleTimeFn = _ => throw new InvalidOperationException("stale-failed");
-            using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
-            mounted.FlushEffectsForTest();
 
             // Act
-            s_sources[0].TrySetResult(7);
-            mounted.FlushStateForTest();
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("failed:stale-failed"), "A function a render asks throws from the render, as v5's does");
         }
 
         [Test]
-        public void Given_AStaleTimeFunctionThatThrows_When_TheEntryChangesTwiceOutsideARender_Then_ItsFailureIsLoggedOnce()
+        public void Given_AStaleTimeFunctionThrowingOverData_When_ItIsAskedTwiceAsTheRequestLands_Then_ItsFailureIsLoggedOnce()
         {
-            // Arrange
-            s_staleTimeFn = _ => throw new InvalidOperationException("stale-failed");
+            // Arrange — the function throws only once the entry holds data, so the reader mounts and fetches; the
+            // landing asks it for the result and again for the stale wait, outside any render.
+            s_staleTimeFn = info => info.Data == null ? TimeSpan.Zero : throw new InvalidOperationException("stale-failed");
             ContainedFailureLog.Expect<InvalidOperationException>(nameof(QueryClient), "stale-failed");
             using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
+            mounted.FlushEffectsForTest();
 
             // Act
-            mounted.FlushEffectsForTest();
             s_sources[0].TrySetResult(7);
             mounted.FlushStateForTest();
 
@@ -287,13 +286,13 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode Reader()
+        private static VNode Reader(bool second)
         {
             var result = Hooks.UseQuery(
                 new QueryOptions<int>(Todos, Fetch)
                 {
                     StaleTime = s_staleTime,
-                    StaleTimeFn = s_staleTimeFn,
+                    StaleTimeFn = second && s_secondStaleTimeFn != null ? s_secondStaleTimeFn : s_staleTimeFn,
                     RefetchOnMount = s_refetchOnMount,
                     NotifyOnChangeProps = QueryProperties.All,
                 },
@@ -313,8 +312,8 @@ namespace Velvet.Tests
                 error => V.Label(text: "failed:" + error.Message),
                 new VNode?[]
                 {
-                    V.Component(Reader, key: "first"),
-                    showSecond ? V.Component(Reader, key: "second") : null,
+                    V.Component(Reader, false, key: "first"),
+                    showSecond ? V.Component(Reader, true, key: "second") : null,
                 },
                 key: "boundary");
         }

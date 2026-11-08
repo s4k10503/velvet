@@ -94,7 +94,8 @@ namespace Velvet
         /// <see cref="QueryClient.InvalidateQueries(QueryFilters, RefetchOptions)"/>,
         /// <see cref="QueryClient.RefetchQueries"/> and <see cref="QueryClient.ResetQueries"/> pass over an entry
         /// holding data that one of its readers holds static. A refetch interval and
-        /// <see cref="QueryResult{T}.Refetch"/> still fetch, and an entry with no data is fetched as any is.
+        /// <see cref="QueryResult{T}.Refetch"/> still fetch. An entry with no data is loaded on mount and by those
+        /// commands as any is, but not on focus or reconnect, which pass over a static query whatever its entry holds.
         /// </summary>
         public static QueryStaleTime Static { get; } = new(TimeSpan.MaxValue, true);
 
@@ -459,8 +460,8 @@ namespace Velvet
         /// <summary>
         /// Overrides <see cref="QueryClient.DefaultRefetchOnMount"/> for this query: whether an enabled query
         /// mounting over an entry that holds data fetches it again, TanStack Query's <c>refetchOnMount</c>. An
-        /// entry with no data is fetched on mount whatever this says, but for one <see cref="ThrowOnError"/>
-        /// holds back.
+        /// entry with no data is fetched on mount whatever this says, but for one whose request failed and that
+        /// <see cref="RetryOnMount"/>, or a <see cref="ThrowOnError"/> whose boundary is not reset, holds back.
         /// </summary>
         public QueryRefetchMode? RefetchOnMount { get; init; }
 
@@ -586,8 +587,9 @@ namespace Velvet
         /// <summary>Whether a request for the entry is in flight and whether it waits, TanStack Query's
         /// <c>fetchStatus</c>.</summary>
         public QueryFetchStatus FetchStatus => Read(QueryProperties.FetchStatus, _snapshot.FetchStatus);
-        /// <summary>True when the query is enabled and the entry has no data, has been invalidated, or holds
-        /// data at least as old as the query's stale time.</summary>
+        /// <summary>True when the query is enabled and the entry has no data, or holds data that has been
+        /// invalidated or is at least as old as the query's stale time and is not
+        /// <see cref="QueryStaleTime.Static"/>.</summary>
         public bool IsStale => Read(QueryProperties.IsStale, _snapshot.IsStale);
         /// <summary>How many times the request in flight or the last one has failed, TanStack Query's
         /// <c>failureCount</c>: zero once a request lands, and one more than the retries made when the last
@@ -1375,7 +1377,6 @@ namespace Velvet
                 }
             }
 
-            // MUTANT_SURVIVES(equivalent, literal): with no source and no placeholder `data` is still default, so Data reads default either way, and the error rule reads HasData only beside the entry's own, which has none then.
             var hasData = false;
             TData data = default!;
             if (hasSource) hasData = SelectData(source, settings, out data);

@@ -260,7 +260,8 @@ namespace Velvet
 
         /// <summary>
         /// Marks every entry whose key <paramref name="queryKey"/> matches stale, and fetches again each
-        /// one a mounted query is reading — TanStack Query's <c>invalidateQueries({ queryKey })</c>, with the
+        /// one a mounted query is reading, unless a reader holds its data <see cref="QueryStaleTime.Static"/>,
+        /// which no invalidation makes stale — TanStack Query's <c>invalidateQueries({ queryKey })</c>, with the
         /// partial match of its filter that <see cref="QueryKey"/> describes. For such
         /// an entry, a request already in flight is cancelled and started over when the entry holds data, so
         /// a result fetched before the change that invalidated it does not land as current, and joined when
@@ -832,8 +833,9 @@ namespace Velvet
                 && now - since.Value >= entry.GcTime;
         }
 
-        // An entry a render built is held from collection until a frame's poll, so the renders and commit of the
-        // pass that built it find it however short its gcTime; one whose render never commits expires after that.
+        // An entry a render built is held from collection until the next poll that walks the entries, however short
+        // its gcTime, so the renders after it in the same pass, and the client's commands, find it. A commit whose
+        // passive effects run after that poll can find it collected and build another.
         private void ReleaseRenderHolds()
         {
             foreach (var entry in _inactive)
@@ -1039,13 +1041,15 @@ namespace Velvet
             ReleaseSuspended();
         }
 
-        // The suspended reads waiting on the entry, as v5's fetchOptimistic waits on its query.
+        // The suspended reads waiting on the entry, as v5's fetchOptimistic waits on its query. One that could
+        // resume at once, as where the suspending render's own fetch gave the entry initial data, is released as any
+        // other is, so the render registering it suspends and resumes, as v5's thrown promise always settles later.
         internal VelvetTask<Unit> WhenSuspendedCanResume(CancellationToken token)
         {
-            if (CanResumeSuspended) return VelvetTask.FromResult(Unit.Default);
             var source = new VelvetTaskCompletionSource<Unit>();
             (_suspended ??= new List<VelvetTaskCompletionSource<Unit>>()).Add(source);
             token.Register(static state => ((VelvetTaskCompletionSource<Unit>)state!).TrySetCanceled(), source);
+            ReleaseSuspended();
             return source.Task;
         }
 

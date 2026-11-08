@@ -2878,9 +2878,10 @@ namespace Velvet
         /// <summary>
         /// TanStack Query's <c>useSuspenseQuery</c>: <see cref="UseQuery{TQueryFnData, TData}"/> that suspends to the
         /// nearest <c>V.Suspense</c> while the result is <see cref="QueryStatus.Pending"/>, and throws to the nearest
-        /// error boundary when the entry's request has failed and it holds no data, so the result it returns is
-        /// <see cref="QueryStatus.Success"/>, or <see cref="QueryStatus.Error"/> over data a later request failed to
-        /// refresh.
+        /// error boundary when the entry's request has failed and it holds no data. While the nearest
+        /// <see cref="QueryErrorResetBoundary"/> stands reset, that error is not thrown and the result carries it;
+        /// otherwise the result is <see cref="QueryStatus.Success"/>, or <see cref="QueryStatus.Error"/> over data
+        /// a later request failed to refresh.
         /// </summary>
         /// <remarks>
         /// The options are <see cref="UseQuery{TQueryFnData, TData}"/>'s, but that the query is always enabled,

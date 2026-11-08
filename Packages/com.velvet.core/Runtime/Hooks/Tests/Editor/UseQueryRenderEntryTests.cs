@@ -9,8 +9,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a query's render builds the entry it reads when there is none, as v5's
-    /// <c>getOptimisticResult</c> builds its query, and that the render's commit takes that entry up however many
-    /// renders ran in between, a zero garbage-collection time included.
+    /// <c>getOptimisticResult</c> builds its query, and that a commit made before the client next polls its clock
+    /// takes that entry up however many renders ran in between, a zero garbage-collection time included.
     /// </summary>
     /// <remarks>
     /// The client's clock stands still, and <see cref="s_initialDataCalls"/> counts how often an entry took the
