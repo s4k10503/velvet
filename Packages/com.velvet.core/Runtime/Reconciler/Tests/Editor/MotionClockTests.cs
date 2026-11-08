@@ -1421,5 +1421,31 @@ namespace Velvet.Tests
             var pending = enters.Contains(element) ? enters[element] : null;
             Assert.That(pending?.GetType().GetField("Bezier")?.GetValue(pending), Is.Not.Null);
         }
+
+        [Test]
+        public void Given_APlayHandedABeforeChildrenWait_When_ItsOpacityEntryDelayHasRunAfterIt_Then_OpacityHasMovedATenth()
+        {
+            // Arrange — a 0.6 s wait above, which Framer sequences ahead of the play, then the entry's own 0.1 s.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("waited");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: 0.1f),
+                },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" }, config,
+                additionalDelaySec: 0.6f, waitSec: 0.6f);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 0.8);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.1f).Within(1e-4f));
+        }
     }
 }

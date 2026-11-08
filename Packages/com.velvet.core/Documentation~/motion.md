@@ -304,7 +304,9 @@ Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"tr
 `"scale"`, `"rotate"`, `"background-color"`, …). An entry replaces the enclosing config for its property,
 as Framer's `getValueTransition` hands a value its own transition whole: a null `DelaySec` starts the value with
 the play rather than after the enclosing config's `DelaySec`, a stagger the play waits still counting, as Framer's
-`animateTarget` hands it only the orchestration delay; and a null `DurationSec` or `Easing` takes 0.3 s and an
+`animateTarget` hands it only the orchestration delay, which a named `DelaySec` replaces, a `BeforeChildren` or
+`AfterChildren` wait still counting since Framer sequences it ahead of the play; and a null `DurationSec` or
+`Easing` takes 0.3 s and an
 ease-out, Framer's keyframes defaults, not the enclosing config's. An entry naming neither is no transition, as
 `isTransitionDefined` reads one, so its value takes the default Framer picks for it (*Transition semantics*), after
 the entry's delay and once whatever the play repeats. A `Tween` holding such an entry, or a play whose own

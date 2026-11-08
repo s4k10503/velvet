@@ -569,9 +569,11 @@ namespace Velvet
             // Claimed before the class-driven sync, since whether an instant spring swap lands at once depends on
             // it (StyleTransitionConfig.SpringLandsAtOnceAfter).
             var extraDelaySec = 0f;
+            var claimWaitSec = 0f;
             if (MotionVariantResolver.IsVariantChild(newNode) && ambientOrchestration != null)
             {
                 extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
+                claimWaitSec = ambientOrchestration.WaitSec;
             }
             // Decided before the class-driven sync rather than beside the play below, because a tween swap
             // changes what that sync may write (ResolveInlineHold), and a zero-duration one what the element's
@@ -633,7 +635,7 @@ namespace Velvet
                     InitialLabel = MotionVariantResolver.InitialLabel(newNode,
                         _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
                     Playback = playback, Transition = swapTransition, Resolved = childLabelChanged,
-                    Ambient = ambientOrchestration, DelaySec = extraDelaySec,
+                    Ambient = ambientOrchestration, DelaySec = extraDelaySec, WaitSec = claimWaitSec,
                     From = oldVariantClasses, To = newVariantClasses,
                 },
                 (patcher: this, element, oldNode, newNode, syncOld, syncNew),
@@ -678,7 +680,8 @@ namespace Velvet
                 {
                     _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
                         playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: onSwap,
-                        appliedClasses: appliedNew, playback: playback);
+                        appliedClasses: appliedNew, playback: playback,
+                        waitSec: claimWaitSec + playDelaySec - extraDelaySec);
                 }
                 RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
                     new MotionAppliedClassSet(appliedNew, newVariantClasses));
@@ -1009,7 +1012,7 @@ namespace Velvet
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
             MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec,
             string[]? fromClasses = null, string[]? toClasses = null,
-            VisualElement? element = null, StyleAnimationScheduler? scheduler = null)
+            VisualElement? element = null, StyleAnimationScheduler? scheduler = null, float extraWaitSec = 0f)
         {
             var hasOwnOrchestration = swapTransition != null
                 && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
@@ -1021,12 +1024,17 @@ namespace Velvet
                     ? (float)MotionPlaySpan.HeldBy(swapTransition, fromClasses, toClasses,
                         element != null ? scheduler?.SlotContext(element, fromClasses, toClasses) : null)
                     : 0f;
+                // Framer starts a BeforeChildren Motion's children once its play has ended, delayed by delayChildren
+                // and the stagger alone: everything before that is the wait.
                 return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
                     swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec,
                     swapTransition.When, tracksEnds,
                     reversedOver: swapTransition.StaggerDirection != 1
                         ? MotionOrchestrationWait.CountVariantChildren(newNode.Children)
-                        : 0);
+                        : 0,
+                    waitSec: swapTransition.When == TransitionWhen.BeforeChildren
+                        ? extraBeforeChildrenSec + extraDelaySec
+                        : extraWaitSec);
             }
             if (newNode.Variants == null && !MotionVariantResolver.IsControlling(newNode))
             {
@@ -1036,7 +1044,7 @@ namespace Velvet
             // allocation is spared, unless a play above waits on the ends the claims report.
             return extraDelaySec == 0f && !tracksEnds
                 ? null
-                : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, TransitionWhen.Together, tracksEnds, 0);
+                : new MotionOrchestrationFrame(0f, 0f, extraDelaySec, TransitionWhen.Together, tracksEnds, 0, extraWaitSec);
         }
 
         internal readonly struct MotionChildScope
@@ -1048,6 +1056,8 @@ namespace Velvet
             internal MotionPlayback? Playback { get; init; }
             internal StyleTransitionConfig? Transition { get; init; }
             internal bool Resolved { get; init; }
+            // The part of DelaySec a wait above makes up (MotionOrchestrationFrame.WaitSec).
+            internal float WaitSec { get; init; }
             internal MotionOrchestrationFrame? Ambient { get; init; }
             internal float DelaySec { get; init; }
             internal string[]? From { get; init; }
@@ -1070,7 +1080,8 @@ namespace Velvet
                 if (scope.ChildLabel != null)
                 {
                     childOrchestration = ResolveChildOrchestration(scope.Node, scope.Transition, scope.Resolved,
-                        scope.Ambient, scope.DelaySec, scope.From, scope.To, scope.Element, _ctx.StyleAnimationScheduler);
+                        scope.Ambient, scope.DelaySec, scope.From, scope.To, scope.Element, _ctx.StyleAnimationScheduler,
+                        scope.WaitSec);
                     MotionContext.PushForChildren(_ctx.ComponentContextStack, scope.ChildLabel, scope.InitialLabel,
                         childOrchestration, scope.Playback);
                     pushedLabel = true;

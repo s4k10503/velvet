@@ -934,12 +934,13 @@ namespace Velvet
         public static void ReturnChannels(VisualElement element, MotionSpringState state, StyleLonghandSet named,
             MotionSlotContext shown)
         {
-            var returned = Reorigin(state.Opacity, named, StyleLonghand.Opacity, ArbitraryProperty.Opacity, shown);
-            returned |= Reorigin(state.TranslateX, named, StyleLonghand.Translate, ArbitraryProperty.TranslateX, shown)
-                | Reorigin(state.TranslateY, named, StyleLonghand.Translate, ArbitraryProperty.TranslateY, shown);
-            returned |= Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown)
-                | Reorigin(state.ScaleY, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown);
-            returned |= Reorigin(state.Rotate, named, StyleLonghand.Rotate, ArbitraryProperty.Rotate, shown);
+            var back = new HashSet<SpringChannel>();
+            Reorigin(state.Opacity, named, StyleLonghand.Opacity, ArbitraryProperty.Opacity, shown, back);
+            Reorigin(state.TranslateX, named, StyleLonghand.Translate, ArbitraryProperty.TranslateX, shown, back);
+            Reorigin(state.TranslateY, named, StyleLonghand.Translate, ArbitraryProperty.TranslateY, shown, back);
+            Reorigin(state.Scale, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown, back);
+            Reorigin(state.ScaleY, named, StyleLonghand.Scale, ArbitraryProperty.Scale, shown, back);
+            Reorigin(state.Rotate, named, StyleLonghand.Rotate, ArbitraryProperty.Rotate, shown, back);
             if (state.Colors != null)
             {
                 for (var i = 0; i < state.Colors.Count; i++)
@@ -952,7 +953,7 @@ namespace Velvet
                     var from = shown.TryReadShown(c.Property, LengthUnit.Pixel, out var color) ? color.Color
                         : MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value);
                     state.Colors[i] = new SpringColorChannel(c.Property, from, c.To);
-                    returned = true;
+                    back.Add(state.Colors[i].Progress);
                 }
             }
             if (state.Lengths != null)
@@ -962,33 +963,48 @@ namespace Velvet
                     if (GestureChannelMask.ReturnsProperty(l.Value, l.Property, named, shown))
                     {
                         PutAtShown(l.Value, l.Property, l.Unit, shown);
-                        returned = true;
+                        back.Add(l.Value);
                     }
                 }
             }
-            if (!returned)
+            if (back.Count == 0)
             {
                 return;
             }
+            // A channel the gesture left alone keeps its own timeline, as Framer leaves a value no gesture state
+            // touches on its animation: what it still had to wait it waits from now, and an entry's tween runs on.
+            var spentSec = (float)state.ElapsedSec;
             state.ElapsedSec = 0.0;
             ForEachActiveChannel(state, c =>
             {
-                StartsNow(c);
+                if (back.Contains(c))
+                {
+                    StartsNow(c);
+                }
+                else if (c.Timing is { } own)
+                {
+                    c.Timing = own with { DelaySec = own.DelaySec - spentSec };
+                    c.PassSec = c.Timing.Value.DelaySec + own.DurationSec;
+                    return;
+                }
+                else
+                {
+                    c.DelaySec = Mathf.Max(0f, c.DelaySec - spentSec);
+                }
                 Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
             });
             GestureChannelMask.ResyncNarrowing(element, state);
             WriteChannelValues(element, state);
         }
 
-        private static bool Reorigin(SpringChannel? channel, StyleLonghandSet named, StyleLonghand longhand,
-            ArbitraryProperty slot, MotionSlotContext shown)
+        private static void Reorigin(SpringChannel? channel, StyleLonghandSet named, StyleLonghand longhand,
+            ArbitraryProperty slot, MotionSlotContext shown, HashSet<SpringChannel> back)
         {
-            if (!GestureChannelMask.Returns(channel, named, longhand, slot, shown))
+            if (GestureChannelMask.Returns(channel, named, longhand, slot, shown))
             {
-                return false;
+                PutAtShown(channel!, slot, channel!.Unit, shown);
+                back.Add(channel!);
             }
-            PutAtShown(channel!, slot, channel!.Unit, shown);
-            return true;
         }
 
         // Puts the channel at what the element shows on slot, at rest; leaves it where it is where that cannot be read.

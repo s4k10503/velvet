@@ -336,5 +336,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That(controls.IsFinished, Is.False);
         }
+
+        // GREEN_ON_BASE(characterization): the base measured a single call's spring for at most 20 s, which this case
+        // pins against a search for its rest that runs on past that up front.
+        [Test]
+        public void Given_ASingleCallOnAnUndampedSpring_When_ItIsStarted_Then_ItReturnsWithoutSearchingForARestItNeverReaches()
+        {
+            // Arrange — a search to the rest that never comes would take seconds on the calling thread.
+            var element = new VisualElement();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            // Act
+            NewAnimator().Animate(element, new AnimateValues { X = new[] { 0f, 100f } },
+                new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 0f, Mass = 1f });
+            watch.Stop();
+
+            // Assert
+            Assert.That(watch.Elapsed.TotalMilliseconds, Is.LessThan(250.0));
+        }
     }
 }

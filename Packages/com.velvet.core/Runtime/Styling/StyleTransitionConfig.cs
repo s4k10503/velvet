@@ -688,7 +688,12 @@ namespace Velvet
         /// <summary>Easing. Null eases out where <see cref="DurationSec"/> is set.</summary>
         public EasingMode? Easing { get; }
 
-        /// <summary>Delay (seconds), counted from the play's start, which a stagger moves. Null starts with the play.</summary>
+        /// <summary>
+        /// Delay (seconds) in place of the play's own delay and of the delayChildren and stagger it was handed, as
+        /// Framer's per-value delay replaces its orchestration delay; counted from the end of a BeforeChildren or
+        /// AfterChildren wait above, which Framer sequences ahead of the play. Null starts with the play, after its
+        /// stagger.
+        /// </summary>
         public float? DelaySec { get; }
 
         public StylePropertyTransition(string property, float? durationSec = null, EasingMode? easing = null, float? delaySec = null)
