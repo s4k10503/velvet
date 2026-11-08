@@ -206,6 +206,13 @@ namespace Velvet
             var generated = Unraised is { } text
                 ? _element.MeasureTextSize(text, desiredWidth, widthMode, float.NaN, VisualElement.MeasureMode.Undefined)
                 : measure(desiredWidth, widthMode, float.NaN, VisualElement.MeasureMode.Undefined);
+            if (!(generated.y >= 0f))
+            {
+                // A text the generator gives no size for is the element's own measure under its own constraints, since
+                // a cap taken of no height is the whole cap
+                // (Given_TwoComponentsRenderingIntoOneParentPushedDown_When_TheCardMovesFromTheFirstToTheSecond_Then_ItCarriesNoInversePose).
+                return measure(desiredWidth, widthMode, desiredHeight, heightMode);
+            }
             NoteLines(lines, generated);
             var fit = lines.Fit(generated);
             // The uncapped height is recorded, which is the one a settle compares the box with: a box capped below

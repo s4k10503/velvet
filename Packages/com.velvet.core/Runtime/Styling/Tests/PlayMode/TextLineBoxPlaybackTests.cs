@@ -233,6 +233,8 @@ namespace Velvet.Tests
         private static VNode TextButton(string className)
             => V.Button(name: "text", className: "w-[150px] border-0 bg-white text-black " + className, text: "HxgH");
 
+        // GREEN_ON_BASE(characterization): on the base a button's text is centred by its theme's middle-center. A button
+        // raised into its first line box, as a label is, would leave its glyphs where they are and read 0 here.
         [UnityTest]
         public IEnumerator Given_TwoButtonHeights_When_Rendered_Then_TheGlyphsMoveByHalfTheirDifference()
         {
