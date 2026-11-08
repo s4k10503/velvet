@@ -56,13 +56,7 @@ namespace Velvet
                 return;
             }
             var align = style.unityTextAlign;
-            var wanted = align switch
-            {
-                TextAnchor.UpperCenter or TextAnchor.LowerCenter => TextAnchor.MiddleCenter,
-                TextAnchor.UpperRight or TextAnchor.LowerRight => TextAnchor.MiddleRight,
-                TextAnchor.UpperLeft or TextAnchor.LowerLeft => TextAnchor.MiddleLeft,
-                _ => align,
-            };
+            var wanted = TextLineBox.Middle(align);
             if (wanted != align)
             {
                 _ownedAlign = wanted;

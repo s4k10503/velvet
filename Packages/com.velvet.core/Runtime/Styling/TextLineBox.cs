@@ -225,7 +225,8 @@ namespace Velvet
             return important ?? plain ?? _element.hierarchy.parent?.resolvedStyle.unityTextAlign ?? TextAnchor.UpperLeft;
         }
 
-        private static TextAnchor Middle(TextAnchor align) => align switch
+        // The middle-* anchor with the horizontal part of align.
+        internal static TextAnchor Middle(TextAnchor align) => align switch
         {
             TextAnchor.UpperCenter or TextAnchor.LowerCenter => TextAnchor.MiddleCenter,
             TextAnchor.UpperRight or TextAnchor.LowerRight => TextAnchor.MiddleRight,

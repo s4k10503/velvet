@@ -142,14 +142,13 @@ namespace Velvet
             {
                 return false;
             }
-            foreach (var c in text)
+            var breaks = false;
+            for (var i = 0; i < text.Length && !breaks; i++)
             {
-                if (char.IsWhiteSpace(c) || c == '-' || c == '\u00AD' || c == '\u200B' || c >= '\u2E80')
-                {
-                    return true;
-                }
+                var c = text[i];
+                breaks = char.IsWhiteSpace(c) || c == '-' || c == '\u00AD' || c == '\u200B' || c >= '\u2E80';
             }
-            return false;
+            return breaks;
         }
 
         // Captures the text the app gave a text-bearing element at a text-set seam (TextNode create/patch, or
@@ -190,7 +189,14 @@ namespace Velvet
         }
 
         private static bool ShowsPreflight(ReconcilerContext ctx, VisualElement element)
-            => element is ILineBoxed && ctx.TextRawText.TryGetValue(element, out var raw) && CanSpanLines(raw);
+        {
+            if (element is not ILineBoxed)
+            {
+                return false;
+            }
+            ctx.TextRawText.TryGetValue(element, out var raw);
+            return CanSpanLines(raw);
+        }
 
         // A line height a sheet declares under a selector is the cascade's to give once the element's style pass has run,
         // so the element is applied again when the engine hands it another variable context.
