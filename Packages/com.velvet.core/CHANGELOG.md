@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arguments refuse a value naming no member. Changed behaviour: hook update queues, transitions,
   Suspense, error boundaries, refs, effect timing, `V.Memoized` and `Memoize = true` comparisons, and
   the components the compiler transform now memoizes; reconciler identity, `V.List` node reuse,
-  portals and their event path, and factory calls passing a literal `null`; every Tailwind scale, the
+  portals and their event path, and factory calls passing a literal `null`; the Tailwind v4 scales and the
   palette, utility, variant and important ordering, the opacity modifier, `space-*` and `gap-*`,
   `flex-1`, `z-*`, `@container` and the `sm:` prefixes, filters, rings, outlines, skew, text line
   boxes, font weight matching, text transforms, `text-balance`, `pointer-events-*`, `StyleOverrides`
