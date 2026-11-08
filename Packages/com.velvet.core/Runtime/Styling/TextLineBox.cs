@@ -96,15 +96,31 @@ namespace Velvet
         // painter back.
         public void WatchRepaints()
         {
+            var painter = _element.generateVisualContent;
+            if (Equals(painter, s_watched))
+            {
+                return;
+            }
+            if (Equals(painter, s_plain))
+            {
+                // A text element's own painter is a static method, so every element holds an equal one, and one
+                // combination of it with the watch serves them all without a delegate made per element.
+                _element.generateVisualContent = s_watched;
+                return;
+            }
             _element.generateVisualContent -= s_onRepaint;
             _element.generateVisualContent += s_onRepaint;
         }
+
+        private static readonly Action<MeshGenerationContext> s_onRepaint = mgc => (mgc.visualElement as ILineBoxed)?.LineBox.Repainted();
+        private static readonly Action<MeshGenerationContext>? s_plain = new Label().generateVisualContent;
+        private static readonly Action<MeshGenerationContext> s_watched =
+            (Action<MeshGenerationContext>)Delegate.Combine(s_plain, s_onRepaint);
 
         // enableRichText changes what the text is shown with and how its lines are spaced, and neither the element's
         // style nor its box, so no event this is handed follows it; the setter repaints the element, which is where it
         // is looked for. The settle that follows writes styles and shows the text again, so it is scheduled rather than
         // run inside the repaint.
-        private static readonly Action<MeshGenerationContext> s_onRepaint = mgc => (mgc.visualElement as ILineBoxed)?.LineBox.Repainted();
         private Action? _richTextChanged;
 
         private void Repainted()
