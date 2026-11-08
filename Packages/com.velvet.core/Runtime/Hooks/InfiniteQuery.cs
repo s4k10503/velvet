@@ -85,10 +85,10 @@ namespace Velvet
     /// <typeparam name="TData">What the result's data holds; the pages unless a select turns them into something
     /// else.</typeparam>
     public record InfiniteQueryOptions<TQueryFnData, TPageParam, TData>
-        : QueryOptions<InfiniteData<TQueryFnData, TPageParam>, TData>, IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>
+        : QueryOptionsBase<InfiniteData<TQueryFnData, TPageParam>, TData>, IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>
     {
         /// <summary>Creates the options.</summary>
-        /// <param name="queryKey">Names the cache entry, as <see cref="QueryOptions{TQueryFnData, TData}.QueryKey"/>
+        /// <param name="queryKey">Names the cache entry, as <see cref="QueryOptionsBase{TQueryFnData, TData}.QueryKey"/>
         /// does.</param>
         /// <param name="queryFn">Fetches one page. Its request is cancelled when the last query reading the entry
         /// leaves only if it has read <see cref="QueryFunctionContext.CancellationToken"/>.</param>
@@ -101,15 +101,18 @@ namespace Velvet
             Func<QueryFunctionContext<TPageParam>, VelvetTask<TQueryFnData>> queryFn,
             TPageParam initialPageParam,
             Func<TQueryFnData, IReadOnlyList<TQueryFnData>, TPageParam, IReadOnlyList<TPageParam>, PageParam<TPageParam>> getNextPageParam)
-            : base(queryKey, InfiniteQueryFunctions.Marker<InfiniteData<TQueryFnData, TPageParam>>(queryFn))
+            : base(queryKey)
         {
-            PageFn = queryFn;
+            QueryFn = queryFn;
             InitialPageParam = initialPageParam;
             GetNextPageParam = getNextPageParam;
         }
 
-        /// <summary>The query function, which fetches one page.</summary>
-        public Func<QueryFunctionContext<TPageParam>, VelvetTask<TQueryFnData>> PageFn { get; init; }
+        /// <summary>TanStack Query's <c>queryFn</c> for an infinite query, which fetches one page.</summary>
+        public Func<QueryFunctionContext<TPageParam>, VelvetTask<TQueryFnData>> QueryFn { get; init; }
+
+        // A request runs the paging the behavior builds, never a function of the whole entry.
+        internal override QueryFunction<InfiniteData<TQueryFnData, TPageParam>> Function => default;
 
         /// <summary>TanStack Query's <c>initialPageParam</c>.</summary>
         public TPageParam InitialPageParam { get; init; }
@@ -138,7 +141,7 @@ namespace Velvet
         public int? Pages { get; init; }
 
         IQueryBehavior<InfiniteData<TQueryFnData, TPageParam>> IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>.CreateBehavior(int? pages)
-            => new InfiniteQueryBehavior<TQueryFnData, TPageParam>(PageFn, InitialPageParam, GetNextPageParam, GetPreviousPageParam, MaxPages ?? 0, pages);
+            => new InfiniteQueryBehavior<TQueryFnData, TPageParam>(QueryFn, InitialPageParam, GetNextPageParam, GetPreviousPageParam, MaxPages ?? 0, pages);
 
         bool IInfiniteQueryOptions<InfiniteData<TQueryFnData, TPageParam>>.HasNextPage(InfiniteData<TQueryFnData, TPageParam> data)
             => InfiniteQueryBehavior<TQueryFnData, TPageParam>.NextParam(GetNextPageParam, data).HasValue;
@@ -261,17 +264,5 @@ namespace Velvet
         // The function each attempt of a request runs, built when the request starts from the data the entry held then
         // and the end the request was asked for, null for a refetch of every page.
         Func<QueryFunctionContext, VelvetTask<T>> OnFetch(bool hasData, T data, FetchDirection? direction);
-    }
-
-    internal static class InfiniteQueryFunctions
-    {
-        // The token-taking function the base options hold: a request runs the behavior instead, so it is never
-        // called through the entry.
-        internal static Func<CancellationToken, VelvetTask<T>> Marker<T>(Delegate pageFn)
-        {
-            if (pageFn == null) return null!;
-            return new QueryFunctions.Contextual<T>(_ => throw new InvalidOperationException(
-                "An infinite query's function runs one page at a time through its entry.")).InvokeWithoutContext;
-        }
     }
 }

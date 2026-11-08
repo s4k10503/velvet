@@ -10,7 +10,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/>, its function form and
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/>, its function form and
     /// <see cref="QueryErrorResetBoundary"/>, TanStack Query's <c>throwOnError</c> and
     /// <c>QueryErrorResetBoundary</c>.
     /// <list type="bullet">

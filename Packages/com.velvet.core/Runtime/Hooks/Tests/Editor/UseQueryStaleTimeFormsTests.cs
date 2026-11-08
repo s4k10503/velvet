@@ -11,7 +11,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryStaleTime.Static"/> and <see cref="QueryOptions{TQueryFnData, TData}.StaleTimeFn"/>,
+    /// Specifies <see cref="QueryStaleTime.Static"/> and <see cref="QueryOptionsBase{TQueryFnData, TData}.StaleTimeFn"/>,
     /// TanStack Query's <c>staleTime: 'static'</c> and <c>staleTime</c> as a function.
     /// <list type="bullet">
     /// <item>Static data stays fresh through an invalidation, and neither <c>InvalidateQueries</c>,

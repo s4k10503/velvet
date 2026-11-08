@@ -3133,15 +3133,15 @@ namespace Velvet
         /// starts begins there. A change of key moves the subscription to the new key's entry: the result
         /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
         /// <para/>
-        /// A failed request runs again as <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> says before the
+        /// A failed request runs again as <see cref="QueryOptionsBase{TQueryFnData, TData}.Retry"/> says before the
         /// failure is the entry's error, and a request that lands is shared structurally with the data the entry
-        /// held (<see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does. Under
-        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> the error is thrown from this call.
+        /// held (<see cref="QueryOptionsBase{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does. Under
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> the error is thrown from this call.
         /// </remarks>
         /// <typeparam name="TQueryFnData">The entry's data type. Every query sharing a key must use the same
         /// one.</typeparam>
         /// <typeparam name="TData">The result's data type, which
-        /// <see cref="QueryOptions{TQueryFnData, TData}.Select"/> makes.</typeparam>
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.Select"/> makes.</typeparam>
         /// <param name="options">The key, the query function, and the options
         /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
         /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
@@ -3150,7 +3150,7 @@ namespace Velvet
         public static QueryResult<TData> UseQuery<TQueryFnData, TData>(
             QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
-            var query = UseQueryObserver(options, client, suspense: false);
+            var query = UseQueryObserver(options, client, suspense: false, nameof(UseQuery));
             query.ThrowIfError();
             return query.Result;
         }
@@ -3176,8 +3176,8 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The options are <see cref="UseQuery{TQueryFnData, TData}"/>'s, but that the query is always enabled,
-        /// <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> is ignored, and the error rule above
-        /// replaces <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> and its function. The stale time, and a garbage-collection
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/> is ignored, and the error rule above
+        /// replaces <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> and its function. The stale time, and a garbage-collection
         /// time, of less than a second count as a second, so the render that follows the suspension does not fetch
         /// again. A suspending render starts the entry's request, or joins the one in flight, and the component
         /// renders again once the entry holds data or the request has settled. Until the nearest
@@ -3193,7 +3193,7 @@ namespace Velvet
         public static QueryResult<TData> UseSuspenseQuery<TQueryFnData, TData>(
             QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
-            var query = UseQueryObserver(options, client, suspense: true);
+            var query = UseQueryObserver(options, client, suspense: true, nameof(UseSuspenseQuery));
             UseSuspendWhilePending(query);
             query.ThrowIfError();
             return query.Result;
@@ -3234,7 +3234,7 @@ namespace Velvet
             InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
         {
             ValidateInfiniteQueryOptions(options);
-            var query = UseQueryObserver(options, client, suspense: false);
+            var query = UseQueryObserver(options, client, suspense: false, nameof(UseInfiniteQuery));
             query.ThrowIfError();
             return (InfiniteQueryResult<TData>)query.Result;
         }
@@ -3266,7 +3266,7 @@ namespace Velvet
             InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
         {
             ValidateInfiniteQueryOptions(options);
-            var query = UseQueryObserver(options, client, suspense: true);
+            var query = UseQueryObserver(options, client, suspense: true, nameof(UseSuspenseInfiniteQuery));
             UseSuspendWhilePending(query);
             query.ThrowIfError();
             return (InfiniteQueryResult<TData>)query.Result;
@@ -3276,7 +3276,7 @@ namespace Velvet
             InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            if (options.PageFn == null) throw new ArgumentException("InfiniteQueryOptions.PageFn must not be null.", nameof(options));
+            if (options.QueryFn == null) throw new ArgumentException("InfiniteQueryOptions.QueryFn must not be null.", nameof(options));
             if (options.GetNextPageParam == null)
             {
                 throw new ArgumentException("InfiniteQueryOptions.GetNextPageParam must not be null.", nameof(options));
@@ -3289,7 +3289,7 @@ namespace Velvet
         /// query keeps its observer across renders while some query of the list reads the same entry, whatever its
         /// position, and the component re-renders when a property of a result it has read changes in any of them:
         /// a property read from one result is tracked for all of them. The first query whose error
-        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from this call.
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from this call.
         /// </summary>
         /// <typeparam name="TQueryFnData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s; queries of different
         /// data types share one list as <c>object</c>.</typeparam>
@@ -3513,9 +3513,8 @@ namespace Velvet
         }
 
         private static QueryRead<TQueryFnData, TData> UseQueryObserver<TQueryFnData, TData>(
-            QueryOptions<TQueryFnData, TData> options, QueryClient? client, bool suspense)
+            QueryOptionsBase<TQueryFnData, TData> options, QueryClient? client, bool suspense, string hookName)
         {
-            var hookName = suspense ? nameof(UseSuspenseQuery) : nameof(UseQuery);
             ValidateQueryOptions(options);
             // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
             _ = Resolve(hookName);
@@ -3547,11 +3546,14 @@ namespace Velvet
             return new QueryRead<TQueryFnData, TData>(observer, entry, settings, queryClient, boundary);
         }
 
-        private static void ValidateQueryOptions<TQueryFnData, TData>(QueryOptions<TQueryFnData, TData> options)
+        private static void ValidateQueryOptions<TQueryFnData, TData>(QueryOptionsBase<TQueryFnData, TData> options)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
-            if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            if (options is QueryOptions<TQueryFnData, TData> { QueryFn.HasValue: false })
+            {
+                throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            }
             if (options.Select == null && typeof(TQueryFnData) != typeof(TData))
             {
                 throw new ArgumentException(

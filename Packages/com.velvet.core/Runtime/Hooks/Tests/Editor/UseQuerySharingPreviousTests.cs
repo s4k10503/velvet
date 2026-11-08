@@ -9,13 +9,13 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what a <see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/> function is handed as the
+    /// Specifies what a <see cref="QueryOptionsBase{TQueryFnData, TData}.StructuralSharing"/> function is handed as the
     /// data held when a query whose result is a value type had none: null, as v5's <c>replaceData</c> is handed
     /// <c>undefined</c>, and never the type's default.
     /// </summary>
     /// <remarks>
     /// The function records each call's held data. One request lands 5; the entry's landing and the
-    /// <see cref="QueryOptions{TQueryFnData, TData}.Select"/> over it each call the function once, since the select
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}.Select"/> over it each call the function once, since the select
     /// is one instance and runs again only for new data.
     /// </remarks>
     [TestFixture]

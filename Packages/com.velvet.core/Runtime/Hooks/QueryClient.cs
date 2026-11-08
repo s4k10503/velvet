@@ -22,7 +22,7 @@ namespace Velvet
 
         /// <summary>
         /// <see cref="StaleTime"/> given as a function of the entry a query reads, for every query that sets
-        /// neither form of its own; see <see cref="QueryOptions{TQueryFnData, TData}.StaleTimeFn"/>. It replaces
+        /// neither form of its own; see <see cref="QueryOptionsBase{TQueryFnData, TData}.StaleTimeFn"/>. It replaces
         /// <see cref="StaleTime"/> when both are set.
         /// </summary>
         public Func<Query, QueryStaleTime>? StaleTimeFn { get; init; }
@@ -37,7 +37,7 @@ namespace Velvet
         /// <summary>
         /// Which failed requests run again before the failure is the entry's error, for every query that does not
         /// set its own: TanStack Query's <c>retry</c>, in the forms
-        /// <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> takes. When null, a mounted query retries three
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.Retry"/> takes. When null, a mounted query retries three
         /// times and <see cref="QueryClient.FetchQuery{T}"/> not at all, as v5 treats a retry nobody set.
         /// </summary>
         public RetryRule? Retry { get; init; }
@@ -53,13 +53,13 @@ namespace Velvet
         /// <summary>
         /// Whether a query that sets neither form of its own throws its error to the nearest error boundary:
         /// TanStack Query's <c>throwOnError</c> in <c>defaultOptions.queries</c>, whose default is false; see
-        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/>.
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/>.
         /// </summary>
         public bool ThrowOnError { get; init; }
 
         /// <summary>
         /// <see cref="ThrowOnError"/> given as a function of the error and the entry, with the terms of
-        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnErrorFn"/>. It replaces <see cref="ThrowOnError"/>
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnErrorFn"/>. It replaces <see cref="ThrowOnError"/>
         /// when both are set.
         /// </summary>
         public Func<Exception, Query, bool>? ThrowOnErrorFn { get; init; }
@@ -72,7 +72,7 @@ namespace Velvet
 
         /// <summary>
         /// <see cref="RefetchOnMount"/> given as a function of the entry a query reads, with the terms of
-        /// <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnMountFn"/>.
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.RefetchOnMountFn"/>.
         /// </summary>
         public Func<Query, QueryRefetchMode>? RefetchOnMountFn { get; init; }
 
@@ -84,7 +84,7 @@ namespace Velvet
 
         /// <summary>
         /// <see cref="RefetchOnWindowFocus"/> given as a function of the entry a query reads, for every query that
-        /// sets neither form of its own; see <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnWindowFocusFn"/>.
+        /// sets neither form of its own; see <see cref="QueryOptionsBase{TQueryFnData, TData}.RefetchOnWindowFocusFn"/>.
         /// It replaces <see cref="RefetchOnWindowFocus"/> when both are set.
         /// </summary>
         public Func<Query, QueryRefetchMode>? RefetchOnWindowFocusFn { get; init; }
@@ -378,7 +378,7 @@ namespace Velvet
         /// <summary>
         /// Puts the entries <paramref name="filters"/> selects back to the state of one never fetched, with no
         /// data and no error, or with the initial data it took
-        /// (<see cref="QueryOptions{TQueryFnData, TData}.InitialData"/>), cancelling their requests, and then
+        /// (<see cref="QueryOptionsBase{TQueryFnData, TData}.InitialData"/>), cancelling their requests, and then
         /// fetches those an enabled query reads —
         /// TanStack Query's <c>resetQueries</c>. A <see cref="QueryFilters.Type"/> of null refetches the active
         /// entries; one that is set also selects what is refetched.
@@ -405,9 +405,9 @@ namespace Velvet
         /// <param name="options">The key, the query function and the options of
         /// <see cref="QueryOptions{TQueryFnData, TData}"/> that shape a request: its stale time, garbage-collection
         /// time, retries, retry delay, initial data and structural sharing. Unlike a mounted query, a request
-        /// retries nothing unless <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> or
+        /// retries nothing unless <see cref="QueryOptionsBase{TQueryFnData, TData}.Retry"/> or
         /// <see cref="QueryClientOptions.Retry"/> says so, as v5's <c>fetchQuery</c> sets <c>retry: false</c>
-        /// where neither is set. A <see cref="QueryOptions{TQueryFnData, TData}.StaleTimeFn"/> that throws throws
+        /// where neither is set. A <see cref="QueryOptionsBase{TQueryFnData, TData}.StaleTimeFn"/> that throws throws
         /// from this call, as v5's <c>fetchQuery</c> does.</param>
         /// <returns>A task of the entry's data; it faults with the request's failure, and is cancelled when
         /// something cancels the request.</returns>
@@ -767,11 +767,14 @@ namespace Velvet
 
         // The entry a fetchQuery-style call works on, with the options its request runs with and the stale time
         // its data is judged by.
-        private QueryEntry<T> EntryFor<T>(QueryOptions<T, T> options, out QueryFetchOptions<T> fetchOptions, out QueryStaleRule staleTime)
+        private QueryEntry<T> EntryFor<T>(QueryOptionsBase<T, T> options, out QueryFetchOptions<T> fetchOptions, out QueryStaleRule staleTime)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.QueryKey == null) throw new ArgumentException("The options have no QueryKey.", nameof(options));
-            if (options.QueryFn == null) throw new ArgumentException("The options have no QueryFn.", nameof(options));
+            if (!options.Function.HasValue && options is not IInfiniteQueryOptions<T>)
+            {
+                throw new ArgumentException("The options have no QueryFn.", nameof(options));
+            }
             staleTime = QueryStaleRule.Resolve(options.StaleTime, options.StaleTimeFn, DefaultStaleTime, DefaultStaleTimeFn, suspense: false);
             var gcTime = RequireNonNegative(options.GcTime ?? DefaultGcTime, nameof(QueryOptions<T, T>.GcTime));
             fetchOptions = new QueryFetchOptions<T>().Assign(options, this);
@@ -1453,9 +1456,10 @@ namespace Velvet
                 T data = default!;
                 Exception? failure = null;
                 var token = request.Token;
-                // The function has read the token only once it has started, which a request paused at the outset has not.
-                if (ReferenceEquals(_inFlight, request)) _requestTakesToken = options.TakesToken;
-                var task = Start(attempt ?? ContextualOf(queryFn), queryFn, meta, request);
+                // Each attempt starts unread: its function reads the token or does not as it runs, which a request
+                // paused at the outset has not done yet.
+                if (ReferenceEquals(_inFlight, request)) _requestTakesToken = false;
+                var task = Start(attempt ?? queryFn.Invoke, meta, request);
 
                 try
                 {
@@ -1522,32 +1526,21 @@ namespace Velvet
             }
         }
 
-        // A query function that throws before returning a task fails the request as one returning a faulted
-        // task does.
-        private static Func<QueryFunctionContext, VelvetTask<T>>? ContextualOf(Func<CancellationToken, VelvetTask<T>> queryFn)
-            => queryFn.Target is QueryFunctions.Contextual<T> contextual ? contextual.Invoke : null;
-
-        // A context-taking function, an infinite query's paging among them, is handed the context, whose token marks
-        // the request as one that took it when it is read, as reading v5's signal does.
+        // The function, or an infinite query's paging, is handed the context, whose token marks the request as one
+        // that took it when it is read, as reading v5's signal does. A function that throws before returning a task
+        // fails the request as one returning a faulted task does.
         private VelvetTask<T> Start(
-            Func<QueryFunctionContext, VelvetTask<T>>? contextual, Func<CancellationToken, VelvetTask<T>> queryFn,
-            IReadOnlyDictionary<string, object?>? meta, CancellationTokenSource request)
+            Func<QueryFunctionContext, VelvetTask<T>> run, IReadOnlyDictionary<string, object?>? meta, CancellationTokenSource request)
         {
-            var token = request.Token;
             try
             {
-                if (contextual != null)
+                return run(new QueryFunctionContext(Client, Key, meta, request.Token, () =>
                 {
-                    return contextual(new QueryFunctionContext(Client, Key, meta, token, () =>
-                    {
-                        if (ReferenceEquals(_inFlight, request)) _requestTakesToken = true;
-                    }));
-                }
-                return queryFn(token);
+                    if (ReferenceEquals(_inFlight, request)) _requestTakesToken = true;
+                }));
             }
-
-
             catch (Exception ex)
+
             {
                 return VelvetTask.FromException<T>(ex);
             }

@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryCache"/>, TanStack Query's <c>QueryCache</c>, with <see cref="QueryOptions{TQueryFnData, TData}.Meta"/>,
+    /// Specifies <see cref="QueryCache"/>, TanStack Query's <c>QueryCache</c>, with <see cref="QueryOptionsBase{TQueryFnData, TData}.Meta"/>,
     /// <see cref="QueryFunctionContext"/>, <see cref="QueryClient.IsFetching"/> and <see cref="Hooks.UseIsFetching"/>.
     /// <list type="bullet">
     /// <item>The cache announces an entry added, removed, updated with the action that changed it, and a mounted

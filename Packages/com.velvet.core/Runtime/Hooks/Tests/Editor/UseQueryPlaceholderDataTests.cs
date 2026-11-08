@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> and
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/> and
     /// <see cref="QueryPlaceholder.KeepPreviousData{T}"/>, TanStack Query's <c>placeholderData</c> and
     /// <c>keepPreviousData</c>.
     /// <list type="bullet">

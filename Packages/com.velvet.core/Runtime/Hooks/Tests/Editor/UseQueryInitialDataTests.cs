@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.InitialData"/> and its updated-at forms, TanStack
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.InitialData"/> and its updated-at forms, TanStack
     /// Query's <c>initialData</c> and <c>initialDataUpdatedAt</c>.
     /// <list type="bullet">
     /// <item>A render that finds no entry shows the initial data as a success, and the function is asked once.</item>

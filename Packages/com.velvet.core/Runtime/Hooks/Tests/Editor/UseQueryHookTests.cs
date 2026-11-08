@@ -1586,7 +1586,7 @@ namespace Velvet.Tests
             var options = s_takesToken
                 ? new QueryOptions<int>(key, token => Fetch(key, token))
                 : new QueryOptions<int>(key, () => Fetch(key, default));
-            if (s_replaceFunction) options = options with { QueryFn = token => Fetch(key, token) };
+            if (s_replaceFunction) options = options with { QueryFn = QueryFunction.Of((CancellationToken token) => Fetch(key, token)) };
             return options with
             {
                 StaleTime = s_staleTime,

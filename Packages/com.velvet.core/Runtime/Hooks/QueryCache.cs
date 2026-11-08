@@ -20,7 +20,7 @@ namespace Velvet
         /// <summary>The entry's key.</summary>
         public QueryKey QueryKey => Entry.Key;
 
-        /// <summary>The <see cref="QueryOptions{TQueryFnData, TData}.Meta"/> of the options the entry was last
+        /// <summary>The <see cref="QueryOptionsBase{TQueryFnData, TData}.Meta"/> of the options the entry was last
         /// handed; null while it holds none.</summary>
         public IReadOnlyDictionary<string, object?>? Meta => Entry.Meta;
 
@@ -28,7 +28,7 @@ namespace Velvet
         public QueryStatus Status => Entry.Status;
 
         /// <summary>The data the entry holds, the query function's data and not the result of
-        /// <see cref="QueryOptions{TQueryFnData, TData}.Select"/>; null while it holds none.</summary>
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.Select"/>; null while it holds none.</summary>
         public object? Data => Entry.BoxedData;
 
         /// <summary>The failure of the entry's last request, under <see cref="QueryStatus.Error"/>; null
@@ -191,7 +191,7 @@ namespace Velvet
         /// <summary>The key of the entry the request fills.</summary>
         public QueryKey QueryKey { get; }
 
-        /// <summary>The options' <see cref="QueryOptions{TQueryFnData, TData}.Meta"/>.</summary>
+        /// <summary>The options' <see cref="QueryOptionsBase{TQueryFnData, TData}.Meta"/>.</summary>
         public IReadOnlyDictionary<string, object?>? Meta { get; }
 
         /// <summary>

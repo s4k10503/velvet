@@ -33,7 +33,7 @@ namespace Velvet
     /// value matched the same way, and one that is a record or a tuple of the key part's type matches it member by
     /// member, each matched the same way.
     /// <para/>
-    /// <see cref="QueryOptions{TQueryFnData, TData}.QueryKeyHashFn"/> replaces how a query that sets it names its
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}.QueryKeyHashFn"/> replaces how a query that sets it names its
     /// entry: the string the function returns names it, and a filter without <see cref="QueryFilters.Exact"/>
     /// still matches the entry's key as above.
     /// </remarks>

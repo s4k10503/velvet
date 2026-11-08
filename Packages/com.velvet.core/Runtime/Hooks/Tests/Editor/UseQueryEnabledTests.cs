@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.Enabled"/>, TanStack Query's <c>enabled</c>.
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.Enabled"/>, TanStack Query's <c>enabled</c>.
     /// <list type="bullet">
     /// <item>A disabled query fetches nothing when it mounts and reports itself pending and idle with nothing
     /// cached, and not stale over stale data.</item>

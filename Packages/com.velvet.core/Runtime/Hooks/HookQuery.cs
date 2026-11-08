@@ -23,7 +23,7 @@ namespace Velvet
     }
 
     /// <summary>
-    /// The properties of a <see cref="QueryResult{T}"/>, for <see cref="QueryOptions{TQueryFnData, TData}.NotifyOnChangeProps"/>:
+    /// The properties of a <see cref="QueryResult{T}"/>, for <see cref="QueryOptionsBase{TQueryFnData, TData}.NotifyOnChangeProps"/>:
     /// TanStack Query's list of result property names.
     /// </summary>
     [Flags]
@@ -127,7 +127,7 @@ namespace Velvet
 
     /// <summary>
     /// TanStack Query's <c>QueryErrorResetBoundary</c> value: whether the queries below it may fetch again after
-    /// an error a query threw to an error boundary, for <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/>
+    /// an error a query threw to an error boundary, for <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/>
     /// and <see cref="Hooks.UseSuspenseQuery{TQueryFnData, TData}"/>. Provide one with
     /// <c>V.Provider(QueryErrorResetBoundaryContext.Ref, value: boundary, children: ...)</c>, keeping the instance
     /// across renders, and call <see cref="Reset"/> from the error boundary's <c>onReset</c>; without one the
@@ -166,7 +166,7 @@ namespace Velvet
 
     /// <summary>
     /// Data a query shows while it has none of its own, or nothing: what
-    /// <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> returns, where TanStack Query's function
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/> returns, where TanStack Query's function
     /// returns the data or <c>undefined</c>. A value converts to it implicitly, and a null value is no data.
     /// </summary>
     /// <typeparam name="T">The query function's data type.</typeparam>
@@ -189,7 +189,7 @@ namespace Velvet
         public static implicit operator QueryPlaceholder<T>(T value) => new(value);
     }
 
-    /// <summary>Ready-made <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> functions.</summary>
+    /// <summary>Ready-made <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/> functions.</summary>
     public static class QueryPlaceholder
     {
         /// <summary>
@@ -205,55 +205,23 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Options passed to <see cref="Hooks.UseQuery{TQueryFnData, TData}"/>: TanStack Query's
-    /// <c>{ queryKey, queryFn }</c> with its <c>enabled</c>, <c>select</c>, <c>placeholderData</c>,
-    /// <c>initialData</c>, <c>initialDataUpdatedAt</c>, <c>staleTime</c>, <c>gcTime</c>, <c>refetchInterval</c>,
+    /// What every query's options hold, whatever fetches its data: TanStack Query's options with their
+    /// <c>queryKey</c>, <c>meta</c>, <c>enabled</c>, <c>select</c>, <c>placeholderData</c>, <c>initialData</c>,
+    /// <c>initialDataUpdatedAt</c>, <c>staleTime</c>, <c>gcTime</c>, <c>refetchInterval</c>,
     /// <c>refetchIntervalInBackground</c>, <c>refetchOnMount</c>, <c>refetchOnWindowFocus</c>,
     /// <c>refetchOnReconnect</c>, <c>retry</c>, <c>retryDelay</c>, <c>retryOnMount</c>, <c>throwOnError</c>,
-    /// <c>structuralSharing</c> and <c>notifyOnChangeProps</c>. <see cref="QueryOptions{T}"/> is the form without a <see cref="Select"/> that
-    /// changes the data's type.
+    /// <c>structuralSharing</c> and <c>notifyOnChangeProps</c>. <see cref="QueryOptions{TQueryFnData, TData}"/> adds
+    /// a query function, and <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}"/> a page function and
+    /// its paging.
     /// </summary>
-    /// <typeparam name="TQueryFnData">What the query function returns and the entry holds.</typeparam>
-    /// <typeparam name="TData">What the result's <see cref="QueryResult{T}.Data"/> holds; the query function's
-    /// data unless <see cref="Select"/> turns it into something else.</typeparam>
+    /// <typeparam name="TQueryFnData">What the entry holds.</typeparam>
+    /// <typeparam name="TData">What the result's <see cref="QueryResult{T}.Data"/> holds; the entry's data unless
+    /// <see cref="Select"/> turns it into something else.</typeparam>
     /// <param name="QueryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-    /// <param name="QueryFn">Fetches the entry's data. The token is cancelled when a refetch starts over this
-    /// request, when <see cref="QueryClient.Clear"/> removes the entry, and when the last query reading the
-    /// entry leaves while the request is in flight, which also puts the entry back as it stood before the
-    /// request started: TanStack Query aborts the request of a query function that read its <c>signal</c> in
-    /// the same case. A function taking the token counts as having read it. The constructor taking a function
-    /// without a token is the one whose request runs on after the last reader leaves, as TanStack Query's does
-    /// for a function that never reads its <c>signal</c>, and the one taking a
-    /// <see cref="QueryFunctionContext"/> counts as having read it once it reads the context's token.</param>
-    public record QueryOptions<TQueryFnData, TData>(
-        QueryKey QueryKey, Func<CancellationToken, VelvetTask<TQueryFnData>> QueryFn)
+    public abstract record QueryOptionsBase<TQueryFnData, TData>(QueryKey QueryKey)
     {
-        /// <summary>
-        /// Options whose query function takes no token: its request is not cancelled when the last query
-        /// reading the entry leaves, and lands in the entry for the next reader to find.
-        /// </summary>
-        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-        /// <param name="queryFn">Fetches the entry's data.</param>
-        public QueryOptions(QueryKey queryKey, Func<VelvetTask<TQueryFnData>> queryFn)
-            : this(queryKey, QueryFunctions.WithoutToken(queryFn))
-        {
-        }
-
-        /// <summary>
-        /// Options whose query function takes TanStack Query's <c>QueryFunctionContext</c>: the client, the key, the
-        /// options' <see cref="Meta"/> and the token. Its request is cancelled when the last query reading the entry
-        /// leaves only if the function has read <see cref="QueryFunctionContext.CancellationToken"/>.
-        /// </summary>
-        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-        /// <param name="queryFn">Fetches the entry's data.</param>
-        public QueryOptions(QueryKey queryKey, Func<QueryFunctionContext, VelvetTask<TQueryFnData>> queryFn)
-            : this(queryKey, QueryFunctions.WithContext(queryFn))
-        {
-        }
-
-        // Told from the function held, so that a `with { QueryFn = ... }` over token-less options is classified by
-        // the function it now carries. A context-taking function is told by its request, as Start reads it.
-        internal bool TakesToken => QueryFn?.Target is not (QueryFunctions.ITokenless or QueryFunctions.IContextual);
+        // What a request runs, as v5 reads options.queryFn; an infinite query's runs its behavior instead.
+        internal abstract QueryFunction<TQueryFnData> Function { get; }
 
         /// <summary>
         /// TanStack Query's <c>meta</c>: what the entry carries as <see cref="Query.Meta"/> for the query cache's
@@ -493,88 +461,152 @@ namespace Velvet
     }
 
     /// <summary>
-    /// <see cref="QueryOptions{TQueryFnData, TData}"/> for a query whose result holds the data its query
-    /// function returns.
+    /// Options passed to <see cref="Hooks.UseQuery{TQueryFnData, TData}"/>: TanStack Query's
+    /// <c>{ queryKey, queryFn }</c> with the options <see cref="QueryOptionsBase{TQueryFnData, TData}"/> lists.
+    /// <see cref="QueryOptions{T}"/> is the form without a select that changes the data's type.
     /// </summary>
+    /// <typeparam name="TQueryFnData">What the query function returns and the entry holds.</typeparam>
+    /// <typeparam name="TData">What the result's <see cref="QueryResult{T}.Data"/> holds.</typeparam>
     /// <param name="QueryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-    /// <param name="QueryFn">Fetches the entry's data; see <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/>.</param>
-    public sealed record QueryOptions<T>(QueryKey QueryKey, Func<CancellationToken, VelvetTask<T>> QueryFn)
-        : QueryOptions<T, T>(QueryKey, QueryFn)
+    /// <param name="QueryFn">Fetches the entry's data. The token is cancelled when a refetch starts over this
+    /// request, when <see cref="QueryClient.Clear"/> removes the entry, and when the last query reading the
+    /// entry leaves while the request is in flight, which also puts the entry back as it stood before the
+    /// request started: TanStack Query aborts the request of a query function that read its <c>signal</c> in
+    /// the same case. A function that reads <see cref="QueryFunctionContext.CancellationToken"/> has read it, and so
+    /// has a function taking the token; one taking no token never has, and its request runs on after the last
+    /// reader leaves.</param>
+    public record QueryOptions<TQueryFnData, TData>(QueryKey QueryKey, QueryFunction<TQueryFnData> QueryFn)
+        : QueryOptionsBase<TQueryFnData, TData>(QueryKey)
     {
+        /// <summary>Options whose query function takes TanStack Query's <c>QueryFunctionContext</c>: the client, the
+        /// key, the options' <see cref="QueryOptionsBase{TQueryFnData, TData}.Meta"/> and the token.</summary>
+        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
+        /// <param name="queryFn">Fetches the entry's data.</param>
+        public QueryOptions(QueryKey queryKey, Func<QueryFunctionContext, VelvetTask<TQueryFnData>> queryFn)
+            : this(queryKey, QueryFunction.Of(queryFn))
+        {
+        }
+
+        /// <summary>Options whose query function takes the token, and so has read it.</summary>
+        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
+        /// <param name="queryFn">Fetches the entry's data.</param>
+        public QueryOptions(QueryKey queryKey, Func<CancellationToken, VelvetTask<TQueryFnData>> queryFn)
+            : this(queryKey, QueryFunction.Of(queryFn))
+        {
+        }
+
         /// <summary>
         /// Options whose query function takes no token: its request is not cancelled when the last query
         /// reading the entry leaves, and lands in the entry for the next reader to find.
         /// </summary>
         /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
         /// <param name="queryFn">Fetches the entry's data.</param>
-        public QueryOptions(QueryKey queryKey, Func<VelvetTask<T>> queryFn)
-            : this(queryKey, QueryFunctions.WithoutToken(queryFn))
+        public QueryOptions(QueryKey queryKey, Func<VelvetTask<TQueryFnData>> queryFn)
+            : this(queryKey, QueryFunction.Of(queryFn))
         {
         }
 
-        /// <summary>
-        /// Options whose query function takes a <see cref="QueryFunctionContext"/>; see the constructor of
-        /// <see cref="QueryOptions{TQueryFnData, TData}"/> taking one.
-        /// </summary>
+        internal override QueryFunction<TQueryFnData> Function => QueryFn;
+    }
+
+    /// <summary>
+    /// <see cref="QueryOptions{TQueryFnData, TData}"/> for a query whose result holds the data its query
+    /// function returns.
+    /// </summary>
+    /// <param name="QueryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
+    /// <param name="QueryFn">Fetches the entry's data; see <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/>.</param>
+    public sealed record QueryOptions<T>(QueryKey QueryKey, QueryFunction<T> QueryFn) : QueryOptions<T, T>(QueryKey, QueryFn)
+    {
+        /// <summary>Options whose query function takes a <see cref="QueryFunctionContext"/>.</summary>
         /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
         /// <param name="queryFn">Fetches the entry's data.</param>
         public QueryOptions(QueryKey queryKey, Func<QueryFunctionContext, VelvetTask<T>> queryFn)
-            : this(queryKey, QueryFunctions.WithContext(queryFn))
+            : this(queryKey, QueryFunction.Of(queryFn))
+        {
+        }
+
+        /// <summary>Options whose query function takes the token.</summary>
+        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
+        /// <param name="queryFn">Fetches the entry's data.</param>
+        public QueryOptions(QueryKey queryKey, Func<CancellationToken, VelvetTask<T>> queryFn)
+            : this(queryKey, QueryFunction.Of(queryFn))
+        {
+        }
+
+        /// <summary>Options whose query function takes no token; see the constructor of
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> taking one.</summary>
+        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
+        /// <param name="queryFn">Fetches the entry's data.</param>
+        public QueryOptions(QueryKey queryKey, Func<VelvetTask<T>> queryFn)
+            : this(queryKey, QueryFunction.Of(queryFn))
         {
         }
     }
 
-    internal static class QueryFunctions
+    /// <summary>Makes a <see cref="QueryFunction{T}"/> of a function of any of the three forms.</summary>
+    public static class QueryFunction
     {
-        internal interface ITokenless
+        /// <summary>A function taking the <see cref="QueryFunctionContext"/>.</summary>
+        public static QueryFunction<T> Of<T>(Func<QueryFunctionContext, VelvetTask<T>> queryFn) => new(queryFn);
+
+        /// <summary>A function taking the token, which counts as reading it.</summary>
+        public static QueryFunction<T> Of<T>(Func<CancellationToken, VelvetTask<T>> queryFn) => new(queryFn);
+
+        /// <summary>A function taking nothing, which never reads the token.</summary>
+        public static QueryFunction<T> Of<T>(Func<VelvetTask<T>> queryFn) => new(queryFn);
+    }
+
+    /// <summary>
+    /// A query function in one of its three forms — taking the <see cref="QueryFunctionContext"/>, the token, or
+    /// nothing — as <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/> holds it. Two compare equal when they
+    /// hold equal delegates, so options rebuilt each render around one function compare equal. Each of the three
+    /// delegate types converts to it implicitly.
+    /// </summary>
+    /// <typeparam name="T">What the function returns.</typeparam>
+    public readonly struct QueryFunction<T> : IEquatable<QueryFunction<T>>
+    {
+        private readonly Delegate? _fn;
+
+        internal QueryFunction(Delegate? fn) => _fn = fn;
+
+        /// <summary>Whether a function is held.</summary>
+        public bool HasValue => _fn != null;
+
+        /// <summary>The function as it was given: a <c>Func</c> of the context, of the token, or of nothing.</summary>
+        public Delegate? Delegate => _fn;
+
+        // The token-taking form reads the context's token as it starts, which is the read that marks the request.
+        internal VelvetTask<T> Invoke(QueryFunctionContext context) => _fn switch
         {
-        }
+            Func<QueryFunctionContext, VelvetTask<T>> contextual => contextual(context),
+            Func<CancellationToken, VelvetTask<T>> tokenTaking => tokenTaking(context.CancellationToken),
+            Func<VelvetTask<T>> tokenless => tokenless(),
+            _ => throw new InvalidOperationException("The query has no QueryFn."),
+        };
 
-        private sealed class Tokenless<T> : ITokenless
-        {
-            private readonly Func<VelvetTask<T>> _queryFn;
+        /// <inheritdoc/>
+        public bool Equals(QueryFunction<T> other) => Equals(_fn, other._fn);
 
-            internal Tokenless(Func<VelvetTask<T>> queryFn) => _queryFn = queryFn;
+        /// <inheritdoc/>
+        public override bool Equals(object? obj) => obj is QueryFunction<T> other && Equals(other);
 
-            internal VelvetTask<T> Invoke(CancellationToken _) => _queryFn();
-        }
+        /// <inheritdoc/>
+        public override int GetHashCode() => _fn?.GetHashCode() ?? 0;
 
-        internal interface IContextual
-        {
-        }
+        /// <summary>Wraps a function taking the context.</summary>
+        public static implicit operator QueryFunction<T>(Func<QueryFunctionContext, VelvetTask<T>> queryFn) => new(queryFn);
 
-        // Held as a token-taking delegate so that QueryOptions keeps one QueryFn; QueryEntry.Start hands the
-        // function its context instead of calling the delegate.
-        internal sealed class Contextual<T> : IContextual
-        {
-            private readonly Func<QueryFunctionContext, VelvetTask<T>> _queryFn;
+        /// <summary>Wraps a function taking the token.</summary>
+        public static implicit operator QueryFunction<T>(Func<CancellationToken, VelvetTask<T>> queryFn) => new(queryFn);
 
-            internal Contextual(Func<QueryFunctionContext, VelvetTask<T>> queryFn) => _queryFn = queryFn;
-
-            internal VelvetTask<T> Invoke(QueryFunctionContext context) => _queryFn(context);
-
-            internal VelvetTask<T> InvokeWithoutContext(CancellationToken _)
-                => throw new InvalidOperationException("A context-taking query function runs only through its entry.");
-        }
-
-        // A null function stays null, so that UseQuery reports it as it does a missing token-taking one.
-        internal static Func<CancellationToken, VelvetTask<T>> WithoutToken<T>(Func<VelvetTask<T>> queryFn)
-        {
-            if (queryFn == null) return null!;
-            return new Tokenless<T>(queryFn).Invoke;
-        }
-
-        internal static Func<CancellationToken, VelvetTask<T>> WithContext<T>(Func<QueryFunctionContext, VelvetTask<T>> queryFn)
-        {
-            if (queryFn == null) return null!;
-            return new Contextual<T>(queryFn).InvokeWithoutContext;
-        }
+        /// <summary>Wraps a function taking nothing.</summary>
+        public static implicit operator QueryFunction<T>(Func<VelvetTask<T>> queryFn) => new(queryFn);
     }
 
     /// <summary>
     /// What <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> returns: the entry's state as this render reads it,
     /// TanStack Query's <c>UseQueryResult</c>. Reading a property marks it as one the component depends on,
-    /// which is what <see cref="QueryOptions{TQueryFnData, TData}.NotifyOnChangeProps"/> leaves to decide when the
+    /// which is what <see cref="QueryOptionsBase{TQueryFnData, TData}.NotifyOnChangeProps"/> leaves to decide when the
     /// component re-renders.
     /// </summary>
     public class QueryResult<T>
@@ -626,7 +658,7 @@ namespace Velvet
         /// Query's <c>failureReason</c>; null once a request lands.</summary>
         public Exception? FailureReason => Read(QueryProperties.FailureReason, _snapshot.FailureReason);
         /// <summary>True when <see cref="Data"/> is
-        /// <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/>'s rather than the entry's, TanStack
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/>'s rather than the entry's, TanStack
         /// Query's <c>isPlaceholderData</c>.</summary>
         public bool IsPlaceholderData => Read(QueryProperties.IsPlaceholderData, _snapshot.IsPlaceholderData);
 
@@ -725,7 +757,7 @@ namespace Velvet
     // times raised to a second at least, as v5's ensureSuspenseTimers raises them.
     internal readonly struct QuerySettings<TQueryFnData, TData>
     {
-        internal QuerySettings(QueryOptions<TQueryFnData, TData> options, QueryClient client, bool suspense)
+        internal QuerySettings(QueryOptionsBase<TQueryFnData, TData> options, QueryClient client, bool suspense)
         {
             Options = options;
             Suspense = suspense;
@@ -761,7 +793,7 @@ namespace Velvet
             Rules = rules;
         }
 
-        internal QueryOptions<TQueryFnData, TData> Options { get; }
+        internal QueryOptionsBase<TQueryFnData, TData> Options { get; }
         internal bool Suspense { get; }
         internal QueryRules Rules { get; }
         internal QueryThrowRule ThrowOnError { get; }
@@ -1034,11 +1066,10 @@ namespace Velvet
     // it lands.
     internal sealed class QueryFetchOptions<T>
     {
-        internal Func<CancellationToken, VelvetTask<T>> QueryFn { get; private set; } = null!;
+        internal QueryFunction<T> QueryFn { get; private set; }
         internal RetryRule Retry { get; private set; }
         internal Func<int, Exception, TimeSpan> RetryDelay { get; private set; } = null!;
         internal Func<object?, object, object>? StructuralSharing { get; private set; }
-        internal bool TakesToken { get; private set; }
         internal NetworkMode NetworkMode { get; private set; }
         internal Func<QueryKey, string>? KeyHashFn { get; private set; }
         internal Func<T>? InitialData { get; private set; }
@@ -1048,14 +1079,14 @@ namespace Velvet
         // TanStack's options.behavior: what a request runs in place of QueryFn, an infinite query's paging.
         internal IQueryBehavior<T>? Behavior { get; private set; }
 
-        internal QueryFetchOptions<T> Assign<TData>(QueryOptions<T, TData> options, QueryClient client)
+        internal QueryFetchOptions<T> Assign<TData>(QueryOptionsBase<T, TData> options, QueryClient client)
         {
             Meta = options.Meta;
             Behavior = (options as IInfiniteQueryOptions<T>)?.CreateBehavior(pages: null);
             KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;
             NetworkMode = options.NetworkMode ?? client.DefaultNetworkMode;
-            QueryFn = options.QueryFn;
-            TakesToken = options.TakesToken;
+            QueryFn = options.Function;
+
             // v5's retryer reads a retry nobody set as three.
             Retry = options.Retry ?? client.DefaultRetry ?? 3;
             RetryDelay = options.RetryDelay ?? client.DefaultRetryDelay;
@@ -1223,7 +1254,7 @@ namespace Velvet
         // TanStack's observerOptionsUpdated, announced over the entry this commit reads once the options differ from
         // those the previous commit handed; a first commit has none to differ from.
         private void AnnounceOptions(
-            QueryEntry<TQueryFnData> entry, QueryOptions<TQueryFnData, TData>? previous, QueryOptions<TQueryFnData, TData> options)
+            QueryEntry<TQueryFnData> entry, QueryOptionsBase<TQueryFnData, TData>? previous, QueryOptionsBase<TQueryFnData, TData> options)
         {
             if (previous == null || Equals(previous, options)) return;
             entry.Client.QueryCache.Notify(new QueryCacheEvent(QueryCacheEventType.ObserverOptionsUpdated, entry.Query, observer: this));

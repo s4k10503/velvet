@@ -13,7 +13,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.Select"/>, TanStack Query's <c>select</c>.
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.Select"/>, TanStack Query's <c>select</c>.
     /// <list type="bullet">
     /// <item>The result holds what the select makes of the entry's data, while the entry keeps the data the
     /// query function returned.</item>

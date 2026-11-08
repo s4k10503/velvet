@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies which query's <see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/> shares the data a
+    /// Specifies which query's <see cref="QueryOptionsBase{TQueryFnData, TData}.StructuralSharing"/> shares the data a
     /// write or a landing leaves in an entry two readers share: the options the entry was last handed, as v5's
     /// <c>setData</c> and its fetch read them.
     /// </summary>

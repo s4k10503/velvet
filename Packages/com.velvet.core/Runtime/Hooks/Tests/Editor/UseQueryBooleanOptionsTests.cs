@@ -9,8 +9,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.EnabledFn"/>,
-    /// <see cref="QueryOptions{TQueryFnData, TData}.RetryOnMount"/> and its function form, TanStack Query's
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.EnabledFn"/>,
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}.RetryOnMount"/> and its function form, TanStack Query's
     /// <c>enabled</c> as a function and <c>retryOnMount</c>.
     /// <list type="bullet">
     /// <item>An enabled function answering false keeps the mounting query from fetching, in place of

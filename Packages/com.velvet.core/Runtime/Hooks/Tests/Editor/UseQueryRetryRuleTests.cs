@@ -11,7 +11,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> and <see cref="QueryClientOptions.Retry"/>
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.Retry"/> and <see cref="QueryClientOptions.Retry"/>
     /// given as a <see cref="RetryRule"/> other than a number: TanStack Query's <c>retry</c> as <c>true</c>,
     /// <c>false</c> or <c>(failureCount, error) =&gt; boolean</c>.
     /// <list type="bullet">

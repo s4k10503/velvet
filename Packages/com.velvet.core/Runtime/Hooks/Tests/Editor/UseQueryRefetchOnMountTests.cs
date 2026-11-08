@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnMount"/>, its function form and the
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.RefetchOnMount"/>, its function form and the
     /// client's default, TanStack Query's <c>refetchOnMount</c>.
     /// <list type="bullet">
     /// <item>A reader mounting over stale data does not fetch under <c>Never</c>, and fetches fresh data under
