@@ -113,9 +113,12 @@ namespace Velvet
                 {
                     State = _navigationPhase,
                     Location = _pendingLocation,
-                    FormMethod = submission?.FormMethod,
+                    FormMethod = submission?.Method,
                     FormAction = submission?.Action,
+                    FormEncType = submission?.EncType,
                     FormData = submission?.FormData,
+                    Json = submission?.Json,
+                    Text = submission?.Text,
                 };
             }
         }
@@ -366,9 +369,8 @@ namespace Velvet
         /// for <c>UseActionData</c> or its failure as that route's error. A method no form takes commits React
         /// Router's 405 error.
         /// </summary>
-        /// <param name="formData">What the submission sends. A <c>get</c> submission encodes the body as
-        /// <c>routing.md</c> lists, in order, as its query string; a body that cannot be encoded commits an error in
-        /// the navigation.</param>
+        /// <param name="formData">What the submission sends, encoded as <see cref="SubmitOptions.EncType"/> says and
+        /// <c>routing.md</c> lists; a body that cannot be encoded commits an error in the navigation.</param>
         /// <param name="options">How to submit; null takes every default. A null
         /// <see cref="SubmitOptions.Action"/> submits to the current location.</param>
         /// <param name="cancellationToken">Token forwarded to the action and the loaders.</param>
@@ -395,7 +397,8 @@ namespace Velvet
                 hash = CurrentLocation?.Hash ?? string.Empty;
             }
             var submission = new Submission(
-                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.Replace);
+                string.IsNullOrEmpty(options.Method) ? "get" : options.Method, action, formData, options.EncType,
+                options.Replace);
             var path = action;
             if (submission.Method == "GET" && submission.Refusal == null)
             {
@@ -423,7 +426,7 @@ namespace Velvet
             }
             var search = to == null ? SearchOf(CurrentLocation?.Path ?? string.Empty) : string.Empty;
             var matches = CurrentLocation?.Matches;
-            var index = matches != null && IsIndexRoute(matches[AnchorIndex(matches, baseRouteIndex)].Route);
+            var index = matches != null && matches[AnchorIndex(matches, baseRouteIndex)].Route?.Index == true;
             var naked = HasBareIndex(search);
             if (index && !naked)
             {
@@ -435,10 +438,6 @@ namespace Velvet
             }
             return path + search;
         }
-
-        // React Router's route.index. A route with an empty path and children is a pathless layout.
-        private static bool IsIndexRoute(RouteDefinition? route)
-            => route?.Path == "" && (route.Children == null || route.Children.Length == 0);
 
         private static bool HasBareIndex(string path)
         {
@@ -1388,35 +1387,69 @@ namespace Velvet
 
         internal sealed class Submission
         {
-            // Upper-case, as an action's request carries it.
+            private const string JsonEncType = "application/json";
+            private const string TextEncType = "text/plain";
+
+            // Upper-case, as React Router 7 reports navigation.formMethod and an action's request carries it.
             internal readonly string Method;
-            // As React Router 6.28 reports navigation.formMethod: lower-case.
-            internal readonly string FormMethod;
             internal readonly string Action;
-            internal readonly object? FormData;
+            internal readonly string EncType;
+            // The encType decides which of these three holds the body, as React Router's normalizeNavigateOptions
+            // sets them; the other two stay null.
+            internal readonly global::Velvet.FormData? FormData;
+            internal readonly object? Json;
+            internal readonly string? Text;
             internal readonly bool? Replace;
-            // The error for a method no form takes or a get body that cannot be encoded, committed in place
-            // of an action's result. It carries no status.
+            // The error for a method no form takes or a body that cannot be encoded, committed in place of an
+            // action's result. It carries no status.
             internal readonly Exception? Refusal;
-            // A get's body as its query, encoded only for a get.
+            // A urlencoded body's pairs, which a get makes its query.
             internal readonly List<KeyValuePair<string, string>> Query = new();
 
-            internal Submission(string method, string action, object? formData, bool? replace)
+            internal Submission(string method, string action, object? body, string? encType, bool? replace)
             {
                 Method = method.ToUpperInvariant();
-                FormMethod = method.ToLowerInvariant();
                 Action = action;
-                FormData = formData;
+                EncType = string.IsNullOrEmpty(encType) ? "application/x-www-form-urlencoded" : encType!;
                 Replace = replace;
                 if (Array.IndexOf(FormMethods, Method) < 0)
                 {
                     Refusal = new InvalidOperationException($"Invalid request method \"{Method}\"");
+                    return;
                 }
-                else if (Method == "GET" && !SubmissionBody.TryEncode(formData, out Query))
+                if (EncType is TextEncType or JsonEncType)
                 {
-                    Refusal = new InvalidOperationException("Unable to encode submission body");
+                    if (Method == "GET")
+                    {
+                        Refusal = InvalidBody();
+                    }
+                    else if (EncType == TextEncType)
+                    {
+                        Text = SubmissionBody.PlainText(body);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            Json = body is string json ? JsonText.Parse(json) : body;
+                        }
+                        catch (FormatException)
+                        {
+                            Refusal = InvalidBody();
+                        }
+                    }
+                    return;
                 }
+                if (!SubmissionBody.TryEncode(body, out Query))
+                {
+                    Refusal = InvalidBody();
+                    return;
+                }
+                // A FormData body is the submission's own, as React Router keeps the instance it was handed.
+                FormData = body as global::Velvet.FormData ?? new global::Velvet.FormData(Query);
             }
+
+            private static Exception InvalidBody() => new InvalidOperationException("Unable to encode submission body");
 
             private static readonly string[] FormMethods = { "GET", "POST", "PUT", "PATCH", "DELETE" };
 
@@ -1432,7 +1465,7 @@ namespace Velvet
         private static int ActionTargetIndex(IReadOnlyList<RouteMatch> matches, string path)
         {
             var leaf = matches.Count - 1;
-            if (IsIndexRoute(matches[leaf].Route) && HasBareIndex(path))
+            if (matches[leaf].Route?.Index == true && HasBareIndex(path))
             {
                 return leaf;
             }
@@ -1508,6 +1541,10 @@ namespace Velvet
                 // React Router commits the refusal at the boundary nearest the leaf, running no action.
                 return new ActionOutcome { Target = matches.Count - 1, Error = submission.Refusal };
             }
+            // Ahead of the action, as React Router builds the request before handleAction: a JSON body that cannot
+            // be stringified throws out of the submission rather than committing as the action's error.
+            var request = new RouteRequest(
+                submission.Method, path, submission.EncType, submission.FormData, submission.Json, submission.Text);
             _revalidationRequired = true;
             var outcome = new ActionOutcome { Target = ActionTargetIndex(matches, path) };
             var match = matches[outcome.Target];
@@ -1523,7 +1560,7 @@ namespace Velvet
                 Params = match.Params,
                 Path = match.MatchedPath,
                 Method = submission.Method,
-                FormData = submission.FormData,
+                Request = request,
             };
             try
             {

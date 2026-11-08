@@ -18,10 +18,19 @@ namespace Velvet
         public string? Id { get; init; }
 
         /// <summary>
-        /// Route pattern matched against the URL, e.g. <c>"users/:id"</c> (<c>"/"</c> for the root,
-        /// <c>""</c> for an index route). Supports <c>:param</c>, optional <c>:param?</c>, and splat <c>*</c>.
+        /// Route pattern matched against the URL, e.g. <c>"users/:id"</c> (<c>"/"</c> for the root). Supports
+        /// <c>:param</c>, optional <c>:param?</c> and <c>segment?</c>, and splat <c>*</c>. Null makes a
+        /// pathless route, which matches only through a child or as an <see cref="Index"/> route; <c>""</c>
+        /// matches its parent's path like any other path.
         /// </summary>
         public string? Path { get; init; }
+
+        /// <summary>
+        /// Whether this is an index route, React Router's <c>index: true</c>: it renders in its parent's
+        /// <c>Outlet</c> at the parent's own path, outranks a sibling of the same path, and is what a bare
+        /// <c>?index</c> in a submission's query targets. An index route declares no <see cref="Children"/>.
+        /// </summary>
+        public bool Index { get; init; }
 
         /// <summary>
         /// Function-type component to mount when this route matches.

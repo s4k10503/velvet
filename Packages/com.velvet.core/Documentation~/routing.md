@@ -182,9 +182,26 @@ Every route has an id, React Router's `route.id`: `RouteDefinition.Id` when it s
 position in the tree, the indexes from the top-level array down joined by `-`, so a root route is `"0"` and
 its second child `"0-1"`. `RouteMatch.RouteId` carries it, and it is the key of the route's loader data, action
 data and error. No two routes of a tree share one: a tree that gives two the same id, or an id equal to another
-route's position, throws `ArgumentException` when the `Router` is built. A pathless layout, a route with an empty
-path and children, is never the end of a matched chain: it is in the chain of every path a child matches, and a
-path only it would have taken does not match through it.
+route's position, throws `ArgumentException` when the `Router` is built.
+
+A path is matched as React Router's `matchRoutes` matches it. Every route that can end a chain is a branch: the
+route with the routes above it, scored by `computeScore` over their paths joined, and the branches are tried
+highest score first. Equal scores are ordered by React Router's comparator, which ranks siblings by declaration and
+calls any other two equal, in the order V8's sort leaves them, so the outcome is React Router's even where those
+two rules alone do not settle it; flattening lists a child's branch before its parent's. A path with optional
+segments (`:lang?`, `docs?`) makes one branch for each way of keeping or dropping them, the kept ones first.
+
+- An index route, `RouteDefinition.Index` (`V.Route(index: true, …)`), is React Router's `index: true`: it
+  matches its parent's own path and scores 2 above a route of the same path, so it is the one that renders in
+  the parent's `V.Outlet` there. It declares no children: a tree that gives one a child list, an empty one
+  included, throws `ArgumentException`, and so does `V.Route` given both.
+- A pathless route, whose `Path` is null, matches nothing by itself: it is in the chain of every path a child
+  matches, and is a branch only as an index route. `V.Route` takes a null `path` for it.
+- A route whose `Path` is `""` is not pathless and not an index route: it matches its parent's path like any
+  other path, children or none, with no index score.
+- An absolute child path must start with the joined path of the routes above it, and only the rest of it is
+  matched after them. One that does not makes the tree throw `ArgumentException`, unless an optional segment
+  made that variant of the path, which is then dropped.
 
 | Hook | Returns | React Router |
 |------|---------|--------------|
@@ -200,7 +217,8 @@ router reads nothing from it. `V.Route` takes `id` and `handle` beside the other
 
 A navigation to a path no route matches commits, as React Router's data router does. The location becomes that
 path and takes a history entry, the loader data empties, and no guard, action or loader runs. The chain it holds
-is one route: the only top-level route, else the first with an empty path or `/`, else a route of no element. That
+is one route: the only top-level route, else the first that is an index route or has a null, empty or `/` path,
+else a route of no element. That
 route carries an `ErrorResponse` with status 404, `StatusText` `"Not Found"` and a `Detail` naming the path, as
 its error, so its `errorElement` renders in place of its `element` and `Hooks.UseRouteError` returns the
 `ErrorResponse`; with no `errorElement` the default error element shows `404 Not Found`. A guard redirect to a
@@ -211,31 +229,51 @@ after the commit; a null path is the one case that commits nothing.
 
 A route's `action` is React Router's route `action`: it runs for a submission, and its result is what
 `Hooks.UseActionData` returns. `Hooks.UseSubmit()` is `useSubmit()`, handing back a `SubmitFunction` that
-takes the form data and a `SubmitOptions` (`Method`, `Action`, `Replace`); `Router.SubmitAsync` is the
-same submission for a host object with no component to hook from. With no `Action` named, or an empty
+takes the form data and a `SubmitOptions` (`Method`, `Action`, `Replace`, `EncType`); `Router.SubmitAsync`
+is the same submission for a host object with no component to hook from. With no `Action` named, or an empty
 one, a submission goes to the route the submitting component renders in, with the current query string;
-with none or with `.`, an index route — a route with an empty path and no children — puts a bare `index`
-in front of the query string, and any other route takes a bare one out, as React Router's `normalizeTo`
-does. A pathless layout, whose path is empty too, is not an index route.
+with none or with `.`, an index route (`RouteDefinition.Index`) puts a bare `index` in front of the query
+string, and any other route takes a bare one out, as React Router's `normalizeTo` does.
+
+`EncType` is React Router's `encType`, and decides what the body becomes:
+
+| `EncType` | The body | `get` |
+|-----------|----------|-------|
+| `application/x-www-form-urlencoded` (the default, and what null or empty means) | read as the URLSearchParams constructor reads it, below, into a `FormData`; a `FormData` body is kept as it is | the pairs replace the query string |
+| `application/json` | passed through as it is, a string parsed as JSON | refused |
+| `text/plain` | a string as it is, a `FormData` or `ISearchParams` as one `name=value` line per entry, anything else as JavaScript's `String` writes it | refused |
+| any other value | as the default, sent as `multipart/form-data` | as the default |
+
+A form body is read as React Router reads it with the URLSearchParams constructor: null, an `ISearchParams`,
+a `FormData`, a string (one leading `?` dropped, `&`-separated, `+` and percent escapes decoded), a dictionary,
+a sequence of key/value pairs, tuples or two-element lists, a primitive, an enum, a `decimal` or a
+`BigInteger`, whose string (an enum's name) parses as a string body does, and any other object, whose readable
+public properties, indexers aside, and then public fields it declares itself stand for a plain object's own
+enumerable ones, each in declaration order. A value is stringified as JavaScript's `String` does: `null` is
+`"null"`, a number has no culture, and a list is its elements joined by `,`. Strings, dictionaries, pair
+sequences and a `FormData` keep the order they were written in; an `ISearchParams` groups the values of a
+repeated key, as its interface does. A body that throws while it is read, or a sequence with an entry that is
+no pair, is one React Router cannot encode either. A refused `get`, and a body that cannot be encoded, run no
+action: the navigation commits "Unable to encode submission body" as the error of the leaf route, to the
+action's path with its query.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
-  data as the query string, which only a `get` encodes. The body is read as React Router reads it with
-  the URLSearchParams constructor: null, an `ISearchParams`, a string (one leading `?` dropped,
-  `&`-separated, `+` and percent escapes decoded), a dictionary, a sequence of key/value pairs, tuples
-  or two-element lists, a primitive, an enum, a `decimal` or a `BigInteger`, whose string (an enum's
-  name) parses as a string body does, and any other object, whose readable public properties, indexers
-  aside, and then public fields it declares itself stand for a plain object's own enumerable ones, each
-  in declaration order. A value is stringified as JavaScript's `String` does: `null` is `"null"`, a
-  number has no culture, and a list is its elements joined by `,`. Strings, dictionaries and pair
-  sequences keep the order they were written in; an `ISearchParams` groups the values of a
-  repeated key, as its interface does. The serialiser is the one every Velvet query uses, so a space
-  is `%20`. A body that throws while it is read, or a sequence with an entry that is no pair, is one React
-  Router cannot encode either: the navigation commits "Unable to encode submission body" as the error of
-  the leaf route and runs no action, to the action's path with its query.
+  data as its query string, written as URLSearchParams writes itself: a space is `+`, and every byte but the
+  ASCII letters and digits and `*`, `-`, `.` and `_` is percent-escaped.
 - `post`, `put`, `patch` and `delete` call the action of the route the path matches: the deepest route
   with a path, or the index route when the query string holds a bare `index`. The action receives a
-  `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `FormData` as it
-  was handed to the submit function.
+  `RouteActionContext` carrying the route's `Params`, the upper-case `Method` and the `Request`, React
+  Router's `request`, built as its `createClientSideRequest` builds one. `RouteRequest.FormData()`,
+  `RouteRequest.Json()` and `RouteRequest.Text()` are `request.formData()`, `.json()` and `.text()`, and
+  each reads the body once, as a fetch request's body is read: a second read throws
+  `InvalidOperationException`. `Text()` returns a JSON body as JavaScript's JSON.stringify writes it, a form body as the
+  query string above or, for `multipart/form-data`, as that encoding with a boundary of its own. `Json()`
+  parses that text as JavaScript's JSON.parse does, an object as a `Dictionary<string, object?>` in a JavaScript
+  object's key order, an array as a `List<object?>`, a number as a `double`, and throws `FormatException` on
+  text that is not JSON. `FormData()` throws `InvalidOperationException` for a JSON or `text/plain` body.
+  `RouteRequest.ContentType` is the header each encoding sends. A JSON body that JavaScript's JSON.stringify cannot
+  write, one that holds itself or a `BigInteger`, throws `InvalidOperationException` out of the submission
+  before the action runs.
 - When the action returns, its result is keyed to its route and published at once, so a route already on
   screen reads it while every matched loader runs; the location then commits with it. The next navigation
   that commits clears it.
@@ -328,9 +366,11 @@ their caller, as a `NavigationResult` or as the exception the attempt threw.
 - `Location` is the location being navigated **to** while `State` is not `Idle` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path — and null while `State` is
   `Idle`, as `navigation.location` is `undefined` then.
-- `FormMethod` (lower-case, as React Router 6.28 reports it), `FormAction` and `FormData` describe the
-  submission in flight, a `get` one included, and are null while `State` is `Idle` or the navigation in
-  flight is not a submission.
+- `FormMethod` (upper-case), `FormAction`, `FormEncType`, `FormData`, `Json` and `Text` describe the
+  submission in flight, a `get` one included, as React Router's `navigation` does, and are null while `State` is
+  `Idle` or the navigation in flight is not a submission. Of the last three, the one the encoding fills holds the
+  body, as the route actions section's table gives it, and the other two are null; `Json` is the body as it was
+  handed to the submit function, or parsed when that was a string.
 
 A host object with no component to hook from reads `Router.Navigation` directly.
 

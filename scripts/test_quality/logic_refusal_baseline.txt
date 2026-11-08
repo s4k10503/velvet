@@ -47,7 +47,6 @@ Packages/com.velvet.core/Runtime/Reconciler/ReconcileState.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/Reconciler.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs	4
 Packages/com.velvet.core/Runtime/Routing/RouteOutlet.cs	1
-Packages/com.velvet.core/Runtime/Routing/Router.cs	1
 Packages/com.velvet.core/Runtime/Routing/SearchParams.cs	2
 Packages/com.velvet.core/Runtime/Styling/BackdropFilterLayer.cs	5
 Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs	2

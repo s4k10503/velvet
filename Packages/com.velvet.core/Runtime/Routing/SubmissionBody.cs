@@ -9,10 +9,39 @@ using System.Runtime.CompilerServices;
 
 namespace Velvet
 {
-    // A get submission's body as React Router's normalizeNavigateOptions encodes it with
-    // new URLSearchParams(body), in the order the body holds its pairs.
+    // A submission's body as React Router's normalizeNavigateOptions encodes it: with new URLSearchParams(body),
+    // in the order the body holds its pairs, or as text/plain's text.
     internal static class SubmissionBody
     {
+        // text/plain: a string as it is, a FormData's or a search params' entries each as name=value and a line
+        // feed, and anything else as String(body).
+        internal static string PlainText(object? body)
+        {
+            switch (body)
+            {
+                case string text:
+                    return text;
+                case FormData formData:
+                    return Lines(formData);
+                case ISearchParams searchParams:
+                    var pairs = new List<KeyValuePair<string, string>>();
+                    AddAll(pairs, searchParams);
+                    return Lines(pairs);
+                default:
+                    return Text(body);
+            }
+        }
+
+        private static string Lines(IEnumerable<KeyValuePair<string, string>> entries)
+        {
+            var text = new System.Text.StringBuilder();
+            foreach (var entry in entries)
+            {
+                text.Append(entry.Key).Append('=').Append(entry.Value).Append('\n');
+            }
+            return text.ToString();
+        }
+
         // False for a body URLSearchParams throws on: a sequence whose entries are not name/value pairs, or
         // anything the encoding itself throws, as React Router's try around new URLSearchParams has it.
         internal static bool TryEncode(object? body, out List<KeyValuePair<string, string>> pairs)
@@ -68,9 +97,6 @@ namespace Velvet
             }
         }
 
-        // A plain object's own enumerable properties: the readable public properties and then the public fields a
-        // type declares itself, each in declaration order, read by reflection as ComponentPropsComparer reads a
-        // props bag.
         private static void AddProperties(List<KeyValuePair<string, string>> pairs, object body)
         {
             if (body.GetType().IsPrimitive || body is Enum || body is decimal || body is BigInteger)
@@ -78,18 +104,29 @@ namespace Velvet
                 pairs.AddRange(RouteQuery.ParsePairs("?" + Text(body)));
                 return;
             }
+            foreach (var property in OwnProperties(body))
+            {
+                pairs.Add(Pair(property.Key, property.Value));
+            }
+        }
+
+        // A plain object's own enumerable properties: the readable public properties and then the public fields a
+        // type declares itself, each in declaration order, read by reflection as ComponentPropsComparer reads a
+        // props bag.
+        internal static IEnumerable<KeyValuePair<string, object?>> OwnProperties(object body)
+        {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
             var type = body.GetType();
             foreach (var property in type.GetProperties(flags).OrderBy(member => member.MetadataToken))
             {
                 if (property.GetIndexParameters().Length == 0 && property.CanRead)
                 {
-                    pairs.Add(Pair(property.Name, property.GetValue(body)));
+                    yield return new KeyValuePair<string, object?>(property.Name, property.GetValue(body));
                 }
             }
             foreach (var field in type.GetFields(flags).OrderBy(member => member.MetadataToken))
             {
-                pairs.Add(Pair(field.Name, field.GetValue(body)));
+                yield return new KeyValuePair<string, object?>(field.Name, field.GetValue(body));
             }
         }
 
@@ -135,7 +172,7 @@ namespace Velvet
 
         // JavaScript's String(value): null is "null", a boolean is lower-case, a number has no culture, and a
         // list is its elements joined by "," with a null one empty, as Array.prototype.toString has it.
-        private static string Text(object? value) => value switch
+        internal static string Text(object? value) => value switch
         {
             null => "null",
             bool flag => flag ? "true" : "false",

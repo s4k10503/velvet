@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Text;
 
 namespace Velvet
 {
@@ -71,20 +73,49 @@ namespace Velvet
             return "?" + string.Join("&", parts);
         }
 
-        // BuildQuery(ISearchParams) groups the values of one key; a pair list keeps the order it was given.
+        // A submission's query, as React Router writes `?${searchParams}`: the pairs in the order given, unlike
+        // BuildQuery(ISearchParams), through the application/x-www-form-urlencoded serializer.
         internal static string BuildQuery(IReadOnlyList<KeyValuePair<string, string>> pairs)
-        {
-            if (pairs.Count == 0)
-            {
-                return string.Empty;
-            }
+            => pairs.Count == 0 ? string.Empty : "?" + FormUrlEncode(pairs);
 
-            var parts = new List<string>(pairs.Count);
+        // URLSearchParams' toString: each name and value as UTF-8, a space as '+', the ASCII letters and digits
+        // and '*', '-', '.', '_' as they are, and every other byte percent-escaped in upper case.
+        internal static string FormUrlEncode(IEnumerable<KeyValuePair<string, string>> pairs)
+        {
+            var text = new StringBuilder();
+            var first = true;
             foreach (var pair in pairs)
             {
-                parts.Add($"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}");
+                if (!first)
+                {
+                    text.Append('&');
+                }
+                first = false;
+                AppendFormComponent(text, pair.Key);
+                text.Append('=');
+                AppendFormComponent(text, pair.Value);
             }
-            return "?" + string.Join("&", parts);
+            return text.ToString();
+        }
+
+        private static void AppendFormComponent(StringBuilder text, string component)
+        {
+            foreach (var b in Encoding.UTF8.GetBytes(component))
+            {
+                var c = (char)b;
+                if (c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '*' or '-' or '.' or '_')
+                {
+                    text.Append(c);
+                }
+                else if (c == ' ')
+                {
+                    text.Append('+');
+                }
+                else
+                {
+                    text.Append('%').Append(b.ToString("X2", CultureInfo.InvariantCulture));
+                }
+            }
         }
     }
 }

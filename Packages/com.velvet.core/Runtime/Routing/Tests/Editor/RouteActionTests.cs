@@ -58,14 +58,15 @@ namespace Velvet.Tests
 
         private static readonly SubmitOptions PostToItems = new() { Method = "post", Action = "/items" };
 
-        private static RouteDefinition ActionRoute(string path,
+        private static RouteDefinition ActionRoute(string? path,
             Func<RouteActionContext, CancellationToken, VelvetTask<object>> action,
             Func<RouteLoaderContext, CancellationToken, VelvetTask<object>>? loader = null,
             RouteDefinition[]? children = null,
             ComponentNode? element = null,
-            ComponentNode? errorElement = null)
+            ComponentNode? errorElement = null,
+            bool index = false)
             => V.Route(path, element ?? V.Component(StubA), loader: loader, errorElement: errorElement,
-                children: children, action: action);
+                children: children, action: action, index: index);
 
         private Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> Loader(string name) => (_, _) =>
         {
@@ -87,7 +88,7 @@ namespace Velvet.Tests
         private VelvetTask<object> Created(RouteActionContext context, CancellationToken _)
         {
             _log.Add("action");
-            return VelvetTask.FromResult<object>($"{context.Method} {context.FormData}");
+            return VelvetTask.FromResult<object>($"{context.Method} {string.Join("&", context.Request.FormData().Keys)}");
         }
 
         private static VelvetTask<object> Throws(RouteActionContext _, CancellationToken __)
@@ -302,7 +303,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That($"{router.Navigation.Location?.Path} {router.Navigation.FormMethod} {_log.Contains("action")}",
-                Is.EqualTo("/other post False"));
+                Is.EqualTo("/other POST False"));
         }
 
         #endregion
@@ -438,7 +439,7 @@ namespace Velvet.Tests
             Submit(router, "?a=b+c&d=%26&e", new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=b%20c&d=%26&e="));
+            Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/items?a=b+c&d=%26&e="));
         }
 
         [Test]
@@ -736,27 +737,6 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, Is.EqualTo("Unable to encode submission body"));
         }
 
-        // GREEN_ON_BASE(characterization): the base already left a post's one-shot sequence unenumerated; this
-        // pins that the encoding added for get bodies does not reach a post's.
-        [Test]
-        public void Given_APostOfAOneShotSequence_When_Submitted_Then_ItIsNotEnumerated()
-        {
-            // Arrange
-            var router = ItemsRouter("/other", Created);
-            var reads = 0;
-            IEnumerable<int> OneShot()
-            {
-                reads++;
-                yield return 1;
-            }
-
-            // Act
-            Submit(router, OneShot(), PostToItems);
-
-            // Assert
-            Assert.That(reads, Is.EqualTo(0));
-        }
-
         private sealed class ThrowingBody
         {
             public string Name => throw new InvalidOperationException();
@@ -832,7 +812,7 @@ namespace Velvet.Tests
             router.SubmitAsync(query, new SubmitOptions { Action = "/search" }).Forget();
 
             // Assert
-            Assert.That(router.Navigation.FormMethod, Is.EqualTo("get"));
+            Assert.That(router.Navigation.FormMethod, Is.EqualTo("GET"));
         }
 
         [Test]
@@ -855,7 +835,7 @@ namespace Velvet.Tests
         #region Which action a submission goes to
 
         private Router IndexRouter(string start) => BuildRouter(start,
-            ActionRoute("/", Logged("layout"), children: new[] { ActionRoute("", Logged("index")) }));
+            ActionRoute("/", Logged("layout"), children: new[] { ActionRoute(null, Logged("index"), index: true) }));
 
         private Func<RouteActionContext, CancellationToken, VelvetTask<object>> Logged(string name) => (_, _) =>
         {
@@ -946,23 +926,6 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation!.Path, Is.EqualTo("/?flag"));
         }
 
-        [Test]
-        public void Given_AnIndexRouteDeclaringAnEmptyChildList_When_ItSubmitsWithoutNamingAnAction_Then_ItsOwnActionRuns()
-        {
-            // Arrange — an empty list declares no child, so the route is still an index route.
-            var router = BuildRouter("/", ActionRoute("/", Logged("layout"), children: new[]
-            {
-                ActionRoute("", Logged("index"), children: new RouteDefinition[0]),
-            }));
-
-            // Act
-            router.SubmitAsync(null, new SubmitOptions { Method = "post" }, baseRouteIndex: 1, default)
-                .GetAwaiter().GetResult();
-
-            // Assert
-            Assert.That(string.Join(",", _log), Is.EqualTo("index"));
-        }
-
         [TestCase(".")]
         [TestCase("")]
         public void Given_AnIndexRouteWithAnAction_When_ItSubmitsToItself_Then_ItsOwnActionRuns(string action)
@@ -985,7 +948,7 @@ namespace Velvet.Tests
             var router = BuildRouter("/settings",
                 ActionRoute("/", Logged("root"), children: new[]
                 {
-                    V.Route("", V.Component(StubA), children: new[] { V.Route("settings", V.Component(StubB)) }),
+                    V.Route(null, V.Component(StubA), children: new[] { V.Route("settings", V.Component(StubB)) }),
                 }));
 
             // Act
@@ -1062,8 +1025,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That($"{s_navigation.State} {s_navigation.FormMethod} {s_navigation.FormAction} {s_navigation.FormData}",
-                Is.EqualTo("Submitting put /items lamp"));
+            Assert.That(
+                $"{s_navigation.State} {s_navigation.FormMethod} {s_navigation.FormAction} "
+                + string.Join("&", s_navigation.FormData?.Keys ?? Array.Empty<string>()),
+                Is.EqualTo("Submitting PUT /items lamp"));
         }
 
         [Test]
@@ -1079,7 +1044,9 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That($"{s_navigation.State} {s_navigation.FormData}", Is.EqualTo("Submitting second"));
+            Assert.That(
+                $"{s_navigation.State} " + string.Join("&", s_navigation.FormData?.Keys ?? Array.Empty<string>()),
+                Is.EqualTo("Submitting second"));
         }
 
         [Test]

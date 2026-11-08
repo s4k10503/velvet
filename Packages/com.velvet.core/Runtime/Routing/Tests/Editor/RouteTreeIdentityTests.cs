@@ -11,13 +11,15 @@ namespace Velvet.Tests
     /// <item>A route's <see cref="RouteMatch.RouteId"/> is its <see cref="RouteDefinition.Id"/>, or else its
     /// position in the tree: the indexes from the top-level array down, joined by <c>-</c>. No two routes of
     /// one tree share it, and a tree that gives two the same id refuses to build.</item>
-    /// <item>A pathless layout consumes no path, so a chain never ends on one: it is in the chain of a path
-    /// a child matches, and matches no path by itself.</item>
+    /// <item>A pathless layout, a route with a null path, consumes no path, so a chain never ends on one: it is
+    /// in the chain of a path a child matches, and matches no path by itself.</item>
     /// </list>
     /// </summary>
     [TestFixture]
     internal sealed class RouteTreeIdentityTests
     {
+        private static RouteDefinition IndexRoute() => new() { Index = true, Element = V.Component(StubA) };
+
         #region RouteId
 
         [Test]
@@ -26,8 +28,8 @@ namespace Velvet.Tests
             // Arrange
             var tree = new RouteTree(new[]
             {
-                Route("", children: new[] { Route("x") }),
-                Route("", children: new[] { Route("y") }),
+                Route(null, children: new[] { Route("x") }),
+                Route(null, children: new[] { Route("y") }),
             });
 
             // Act
@@ -44,7 +46,7 @@ namespace Velvet.Tests
             // Arrange
             var tree = new RouteTree(new[]
             {
-                Route("/", children: new[] { Route("") }),
+                Route("/", children: new[] { IndexRoute() }),
             });
 
             // Act
@@ -131,7 +133,7 @@ namespace Velvet.Tests
             // Arrange
             var tree = new RouteTree(new[]
             {
-                Route("", children: new[] { Route("x") }),
+                Route(null, children: new[] { Route("x") }),
             });
 
             // Act
@@ -147,7 +149,7 @@ namespace Velvet.Tests
             // Arrange
             var tree = new RouteTree(new[]
             {
-                Route("/", children: new[] { Route("", children: new[] { Route("x") }) }),
+                Route("/", children: new[] { Route(null, children: new[] { Route("x") }) }),
             });
 
             // Act
@@ -163,7 +165,7 @@ namespace Velvet.Tests
             // Arrange
             var tree = new RouteTree(new[]
             {
-                Route("", children: new[] { Route("") }),
+                Route(null, children: new[] { IndexRoute() }),
             });
 
             // Act
@@ -173,21 +175,21 @@ namespace Velvet.Tests
             Assert.That(result.Count, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): the base already puts a pathless layout in the chain of its child's path.
+        // GREEN_ON_BASE(characterization): the base already puts a null-path layout in the chain of its child's path.
         [Test]
         public void Given_APathlessLayout_When_MatchingAChildPath_Then_TheLayoutIsInTheChain()
         {
             // Arrange
             var tree = new RouteTree(new[]
             {
-                Route("", children: new[] { Route("x") }),
+                Route(null, children: new[] { Route("x") }),
             });
 
             // Act
             var result = tree.Match("/x");
 
             // Assert
-            Assert.That(new[] { result[0].Route.Path, result[1].Route.Path }, Is.EqualTo(new[] { "", "x" }));
+            Assert.That(new[] { result[0].Route.Path, result[1].Route.Path }, Is.EqualTo(new[] { null, "x" }));
         }
 
         #endregion
