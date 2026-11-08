@@ -70,20 +70,57 @@ namespace Velvet.Tests
             s_flagRenders = 0;
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_APlaceholder_When_NothingIsCached_Then_TheResultShowsItAsASuccess()
+        public void Given_APlaceholder_When_NothingIsCached_Then_TheResultShowsItAsASuccess_Status()
         {
             // Act
             using var mounted = Mount();
 
             // Assert
-            Assert.That((Last().Status, Last().Data, Last().IsPlaceholderData, Last().IsFetching),
-                Is.EqualTo((QueryStatus.Success, 9, true, true)),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Success),
                 "The placeholder shows as a success while the query fetches its own data");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_APlaceholderShowing_When_TheRequestLands_Then_TheResultShowsTheData()
+        public void Given_APlaceholder_When_NothingIsCached_Then_TheResultShowsItAsASuccess_Data()
+        {
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(Last().Data, Is.EqualTo(9),
+                "The placeholder shows as a success while the query fetches its own data");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_APlaceholder_When_NothingIsCached_Then_TheResultShowsItAsASuccess_IsPlaceholderData()
+        {
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(true),
+                "The placeholder shows as a success while the query fetches its own data");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_APlaceholder_When_NothingIsCached_Then_TheResultShowsItAsASuccess_IsFetching()
+        {
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(true),
+                "The placeholder shows as a success while the query fetches its own data");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_APlaceholderShowing_When_TheRequestLands_Then_TheResultShowsTheData_Data()
         {
             // Arrange
             using var mounted = Mount();
@@ -93,11 +130,27 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Data, Last().IsPlaceholderData), Is.EqualTo((5, false)), "The entry's own data replaces the placeholder");
+            Assert.That(Last().Data, Is.EqualTo(5), "The entry's own data replaces the placeholder");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_APlaceholderShowing_When_GetQueryDataReads_Then_ItIsDefault()
+        public void Given_APlaceholderShowing_When_TheRequestLands_Then_TheResultShowsTheData_IsPlaceholderData()
+        {
+            // Arrange
+            using var mounted = Mount();
+
+            // Act
+            s_sources[0].TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(false), "The entry's own data replaces the placeholder");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_APlaceholderShowing_When_GetQueryDataReads_Then_ItIsDefault_Data()
         {
             // Arrange
             using var mounted = Mount();
@@ -106,11 +159,26 @@ namespace Velvet.Tests
             var cached = s_client.GetQueryData<int>(new QueryKey("page", 1));
 
             // Assert
-            Assert.That((Last().Data, cached), Is.EqualTo((9, 0)), "Placeholder data is never written to the cache");
+            Assert.That(Last().Data, Is.EqualTo(9), "Placeholder data is never written to the cache");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AFailedEntryWithoutData_When_APlaceholderIsSet_Then_TheResultIsTheError()
+        public void Given_APlaceholderShowing_When_GetQueryDataReads_Then_ItIsDefault_Cached()
+        {
+            // Arrange
+            using var mounted = Mount();
+
+            // Act
+            var cached = s_client.GetQueryData<int>(new QueryKey("page", 1));
+
+            // Assert
+            Assert.That(cached, Is.EqualTo(0), "Placeholder data is never written to the cache");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AFailedEntryWithoutData_When_APlaceholderIsSet_Then_TheResultIsTheError_Status()
         {
             // Arrange
             using var mounted = Mount();
@@ -120,7 +188,23 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().IsPlaceholderData), Is.EqualTo((QueryStatus.Error, false)),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "A placeholder stands in only while the query is pending");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AFailedEntryWithoutData_When_APlaceholderIsSet_Then_TheResultIsTheError_IsPlaceholderData()
+        {
+            // Arrange
+            using var mounted = Mount();
+
+            // Act
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(false),
                 "A placeholder stands in only while the query is pending");
         }
 
@@ -138,8 +222,9 @@ namespace Velvet.Tests
             Assert.That(s_placeholderCalls, Is.EqualTo(1), "The placeholder is kept while the same function made it");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_KeepPreviousData_When_TheKeyChanges_Then_TheOldKeysDataShows()
+        public void Given_KeepPreviousData_When_TheKeyChanges_Then_TheOldKeysDataShows_Data()
         {
             // Arrange
             s_placeholder = QueryPlaceholder.KeepPreviousData;
@@ -151,12 +236,49 @@ namespace Velvet.Tests
             TurnTo(mounted, 2);
 
             // Assert
-            Assert.That((Last().Data, Last().IsPlaceholderData, Last().IsFetching), Is.EqualTo((1, true, true)),
+            Assert.That(Last().Data, Is.EqualTo(1),
                 "The previous key's data stays on screen while the new key's request is in flight");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_KeepPreviousData_When_NothingWasLoadedBefore_Then_TheQueryIsPending()
+        public void Given_KeepPreviousData_When_TheKeyChanges_Then_TheOldKeysDataShows_IsPlaceholderData()
+        {
+            // Arrange
+            s_placeholder = QueryPlaceholder.KeepPreviousData;
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            TurnTo(mounted, 2);
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(true),
+                "The previous key's data stays on screen while the new key's request is in flight");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_KeepPreviousData_When_TheKeyChanges_Then_TheOldKeysDataShows_IsFetching()
+        {
+            // Arrange
+            s_placeholder = QueryPlaceholder.KeepPreviousData;
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            TurnTo(mounted, 2);
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(true),
+                "The previous key's data stays on screen while the new key's request is in flight");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_KeepPreviousData_When_NothingWasLoadedBefore_Then_TheQueryIsPending_Status()
         {
             // Arrange
             s_placeholder = QueryPlaceholder.KeepPreviousData;
@@ -165,12 +287,28 @@ namespace Velvet.Tests
             using var mounted = Mount();
 
             // Assert
-            Assert.That((Last().Status, Last().IsPlaceholderData), Is.EqualTo((QueryStatus.Pending, false)),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Pending),
                 "With no previous data there is nothing to keep");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_KeepPreviousDataShowingTheOldKey_When_TheNewKeysRequestLands_Then_ItShowsTheNewData()
+        public void Given_KeepPreviousData_When_NothingWasLoadedBefore_Then_TheQueryIsPending_IsPlaceholderData()
+        {
+            // Arrange
+            s_placeholder = QueryPlaceholder.KeepPreviousData;
+
+            // Act
+            using var mounted = Mount();
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(false),
+                "With no previous data there is nothing to keep");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_KeepPreviousDataShowingTheOldKey_When_TheNewKeysRequestLands_Then_ItShowsTheNewData_Data()
         {
             // Arrange
             s_placeholder = QueryPlaceholder.KeepPreviousData;
@@ -184,7 +322,26 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Data, Last().IsPlaceholderData), Is.EqualTo((2, false)), "The new key's data replaces the kept data");
+            Assert.That(Last().Data, Is.EqualTo(2), "The new key's data replaces the kept data");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_KeepPreviousDataShowingTheOldKey_When_TheNewKeysRequestLands_Then_ItShowsTheNewData_IsPlaceholderData()
+        {
+            // Arrange
+            s_placeholder = QueryPlaceholder.KeepPreviousData;
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+            TurnTo(mounted, 2);
+
+            // Act
+            s_sources[1].TrySetResult(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(false), "The new key's data replaces the kept data");
         }
 
         [Test]
@@ -257,8 +414,9 @@ namespace Velvet.Tests
             Assert.That(s_selected[s_selected.Count - 1].Data, Is.EqualTo("#9"), "The placeholder goes through the select");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_DataThatLandedAfterAPlaceholder_When_TheKeyChanges_Then_ThePlaceholderIsAskedForAgain()
+        public void Given_DataThatLandedAfterAPlaceholder_When_TheKeyChanges_Then_ThePlaceholderIsAskedForAgain_Data()
         {
             // Arrange
             using var mounted = Mount();
@@ -269,7 +427,24 @@ namespace Velvet.Tests
             TurnTo(mounted, 2);
 
             // Assert
-            Assert.That((Last().Data, s_placeholderCalls), Is.EqualTo((9, 2)),
+            Assert.That(Last().Data, Is.EqualTo(9),
+                "The placeholder is kept only while the result before still showed it");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_DataThatLandedAfterAPlaceholder_When_TheKeyChanges_Then_ThePlaceholderIsAskedForAgain_PlaceholderCalls()
+        {
+            // Arrange
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Act
+            TurnTo(mounted, 2);
+
+            // Assert
+            Assert.That(s_placeholderCalls, Is.EqualTo(2),
                 "The placeholder is kept only while the result before still showed it");
         }
 
@@ -306,8 +481,9 @@ namespace Velvet.Tests
             Assert.That(Last().Data, Is.EqualTo(7), "A placeholder is kept only while the same function made it");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_KeepPreviousDataShowingTheOldKey_When_TheFunctionIsReplaced_Then_ItIsHandedTheDataOfTheEntryThatHadSome()
+        public void Given_KeepPreviousDataShowingTheOldKey_When_TheFunctionIsReplaced_Then_ItIsHandedTheDataOfTheEntryThatHadSome_Data()
         {
             // Arrange
             s_placeholder = QueryPlaceholder.KeepPreviousData;
@@ -322,12 +498,34 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Data, Last().IsPlaceholderData), Is.EqualTo((1, true)),
+            Assert.That(Last().Data, Is.EqualTo(1),
                 "The entry moved to has no data, so the placeholder is made from the data of the entry the component left");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_APlaceholderWhoseSelectThrew_When_ASelectThatSucceedsReplacesIt_Then_TheResultShowsThePlaceholder()
+        public void Given_KeepPreviousDataShowingTheOldKey_When_TheFunctionIsReplaced_Then_ItIsHandedTheDataOfTheEntryThatHadSome_IsPlaceholderData()
+        {
+            // Arrange
+            s_placeholder = QueryPlaceholder.KeepPreviousData;
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(1);
+            mounted.FlushStateForTest();
+            TurnTo(mounted, 2);
+            s_placeholder = (previous, previousKey) => QueryPlaceholder.KeepPreviousData(previous, previousKey);
+
+            // Act
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsPlaceholderData, Is.EqualTo(true),
+                "The entry moved to has no data, so the placeholder is made from the data of the entry the component left");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_APlaceholderWhoseSelectThrew_When_ASelectThatSucceedsReplacesIt_Then_TheResultShowsThePlaceholder_Count1Status()
         {
             // Arrange
             s_select = _ => throw new InvalidOperationException("select-failed");
@@ -340,8 +538,25 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_selected[s_selected.Count - 1].Status, s_selected[s_selected.Count - 1].Data),
-                Is.EqualTo((QueryStatus.Success, "#9")), "A select that works on the placeholder clears the error a failing one left");
+            Assert.That(s_selected[s_selected.Count - 1].Status, Is.EqualTo(QueryStatus.Success), "A select that works on the placeholder clears the error a failing one left");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_APlaceholderWhoseSelectThrew_When_ASelectThatSucceedsReplacesIt_Then_TheResultShowsThePlaceholder_Count1Data()
+        {
+            // Arrange
+            s_select = _ => throw new InvalidOperationException("select-failed");
+            using var mounted = V.Mount(_root, V.Component(SelectingPager, key: "pager"));
+            mounted.FlushEffectsForTest();
+            s_select = data => "#" + data;
+
+            // Act
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_selected[s_selected.Count - 1].Data, Is.EqualTo("#9"), "A select that works on the placeholder clears the error a failing one left");
         }
 
         [Test]

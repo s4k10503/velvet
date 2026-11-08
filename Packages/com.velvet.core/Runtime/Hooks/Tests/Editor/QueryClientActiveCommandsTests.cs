@@ -187,8 +187,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain()
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain_Calls()
         {
             // Arrange
             using var mounted = MountResolved(1);
@@ -198,11 +199,42 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Status, Last().IsFetching), Is.EqualTo((2, QueryStatus.Pending, true)));
+            Assert.That(s_calls, Is.EqualTo(2));
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_TheTaskCompletesOnceTheNewRequestLands()
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain_Status()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+
+            // Act
+            _ = s_client.ResetQueries(new QueryFilters { QueryKey = Todos });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Pending));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain_IsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+
+            // Act
+            _ = s_client.ResetQueries(new QueryFilters { QueryKey = Todos });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(true));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_TheTaskCompletesOnceTheNewRequestLands_TaskStatus()
         {
             // Arrange
             using var mounted = MountResolved(1);
@@ -212,7 +244,22 @@ namespace Velvet.Tests
             s_sources[1].TrySetResult(9);
 
             // Assert
-            Assert.That((task.Status, s_client.GetQueryData<int>(Todos)), Is.EqualTo((VelvetTaskStatus.Succeeded, 9)));
+            Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_TheTaskCompletesOnceTheNewRequestLands_QueryDataIntTodos()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+            var task = s_client.ResetQueries();
+
+            // Act
+            s_sources[1].TrySetResult(9);
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(9));
         }
 
         [Test]
@@ -243,8 +290,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "The query moves to a new entry, which it fetches, as after Clear");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_CancelQueriesRuns_Then_ItIsPendingAndNotFetching()
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_CancelQueriesRuns_Then_ItIsPendingAndNotFetching_Status()
         {
             // Arrange
             using var mounted = Mount();
@@ -254,11 +302,27 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().IsFetching), Is.EqualTo((QueryStatus.Pending, false)));
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Pending));
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching()
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_CancelQueriesRuns_Then_ItIsPendingAndNotFetching_IsFetching()
+        {
+            // Arrange
+            using var mounted = Mount();
+
+            // Act
+            s_client.CancelQueries(new QueryFilters { QueryKey = Todos });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(false));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching_Status()
         {
             // Arrange
             using var mounted = MountResolved(1);
@@ -270,7 +334,41 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().Data, Last().IsFetching), Is.EqualTo((QueryStatus.Success, 1, false)));
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Success));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching_Data()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+            Last().Refetch();
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.CancelQueries();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Data, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching_IsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+            Last().Refetch();
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.CancelQueries();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(false));
         }
 
         [Test]
@@ -299,8 +397,9 @@ namespace Velvet.Tests
             Assert.That(selected.Count, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_FetchQueryRuns_Then_ItJoinsTheRequestAndTheTaskHoldsItsData()
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_FetchQueryRuns_Then_ItJoinsTheRequestAndTheTaskHoldsItsData_Calls()
         {
             // Arrange
             using var mounted = Mount();
@@ -310,7 +409,22 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(4);
 
             // Assert
-            Assert.That((s_calls, task.GetAwaiter().GetResult()), Is.EqualTo((1, 4)));
+            Assert.That(s_calls, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_FetchQueryRuns_Then_ItJoinsTheRequestAndTheTaskHoldsItsData_TaskResult()
+        {
+            // Arrange
+            using var mounted = Mount();
+            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, Fetch));
+
+            // Act
+            s_sources[0].TrySetResult(4);
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(4));
         }
 
         private MountedTree Mount()

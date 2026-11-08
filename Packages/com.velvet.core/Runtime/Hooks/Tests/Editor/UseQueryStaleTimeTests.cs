@@ -66,9 +66,9 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AComponentReadingIsStale_When_TheStaleTimeElapses_Then_ItRerendersAsStale()
+        public IEnumerator Given_AComponentReadingIsStale_When_TheStaleTimeElapses_Then_ItRerendersAsStale_EarlyRendersBefore()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -83,7 +83,28 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((early == rendersBefore, s_result.IsStale), Is.EqualTo((true, true)),
+            Assert.That(early == rendersBefore, Is.EqualTo(true),
+                "Fresh data turns stale when its age reaches the stale time, and not before");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AComponentReadingIsStale_When_TheStaleTimeElapses_Then_ItRerendersAsStale_ResultIsStale()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = MountResolved();
+            var rendersBefore = s_renderCount;
+
+            // Act
+            await Pass(Seconds(9.999));
+            mounted.FlushStateForTest();
+            var early = s_renderCount;
+            await Pass(Seconds(0.001));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_result.IsStale, Is.EqualTo(true),
                 "Fresh data turns stale when its age reaches the stale time, and not before");
         });
 
@@ -163,9 +184,9 @@ namespace Velvet.Tests
             Assert.That(s_result.IsStale, Is.True, "The commit that follows the first read of IsStale starts the wait");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_FreshDataLandingAgainLater_When_TheFirstStaleTimeElapses_Then_ItIsStillFreshUntilTheSecond()
+        public IEnumerator Given_FreshDataLandingAgainLater_When_TheFirstStaleTimeElapses_Then_ItIsStillFreshUntilTheSecond_AtTheFirstDeadlineRendersBefore()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -184,7 +205,32 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((atTheFirstDeadline == rendersBefore, s_result.IsStale), Is.EqualTo((true, true)),
+            Assert.That(atTheFirstDeadline == rendersBefore, Is.EqualTo(true),
+                "Data that landed later is stale a stale time after it did");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_FreshDataLandingAgainLater_When_TheFirstStaleTimeElapses_Then_ItIsStillFreshUntilTheSecond_ResultIsStale()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = MountResolved();
+            await Pass(Seconds(5));
+            s_result.Refetch();
+            s_sources[1].TrySetResult(8);
+            mounted.FlushStateForTest();
+            var rendersBefore = s_renderCount;
+
+            // Act
+            await Pass(Seconds(5));
+            mounted.FlushStateForTest();
+            var atTheFirstDeadline = s_renderCount;
+            await Pass(Seconds(5));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_result.IsStale, Is.EqualTo(true),
                 "Data that landed later is stale a stale time after it did");
         });
 

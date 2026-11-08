@@ -115,8 +115,9 @@ namespace Velvet.Tests
                 "The entry keeps what the query function returned; only the result is selected");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AStableSelect_When_TheComponentRendersAgain_Then_ItDoesNotRunAgain()
+        public void Given_AStableSelect_When_TheComponentRendersAgain_Then_ItDoesNotRunAgain_Runs()
         {
             // Arrange
             using var mounted = Mount(Selecting);
@@ -127,7 +128,23 @@ namespace Velvet.Tests
             Rerender(mounted);
 
             // Assert
-            Assert.That((runs, s_selects), Is.EqualTo((1, 1)), "The select runs again only for new data or a new select");
+            Assert.That(runs, Is.EqualTo(1), "The select runs again only for new data or a new select");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AStableSelect_When_TheComponentRendersAgain_Then_ItDoesNotRunAgain_Selects()
+        {
+            // Arrange
+            using var mounted = Mount(Selecting);
+            Land(mounted, 1, 2, 3);
+            var runs = s_selects;
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_selects, Is.EqualTo(1), "The select runs again only for new data or a new select");
         }
 
         [Test]
@@ -146,8 +163,9 @@ namespace Velvet.Tests
             Assert.That(s_selects, Is.EqualTo(runs + 1), "A select is remembered by instance, as v5 compares it with ===");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ASelectionEqualToTheLast_When_NewDataLands_Then_TheResultKeepsTheSelectedInstance()
+        public void Given_ASelectionEqualToTheLast_When_NewDataLands_Then_TheResultKeepsTheSelectedInstance_Selects()
         {
             // Arrange
             using var mounted = Mount(Selecting);
@@ -160,7 +178,26 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_selects, ReferenceEquals(Last().Data, selected)), Is.EqualTo((2, true)),
+            Assert.That(s_selects, Is.EqualTo(2),
+                "What the select returns is shared structurally with the result's data, as v5's replaceData does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ASelectionEqualToTheLast_When_NewDataLands_Then_TheResultKeepsTheSelectedInstance_ReferenceEqualsDataSelected()
+        {
+            // Arrange
+            using var mounted = Mount(Selecting);
+            Land(mounted, 1, 2, 3);
+            var selected = Last().Data;
+            Last().Refetch();
+
+            // Act
+            s_sources[1].TrySetResult(new[] { 0, 2, 3 });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ReferenceEquals(Last().Data, selected), Is.EqualTo(true),
                 "What the select returns is shared structurally with the result's data, as v5's replaceData does");
         }
 
@@ -191,8 +228,9 @@ namespace Velvet.Tests
             Assert.That(s_counts[s_counts.Count - 1].Data, Is.EqualTo(103), "The selected data goes through the function as v5's replaceData does");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ASelectThatThrows_When_TheRequestLands_Then_TheResultIsAnErrorCarryingItsException()
+        public void Given_ASelectThatThrows_When_TheRequestLands_Then_TheResultIsAnErrorCarryingItsException_Status()
         {
             // Arrange
             using var mounted = Mount(Throwing);
@@ -201,7 +239,22 @@ namespace Velvet.Tests
             Land(mounted, 1);
 
             // Assert
-            Assert.That((Last().Status, Last().Error?.Message), Is.EqualTo((QueryStatus.Error, "select-failed")),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "A failing select is the result's error");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ASelectThatThrows_When_TheRequestLands_Then_TheResultIsAnErrorCarryingItsException_ErrorMessage()
+        {
+            // Arrange
+            using var mounted = Mount(Throwing);
+
+            // Act
+            Land(mounted, 1);
+
+            // Assert
+            Assert.That(Last().Error?.Message, Is.EqualTo("select-failed"),
                 "A failing select is the result's error");
         }
 
@@ -271,8 +324,9 @@ namespace Velvet.Tests
                 "A select error goes with the data it ran on, as v5 clears it once the data is undefined");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AStableSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain()
+        public void Given_AStableSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain_Status()
         {
             // Arrange
             using var mounted = Mount(ThrowingPager);
@@ -285,7 +339,26 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().Error?.Message), Is.EqualTo((QueryStatus.Error, "select-failed")),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "The memo goes with the cleared error, so the data that comes back is selected and fails again");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AStableSelectThatThrewOverOneKey_When_TheKeyMovesToAnUncachedOneAndBack_Then_TheResultIsAnErrorAgain_ErrorMessage()
+        {
+            // Arrange
+            using var mounted = Mount(ThrowingPager);
+            Land(mounted, 1);
+            s_setPage.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setPage.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Error?.Message, Is.EqualTo("select-failed"),
                 "The memo goes with the cleared error, so the data that comes back is selected and fails again");
         }
 

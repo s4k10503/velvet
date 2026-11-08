@@ -222,8 +222,9 @@ namespace Velvet.Tests
             Assert.That(write, Throws.ArgumentNullException.With.Property("ParamName").EqualTo("updater"));
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_DataWrittenByHand_When_AQueryMountsWithinItsStaleTime_Then_NothingIsFetched()
+        public void Given_DataWrittenByHand_When_AQueryMountsWithinItsStaleTime_Then_NothingIsFetched_Calls()
         {
             // Arrange
             s_staleTime = TimeSpan.FromMinutes(1);
@@ -236,7 +237,25 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Data), Is.EqualTo((0, 4)), "Written data is fresh from the moment it was written");
+            Assert.That(s_calls, Is.EqualTo(0), "Written data is fresh from the moment it was written");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_DataWrittenByHand_When_AQueryMountsWithinItsStaleTime_Then_NothingIsFetched_Data()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            s_now = TimeSpan.FromSeconds(30);
+            s_client.SetQueryData(Todos, 4);
+            s_now = TimeSpan.FromSeconds(89);
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(Last().Data, Is.EqualTo(4), "Written data is fresh from the moment it was written");
         }
 
         [Test]
@@ -273,8 +292,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0), "A write clears the invalidation, as v5's success action does");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError()
+        public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError_Status()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
@@ -287,12 +307,51 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().Data, Last().Error), Is.EqualTo((QueryStatus.Success, 8, (Exception?)null)),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Success),
                 "A write is a success: it replaces the error and re-renders the readers");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ARequestInFlight_When_SetQueryDataWrites_Then_TheRequestKeepsRunning()
+        public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError_Data()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.SetQueryData(Todos, 8);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Data, Is.EqualTo(8),
+                "A write is a success: it replaces the error and re-renders the readers");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AMountedQueryThatFailed_When_SetQueryDataWrites_Then_ItRendersASuccessWithoutError_Error()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.SetQueryData(Todos, 8);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Error, Is.EqualTo((Exception?)null),
+                "A write is a success: it replaces the error and re-renders the readers");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARequestInFlight_When_SetQueryDataWrites_Then_TheRequestKeepsRunning_Data()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
@@ -303,12 +362,30 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Data, Last().IsFetching), Is.EqualTo((8, true)),
+            Assert.That(Last().Data, Is.EqualTo(8),
                 "A write by hand leaves the request in flight running, as v5's manual setData does");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_DataWrittenOverARequestInFlight_When_TheRequestLands_Then_ItsDataReplacesTheWrite()
+        public void Given_ARequestInFlight_When_SetQueryDataWrites_Then_TheRequestKeepsRunning_IsFetching()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_client.SetQueryData(Todos, 8);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(true),
+                "A write by hand leaves the request in flight running, as v5's manual setData does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_DataWrittenOverARequestInFlight_When_TheRequestLands_Then_ItsDataReplacesTheWrite_Data()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
@@ -320,7 +397,24 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Data, Last().IsFetching), Is.EqualTo((9, false)), "The request lands over the written data");
+            Assert.That(Last().Data, Is.EqualTo(9), "The request lands over the written data");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_DataWrittenOverARequestInFlight_When_TheRequestLands_Then_ItsDataReplacesTheWrite_IsFetching()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            s_client.SetQueryData(Todos, 8);
+
+            // Act
+            s_sources[0].TrySetResult(9);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(false), "The request lands over the written data");
         }
 
         #endregion

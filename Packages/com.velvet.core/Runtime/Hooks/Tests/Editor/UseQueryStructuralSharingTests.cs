@@ -97,8 +97,9 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True, "Deeply equal data is the instance already held");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheHeldListAndRecordAreKept()
+        public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheHeldListAndRecordAreKept_ReferenceEqualsResultHeld()
         {
             // Arrange
             var held = new List<Todo> { new(1, "a") };
@@ -108,12 +109,29 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result, held), ReferenceEquals(result[0], held[0])), Is.EqualTo((true, true)),
+            Assert.That(ReferenceEquals(result, held), Is.EqualTo(true),
                 "A record whose fields are all equal is the instance already held");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AListSharingOneRecordInstanceAndHoldingAChangedOne_When_Replaced_Then_TheSharedRecordIsKeptAndTheChangedOneIsNew()
+        public void Given_TwoListsHoldingEqualButDistinctRecords_When_Replaced_Then_TheHeldListAndRecordAreKept_0Held0()
+        {
+            // Arrange
+            var held = new List<Todo> { new(1, "a") };
+            var arrived = new List<Todo> { new(1, "a") };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result[0], held[0]), Is.EqualTo(true),
+                "A record whose fields are all equal is the instance already held");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AListSharingOneRecordInstanceAndHoldingAChangedOne_When_Replaced_Then_TheSharedRecordIsKeptAndTheChangedOneIsNew_Result0Shared()
         {
             // Arrange
             var shared = new Todo(1, "a");
@@ -124,12 +142,30 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], shared), ReferenceEquals(result[1], arrived[1])), Is.EqualTo((true, true)),
+            Assert.That(ReferenceEquals(result[0], shared), Is.EqualTo(true),
                 "A record changed in place of the held one is the new instance");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_TheEqualRecordKeepsItsInstance()
+        public void Given_AListSharingOneRecordInstanceAndHoldingAChangedOne_When_Replaced_Then_TheSharedRecordIsKeptAndTheChangedOneIsNew_1Arrived1()
+        {
+            // Arrange
+            var shared = new Todo(1, "a");
+            var held = new List<Todo> { shared, new(2, "b") };
+            var arrived = new List<Todo> { shared, new(2, "B") };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result[1], arrived[1]), Is.EqualTo(true),
+                "A record changed in place of the held one is the new instance");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_TheEqualRecordKeepsItsInstance_0Held0()
         {
             // Arrange
             var held = new[] { new Todo(1, "a"), new Todo(2, "b") };
@@ -139,7 +175,23 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], held[0]), ReferenceEquals(result[1], arrived[1])), Is.EqualTo((true, true)),
+            Assert.That(ReferenceEquals(result[0], held[0]), Is.EqualTo(true),
+                "The record with every field equal is the held one and the changed one is the new instance");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AnArrayOfEqualButDistinctRecordsWithOneChanged_When_Replaced_Then_TheEqualRecordKeepsItsInstance_1Arrived1()
+        {
+            // Arrange
+            var held = new[] { new Todo(1, "a"), new Todo(2, "b") };
+            var arrived = new[] { new Todo(1, "a"), new Todo(2, "B") };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result[1], arrived[1]), Is.EqualTo(true),
                 "The record with every field equal is the held one and the changed one is the new instance");
         }
 
@@ -157,8 +209,9 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AListLongerThanTheHeldOne_When_Replaced_Then_TheSharedPrefixKeepsItsInstances()
+        public void Given_AListLongerThanTheHeldOne_When_Replaced_Then_TheSharedPrefixKeepsItsInstances_0Held0()
         {
             // Arrange
             var shared = new Todo(1, "a");
@@ -169,12 +222,30 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], held[0]), result.Count), Is.EqualTo((true, 2)),
+            Assert.That(ReferenceEquals(result[0], held[0]), Is.EqualTo(true),
                 "A list is not the held one because the part it shares with it is equal");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AListShorterThanTheHeldOne_When_Replaced_Then_ItIsNotTheHeldListButKeepsTheEqualRecord()
+        public void Given_AListLongerThanTheHeldOne_When_Replaced_Then_TheSharedPrefixKeepsItsInstances_ResultCount()
+        {
+            // Arrange
+            var shared = new Todo(1, "a");
+            var held = new List<Todo> { shared };
+            var arrived = new List<Todo> { shared, new(2, "b") };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(result.Count, Is.EqualTo(2),
+                "A list is not the held one because the part it shares with it is equal");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AListShorterThanTheHeldOne_When_Replaced_Then_ItIsNotTheHeldListButKeepsTheEqualRecord_0Held0()
         {
             // Arrange
             var shared = new Todo(1, "a");
@@ -185,12 +256,30 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], held[0]), result.Count), Is.EqualTo((true, 1)),
+            Assert.That(ReferenceEquals(result[0], held[0]), Is.EqualTo(true),
                 "Everything the new list holds equals the held list's, yet the held list holds more");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ADictionaryWithOneChangedValue_When_Replaced_Then_TheEqualValueKeepsItsInstanceAndTheChangedOneIsNew()
+        public void Given_AListShorterThanTheHeldOne_When_Replaced_Then_ItIsNotTheHeldListButKeepsTheEqualRecord_ResultCount()
+        {
+            // Arrange
+            var shared = new Todo(1, "a");
+            var held = new List<Todo> { shared, new(2, "b") };
+            var arrived = new List<Todo> { shared };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(result.Count, Is.EqualTo(1),
+                "Everything the new list holds equals the held list's, yet the held list holds more");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ADictionaryWithOneChangedValue_When_Replaced_Then_TheEqualValueKeepsItsInstanceAndTheChangedOneIsNew_AHeldA()
         {
             // Arrange
             var unchanged = new Todo(1, "x");
@@ -201,8 +290,23 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result["a"], held["a"]), ReferenceEquals(result["b"], arrived["b"])),
-                Is.EqualTo((true, true)));
+            Assert.That(ReferenceEquals(result["a"], held["a"]), Is.EqualTo(true));
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ADictionaryWithOneChangedValue_When_Replaced_Then_TheEqualValueKeepsItsInstanceAndTheChangedOneIsNew_BArrivedB()
+        {
+            // Arrange
+            var unchanged = new Todo(1, "x");
+            var held = new Dictionary<string, Todo> { ["a"] = unchanged, ["b"] = new(2, "y") };
+            var arrived = new Dictionary<string, Todo> { ["a"] = unchanged, ["b"] = new(2, "Y") };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result["b"], arrived["b"]), Is.EqualTo(true));
         }
 
         [Test]
@@ -241,8 +345,9 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ListsNestedInAList_When_OneInnerListIsEqual_Then_ItKeepsItsInstance()
+        public void Given_ListsNestedInAList_When_OneInnerListIsEqual_Then_ItKeepsItsInstance_0Held0()
         {
             // Arrange
             var shared = new Todo(1, "a");
@@ -253,8 +358,23 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result[0], held[0]), ReferenceEquals(result[1], arrived[1])),
-                Is.EqualTo((true, true)), "Equal parts are found at any depth");
+            Assert.That(ReferenceEquals(result[0], held[0]), Is.EqualTo(true), "Equal parts are found at any depth");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ListsNestedInAList_When_OneInnerListIsEqual_Then_ItKeepsItsInstance_1Arrived1()
+        {
+            // Arrange
+            var shared = new Todo(1, "a");
+            var held = new List<List<Todo>> { new() { shared }, new() { new(2, "b") } };
+            var arrived = new List<List<Todo>> { new() { shared }, new() { new(2, "B") } };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(ReferenceEquals(result[1], arrived[1]), Is.EqualTo(true), "Equal parts are found at any depth");
         }
 
         [Test]
@@ -271,9 +391,9 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, held), Is.True, "A class is shared through its fields, not through its Equals");
         }
 
-        // GREEN_ON_BASE(characterization): the base takes the arrived instance of a class, which is not the held one either.
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AClassEqualByItsOwnEqualsButWithADifferingField_When_Replaced_Then_ItIsNotTheHeldInstance()
+        public void Given_AClassEqualByItsOwnEqualsButWithADifferingField_When_Replaced_Then_ItIsNotTheHeldInstance_ReferenceEqualsResultHeld()
         {
             // Arrange
             var held = new Entity(1) { Note = "a" };
@@ -283,7 +403,23 @@ namespace Velvet.Tests
             var result = QueryStructuralSharing.Replace(held, arrived);
 
             // Assert
-            Assert.That((ReferenceEquals(result, held), result.Note), Is.EqualTo((false, "b")),
+            Assert.That(ReferenceEquals(result, held), Is.EqualTo(false),
+                "An Equals that means less than every field does not stand in for them");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AClassEqualByItsOwnEqualsButWithADifferingField_When_Replaced_Then_ItIsNotTheHeldInstance_ResultNote()
+        {
+            // Arrange
+            var held = new Entity(1) { Note = "a" };
+            var arrived = new Entity(1) { Note = "b" };
+
+            // Act
+            var result = QueryStructuralSharing.Replace(held, arrived);
+
+            // Assert
+            Assert.That(result.Note, Is.EqualTo("b"),
                 "An Equals that means less than every field does not stand in for them");
         }
 
@@ -342,8 +478,9 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(result, arrived), Is.True, "An array and a list are not the same shape of data");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance()
+        public void Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance_ReferenceEqualsShallowHeldShallow()
         {
             // Arrange — the string at the bottom is a new instance each time, so it is the descent that keeps it.
             // The shallower chain ends at depth 500 and the deeper at 501, where the descent stops.
@@ -355,7 +492,25 @@ namespace Velvet.Tests
             var deep = QueryStructuralSharing.Replace(heldDeep, Chain(501));
 
             // Assert
-            Assert.That((ReferenceEquals(shallow, heldShallow), ReferenceEquals(deep, heldDeep)), Is.EqualTo((true, false)),
+            Assert.That(ReferenceEquals(shallow, heldShallow), Is.EqualTo(true),
+                "Sharing stops descending at the depth v5 stops at and takes the new data there");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_EqualListsNestedFiveHundredAndFiveHundredAndOneDeep_When_Replaced_Then_OnlyTheShallowerKeepsTheHeldInstance_ReferenceEqualsDeepHeldDeep()
+        {
+            // Arrange — the string at the bottom is a new instance each time, so it is the descent that keeps it.
+            // The shallower chain ends at depth 500 and the deeper at 501, where the descent stops.
+            var heldShallow = Chain(500);
+            var heldDeep = Chain(501);
+
+            // Act
+            var shallow = QueryStructuralSharing.Replace(heldShallow, Chain(500));
+            var deep = QueryStructuralSharing.Replace(heldDeep, Chain(501));
+
+            // Assert
+            Assert.That(ReferenceEquals(deep, heldDeep), Is.EqualTo(false),
                 "Sharing stops descending at the depth v5 stops at and takes the new data there");
         }
 
@@ -475,8 +630,9 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(handedHeld, first), Is.True);
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AFunctionThatThrows_When_TheRequestLands_Then_TheQueryReportsTheError()
+        public void Given_AFunctionThatThrows_When_TheRequestLands_Then_TheQueryReportsTheError_Status()
         {
             // Arrange
             s_sharing = (_, _) => throw new InvalidOperationException("sharing-failed");
@@ -488,7 +644,25 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().Error?.Message), Is.EqualTo((QueryStatus.Error, "sharing-failed")),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "A function that fails is a failed request, as v5 reports a structural sharing that throws");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AFunctionThatThrows_When_TheRequestLands_Then_TheQueryReportsTheError_ErrorMessage()
+        {
+            // Arrange
+            s_sharing = (_, _) => throw new InvalidOperationException("sharing-failed");
+            using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Land(0, new List<Todo> { new(1, "a") });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Error?.Message, Is.EqualTo("sharing-failed"),
                 "A function that fails is a failed request, as v5 reports a structural sharing that throws");
         }
 

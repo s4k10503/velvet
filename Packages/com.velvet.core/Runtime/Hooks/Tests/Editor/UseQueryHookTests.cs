@@ -157,8 +157,9 @@ namespace Velvet.Tests
                 "Two components reading one key share the request the first one started");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_TwoComponentsReadingOneKey_When_TheRequestResolves_Then_BothRenderItsData()
+        public void Given_TwoComponentsReadingOneKey_When_TheRequestResolves_Then_BothRenderItsData_RendersAData()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
@@ -169,12 +170,30 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Data, Last(s_rendersB).Data), Is.EqualTo((7, 7)),
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(7),
                 "Every component reading the entry re-renders with the result");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_TwoComponentsAwaitingOneRequest_When_OneUnmounts_Then_TheOtherStillReceivesTheResult()
+        public void Given_TwoComponentsReadingOneKey_When_TheRequestResolves_Then_BothRenderItsData_RendersBData()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersB).Data, Is.EqualTo(7),
+                "Every component reading the entry re-renders with the result");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_TwoComponentsAwaitingOneRequest_When_OneUnmounts_Then_TheOtherStillReceivesTheResult_TokenIsCancellationRequested()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
@@ -187,12 +206,32 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((token.IsCancellationRequested, Last(s_rendersB).Data), Is.EqualTo((false, 7)),
+            Assert.That(token.IsCancellationRequested, Is.EqualTo(false),
                 "The request belongs to the entry, so a reader leaving neither cancels it nor keeps it from the other");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ARefetchInFlightOverData_When_AnotherReaderMounts_Then_ItJoinsTheRefetch()
+        public void Given_TwoComponentsAwaitingOneRequest_When_OneUnmounts_Then_TheOtherStillReceivesTheResult_RendersBData()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
+            mounted.FlushEffectsForTest();
+            var token = s_tokens[0];
+
+            // Act
+            Hide(mounted);
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersB).Data, Is.EqualTo(7),
+                "The request belongs to the entry, so a reader leaving neither cancels it nor keeps it from the other");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchInFlightOverData_When_AnotherReaderMounts_Then_ItJoinsTheRefetch_FetchedCount()
         {
             // Arrange
             using var mounted = MountResolvedSolo(1);
@@ -203,7 +242,24 @@ namespace Velvet.Tests
             other.FlushEffectsForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, s_tokens[1].IsCancellationRequested), Is.EqualTo((2, false)),
+            Assert.That(s_fetched.Count, Is.EqualTo(2),
+                "Mounting is not an explicit refetch, so it joins the request in flight rather than starting over");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchInFlightOverData_When_AnotherReaderMounts_Then_ItJoinsTheRefetch_Tokens1IsCancellationRequested()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            using var other = V.Mount(new VisualElement(), V.Component(ReaderB, key: "b"));
+            other.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_tokens[1].IsCancellationRequested, Is.EqualTo(false),
                 "Mounting is not an explicit refetch, so it joins the request in flight rather than starting over");
         }
 
@@ -243,8 +299,9 @@ namespace Velvet.Tests
                 "v5 lets a request whose function never read the signal run on, and its result lands in the entry");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AFirstRequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheEntryIsPendingAndIdle()
+        public void Given_AFirstRequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheEntryIsPendingAndIdle_EntryStatus()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -255,12 +312,30 @@ namespace Velvet.Tests
 
             // Assert
             var entry = s_client.PeekById<int>(Todos);
-            Assert.That((entry!.Status, entry.IsFetching), Is.EqualTo((QueryStatus.Pending, false)),
+            Assert.That(entry!.Status, Is.EqualTo(QueryStatus.Pending),
                 "Cancelling with revert puts the entry back as it was before the request, which is not fetching");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching()
+        public void Given_AFirstRequestWhoseFunctionTakesTheToken_When_TheLastReaderLeaves_Then_TheEntryIsPendingAndIdle_EntryIsFetching()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            var entry = s_client.PeekById<int>(Todos);
+            Assert.That(entry.IsFetching, Is.EqualTo(false),
+                "Cancelling with revert puts the entry back as it was before the request, which is not fetching");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_Tokens1IsCancellationRequested()
         {
             // Arrange
             using var mounted = MountResolvedSolo(1);
@@ -271,13 +346,64 @@ namespace Velvet.Tests
 
             // Assert
             var entry = s_client.PeekById<int>(Todos);
-            Assert.That((s_tokens[1].IsCancellationRequested, entry!.Status, entry.Data, entry.IsFetching),
-                Is.EqualTo((true, QueryStatus.Success, 1, false)),
+            Assert.That(s_tokens[1].IsCancellationRequested, Is.EqualTo(true),
                 "The refetch is cancelled and the data it would have replaced stays");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ACancelledRequest_When_ItsFunctionCompletesAfterwards_Then_TheEntryIsNotChanged()
+        public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_EntryStatus()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            var entry = s_client.PeekById<int>(Todos);
+            Assert.That(entry!.Status, Is.EqualTo(QueryStatus.Success),
+                "The refetch is cancelled and the data it would have replaced stays");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_EntryData()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            var entry = s_client.PeekById<int>(Todos);
+            Assert.That(entry.Data, Is.EqualTo(1),
+                "The refetch is cancelled and the data it would have replaced stays");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchOverData_When_TheLastReaderLeaves_Then_TheEntryKeepsItsDataAndStopsFetching_EntryIsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            Hide(mounted);
+
+            // Assert
+            var entry = s_client.PeekById<int>(Todos);
+            Assert.That(entry.IsFetching, Is.EqualTo(false),
+                "The refetch is cancelled and the data it would have replaced stays");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ACancelledRequest_When_ItsFunctionCompletesAfterwards_Then_TheEntryIsNotChanged_EntryStatus()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -289,7 +415,25 @@ namespace Velvet.Tests
 
             // Assert
             var entry = s_client.PeekById<int>(Todos);
-            Assert.That((entry!.Status, entry.Data), Is.EqualTo((QueryStatus.Pending, 0)),
+            Assert.That(entry!.Status, Is.EqualTo(QueryStatus.Pending),
+                "A request cancelled by its last reader leaving lands nothing");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ACancelledRequest_When_ItsFunctionCompletesAfterwards_Then_TheEntryIsNotChanged_EntryData()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+            Hide(mounted);
+
+            // Act
+            s_sources[0].TrySetResult(7);
+
+            // Assert
+            var entry = s_client.PeekById<int>(Todos);
+            Assert.That(entry.Data, Is.EqualTo(0),
                 "A request cancelled by its last reader leaving lands nothing");
         }
 
@@ -308,8 +452,9 @@ namespace Velvet.Tests
             Assert.That(s_fetched.Count, Is.EqualTo(2), "The entry is pending again, so the next reader fetches it");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ARequestWithTwoReaders_When_OneLeavesAndThenTheOther_Then_TheTokenIsCancelledOnlyAtTheSecond()
+        public void Given_ARequestWithTwoReaders_When_OneLeavesAndThenTheOther_Then_TheTokenIsCancelledOnlyAtTheSecond_AfterTheFirst()
         {
             // Arrange
             var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
@@ -322,7 +467,26 @@ namespace Velvet.Tests
             mounted.Dispose();
 
             // Assert
-            Assert.That((afterTheFirst, token.IsCancellationRequested), Is.EqualTo((false, true)),
+            Assert.That(afterTheFirst, Is.EqualTo(false),
+                "The request is cancelled when the last observer leaves, not the first");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARequestWithTwoReaders_When_OneLeavesAndThenTheOther_Then_TheTokenIsCancelledOnlyAtTheSecond_TokenIsCancellationRequested()
+        {
+            // Arrange
+            var mounted = V.Mount(_root, V.Component(Pair, key: "pair"));
+            mounted.FlushEffectsForTest();
+            var token = s_tokens[0];
+            Hide(mounted);
+            var afterTheFirst = token.IsCancellationRequested;
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(token.IsCancellationRequested, Is.EqualTo(true),
                 "The request is cancelled when the last observer leaves, not the first");
         }
 
@@ -444,8 +608,9 @@ namespace Velvet.Tests
                 "The request is gone, so nothing keeps the entry past its gcTime");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest()
+        public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest_FetchedCount()
         {
             // Arrange
             FiberStrictMode.Enabled = true;
@@ -457,8 +622,43 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested, Last(s_rendersA).Data),
-                Is.EqualTo((2, true, 7)),
+            Assert.That(s_fetched.Count, Is.EqualTo(2),
+                "The first setup's request is cancelled by the cleanup and the second setup fetches again, as v5 does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest_Tokens0IsCancellationRequested()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(true),
+                "The first setup's request is cancelled by the cleanup and the second setup fetches again, as v5 does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_StrictModeAndATokenTakingFunction_When_AReaderMounts_Then_ItsSecondSubscriptionStartsANewRequest_RendersAData()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(7),
                 "The first setup's request is cancelled by the cleanup and the second setup fetches again, as v5 does");
         }
 
@@ -466,33 +666,97 @@ namespace Velvet.Tests
 
         #region What a render reports
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale()
+        public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale_RendersA0Status()
         {
             // Act
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
 
             // Assert
-            Assert.That((s_rendersA[0].Status, s_rendersA[0].IsFetching, s_rendersA[0].IsStale),
-                Is.EqualTo((QueryStatus.Pending, true, true)),
+            Assert.That(s_rendersA[0].Status, Is.EqualTo(QueryStatus.Pending),
                 "The render before the subscription reports the fetch the subscription is about to start");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle()
+        public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale_RendersA0IsFetching()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Assert
+            Assert.That(s_rendersA[0].IsFetching, Is.EqualTo(true),
+                "The render before the subscription reports the fetch the subscription is about to start");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_NothingCached_When_TheQueryFirstRenders_Then_ItIsPendingFetchingAndStale_RendersA0IsStale()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Assert
+            Assert.That(s_rendersA[0].IsStale, Is.EqualTo(true),
+                "The render before the subscription reports the fetch the subscription is about to start");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsPending()
         {
             // Act
             using var mounted = MountResolvedSolo(7);
             var result = Last(s_rendersA);
 
             // Assert
-            Assert.That((result.IsPending, result.IsSuccess, result.IsError, result.IsFetching),
-                Is.EqualTo((false, true, false, false)),
+            Assert.That(result.IsPending, Is.EqualTo(false),
                 "A subscribed query with nothing in flight reports no fetch, even with its result stale");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching()
+        public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsSuccess()
+        {
+            // Act
+            using var mounted = MountResolvedSolo(7);
+            var result = Last(s_rendersA);
+
+            // Assert
+            Assert.That(result.IsSuccess, Is.EqualTo(true),
+                "A subscribed query with nothing in flight reports no fetch, even with its result stale");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsError()
+        {
+            // Act
+            using var mounted = MountResolvedSolo(7);
+            var result = Last(s_rendersA);
+
+            // Assert
+            Assert.That(result.IsError, Is.EqualTo(false),
+                "A subscribed query with nothing in flight reports no fetch, even with its result stale");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItRenders_Then_ItsFlagsReadSuccessAndIdle_ResultIsFetching()
+        {
+            // Act
+            using var mounted = MountResolvedSolo(7);
+            var result = Last(s_rendersA);
+
+            // Assert
+            Assert.That(result.IsFetching, Is.EqualTo(false),
+                "A subscribed query with nothing in flight reports no fetch, even with its result stale");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching_RendersAStatus()
         {
             // Arrange
             using var mounted = MountResolvedSolo(1);
@@ -502,13 +766,45 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data, Last(s_rendersA).IsFetching),
-                Is.EqualTo((QueryStatus.Success, 1, true)),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Success),
                 "A refetch keeps the status and the data, and reports the request in flight");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData()
+        public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching_RendersAData()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+
+            // Act
+            Last(s_rendersA).Refetch();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(1),
+                "A refetch keeps the status and the data, and reports the request in flight");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ARefetchIsInFlight_Then_ItRendersTheDataWhileFetching_RendersAIsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+
+            // Act
+            Last(s_rendersA).Refetch();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).IsFetching, Is.EqualTo(true),
+                "A refetch keeps the status and the data, and reports the request in flight");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultStatus()
         {
             // Arrange
             using var mounted = MountResolvedSolo(1);
@@ -520,8 +816,61 @@ namespace Velvet.Tests
             var result = Last(s_rendersA);
 
             // Assert
-            Assert.That((result.Status, result.IsError, result.Data, result.Error?.Message),
-                Is.EqualTo((QueryStatus.Error, true, 1, "refetch-failed")),
+            Assert.That(result.Status, Is.EqualTo(QueryStatus.Error),
+                "A failure keeps the last good data, as TanStack does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultIsError()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            s_sources[1].TrySetException(new InvalidOperationException("refetch-failed"));
+            mounted.FlushStateForTest();
+            var result = Last(s_rendersA);
+
+            // Assert
+            Assert.That(result.IsError, Is.EqualTo(true),
+                "A failure keeps the last good data, as TanStack does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultData()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            s_sources[1].TrySetException(new InvalidOperationException("refetch-failed"));
+            mounted.FlushStateForTest();
+            var result = Last(s_rendersA);
+
+            // Assert
+            Assert.That(result.Data, Is.EqualTo(1),
+                "A failure keeps the last good data, as TanStack does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedQuery_When_ItsRefetchFails_Then_TheErrorStandsBesideTheEarlierData_ResultErrorMessage()
+        {
+            // Arrange
+            using var mounted = MountResolvedSolo(1);
+            Last(s_rendersA).Refetch();
+
+            // Act
+            s_sources[1].TrySetException(new InvalidOperationException("refetch-failed"));
+            mounted.FlushStateForTest();
+            var result = Last(s_rendersA);
+
+            // Assert
+            Assert.That(result.Error?.Message, Is.EqualTo("refetch-failed"),
                 "A failure keeps the last good data, as TanStack does");
         }
 
@@ -542,8 +891,9 @@ namespace Velvet.Tests
                 "A failure flags the data it leaves in place as stale, so the next reader asks again");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AFirstRequest_When_ItFails_Then_TheQueryRendersTheError()
+        public void Given_AFirstRequest_When_ItFails_Then_TheQueryRendersTheError_RendersAStatus()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -554,13 +904,30 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Error?.Message),
-                Is.EqualTo((QueryStatus.Error, "first-failed")),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Error),
                 "A subscribed query with no data reports its failure rather than a pending fetch");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AFirstRequest_When_ItFails_Then_TheQueryRendersTheError_RendersAErrorMessage()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_sources[0].TrySetException(new InvalidOperationException("first-failed"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Error?.Message, Is.EqualTo("first-failed"),
+                "A subscribed query with no data reports its failure rather than a pending fetch");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AQueryFunctionReturningACompletedResult_When_AFrameAdvances_Then_ItRendersTheResult()
+        public IEnumerator Given_AQueryFunctionReturningACompletedResult_When_AFrameAdvances_Then_ItRendersTheResult_RendersAStatus()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -574,12 +941,33 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Success, 5)),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Success),
                 "A result the query function hands back already completed settles the entry a frame later");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_AFrameAdvances_Then_ItRendersTheError()
+        public IEnumerator Given_AQueryFunctionReturningACompletedResult_When_AFrameAdvances_Then_ItRendersTheResult_RendersAData()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mode = FetchMode.CompletedResult;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(5),
+                "A result the query function hands back already completed settles the entry a frame later");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_AFrameAdvances_Then_ItRendersTheError_RendersAStatus()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -593,13 +981,33 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Error?.Message),
-                Is.EqualTo((QueryStatus.Error, "threw-synchronously")),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Error),
                 "A query function that throws is a failed request, not a crash");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AQueryFunctionReturningACompletedFault_When_AFrameAdvances_Then_ItRendersTheError()
+        public IEnumerator Given_AQueryFunctionThatThrowsBeforeReturning_When_AFrameAdvances_Then_ItRendersTheError_RendersAErrorMessage()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mode = FetchMode.ThrowsSynchronously;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Error?.Message, Is.EqualTo("threw-synchronously"),
+                "A query function that throws is a failed request, not a crash");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AQueryFunctionReturningACompletedFault_When_AFrameAdvances_Then_ItRendersTheError_RendersAStatus()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -613,8 +1021,27 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Error?.Message),
-                Is.EqualTo((QueryStatus.Error, "completed-fault")),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Error),
+                "A fault the query function hands back already completed settles the entry a frame later");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AQueryFunctionReturningACompletedFault_When_AFrameAdvances_Then_ItRendersTheError_RendersAErrorMessage()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_mode = FetchMode.CompletedFault;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Error?.Message, Is.EqualTo("completed-fault"),
                 "A fault the query function hands back already completed settles the entry a frame later");
         });
 
@@ -653,8 +1080,9 @@ namespace Velvet.Tests
 
         #region Retaining a result
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AResolvedEntryWhoseOnlyReaderUnmounted_When_AReaderMountsAgain_Then_ItsFirstRenderShowsTheData()
+        public void Given_AResolvedEntryWhoseOnlyReaderUnmounted_When_AReaderMountsAgain_Then_ItsFirstRenderShowsTheData_RendersA0Status()
         {
             // Arrange
             using var mounted = MountResolvedSoloThenHide(7);
@@ -665,7 +1093,24 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_rendersA[0].Status, s_rendersA[0].Data), Is.EqualTo((QueryStatus.Success, 7)),
+            Assert.That(s_rendersA[0].Status, Is.EqualTo(QueryStatus.Success),
+                "The entry outlives its readers, so a reader mounting over it renders the result at once");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AResolvedEntryWhoseOnlyReaderUnmounted_When_AReaderMountsAgain_Then_ItsFirstRenderShowsTheData_RendersA0Data()
+        {
+            // Arrange
+            using var mounted = MountResolvedSoloThenHide(7);
+            s_rendersA.Clear();
+
+            // Act
+            s_setShowA.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_rendersA[0].Data, Is.EqualTo(7),
                 "The entry outlives its readers, so a reader mounting over it renders the result at once");
         }
 
@@ -763,8 +1208,9 @@ namespace Velvet.Tests
 
         #region Garbage collection
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AnUnreadEntry_When_TheClientSweepsAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt()
+        public void Given_AnUnreadEntry_When_TheClientSweepsAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_KeptJustBefore()
         {
             // Arrange — the reader leaves at one minute, so the entry's time runs from there.
             s_now = TimeSpan.FromMinutes(1);
@@ -779,7 +1225,28 @@ namespace Velvet.Tests
             var removedAt = s_client.PeekById<int>(Todos) == null;
 
             // Assert
-            Assert.That((keptJustBefore, removedAt), Is.EqualTo((true, true)),
+            Assert.That(keptJustBefore, Is.EqualTo(true),
+                "An entry nothing reads is kept until it has gone unread for its gcTime, and removed from then on");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AnUnreadEntry_When_TheClientSweepsAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_RemovedAt()
+        {
+            // Arrange — the reader leaves at one minute, so the entry's time runs from there.
+            s_now = TimeSpan.FromMinutes(1);
+            using var mounted = MountResolvedSoloThenHide(7);
+
+            // Act
+            s_now = TimeSpan.FromMinutes(1) + GcTime - TimeSpan.FromTicks(1);
+            s_client.InvalidateQueries(Unrelated);
+            var keptJustBefore = s_client.PeekById<int>(Todos) != null;
+            s_now = TimeSpan.FromMinutes(1) + GcTime;
+            s_client.InvalidateQueries(Unrelated);
+            var removedAt = s_client.PeekById<int>(Todos) == null;
+
+            // Assert
+            Assert.That(removedAt, Is.EqualTo(true),
                 "An entry nothing reads is kept until it has gone unread for its gcTime, and removed from then on");
         }
 
@@ -798,8 +1265,9 @@ namespace Velvet.Tests
             Assert.That(s_client.PeekById<int>(Todos), Is.Null, "A subscription sweeps the client");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_TwoExpiredUnreadEntries_When_ReadersOfBothMountInOneCommit_Then_TheSecondRendersNoData()
+        public void Given_TwoExpiredUnreadEntries_When_ReadersOfBothMountInOneCommit_Then_TheSecondRendersNoData_RendersB0Status()
         {
             // Arrange — whichever reader subscribes first sweeps the other's expired entry, so that reader's
             // render has to have read it as absent already.
@@ -811,12 +1279,31 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That((s_rendersB[0].Status, s_rendersB[0].Data), Is.EqualTo((QueryStatus.Pending, 0)),
+            Assert.That(s_rendersB[0].Status, Is.EqualTo(QueryStatus.Pending),
                 "An expired entry reads as absent before a sweep removes it");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry()
+        public void Given_TwoExpiredUnreadEntries_When_ReadersOfBothMountInOneCommit_Then_TheSecondRendersNoData_RendersB0Data()
+        {
+            // Arrange — whichever reader subscribes first sweeps the other's expired entry, so that reader's
+            // render has to have read it as absent already.
+            using var mounted = MountExpiredBoard();
+
+            // Act
+            s_setShowA.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_rendersB[0].Data, Is.EqualTo(0),
+                "An expired entry reads as absent before a sweep removes it");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry_RendersAStatus()
         {
             // Arrange
             using var mounted = MountExpiredBoard();
@@ -828,12 +1315,31 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Pending, 0)),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Pending),
                 "Subscribing sweeps before it looks the key up, so the expired entry is not handed back");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver()
+        public void Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry_RendersAData()
+        {
+            // Arrange
+            using var mounted = MountExpiredBoard();
+
+            // Act
+            s_setShowA.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(0),
+                "Subscribing sweeps before it looks the key up, so the expired entry is not handed back");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver_FetchedCount()
         {
             // Arrange — the old reader leaves and the new one arrives in the effects of one commit.
             s_client = NewClient(TimeSpan.Zero);
@@ -850,13 +1356,59 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, Last(s_rendersA).Status, Last(s_rendersA).Data),
-                Is.EqualTo((1, QueryStatus.Success, 7)),
+            Assert.That(s_fetched.Count, Is.EqualTo(1),
                 "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_StrictModeAndAZeroGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest()
+        public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver_RendersAStatus()
+        {
+            // Arrange — the old reader leaves and the new one arrives in the effects of one commit.
+            s_client = NewClient(TimeSpan.Zero);
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var mounted = V.Mount(_root, V.Component(Remounter, key: "remounter"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setGeneration.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Success),
+                "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AZeroGcTime_When_ItsReaderIsRemountedUnderANewKey_Then_TheNewReaderTakesTheEntryOver_RendersAData()
+        {
+            // Arrange — the old reader leaves and the new one arrives in the effects of one commit.
+            s_client = NewClient(TimeSpan.Zero);
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var mounted = V.Mount(_root, V.Component(Remounter, key: "remounter"));
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setGeneration.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(7),
+                "An entry left in the commit that brings its next reader is kept, as v5's addObserver clears the gc timeout");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_StrictModeAndAZeroGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_FetchedCount()
         {
             // Arrange — StrictMode runs a mounting component's effects, cleans them up and runs them again,
             // so the reader subscribes, leaves the entry with nobody reading it, and subscribes again.
@@ -871,12 +1423,34 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, Last(s_rendersA).Data), Is.EqualTo((1, 7)),
+            Assert.That(s_fetched.Count, Is.EqualTo(1),
                 "The resubscription takes the entry back, however short its gcTime, and joins its request");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest()
+        public void Given_StrictModeAndAZeroGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_RendersAData()
+        {
+            // Arrange — StrictMode runs a mounting component's effects, cleans them up and runs them again,
+            // so the reader subscribes, leaves the entry with nobody reading it, and subscribes again.
+            s_takesToken = false;
+            s_client = NewClient(TimeSpan.Zero);
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(7),
+                "The resubscription takes the entry back, however short its gcTime, and joins its request");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_FetchedCount()
         {
             // Arrange
             s_takesToken = false;
@@ -889,7 +1463,26 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, Last(s_rendersA).Data), Is.EqualTo((1, 7)),
+            Assert.That(s_fetched.Count, Is.EqualTo(1),
+                "A request whose function takes no token is not cancelled by the last reader leaving, so the resubscription joins it");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_StrictModeAndTheDefaultGcTime_When_AReaderMounts_Then_ItsSecondSubscriptionJoinsTheRequest_RendersAData()
+        {
+            // Arrange
+            s_takesToken = false;
+            FiberStrictMode.Enabled = true;
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+
+            // Act
+            mounted.FlushEffectsForTest();
+            s_sources[0].TrySetResult(7);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(7),
                 "A request whose function takes no token is not cancelled by the last reader leaving, so the resubscription joins it");
         }
 
@@ -1181,8 +1774,9 @@ namespace Velvet.Tests
                 "Moving to a new key stops reading the old one");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AKeyChangeNotYetSubscribed_When_TheOldKeysRequestResolves_Then_TheQueryShowsNoData()
+        public void Given_AKeyChangeNotYetSubscribed_When_TheOldKeysRequestResolves_Then_TheQueryShowsNoData_RendersAStatus()
         {
             // Arrange — the render for page 2 has committed, and the effect moving the subscription has not
             // run, so the component is still subscribed to page 1's entry when its request lands.
@@ -1196,7 +1790,27 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last(s_rendersA).Status, Last(s_rendersA).Data), Is.EqualTo((QueryStatus.Pending, 0)),
+            Assert.That(Last(s_rendersA).Status, Is.EqualTo(QueryStatus.Pending),
+                "A render reads the entry its own key names, so page 1's result is never shown as page 2's");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AKeyChangeNotYetSubscribed_When_TheOldKeysRequestResolves_Then_TheQueryShowsNoData_RendersAData()
+        {
+            // Arrange — the render for page 2 has committed, and the effect moving the subscription has not
+            // run, so the component is still subscribed to page 1's entry when its request lands.
+            using var mounted = V.Mount(_root, V.Component(Pager, key: "pager"));
+            mounted.FlushEffectsForTest();
+            s_setPage.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_sources[0].TrySetResult(10);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last(s_rendersA).Data, Is.EqualTo(0),
                 "A render reads the entry its own key names, so page 1's result is never shown as page 2's");
         }
 
@@ -1275,8 +1889,9 @@ namespace Velvet.Tests
                 "A request that may predate the change behind the invalidation is started over");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AFirstRequestInFlight_When_TheEntryIsInvalidated_Then_ItIsJoined()
+        public void Given_AFirstRequestInFlight_When_TheEntryIsInvalidated_Then_ItIsJoined_FetchedCount()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
@@ -1286,7 +1901,23 @@ namespace Velvet.Tests
             s_client.InvalidateQueries();
 
             // Assert
-            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested), Is.EqualTo((1, false)),
+            Assert.That(s_fetched.Count, Is.EqualTo(1),
+                "With no data to protect, the request in flight is joined, as TanStack's cancelRefetch does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AFirstRequestInFlight_When_TheEntryIsInvalidated_Then_ItIsJoined_Tokens0IsCancellationRequested()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Solo, key: "solo"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_client.InvalidateQueries();
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(false),
                 "With no data to protect, the request in flight is joined, as TanStack's cancelRefetch does");
         }
 

@@ -156,8 +156,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "The interval fetches once it has passed, not before");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_ARefetchInterval_When_ARefetchLandsPartWay_Then_TheIntervalStartsOverFromIt()
+        public IEnumerator Given_ARefetchInterval_When_ARefetchLandsPartWay_Then_TheIntervalStartsOverFromIt_AtTheFirstInterval()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -174,7 +175,30 @@ namespace Velvet.Tests
             await Pass(TimeSpan.FromSeconds(6));
 
             // Assert
-            Assert.That((atTheFirstInterval, s_calls), Is.EqualTo((2, 3)),
+            Assert.That(atTheFirstInterval, Is.EqualTo(2),
+                "Each change of the entry restarts the interval, as v5's onQueryUpdate restarts its timers");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_ARefetchInterval_When_ARefetchLandsPartWay_Then_TheIntervalStartsOverFromIt_Calls()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_interval = Interval;
+            using var mounted = MountResolved();
+            await Pass(TimeSpan.FromSeconds(6));
+            Last().Refetch();
+            s_sources[1].TrySetResult(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            await Pass(TimeSpan.FromSeconds(4));
+            var atTheFirstInterval = s_calls;
+            await Pass(TimeSpan.FromSeconds(6));
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(3),
                 "Each change of the entry restarts the interval, as v5's onQueryUpdate restarts its timers");
         });
 
@@ -369,8 +393,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "A tick skipped while hidden is skipped, as v5's setInterval only checks at its ticks");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_ARefetchInFlightOverData_When_TheIntervalPasses_Then_ItJoinsTheRefetch()
+        public IEnumerator Given_ARefetchInFlightOverData_When_TheIntervalPasses_Then_ItJoinsTheRefetch_Calls()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -382,7 +407,25 @@ namespace Velvet.Tests
             await Pass(Interval);
 
             // Assert
-            Assert.That((s_calls, s_tokens[1].IsCancellationRequested), Is.EqualTo((2, false)),
+            Assert.That(s_calls, Is.EqualTo(2),
+                "The interval's fetch joins a request in flight rather than starting it over");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_ARefetchInFlightOverData_When_TheIntervalPasses_Then_ItJoinsTheRefetch_Tokens1IsCancellationRequested()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_interval = Interval;
+            using var mounted = MountResolved();
+            Last().Refetch();
+
+            // Act
+            await Pass(Interval);
+
+            // Assert
+            Assert.That(s_tokens[1].IsCancellationRequested, Is.EqualTo(false),
                 "The interval's fetch joins a request in flight rather than starting it over");
         });
 
@@ -528,8 +571,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(0), "A disabled query does not refetch on focus");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_ARefetchInFlightOverData_When_TheApplicationBecomesVisible_Then_ItIsJoined()
+        public IEnumerator Given_ARefetchInFlightOverData_When_TheApplicationBecomesVisible_Then_ItIsJoined_Calls()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -540,7 +584,24 @@ namespace Velvet.Tests
             await HideAndShowTheApplication();
 
             // Assert
-            Assert.That((s_calls, s_tokens[1].IsCancellationRequested), Is.EqualTo((2, false)),
+            Assert.That(s_calls, Is.EqualTo(2),
+                "A refetch on focus joins the request in flight rather than starting it over, as v5's cancelRefetch: false");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_ARefetchInFlightOverData_When_TheApplicationBecomesVisible_Then_ItIsJoined_Tokens1IsCancellationRequested()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = MountResolved();
+            Last().Refetch();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(s_tokens[1].IsCancellationRequested, Is.EqualTo(false),
                 "A refetch on focus joins the request in flight rather than starting it over, as v5's cancelRefetch: false");
         });
 
@@ -721,8 +782,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "A function returning no interval, like false in v5, sets none");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands()
+        public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenQueryKeyToString()
         {
             // Arrange
             Query? seen = null;
@@ -736,9 +798,67 @@ namespace Velvet.Tests
             using var mounted = MountResolved();
 
             // Assert
-            Assert.That(
-                (seen?.QueryKey.ToString(), seen?.Status.ToString(), seen?.Data?.ToString(), seen?.IsFetching.ToString()),
-                Is.EqualTo(("[todos]", "Success", "1", "False")),
+            Assert.That(seen?.QueryKey.ToString(), Is.EqualTo("[todos]"),
+                "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenStatusToString()
+        {
+            // Arrange
+            Query? seen = null;
+            s_intervalFn = info =>
+            {
+                seen = info;
+                return Interval;
+            };
+
+            // Act
+            using var mounted = MountResolved();
+
+            // Assert
+            Assert.That(seen?.Status.ToString(), Is.EqualTo("Success"),
+                "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenDataToString()
+        {
+            // Arrange
+            Query? seen = null;
+            s_intervalFn = info =>
+            {
+                seen = info;
+                return Interval;
+            };
+
+            // Act
+            using var mounted = MountResolved();
+
+            // Assert
+            Assert.That(seen?.Data?.ToString(), Is.EqualTo("1"),
+                "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands_SeenIsFetchingToString()
+        {
+            // Arrange
+            Query? seen = null;
+            s_intervalFn = info =>
+            {
+                seen = info;
+                return Interval;
+            };
+
+            // Act
+            using var mounted = MountResolved();
+
+            // Assert
+            Assert.That(seen?.IsFetching.ToString(), Is.EqualTo("False"),
                 "The function reads the query's key, status, data and fetch state, as v5's refetchInterval(query) does");
         }
 
@@ -854,8 +974,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(1), "IfStale from a function fetches only stale data, as the mode does");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AWindowFocusFunction_When_TheApplicationBecomesVisible_Then_ItIsHandedTheEntry()
+        public IEnumerator Given_AWindowFocusFunction_When_TheApplicationBecomesVisible_Then_ItIsHandedTheEntry_SeenStatusToString()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -871,7 +992,29 @@ namespace Velvet.Tests
             await HideAndShowTheApplication();
 
             // Assert
-            Assert.That((seen?.Status.ToString(), seen?.Data?.ToString()), Is.EqualTo(("Success", "1")),
+            Assert.That(seen?.Status.ToString(), Is.EqualTo("Success"),
+                "The function reads the entry the signal refetches");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AWindowFocusFunction_When_TheApplicationBecomesVisible_Then_ItIsHandedTheEntry_SeenDataToString()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            Query? seen = null;
+            s_onFocusFn = info =>
+            {
+                seen = info;
+                return QueryRefetchMode.Never;
+            };
+            using var mounted = MountResolved();
+
+            // Act
+            await HideAndShowTheApplication();
+
+            // Assert
+            Assert.That(seen?.Data?.ToString(), Is.EqualTo("1"),
                 "The function reads the entry the signal refetches");
         });
 
@@ -1045,8 +1188,9 @@ namespace Velvet.Tests
             Assert.That(IsPolling(), Is.True, "Watching a client marks the poll as running, so the next watch joins it");
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_EveryWatchedClientsReadersUnmounted_When_FramesPass_Then_ThePollingStops()
+        public IEnumerator Given_EveryWatchedClientsReadersUnmounted_When_FramesPass_Then_ThePollingStops_WatcherCount()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -1057,7 +1201,24 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((WatcherCount(), IsPolling()), Is.EqualTo((0, false)),
+            Assert.That(WatcherCount(), Is.EqualTo(0),
+                "With nothing left to watch, the poll ends rather than reading on every frame");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_EveryWatchedClientsReadersUnmounted_When_FramesPass_Then_ThePollingStops_IsPolling()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = MountResolved();
+            Hide(mounted);
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(IsPolling(), Is.EqualTo(false),
                 "With nothing left to watch, the poll ends rather than reading on every frame");
         });
 
@@ -1197,8 +1358,9 @@ namespace Velvet.Tests
             Assert.That(s_calls, Is.EqualTo(2), "The refetch a throwing observer interrupted still runs the query function");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [Test]
-        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean()
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_WatcherCount()
         {
             // Arrange
             LogAssert.ignoreFailingMessages = true;
@@ -1212,10 +1374,107 @@ namespace Velvet.Tests
                 .Invoke(null, null);
 
             // Assert
-            Assert.That(
-                (WatcherCount(), IsPolling(), GetSignalsStatic("s_visibleFailureLogged"), GetSignalsStatic("s_onlineFailureLogged"),
-                    NetworkSignals.IsVisible == null, NetworkSignals.IsOnline == null),
-                Is.EqualTo((0, false, (object)false, (object)false, true, true)),
+            Assert.That(WatcherCount(), Is.EqualTo(0),
+                "A domain reload starts with no client watched, no poll running, no failure logged and no override");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_IsPolling()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            NetworkSignals.IsOnline = () => throw new InvalidOperationException("online-failed");
+            using var mounted = Mount();
+
+            // Act
+            typeof(QueryClientSignals)
+                .GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert
+            Assert.That(IsPolling(), Is.EqualTo(false),
+                "A domain reload starts with no client watched, no poll running, no failure logged and no override");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_SignalsStaticVisibleFailureLogged()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            NetworkSignals.IsOnline = () => throw new InvalidOperationException("online-failed");
+            using var mounted = Mount();
+
+            // Act
+            typeof(QueryClientSignals)
+                .GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert
+            Assert.That(GetSignalsStatic("s_visibleFailureLogged"), Is.EqualTo((object)false),
+                "A domain reload starts with no client watched, no poll running, no failure logged and no override");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_SignalsStaticOnlineFailureLogged()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            NetworkSignals.IsOnline = () => throw new InvalidOperationException("online-failed");
+            using var mounted = Mount();
+
+            // Act
+            typeof(QueryClientSignals)
+                .GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert
+            Assert.That(GetSignalsStatic("s_onlineFailureLogged"), Is.EqualTo((object)false),
+                "A domain reload starts with no client watched, no poll running, no failure logged and no override");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_NetworkSignalsIsVisible()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            NetworkSignals.IsOnline = () => throw new InvalidOperationException("online-failed");
+            using var mounted = Mount();
+
+            // Act
+            typeof(QueryClientSignals)
+                .GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert
+            Assert.That(NetworkSignals.IsVisible == null, Is.EqualTo(true),
+                "A domain reload starts with no client watched, no poll running, no failure logged and no override");
+        }
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [Test]
+        public void Given_AWatchedClientAndLoggedFailures_When_TheStaticsAreResetForADomainReload_Then_ThePollStartsOverClean_NetworkSignalsIsOnline()
+        {
+            // Arrange
+            LogAssert.ignoreFailingMessages = true;
+            NetworkSignals.IsVisible = () => throw new InvalidOperationException("visibility-failed");
+            NetworkSignals.IsOnline = () => throw new InvalidOperationException("online-failed");
+            using var mounted = Mount();
+
+            // Act
+            typeof(QueryClientSignals)
+                .GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert
+            Assert.That(NetworkSignals.IsOnline == null, Is.EqualTo(true),
                 "A domain reload starts with no client watched, no poll running, no failure logged and no override");
         }
 
