@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 
 namespace Velvet
@@ -15,7 +14,7 @@ namespace Velvet
     public sealed class RouteTree
     {
         private readonly RouteDefinition[] _routes;
-        private readonly RouteBranch[] _rankedBranches;
+        private readonly List<RouteBranch> _rankedBranches;
 
         /// <param name="routes">Array of route definitions. null is not allowed.</param>
         /// <exception cref="ArgumentException">Two routes share an id; an index route declares children, an
@@ -24,11 +23,12 @@ namespace Velvet
         public RouteTree(RouteDefinition[] routes)
         {
             _routes = routes ?? throw new ArgumentNullException(nameof(routes));
-            var branches = new List<RouteBranch>();
-            FlattenBranches(BuildNodes(_routes, null), new List<RouteMeta>(), string.Empty, false, branches);
-            _rankedBranches = branches.ToArray();
-            JsArraySort.Sort(_rankedBranches, RankRouteBranches);
+            _rankedBranches = new List<RouteBranch>();
+            FlattenBranches(BuildNodes(_routes, null), new List<RouteMeta>(), string.Empty, false, _rankedBranches);
+            JsArraySort.Sort(_rankedBranches, RankComparison);
         }
+
+        private static readonly Comparison<RouteBranch> RankComparison = RankRouteBranches;
 
         // React Router's rankRouteBranches comparator, with compareIndexes.
         private static int RankRouteBranches(RouteBranch a, RouteBranch b)
@@ -37,9 +37,19 @@ namespace Velvet
             {
                 return b.Score - a.Score;
             }
-            var siblings = a.ChildrenIndexes.Length == b.ChildrenIndexes.Length
-                && a.ChildrenIndexes.Take(a.ChildrenIndexes.Length - 1).SequenceEqual(b.ChildrenIndexes.Take(b.ChildrenIndexes.Length - 1));
-            return siblings ? a.ChildrenIndexes[a.ChildrenIndexes.Length - 1] - b.ChildrenIndexes[b.ChildrenIndexes.Length - 1] : 0;
+            // Siblings share every route above the last, and the tree refuses two routes one id.
+            var left = a.Ids;
+            var right = b.Ids;
+            if (left.Length != right.Length)
+            {
+                return 0;
+            }
+            var shared = 0;
+            while (shared < left.Length - 1 && left[shared] == right[shared])
+            {
+                shared++;
+            }
+            return shared == left.Length - 1 ? a.Position - b.Position : 0;
         }
 
         /// <param name="path">Path to match. null and empty string are invalid and return null (use "/" for the root path).</param>
@@ -77,7 +87,7 @@ namespace Velvet
 
         private const string NotFoundShimId = "__shim-error-route__";
 
-        private sealed class RouteNode
+        private readonly struct RouteNode
         {
             public readonly RouteDefinition Route;
             public readonly string Id;
@@ -115,21 +125,21 @@ namespace Velvet
             /// match reads its slice rather than parsing the route's path again.</summary>
             public readonly int[] SegmentCounts;
 
-            /// <summary>Each chain entry's position among its siblings, React Router's
-            /// <c>childrenIndex</c>.</summary>
-            public readonly int[] ChildrenIndexes;
+            /// <summary>The last chain entry's position among its siblings, React Router's
+            /// <c>childrenIndex</c> of the leaf.</summary>
+            public readonly int Position;
 
             public int Score;
 
             public RouteBranch(
                 RouteDefinition[] chain, string[] ids, List<RouteSegment> pattern, int[] segmentCounts,
-                int[] childrenIndexes)
+                int position)
             {
                 Chain = chain;
                 Ids = ids;
                 Pattern = pattern;
                 SegmentCounts = segmentCounts;
-                ChildrenIndexes = childrenIndexes;
+                Position = position;
             }
         }
 
@@ -301,10 +311,19 @@ namespace Velvet
             return result;
         }
 
-        // React Router's joinPaths over two parts.
+        // React Router's joinPaths over two parts: joined by "/", every run of slashes made one. Where neither part
+        // holds a run of its own, the run can only be where they meet, so the parts are joined around it.
         private static string JoinPaths(string parentPath, string relativePath)
         {
-            var joined = parentPath + "/" + relativePath;
+            if (parentPath.IndexOf("//", StringComparison.Ordinal) < 0
+                && relativePath.IndexOf("//", StringComparison.Ordinal) < 0)
+            {
+                var head = parentPath.EndsWith("/", StringComparison.Ordinal) ? parentPath : parentPath + "/";
+                return relativePath.StartsWith("/", StringComparison.Ordinal)
+                    ? string.Concat(head, relativePath.Substring(1))
+                    : string.Concat(head, relativePath);
+            }
+            var joined = string.Concat(parentPath, "/", relativePath);
             var collapsed = new StringBuilder(joined.Length);
             foreach (var character in joined)
             {
@@ -334,7 +353,6 @@ namespace Velvet
             var counts = new int[metas.Count];
             var chain = new RouteDefinition[metas.Count];
             var ids = new string[metas.Count];
-            var positions = new int[metas.Count];
             for (var level = 0; level < metas.Count; level++)
             {
                 var meta = metas[level];
@@ -343,10 +361,12 @@ namespace Velvet
                 counts[level] = pattern.Count - before;
                 chain[level] = meta.Node.Route;
                 ids[level] = meta.Node.Id;
-                positions[level] = meta.Node.Position;
             }
 
-            return new RouteBranch(chain, ids, pattern, counts, positions) { Score = ComputeScore(path, index) };
+            return new RouteBranch(chain, ids, pattern, counts, metas[metas.Count - 1].Node.Position)
+            {
+                Score = ComputeScore(path, index),
+            };
         }
 
         private static IEnumerable<RouteSegment> ParseRouteSegments(string path, bool caseSensitive)
@@ -391,40 +411,47 @@ namespace Velvet
         private const int SplatPenalty = -2;
         private const int EmptySegmentScore = 1;
 
-        // React Router's computeScore over the branch's joined path.
+        // React Router's computeScore over the branch's joined path, read segment by segment in place of
+        // path.split("/").
         private static int ComputeScore(string path, bool index)
         {
-            var segments = path.Split('/');
-            var score = segments.Length;
-            if (Array.IndexOf(segments, "*") >= 0)
+            var score = index ? IndexRouteScore : 0;
+            var splat = false;
+            var start = 0;
+            while (start <= path.Length)
             {
-                score += SplatPenalty;
-            }
-
-            if (index)
-            {
-                score += IndexRouteScore;
-            }
-
-            foreach (var segment in segments)
-            {
-                if (segment == "*")
+                var end = path.IndexOf('/', start);
+                end = end < 0 ? path.Length : end;
+                var segment = path.AsSpan(start, end - start);
+                score++;
+                if (segment.Length == 1 && segment[0] == '*')
                 {
-                    continue;
+                    splat = true;
                 }
-
-                score += IsParamSegment(segment)
-                    ? DynamicSegmentScore
-                    : segment.Length == 0 ? EmptySegmentScore : StaticSegmentScore;
+                else
+                {
+                    score += IsParamSegment(segment)
+                        ? DynamicSegmentScore
+                        : segment.Length == 0 ? EmptySegmentScore : StaticSegmentScore;
+                }
+                start = end + 1;
             }
 
-            return score;
+            return splat ? score + SplatPenalty : score;
         }
 
         // React Router's /^:[\w-]+$/, whose \w is ASCII.
-        private static bool IsParamSegment(string segment) =>
-            segment.Length > 1 && segment[0] == ':'
-            && segment.Skip(1).All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-');
+        private static bool IsParamSegment(ReadOnlySpan<char> segment)
+        {
+            var at = segment.Length > 1 && segment[0] == ':' ? 1 : segment.Length + 1;
+            while (at < segment.Length && IsWordCharacter(segment[at]))
+            {
+                at++;
+            }
+            return at == segment.Length;
+        }
+
+        private static bool IsWordCharacter(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-';
 
         #endregion
 

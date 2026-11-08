@@ -103,14 +103,12 @@ namespace Velvet.Tests
             Assert.That(settled.Errors.GetValueOrDefault("fail")?.Message, Is.EqualTo("late-failure"));
         });
 
-        // GREEN_ON_BASE(characterization): the base swallows a cancellation the same way. What the case
-        // adds is a reading of the error map after one, which no case made.
         [UnityTest]
-        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsOwnTaskIsCancelled_Then_TheCancellationIsItsRoutesError()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // A cancellation arrives at the same await loop as the failure the sibling above pins, and is
-            // the one thing that loop does not record.
+            // The loader's token is never cancelled, so the cancellation is the loader's own outcome, which React
+            // Router records as the route's error: it drops a rejection only when the request's signal aborted.
             // Arrange
             var runner = new RouteLoaderRunner();
             var unresolved = new VelvetTaskCompletionSource<object>();
@@ -122,23 +120,40 @@ namespace Velvet.Tests
             var settled = await round;
 
             // Assert
-            Assert.That(settled.Errors, Is.Empty,
-                "A loader whose task was cancelled has no failure of its own for the route to present");
+            Assert.That(settled.Errors.GetValueOrDefault("cancelled"), Is.InstanceOf<OperationCanceledException>());
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsRoundIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The token the loader was handed is cancelled first, as a superseded navigation's is, so the
+            // cancellation that follows is that one and not the loader's failure.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var navigation = new CancellationTokenSource();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            var round = runner.RunLoadersAsync(
+                MakeMatch("cancelled", loader: (ctx, ct) => unresolved.Task), navigation.Token);
+
+            // Act
+            navigation.Cancel();
+            unresolved.TrySetCanceled();
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.Errors, Is.Empty);
         });
 
         #endregion
 
         #region Suspend mode
 
-        // GREEN_ON_BASE(refactor): the base drops a cancelled Suspend loader's exception the same way.
-        // What says the loader has finished moves from the round's settled flag, which the history cache
-        // needed and this change deletes with it, to the runner's count of running Suspend loaders.
         [UnityTest]
-        public IEnumerator Given_ASuspendLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
+        public IEnumerator Given_ASuspendLoader_When_ItsOwnTaskIsCancelled_Then_TheCancellationIsItsRoutesError()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // The Await case in the mode above reads the same map after the same kind of cancellation.
-            // The catch keeping this one out of it is RunSuspendLoader's, not the run's.
+            // The Await case in the mode above, through RunSuspendLoader's catch rather than the run's.
             // Arrange
             var runner = new RouteLoaderRunner();
             var streaming = new VelvetTaskCompletionSource<object>();
@@ -150,11 +165,32 @@ namespace Velvet.Tests
             streaming.TrySetCanceled();
             await VelvetTask.Yield();
 
+            // Assert — the running count is in the comparison because a loader still running records no error
+            // either.
+            Assert.That($"running={runner.ActiveSuspendTaskCount} errors={round.Errors.Count}",
+                Is.EqualTo("running=0 errors=1"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoader_When_ItsRoundIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var navigation = new CancellationTokenSource();
+            var streaming = new VelvetTaskCompletionSource<object>();
+            var round = runner.RunLoadersSync(
+                MakeMatch("cancelled", loader: (ctx, ct) => streaming.Task, loaderMode: LoaderMode.Suspend),
+                navigation.Token);
+
+            // Act
+            navigation.Cancel();
+            streaming.TrySetCanceled();
+            await VelvetTask.Yield();
+
             // Assert
             Assert.That($"running={runner.ActiveSuspendTaskCount} errors={round.Errors.Count}",
-                Is.EqualTo("running=0 errors=0"),
-                "A Suspend loader whose task was cancelled has no failure of its own for the route to "
-                + "present, and the running count is in the comparison because a loader still running records none either");
+                Is.EqualTo("running=0 errors=0"));
         });
 
         [UnityTest]

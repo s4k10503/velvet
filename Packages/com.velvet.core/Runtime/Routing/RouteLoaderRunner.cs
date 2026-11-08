@@ -27,7 +27,8 @@ namespace Velvet
 
             // The results taken from the live round rather than loaded in this one, React Router's preserved
             // loaderData, which mergeLoaderData keeps only down to the route an error is committed at.
-            internal readonly HashSet<string?> Kept = new();
+            // Null until a result is kept.
+            internal HashSet<string?>? Kept;
 
             // One source per loader rather than one per round, so a route whose result the next round keeps
             // takes its token along at the promotion and the retire of this round leaves it running.
@@ -62,7 +63,6 @@ namespace Velvet
             string url = "/")
         {
             var round = BeginRound();
-            var request = new RouteRequest(url);
 
             var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
 
@@ -89,7 +89,7 @@ namespace Velvet
                 {
                     Params = match.Params,
                     Path = match.MatchedPath,
-                    Request = request,
+                    RequestPath = url,
                 };
 
                 var load = new RouteCancellationSource(externalToken);
@@ -221,7 +221,7 @@ namespace Velvet
                 return false;
             }
             round.Results[key] = result!;
-            round.Kept.Add(key);
+            (round.Kept ??= new HashSet<string?>()).Add(key);
             return true;
         }
 

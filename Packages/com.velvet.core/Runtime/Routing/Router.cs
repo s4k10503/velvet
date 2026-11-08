@@ -15,7 +15,8 @@ namespace Velvet
         private readonly RouteTree _routeTree;
         private readonly RouteLoaderRunner _loaderRunner;
         private readonly List<HistoryEntry> _history = new();
-        private System.Random? _keyRandom;
+        // One for every router: a key is eight random characters and nothing more, so no router needs its own.
+        private static readonly System.Random KeyRandom = new();
         private readonly RouteBlockerManager _blockerManager = new();
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
@@ -23,7 +24,10 @@ namespace Velvet
         // For each key of _loaderErrors, the depth in the committed matches of the route whose failure it holds,
         // so a later failure reaching the same boundary is ordered by match order as processRouteLoaderData
         // orders them, rather than by when it arrived.
-        private Dictionary<string?, int> _errorDepths = new();
+        private Dictionary<string?, int> _errorDepths = NoErrorDepths;
+        // Shared by every commit with no error: what holds them is replaced, never written into.
+        private static readonly Dictionary<string?, Exception> NoErrors = new();
+        private static readonly Dictionary<string?, int> NoErrorDepths = new();
         private Dictionary<string?, object> _actionData = EmptyActionData;
         private static readonly Dictionary<string?, object> EmptyActionData = new();
         private const int MaxRedirects = 5;
@@ -1187,7 +1191,7 @@ namespace Velvet
                     {
                         Params = match.Params,
                         Path = match.MatchedPath,
-                        Request = new RouteRequest(path),
+                        RequestPath = path,
                     };
                     redirectTarget = match.Route.Guard(loaderContext);
                 }
@@ -1341,9 +1345,18 @@ namespace Velvet
             Visit visit)
         {
             var allParams = new Dictionary<string, string>();
-            foreach (var match in matches)
+            for (var level = 0; level < matches.Count; level++)
             {
-                foreach (var kvp in match.Params)
+                var levelParams = matches[level].Params;
+                if (levelParams is Dictionary<string, string> dictionary)
+                {
+                    foreach (var kvp in dictionary)
+                    {
+                        allParams[kvp.Key] = kvp.Value;
+                    }
+                    continue;
+                }
+                foreach (var kvp in levelParams)
                 {
                     allParams[kvp.Key] = kvp.Value;
                 }
@@ -1377,14 +1390,12 @@ namespace Velvet
         private const string KeyAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 
         // Eight random base-36 characters, as React Router's createKey makes, which checks no earlier key either.
-        private string NewKey()
+        private static string NewKey()
         {
-            // Created on the first key, which a router that only ever holds its first entry never needs.
-            var random = _keyRandom ??= new System.Random();
-            var chars = new char[8];
+            Span<char> chars = stackalloc char[8];
             for (var i = 0; i < chars.Length; i++)
             {
-                chars[i] = KeyAlphabet[random.Next(KeyAlphabet.Length)];
+                chars[i] = KeyAlphabet[KeyRandom.Next(KeyAlphabet.Length)];
             }
             return new string(chars);
         }
@@ -1661,9 +1672,14 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches, RouteLoaderRunner.LoaderRound round, ActionOutcome? action,
             out Dictionary<string?, int> depths)
         {
+            var pending = action?.Error;
+            if (round.Errors.Count == 0 && pending == null)
+            {
+                depths = NoErrorDepths;
+                return NoErrors;
+            }
             var errors = new Dictionary<string?, Exception>();
             depths = new Dictionary<string?, int>();
-            var pending = action?.Error;
             for (var depth = 0; depth < matches.Count; depth++)
             {
                 if (!round.Errors.TryGetValue(matches[depth].RouteId, out var error))
@@ -1690,17 +1706,18 @@ namespace Velvet
                 if (action.Ran)
                 {
                     round.Results[matches[action.Target].RouteId] = null!;
-                    round.Kept.Remove(matches[action.Target].RouteId);
+                    round.Kept?.Remove(matches[action.Target].RouteId);
                 }
             }
             var pastBoundary = false;
-            foreach (var match in matches)
+            for (var depth = 0; depth < matches.Count; depth++)
             {
-                if (pastBoundary && round.Kept.Remove(match.RouteId))
+                var routeId = matches[depth].RouteId;
+                if (pastBoundary && round.Kept?.Remove(routeId) == true)
                 {
-                    round.Results.Remove(match.RouteId);
+                    round.Results.Remove(routeId);
                 }
-                pastBoundary |= errors.ContainsKey(match.RouteId);
+                pastBoundary |= errors.ContainsKey(routeId);
             }
             return errors;
         }

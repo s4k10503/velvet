@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 
 namespace Velvet
 {
@@ -16,15 +17,46 @@ namespace Velvet
         // Below this many elements the sort is one binary insertion sort.
         private const int SmallArrayLength = 8;
 
-        internal static void Sort<T>(T[] array, Comparison<T> compare)
+        internal static void Sort<T>(List<T> list, Comparison<T> compare)
         {
-            var state = new State<T>(array, compare);
-            if (array.Length < SmallArrayLength)
+            if (list.Count < SmallArrayLength)
             {
-                state.BinaryInsertionSort(0, 0, array.Length);
+                BinaryInsertionSort(list, compare, 0, 0, list.Count);
                 return;
             }
-            state.Run();
+            var array = list.ToArray();
+            new State<T>(array, compare).Run();
+            for (var index = 0; index < array.Length; index++)
+            {
+                list[index] = array[index];
+            }
+        }
+
+        private static void BinaryInsertionSort<T>(IList<T> work, Comparison<T> compare, int low, int startArg, int high)
+        {
+            for (var start = low == startArg ? startArg + 1 : startArg; start < high; start++)
+            {
+                var left = low;
+                var right = start;
+                var pivot = work[start];
+                while (left < right)
+                {
+                    var mid = left + ((right - left) >> 1);
+                    if (compare(pivot, work[mid]) < 0)
+                    {
+                        right = mid;
+                    }
+                    else
+                    {
+                        left = mid + 1;
+                    }
+                }
+                for (var p = start; p > left; p--)
+                {
+                    work[p] = work[p - 1];
+                }
+                work[left] = pivot;
+            }
         }
 
         private sealed class State<T>
@@ -106,29 +138,8 @@ namespace Velvet
                 return runLength;
             }
 
-            internal void BinaryInsertionSort(int low, int startArg, int high)
-            {
-                for (var start = low == startArg ? startArg + 1 : startArg; start < high; start++)
-                {
-                    var left = low;
-                    var right = start;
-                    var pivot = _work[start];
-                    while (left < right)
-                    {
-                        var mid = left + ((right - left) >> 1);
-                        if (_compare(pivot, _work[mid]) < 0)
-                        {
-                            right = mid;
-                        }
-                        else
-                        {
-                            left = mid + 1;
-                        }
-                    }
-                    Array.Copy(_work, left, _work, left + 1, start - left);
-                    _work[left] = pivot;
-                }
-            }
+            private void BinaryInsertionSort(int low, int startArg, int high)
+                => JsArraySort.BinaryInsertionSort(_work, _compare, low, startArg, high);
 
             private bool RunInvariantEstablished(int n)
                 => n < 2 || _runLength[n - 2] > _runLength[n - 1] + _runLength[n];

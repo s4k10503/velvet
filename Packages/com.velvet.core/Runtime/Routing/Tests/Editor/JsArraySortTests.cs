@@ -18,9 +18,9 @@ namespace Velvet.Tests
 
         private static string Sorted(int length)
         {
-            var array = Enumerable.Range(0, length).ToArray();
-            JsArraySort.Sort(array, Contradicting);
-            return string.Join(",", array);
+            var list = Enumerable.Range(0, length).ToList();
+            JsArraySort.Sort(list, Contradicting);
+            return string.Join(",", list);
         }
 
         [Test]
