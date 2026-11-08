@@ -299,5 +299,42 @@ namespace Velvet.Tests
             // Assert
             Assert.That(controls.IsFinished, Is.False);
         }
+
+        [Test]
+        public void Given_ASingleCallWhoseEntryNamesADelayOfZero_When_ThreeQuartersOfASecondPass_Then_OpacityWaitedTheCallsDelay()
+        {
+            // Arrange — Framer reads `valueTransition.delay || transition.delay`, so the entry's 0 takes the call's 0.5 s.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                new StyleTransitionConfig
+                {
+                    DurationSec = 2f, Easing = EasingMode.Linear, DelaySec = 0.5f,
+                    PropertyOverrides = new[]
+                    {
+                        new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f),
+                    },
+                });
+
+            // Act
+            controls.Tick(0.75f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.25f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASingleCallOnAnUndampedSpring_When_TwentyFiveSecondsPass_Then_ItIsStillPlaying()
+        {
+            // Arrange — a spring with no damping never rests, so it runs on as Framer's does.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { X = new[] { 0f, 100f } },
+                new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 0f, Mass = 1f });
+
+            // Act
+            controls.Tick(25f);
+
+            // Assert
+            Assert.That(controls.IsFinished, Is.False);
+        }
     }
 }

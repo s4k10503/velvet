@@ -155,26 +155,20 @@ namespace Velvet
         // default layout transition in its place (LayoutIdTiming.From).
         internal bool TransitionDefaulted { get; init; }
 
-        // Set by V.Motion when its caller named a delay and no transition, duration or easing: Framer counts a delay
-        // alone as no transition, so a variant play takes the per-value defaults after it.
-        internal bool TransitionDelayOnly { get; init; }
+        // Set by V.Motion when its caller named a duration, easing or delay and no transition: the transition those
+        // describe on their own, which a variant play and a layoutId move take in place of the Fade preset Transition
+        // carries for a Motion with no variants.
+        internal StyleTransitionConfig? CallSiteTiming { get; init; }
 
         // What a variant play on this Motion takes where its pose names no transition: the Framer default for a Motion
         // nobody gave one, else the Motion's own.
         internal StyleTransitionConfig? VariantTransition => TransitionDefaulted ? StyleTransitionConfig.FramerDefault
-            : TransitionDelayOnly ? (_delayedDefault ??= StyleTransitionConfig.FramerDefault.With(delaySec: Transition?.DelaySec))
-            : Transition?.PlayedOnVariant;
-
-        private StyleTransitionConfig? _delayedDefault;
+            : (CallSiteTiming ?? Transition)?.PlayedOnVariant;
 
         // What a layoutId move takes (LayoutIdTiming.From): Framer's projection hands the Motion's own transition to
         // animateMotionValue with a velocity, which makes even a delay alone a defined transition, so a Motion given
-        // only a delay moves on the keyframes default after it rather than on the preset V.Motion stood in.
-        internal StyleTransitionConfig? LayoutTransition => TransitionDefaulted ? null
-            : TransitionDelayOnly ? (_delayedLayout ??= new StyleTransitionConfig { DelaySec = Transition?.DelaySec ?? 0f })
-            : Transition;
-
-        private StyleTransitionConfig? _delayedLayout;
+        // only a delay moves on the keyframes default after it.
+        internal StyleTransitionConfig? LayoutTransition => TransitionDefaulted ? null : CallSiteTiming ?? Transition;
 
         // What a swap into a pose naming pose.Transition plays on.
         internal StyleTransitionConfig? PoseTransition(StyleTransitionConfig? pose) => pose?.PlayedOnVariant ?? VariantTransition;

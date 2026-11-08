@@ -310,9 +310,8 @@ namespace Velvet
         /// <summary>
         /// Easing mode. Applied as the inline transition-timing-function style.
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
-        /// A <see cref="TransitionType.Spring"/> play's own curve is its physics; it reads this for a
-        /// <see cref="PropertyOverrides"/> entry naming no easing, and for a sequence segment
-        /// <see cref="Animator"/> plays over more than two keyframes, which runs as a tween. Ignored when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>: the
+        /// A <see cref="TransitionType.Spring"/> play's own curve is its physics; it reads this only for a sequence
+        /// segment <see cref="Animator"/> plays over more than two keyframes, which runs as a tween. Ignored when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>: the
         /// <see cref="BezierX1"/>/<see cref="BezierY1"/>/<see cref="BezierX2"/>/<see cref="BezierY2"/> control
         /// points ARE the curve (an exact numeric one no <c>EasingMode</c> keyword can express).
         /// </summary>
@@ -481,7 +480,8 @@ namespace Velvet
         /// degenerate case where the exit's variant pair touches no spring-animatable channel at all, which still
         /// plays through the spring machinery.
         /// </summary>
-        internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
+        internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f
+            || (DurationSec == 0f && StylePropertyTransition.AnyAnimates(PropertyOverrides));
 
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
@@ -668,8 +668,9 @@ namespace Velvet
 
     /// <summary>
     /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>. It
-    /// replaces the enclosing config for its property, as Framer Motion's per-value transition does: only a null
-    /// <see cref="DelaySec"/> takes the enclosing config's, and a null <see cref="DurationSec"/> or
+    /// replaces the enclosing config for its property, as Framer Motion's per-value transition does: a null
+    /// <see cref="DelaySec"/> starts the value with the play, not after its <see cref="StyleTransitionConfig.DelaySec"/>
+    /// (a stagger the play waits still counts), and a null <see cref="DurationSec"/> or
     /// <see cref="Easing"/> takes Framer's keyframes defaults of 0.3 s and an ease-out. An entry naming neither is no
     /// transition, and its value takes the default transition Framer Motion picks for it.
     /// </summary>
@@ -687,7 +688,7 @@ namespace Velvet
         /// <summary>Easing. Null eases out where <see cref="DurationSec"/> is set.</summary>
         public EasingMode? Easing { get; }
 
-        /// <summary>Delay override (seconds). Null falls back to <see cref="StyleTransitionConfig.DelaySec"/>.</summary>
+        /// <summary>Delay (seconds), counted from the play's start, which a stagger moves. Null starts with the play.</summary>
         public float? DelaySec { get; }
 
         public StylePropertyTransition(string property, float? durationSec = null, EasingMode? easing = null, float? delaySec = null)
@@ -702,9 +703,15 @@ namespace Velvet
 
         internal EasingMode EasingOrDefault => Easing ?? EasingMode.EaseOut;
 
-        // The entry's delay counted from the end of playDelaySec, the play's own, which it replaces where it names
-        // one: negative where it names a shorter one.
-        internal float DelayAfterSec(float playDelaySec) => (DelaySec ?? playDelaySec) - playDelaySec;
+        // The entry's own delay, counted from where the play's orchestration (a stagger, orchestrationSec) has put
+        // it: Framer's animateTarget hands a value's own transition that orchestration delay where it names none, and
+        // never the play's own delay.
+        internal float OwnDelaySec(float orchestrationSec = 0f)
+            => float.IsInfinity(orchestrationSec) ? DelaySec ?? 0f : (DelaySec ?? orchestrationSec) - orchestrationSec;
+
+        // OwnDelaySec counted from the end of playDelaySec, the play's own delay: negative where it is shorter.
+        internal float DelayAfterSec(float playDelaySec, float orchestrationSec = 0f)
+            => OwnDelaySec(orchestrationSec) - playDelaySec;
 
         // Framer runs an entry naming a duration or an easing on its keyframes generator; one naming neither is no
         // transition (isTransitionDefined), and its value takes the one getDefaultTransition picks for it.
@@ -771,14 +778,24 @@ namespace Velvet
             .Union(StyleLonghandSet.Of(StyleLonghand.Rotate)).Union(StyleLonghandSet.Of(StyleLonghand.Scale));
 
         // How far before the play's own delay ends its earliest entry starts: 0 where none starts sooner.
-        internal static float EarliestAfterSec(IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec)
+        internal static float EarliestAfterSec(IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec,
+            float orchestrationSec = 0f)
         {
             var earliest = 0f;
             foreach (var entry in overrides ?? Array.Empty<StylePropertyTransition>())
             {
-                earliest = Math.Min(earliest, entry.DelayAfterSec(playDelaySec));
+                earliest = Math.Min(earliest, entry.DelayAfterSec(playDelaySec, orchestrationSec));
             }
             return earliest;
+        }
+
+        // Whether an entry animates its value where the play's own duration of 0 animates nothing: one naming no
+        // timing runs its default, and one naming a positive duration, or none, runs that.
+        internal static bool AnyAnimates(IReadOnlyList<StylePropertyTransition>? overrides)
+        {
+            var animates = false;
+            foreach (var entry in overrides ?? Array.Empty<StylePropertyTransition>()) animates |= entry.DurationOrDefaultSec > 0f;
+            return animates;
         }
 
         // Whether an entry runs its value on a default transition that UI Toolkit's own transition cannot express.

@@ -51,9 +51,15 @@ namespace Velvet
                 case TransitionType.Bezier:
                     // A zero duration lands the pose at once, as a play with no channel does, so its repeat delay
                     // never runs. The built state measures an entry's default spring over the channel's own travel.
-                    return config.DurationSec > 0f ? BezierEndSec(config, fromClasses, toClasses, context) : 0.0;
+                    return config.DurationSec > 0f || config.DurationSec == 0f && StylePropertyTransition.AnyAnimates(config.PropertyOverrides)
+                        ? BezierEndSec(config, fromClasses, toClasses, context)
+                        : 0.0;
                 case TransitionType.Spring:
-                    // An instant spring ends where its delay does.
+                    // An instant spring ends where its delay does, its entries aside.
+                    if (config.SpringIsInstant)
+                    {
+                        return OverridesEndSec(config);
+                    }
                     return !config.SpringIsInstant
                         && SpringIntegrator.AreValidParameters(config.Stiffness, config.Damping, config.Mass)
                         ? StylePropertyTransition.EarliestAfterSec(config.PropertyOverrides, config.DelaySec)
@@ -66,9 +72,9 @@ namespace Velvet
                             MotionRepeat.Of(config))
                         : 0.0;
                 default:
-                    return StyleAnimationScheduler.TweensOnSwap(config)
+                    return System.Math.Max(OverridesEndSec(config), StyleAnimationScheduler.TweensOnSwap(config)
                         ? MotionRepeat.Of(config).TotalSec(config.DurationSec)
-                        : config.DurationSec;
+                        : config.DurationSec);
             }
         }
     }

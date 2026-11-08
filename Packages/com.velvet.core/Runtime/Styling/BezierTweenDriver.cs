@@ -225,19 +225,19 @@ namespace Velvet
         /// waits the rest. Such a channel plays its entry once whatever the play repeats.
         /// </summary>
         public static BezierTweenState? WithOverrides(BezierTweenState? state, IReadOnlyList<StylePropertyTransition>? overrides,
-            float playDelaySec)
+            float playDelaySec, float orchestrationSec = 0f)
         {
             if (state == null)
             {
                 return null;
             }
-            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec);
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec, orchestrationSec);
             state.DelaySec -= earliestSec;
             foreach (var (channel, longhands, kind) in DrivenTweenTiming.OverridableChannels<BezierTweenChannel>(state))
             {
                 if (DrivenTweenTiming.LastNaming(overrides, longhands) is { } entry)
                 {
-                    var timing = entry.TimingFor(entry.DelayAfterSec(playDelaySec) - earliestSec, kind, channel.From, channel.To);
+                    var timing = entry.TimingFor(entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec, kind, channel.From, channel.To);
                     channel.Timing = timing;
                     state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, timing.DelaySec + timing.DurationSec);
                 }
@@ -705,6 +705,11 @@ namespace Velvet
                 // Every channel carries its own shortened timing from here on.
                 state.DurationSec = state.DelaySec = state.DelayBaseSec = 0f;
             }
+            else
+            {
+                // A bezier's reversal starts now: the wait an earlier entry's start gave its curve is spent.
+                state.DelaySec = 0f;
+            }
             state.ElapsedSec = 0f;
             state.Repeat = default;
         }
@@ -726,6 +731,10 @@ namespace Velvet
             else if (state.Easing is { } easing)
             {
                 Shorten(state, channel, eased, easing);
+            }
+            else if (channel.Timing is { } entry)
+            {
+                channel.Timing = entry with { DelaySec = 0f };
             }
             channel.From = Mathf.LerpUnclamped(channel.From, channel.To, eased);
             channel.To = channel.RestingTarget;

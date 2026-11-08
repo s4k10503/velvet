@@ -302,13 +302,16 @@ new StyleTransitionConfig
 
 Property names are UI Toolkit `transition-property` spellings (`"opacity"`, `"translate"`,
 `"scale"`, `"rotate"`, `"background-color"`, …). An entry replaces the enclosing config for its property,
-as Framer's `getValueTransition` hands a value its own transition whole: a null `DelaySec` takes the enclosing
-config's, and a null `DurationSec` or `Easing` takes 0.3 s and an ease-out, Framer's keyframes defaults, not
-the enclosing config's. An entry naming neither is no transition, as `isTransitionDefined` reads one, so its value
-takes the default Framer picks for it (*Transition semantics*), after the entry's delay and once whatever the play
-repeats; a `Tween` holding such an entry plays on the per-frame driver a `Bezier` plays on. Where an entry's delay
-is shorter than the play's, the entry's value starts then and the rest wait out the play's own. A property no
-override names animates on the enclosing config's timing.
+as Framer's `getValueTransition` hands a value its own transition whole: a null `DelaySec` starts the value with
+the play rather than after the enclosing config's `DelaySec`, a stagger the play waits still counting, as Framer's
+`animateTarget` hands it only the orchestration delay; and a null `DurationSec` or `Easing` takes 0.3 s and an
+ease-out, Framer's keyframes defaults, not the enclosing config's. An entry naming neither is no transition, as
+`isTransitionDefined` reads one, so its value takes the default Framer picks for it (*Transition semantics*), after
+the entry's delay and once whatever the play repeats. A `Tween` holding such an entry, or a play whose own
+`DurationSec` is 0 holding an entry that animates, plays on the per-frame driver a `Bezier` plays on, the play's own
+curve landing at once. Where an entry's delay is shorter than the play's, the entry's value starts then and the rest
+wait out the play's own; a `Spring`'s or `Bezier`'s reversal starts every value at once. A property no override names animates on the
+enclosing config's timing.
 Completion is sized off the **slowest** of those, so a long override finishes instead
 of being snapped when the top-level duration elapses. A `Tween`, a `Bezier` and a `Spring` read them on every variant swap:
 mount enters, label changes and exits.
@@ -700,8 +703,9 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   USS transition by for that `EasingMode`, a bezier by its control points, each after `DelaySec`, and a
   zero duration lands the move at once. A Motion whose caller names no `transition`, `duration`,
   `easing` or `delay` moves on Framer's default layout transition, a 0.45 s tween eased by
-  `cubic-bezier(0.4, 0, 0.1, 1)`. One given only a `delay` moves 0.3 s on an ease-out after it: Framer's
-  projection hands its transition on with a velocity, which makes the delay alone a transition it reads. A transition the scheduler rejects lands the move at once, its warning
+  `cubic-bezier(0.4, 0, 0.1, 1)`. One given a `duration`, `easing` or `delay` and no `transition` moves on a tween
+  of those, 0.3 s on an ease-out where they name neither: Framer's projection hands its transition on with a
+  velocity, which makes a delay alone a transition it reads. A transition the scheduler rejects lands the move at once, its warning
   logged where the move settles rather than on every render.
 - **Each axis scales by its own factor.** A box whose width and height change by different factors
   starts stretched over the old box, as Framer's does, and a layoutId Motion inside it is corrected for
@@ -1034,9 +1038,10 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   pair over an even share of the duration, as Framer's keyframes generator eases them. `DelaySec` delays the segment.
 - **Per-value transitions.** A `PropertyOverrides` entry naming `"opacity"`, `"translate"` (`X` and `Y`),
   `"scale"`, `"rotate"` or `"all"` times that value, the last entry naming it winning. A single call takes the entry
-  in place of the transition, keeping only the transition's `DelaySec` where the entry names none, as Framer's
-  `getValueTransition` does, so an entry naming no `DurationSec` and no `Easing` takes the default below. A
-  sequence segment lays the entry over the segment's transition, as Framer's sequence does.
+  in place of the transition, as Framer's `getValueTransition` hands it, so an entry naming no `DurationSec` and no
+  `Easing` takes the default below; an entry's `DelaySec` of 0, as one naming none, takes the call's, as Framer's
+  `animateMotionValue` reads `valueTransition.delay || transition.delay`. A sequence segment lays the entry over the
+  segment's transition, as Framer's sequence does.
 - **No transition.** A single call whose transition is null, or names nothing as *Transition semantics* below reads
   one, takes Framer's `getDefaultTransition` for each value: more than two keyframes run 0.8 s on an ease-out; `X`, `Y`
   and `RotateDeg` the spring of 500 stiffness and 25 damping, and `Scale` the one of 550 stiffness and 30 damping,
@@ -1143,7 +1148,9 @@ Three consequences worth knowing:
   `isTransitionDefined` reads one, where the call site gives `V.Motion` no `transition`, `duration` or `easing`, or a
   config sets no knob but `DelaySec`, `Repeat`, `RepeatType`, `RepeatDelaySec`, `StaggerChildrenSec`,
   `StaggerDirection`, `DelayChildrenSec` and `When`; the defaults then run after that delay, on that repeat. A config
-  naming any other knob and no `DurationSec` runs 0.3 s, Framer's default duration. A value neither covers lands with
+  naming any other knob and no `DurationSec` runs 0.3 s, Framer's default duration, and so does `V.Motion` given a
+  `duration` or an `easing` and no `transition`: a tween of what it names, on 0.3 s and an ease-out where it names
+  neither, in place of the `Fade` preset a Motion with no variants takes. A value neither covers lands with
   the swap, as on any spring. Pass
   `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
   node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose

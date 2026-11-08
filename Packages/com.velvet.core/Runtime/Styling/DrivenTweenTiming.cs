@@ -64,13 +64,13 @@ namespace Velvet
     internal sealed class DrivenTweenTiming
     {
         private readonly IReadOnlyList<StylePropertyTransition>? _overrides;
-        private readonly float _topDelaySec;
+        private readonly float _orchestrationSec;
 
         public DrivenTweenTiming(float delaySec, float durationSec, EasingMode easing,
-            IReadOnlyList<StylePropertyTransition>? overrides)
+            IReadOnlyList<StylePropertyTransition>? overrides, float orchestrationSec = 0f)
         {
             _overrides = overrides;
-            _topDelaySec = delaySec;
+            _orchestrationSec = orchestrationSec;
             DurationSec = durationSec;
             Easing = easing;
             var earliest = delaySec;
@@ -118,7 +118,7 @@ namespace Velvet
 
         // A negative duration runs as none, as UI Toolkit floors it (StyleFilterTransitionDriver.TryFindTransition).
         private (float delaySec, float durationSec) Entry(StylePropertyTransition entry)
-            => (entry.DelaySec ?? _topDelaySec, Math.Max(0f, entry.DurationOrDefaultSec));
+            => (entry.OwnDelaySec(_orchestrationSec), Math.Max(0f, entry.DurationOrDefaultSec));
 
         // The channels of a spring or bezier play a PropertyOverrides entry can name, each with the longhands that name
         // it and the default transition Framer gives its value.

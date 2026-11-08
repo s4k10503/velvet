@@ -273,10 +273,18 @@ namespace Velvet
         internal static float DefaultSpringRestSec((float Stiffness, float Damping, float Mass) spring, float travel)
             => SpringRestSec(spring, DefaultSpringRestSpeed, travel);
 
-        // Where a spring a value runs on alone comes to rest, however long that takes, as Framer's JSAnimation ends
-        // when its generator is done.
+        // Where a spring a value runs on alone comes to rest; Framer's defaults rest well within PassDurationSec's 20 s.
         internal static float SpringRestSec((float Stiffness, float Damping, float Mass) spring, float? restSpeed, float travel)
-            => PassDurationSec(travel, spring.Stiffness, spring.Damping, spring.Mass, 0f, restSpeed, UncappedPassMs);
+            => PassDurationSec(travel, spring.Stiffness, spring.Damping, spring.Mass, 0f, restSpeed);
+
+        // Whether a spring released at `from` toward `to` has come to rest t seconds in, by Framer's rest test.
+        internal static bool SpringRestsAt(float from, float to, double t, (float Stiffness, float Damping, float Mass) spring,
+            float? restSpeed)
+        {
+            var delta = to - from;
+            var (displacement, speed) = SpringIntegrator.Solve(-delta, 0f, t, spring);
+            return Rests(delta, displacement, speed, restSpeed);
+        }
 
         // A transform value runs on a spring, scale on a critically damped one that is stiffer, and any other value
         // on the ease above.
@@ -363,11 +371,11 @@ namespace Velvet
         }
 
         // Framer Motion's calcGeneratorDuration over its spring generator: the first 50 ms sample at which a spring
-        // released `delta` from its target with `velocity` has come to rest, or infinity when none before maxMs does.
+        // released `delta` from its target with `velocity` has come to rest, or infinity when none before 20 s does.
         internal static float PassDurationSec(float delta, float stiffness, float damping, float mass, float velocity = 0f,
-            float? restSpeed = null, int maxMs = MaxPassMs)
+            float? restSpeed = null)
         {
-            for (var ms = 0; ms < maxMs; ms += PassSampleMs)
+            for (var ms = 0; ms < MaxPassMs; ms += PassSampleMs)
             {
                 var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, ms / 1000.0,
                     (stiffness, damping, mass));
@@ -420,10 +428,6 @@ namespace Velvet
 
         private const int PassSampleMs = 50;
         private const int MaxPassMs = 20000;
-
-        // The bound PassDurationSec takes for a spring searched until it rests: one past it is reported as never
-        // resting.
-        internal const int UncappedPassMs = 2_000_000_000;
 
         // Framer Motion's rest test, with its thresholds for a travel under 5 and for any other.
         private static bool Rests(double delta, double displacement, double velocity, float? restSpeed = null)
@@ -645,13 +649,13 @@ namespace Velvet
         /// delay ends), so every channel's delay counts from there.
         /// </summary>
         public static MotionSpringState? WithOverrides(MotionSpringState? state,
-            IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec)
+            IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec, float orchestrationSec = 0f)
         {
             if (state == null || overrides == null || overrides.Count == 0)
             {
                 return state;
             }
-            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec);
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(overrides, playDelaySec, orchestrationSec);
             ForEachActiveChannel(state, c => c.DelaySec = -earliestSec);
             foreach (var (channel, longhands, kind) in DrivenTweenTiming.OverridableChannels<SpringChannel>(state))
             {
@@ -659,7 +663,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                var delaySec = entry.DelayAfterSec(playDelaySec) - earliestSec;
+                var delaySec = entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec;
                 if (entry.IsDefined)
                 {
                     channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target);
@@ -967,7 +971,11 @@ namespace Velvet
                 return;
             }
             state.ElapsedSec = 0.0;
-            ForEachActiveChannel(state, c => Release(state, c, c.Integrator.Value, c.Integrator.Velocity));
+            ForEachActiveChannel(state, c =>
+            {
+                StartsNow(c);
+                Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
+            });
             GestureChannelMask.ResyncNarrowing(element, state);
             WriteChannelValues(element, state);
         }
@@ -1022,8 +1030,19 @@ namespace Velvet
             ForEachActiveChannel(state, c =>
             {
                 c.Target = c.RestingTarget;
+                StartsNow(c);
                 Release(state, c, c.Integrator.Value, c.Integrator.Velocity);
             });
+        }
+
+        // A channel released again starts now: the delay an entry or the earliest entry's start gave it is spent.
+        private static void StartsNow(SpringChannel channel)
+        {
+            channel.DelaySec = 0f;
+            if (channel.Timing is { } own)
+            {
+                channel.Timing = own with { DelaySec = 0f };
+            }
         }
 
         /// <summary>

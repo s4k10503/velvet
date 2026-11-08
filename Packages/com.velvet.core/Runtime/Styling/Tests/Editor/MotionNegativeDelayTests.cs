@@ -275,7 +275,9 @@ namespace Velvet.Tests
             element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
                 durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0.2f,
-                propertyOverrides: propertyOverride ? new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear) } : null);
+                propertyOverrides: propertyOverride
+                    ? new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f) }
+                    : null);
             ForcePanelUpdate(element.panel);
 
             // Act
@@ -404,7 +406,7 @@ namespace Velvet.Tests
             // Act
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
                 durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0f,
-                propertyOverrides: new[] { new StylePropertyTransition("opacity", durationSec: 1f) });
+                propertyOverrides: new[] { new StylePropertyTransition("opacity", durationSec: 1f, delaySec: -0.1f) });
 
             // Assert
             var delays = element.style.transitionDelay.value;

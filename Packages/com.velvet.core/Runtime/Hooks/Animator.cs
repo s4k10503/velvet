@@ -191,7 +191,7 @@ namespace Velvet
                 _timeSec = Math.Min(_endSec, _timeSec + dt * _speed);
             }
             foreach (var track in _tracks) track.Sample(_timeSec);
-            if (_timeSec < _endSec)
+            if (!_tracks.TrueForAll(track => track.HasEnded(_timeSec)))
             {
                 return false;
             }
@@ -355,8 +355,8 @@ namespace Velvet
         }
 
         // The transition one value takes where a PropertyOverrides entry names its property, the last such entry
-        // winning: a single call takes the entry alone and the transition's delay where the entry names none, as
-        // Framer's getValueTransition does, and a sequence takes the entry over the transition, as its own does.
+        // winning: a single call takes the entry alone, as Framer's getValueTransition hands it, with the delay
+        // OwnOrCallDelaySec gives it; a sequence lays the entry over the transition, as its own getValueTransition does.
         private static StyleTransitionConfig? ValueTransition(StyleTransitionConfig? transition, AnimateChannel channel,
             Kind kind)
         {
@@ -369,13 +369,18 @@ namespace Velvet
                     continue;
                 }
                 return kind == ScopedTimeline.Kind.Single
-                    ? s_undefined.With(entry.DurationSec, entry.Easing, delaySec: entry.DelaySec ?? transition!.DelaySec)
+                    ? s_undefined.With(entry.DurationSec, entry.Easing, delaySec: OwnOrCallDelaySec(entry, transition!))
                     : transition!.With(entry.DurationSec, entry.Easing, delaySec: entry.DelaySec);
             }
             return transition;
         }
 
         private static readonly StyleTransitionConfig s_undefined = new();
+
+        // Framer's animateMotionValue: `valueTransition.delay || transition.delay`, so an entry's delay of 0, as one
+        // naming none, takes the call's.
+        private static float OwnOrCallDelaySec(StylePropertyTransition entry, StyleTransitionConfig transition)
+            => (entry.DelaySec ?? 0f) != 0f ? entry.DelaySec!.Value : transition.DelaySec;
 
 #pragma warning disable CS8524 // no discard arm: a new channel has to say which property names it
         private static StyleLonghand LonghandOf(AnimateChannel channel) => channel switch
@@ -422,7 +427,7 @@ namespace Velvet
         private readonly Func<float, float> _ease;
         private readonly (float Stiffness, float Damping, float Mass)? _spring;
         private readonly double? _springSettleSec;
-        private readonly float? _springRestSpeed;
+        private float? _springRestSpeed;
         // The travel the spring is measured over; NaN where that is the value's own.
         private readonly float _springTravel = float.NaN;
         private readonly float _passSec;
@@ -440,7 +445,6 @@ namespace Velvet
             if (single && (transition == null || !transition.IsDefined))
             {
                 _passSec = DefaultTransition(out _ease, out _spring);
-                _springRestSpeed = _spring.HasValue ? MotionSpringDriver.DefaultSpringRestSpeed : null;
             }
             else if (transition?.Type == TransitionType.Spring && (single || _keys.Length <= 2))
             {
@@ -509,11 +513,29 @@ namespace Velvet
             return RestSec(stiffness, damping, mass, MotionSpringDriver.DefaultSpringRestSpeed);
         }
 
-        // A single animation's spring ends where it rests, as Framer's JSAnimation ends when its generator is done,
-        // however long that takes; a sequence's is cut at MaxSpringSec, as the easing Framer samples from it is.
+        // Where a single animation's spring rests, measured up to 20 s; one resting later, or never, runs on until it
+        // rests (HasEnded), as Framer's JSAnimation ends when its generator is done. A sequence's is cut at
+        // MaxSpringSec, as the easing Framer samples from it is.
         private float RestSec(float stiffness, float damping, float mass, float? restSpeed)
-            => MotionSpringDriver.PassDurationSec(OwnTravel(), stiffness, damping, mass, 0f, restSpeed,
-                MotionSpringDriver.UncappedPassMs);
+        {
+            _springRestSpeed = restSpeed;
+            return MotionSpringDriver.PassDurationSec(OwnTravel(), stiffness, damping, mass, 0f, restSpeed);
+        }
+
+        // Whether the track has nothing left to show at timeSec on the timeline.
+        public bool HasEnded(double timeSec)
+        {
+            var local = timeSec - _startSec;
+            if (!float.IsPositiveInfinity(_passSec))
+            {
+                return local >= _totalSec;
+            }
+            if (!_begun || _spring == null)
+            {
+                return false;
+            }
+            return MotionSpringDriver.SpringRestsAt(_keys[0], _keys[^1], local, _spring.Value, _springRestSpeed);
+        }
 
         // A single animation's spring runs over the value's own travel, so a lone keyframe's start is read when the
         // track is laid out rather than when it begins.

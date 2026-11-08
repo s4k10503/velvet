@@ -944,10 +944,8 @@ namespace Velvet.Tests
                 Is.EqualTo(new[] { (float)FrameSec, 5f }).Within(1e-5f));
         }
 
-        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
-        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
-        public void Given_ATweenWithADelayAndAnOverrideNamingNone_When_TheClockStepsAFrameIntoIt_Then_TheOverrideWaitedTheDelayToo()
+        public void Given_ATweenWithADelayAndAnOverrideNamingNone_When_TheClockStepsAFrameIntoIt_Then_TheOverrideStartedWithThePlay()
         {
             // Arrange
             var clock = new HeldMotionClock();
@@ -965,9 +963,10 @@ namespace Velvet.Tests
             // Act
             Step(clock, FrameSec);
 
-            // Assert — both a frame in, opacity on its half second.
+            // Assert — translate a frame past the play's delay, opacity five frames into its half second, as Framer
+            // hands a value's own transition no delay of the play's.
             Assert.That(new[] { element.style.opacity.value, element.style.translate.value.x.value },
-                Is.EqualTo(new[] { (float)(2 * FrameSec), 1f }).Within(1e-5f));
+                Is.EqualTo(new[] { (float)(10 * FrameSec), 1f }).Within(1e-5f));
         }
 
         // A zero duration lands at the end of the entry's delay, as UI Toolkit lands such an entry.
@@ -1364,6 +1363,52 @@ namespace Velvet.Tests
             var config = new StyleTransitionConfig
             {
                 DurationSec = 0.4f, PropertyOverrides = new[] { new StylePropertyTransition("translate") },
+            };
+
+            // Act
+            _scheduler.PlayVariantEnter(element, new[] { "translate-x-[0px]" }, new[] { "translate-x-[64px]" }, config);
+
+            // Assert
+            var enters = (System.Collections.IDictionary)typeof(StyleAnimationScheduler)
+                .GetField("_pendingEnters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .GetValue(_scheduler);
+            var pending = enters.Contains(element) ? enters[element] : null;
+            Assert.That(pending?.GetType().GetField("Bezier")?.GetValue(pending), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_ABezierPlayWithADelayAndAnOpacityEntryNamingNone_When_TheClockStepsTwoFrames_Then_OpacityHasMovedTwoFrames()
+        {
+            // Arrange — the entry names no delay, so opacity starts with the play rather than after its eight frames.
+            var clock = new HeldMotionClock();
+            var element = OnPanel("undelayed");
+            _scheduler = new StyleAnimationScheduler { Clock = clock };
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0f, BezierY1 = 0f, BezierX2 = 1f, BezierY2 = 1f,
+                DelaySec = (float)(8 * FrameSec),
+                PropertyOverrides = new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear) },
+            };
+            _scheduler.PlayVariantEnter(element, new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" }, config);
+            HeldTicks(10);
+
+            // Act
+            Step(clock, 2 * FrameSec);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ATweenOfNoDurationWhoseEntryNamesNoTiming_When_Started_Then_TheDriverPlaysIt()
+        {
+            // Arrange — the play's own timing lands at once, but translate runs Framer's default spring after 0.1 s.
+            var element = OnPanel("zero");
+            _scheduler = new StyleAnimationScheduler();
+            var config = new StyleTransitionConfig
+            {
+                DurationSec = 0f, PropertyOverrides = new[] { new StylePropertyTransition("translate", delaySec: 0.1f) },
             };
 
             // Act

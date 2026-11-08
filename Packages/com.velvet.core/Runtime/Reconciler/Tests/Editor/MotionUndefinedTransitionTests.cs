@@ -56,5 +56,18 @@ namespace Velvet.Tests
             // Assert
             Assert.That(played is { PerValueDefaults: true } ? played.Repeat : float.NaN, Is.EqualTo(2f));
         }
+
+        [Test]
+        public void Given_AMotionGivenOnlyAnEasing_When_ItsVariantTransitionIsRead_Then_ItIsATweenOfFramersDefaultDuration()
+        {
+            // Arrange — Framer counts an ease as a transition, which runs 0.3 s, not the Fade preset's 0.2 s.
+            var motion = V.Motion(variants: Poses(), animate: "visible", easing: UnityEngine.UIElements.EasingMode.EaseIn);
+
+            // Act
+            var played = motion.VariantTransition;
+
+            // Assert
+            Assert.That(played is { PerValueDefaults: false } ? played.DurationSec : float.NaN, Is.EqualTo(0.3f));
+        }
     }
 }

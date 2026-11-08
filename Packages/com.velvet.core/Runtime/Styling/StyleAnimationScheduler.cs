@@ -182,7 +182,12 @@ namespace Velvet
         internal static bool RunsOnSwap(StyleTransitionConfig config, float additionalDelaySec = 0f)
             => (config.Type == TransitionType.Spring && !config.SpringLandsAtOnceAfter(additionalDelaySec))
                 || (config.Type == TransitionType.Bezier && config.DurationSec != 0f)
-                || TweensOnSwap(config);
+                || TweensOnSwap(config) || EntriesAnimate(config);
+
+        // A play whose own timing lands at once still runs a PropertyOverrides entry that animates its value, as
+        // Framer runs each value on its own transition.
+        private static bool EntriesAnimate(StyleTransitionConfig config)
+            => !IsPlayableDuration(config.DurationSec) && StylePropertyTransition.AnyAnimates(config.PropertyOverrides);
 
         internal static bool TweensOnSwap(StyleTransitionConfig config)
             => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
@@ -190,9 +195,9 @@ namespace Velvet
         // A swap on such a config plays nothing: it lands the properties its pose names (LandNamedProperties) and
         // moves no classes. A bezier's zero duration is its None, and a spring's (SpringLandsAtOnce).
         internal static bool LandsAtOnce(StyleTransitionConfig config, float additionalDelaySec = 0f)
-            => config.Type == TransitionType.Tween ? !IsPlayableDuration(config.DurationSec)
+            => !EntriesAnimate(config) && (config.Type == TransitionType.Tween ? !IsPlayableDuration(config.DurationSec)
                 : config.Type == TransitionType.Bezier ? config.DurationSec == 0f
-                : config.SpringLandsAtOnceAfter(additionalDelaySec);
+                : config.SpringLandsAtOnceAfter(additionalDelaySec));
 
         internal bool IsSwapPending(VisualElement element, Action onSwap)
             // MUTANT_SURVIVES(unreachable): a registered hold's swap is always the element's pending enter.
@@ -254,7 +259,7 @@ namespace Velvet
                 return;
             }
 
-            if (type == TransitionType.Bezier && durationSec != 0f)
+            if (type == TransitionType.Bezier && (durationSec != 0f || StylePropertyTransition.AnyAnimates(propertyOverrides)))
             {
                 StartBezierVariant(in play, bezierX1, bezierY1, bezierX2, bezierY2, durationSec);
                 return;
@@ -304,7 +309,7 @@ namespace Velvet
             var (durationList, delayList) = ApplyTransitionStyles(element, new TweenSpec
             {
                 DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
-                AllProperties = variantMode, PropertyOverrides = propertyOverrides,
+                AllProperties = variantMode, PropertyOverrides = propertyOverrides, OrchestrationSec = play.AdditionalDelaySec,
             }, out var timing);
             if (variantMode)
             {
@@ -549,7 +554,7 @@ namespace Velvet
             {
                 DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
                 DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
-                PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null,
+                PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null, OrchestrationSec = additionalDelaySec,
             }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Exit, Context,
                 realiseInline: !restoreFromOnCancel);
@@ -718,7 +723,8 @@ namespace Velvet
             var delaySec = play.DelaySec;
             var additionalDelaySec = play.AdditionalDelaySec;
             // The driver starts at the earliest entry's delay where one is sooner than the play's (WithOverrides).
-            var earliestSec = StylePropertyTransition.EarliestAfterSec(play.PropertyOverrides, play.DelaySec);
+            var earliestSec = StylePropertyTransition.EarliestAfterSec(play.PropertyOverrides, play.DelaySec,
+                play.AdditionalDelaySec);
             var isExit = play.IsExit;
             var map = isExit ? _pendingExits : _pendingEnters;
 
@@ -741,7 +747,7 @@ namespace Velvet
                 ? MotionSpringDriver.WithOverrides(
                     MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description,
                         play.PerValueDefaults),
-                    play.PropertyOverrides, play.DelaySec)
+                    play.PropertyOverrides, play.DelaySec, play.AdditionalDelaySec)
                 : null);
             GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
@@ -873,12 +879,17 @@ namespace Velvet
             var repeat = play.Repeat;
             var overrides = play.PropertyOverrides;
             var delaySec = play.DelaySec;
+            var orchestrationSec = play.AdditionalDelaySec;
+            // A play of no duration still runs the entries that animate their values; its own curve lands at once.
+            var curveSec = durationSec == 0f && StylePropertyTransition.AnyAnimates(overrides) ? 1f : durationSec;
             StartDriven(in play, play.FromClasses, play.ToClasses,
-                plan => ValidateBezierParameters(x1, y1, x2, y2, durationSec)
+                plan => ValidateBezierParameters(x1, y1, x2, y2, curveSec)
                     ? BezierTweenDriver.WithOverrides(
-                        BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides, delaySec)
+                        BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides, delaySec,
+                        orchestrationSec)
                     : null,
-                play.DelaySec + play.AdditionalDelaySec + StylePropertyTransition.EarliestAfterSec(overrides, delaySec),
+                play.DelaySec + play.AdditionalDelaySec
+                + StylePropertyTransition.EarliestAfterSec(overrides, delaySec, orchestrationSec),
                 removesToClasses: false);
         }
 
@@ -890,7 +901,7 @@ namespace Velvet
         private void StartDrivenTween(in VariantPlay play, float durationSec, EasingMode easing,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides, bool removesToClasses)
         {
-            var timing = new DrivenTweenTiming(play.DelaySec, durationSec, easing, propertyOverrides);
+            var timing = new DrivenTweenTiming(play.DelaySec, durationSec, easing, propertyOverrides, play.AdditionalDelaySec);
             // Copied out because a lambda cannot capture an `in` parameter.
             var repeat = play.Repeat;
             StartDriven(in play, MotionPresetClasses.Expand(play.FromClasses), MotionPresetClasses.Expand(play.ToClasses),
@@ -903,11 +914,13 @@ namespace Velvet
         // UI Toolkit's transition cannot move a skew angle, which no style slot holds, so a Tween that
         // moves one runs on the driver that writes it, as a Tween on another clock does. A Tween on a playback
         // or with passes to repeat has no transition to hand either: the transition runs on the panel's time, once.
-        // Nor can it run a value on a spring or an arbitrary cubic-bezier, which an entry naming no timing takes.
+        // Nor can it run a value on a spring or an arbitrary cubic-bezier, which an entry naming no timing takes, or
+        // animate an entry's value where the play's own duration of 0 lands the rest at once.
         private bool RunsDriven(in VariantPlay play, float durationSec)
             => DrivesTween(durationSec) || TweenDrivesSkew(in play, durationSec)
-                || (IsPlayableDuration(durationSec) && (play.Playback != null || play.Repeat.Count > 0f
-                    || StylePropertyTransition.AnyUndefined(play.PropertyOverrides)))
+                || (IsPlayableDuration(durationSec) && (play.Playback != null || play.Repeat.Count > 0f))
+                || StylePropertyTransition.AnyUndefined(play.PropertyOverrides)
+                || (durationSec == 0f && StylePropertyTransition.AnyAnimates(play.PropertyOverrides))
                 || (play.IsExit && InsidePinnedGhost(play.Element));
 
         // An exit inside a pinned PopLayout ghost runs on the driver, whose inline values and recurring tick outlive the
@@ -2039,7 +2052,7 @@ namespace Velvet
             {
                 foreach (var property in overrides)
                 {
-                    earliestDelaySec = Math.Min(earliestDelaySec, property.DelaySec ?? delaySec);
+                    earliestDelaySec = Math.Min(earliestDelaySec, property.OwnDelaySec(additionalDelaySec));
                 }
             }
             var swapDelaySec = Math.Max(0f, additionalDelaySec + earliestDelaySec);
@@ -2055,6 +2068,8 @@ namespace Velvet
             // A variant swap's: transition-property: all, and the per-property overrides that extend it.
             public bool AllProperties { get; init; }
             public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+            // The stagger the play waits, from which an entry's own delay counts.
+            public float OrchestrationSec { get; init; }
         }
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
@@ -2070,7 +2085,7 @@ namespace Velvet
             // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
             if (allProperties && propertyOverrides is { Count: > 0 })
             {
-                return ApplyPropertyOverrideTransitionStyles(element, durationSec, easing, delaySec, propertyOverrides, delayOffsetSec);
+                return ApplyPropertyOverrideTransitionStyles(element, spec, propertyOverrides);
             }
 
             var durationMs = (int)(durationSec * 1000);
@@ -2114,16 +2129,17 @@ namespace Velvet
         // Duration / delay are positionally-matched lists, rented EMPTY
         // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
         // the SAME pools the single-entry path above uses, so they are returned through the existing
-        // PendingAnimation.DurationList / DelayList bookkeeping unchanged. An entry's null delay falls back to
-        // defaultDelaySec; its null duration and easing take StylePropertyTransition's own defaults. The easing list
+        // PendingAnimation.DurationList / DelayList bookkeeping unchanged. An entry's timing is its own
+        // (StylePropertyTransition), its delay counted from the stagger rather than after the play's delay. The easing list
         // is built each call rather than cached, since the "all" entry's easing is the direction's: PropertyOverrides
         // is a handful of entries, so the allocation is bounded and one-shot per animation start (never per-frame)
         // — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static cache
         // (GetOrCreateEasingList) rather than reallocated.
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
-            VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
-            IReadOnlyList<StylePropertyTransition> overrides, float delayOffsetSec)
+            VisualElement element, TweenSpec spec, IReadOnlyList<StylePropertyTransition> overrides)
         {
+            var (defaultDurationSec, defaultEasing, defaultDelaySec, delayOffsetSec) =
+                (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
             var count = overrides.Count;
             var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
             {
@@ -2144,7 +2160,7 @@ namespace Velvet
                 var o = i < 0 ? default : overrides[i];
                 easingList.Add(GetOrCreateEasingList(i < 0 ? defaultEasing : o.EasingOrDefault)[0]);
                 var durationMs = (int)((i < 0 ? defaultDurationSec : o.DurationOrDefaultSec) * 1000);
-                var delaySec = (o.DelaySec ?? defaultDelaySec) + delayOffsetSec;
+                var delaySec = (i < 0 ? defaultDelaySec : o.OwnDelaySec(spec.OrchestrationSec)) + delayOffsetSec;
                 if (delaySec != 0f)
                 {
                     hasDelay = true;
