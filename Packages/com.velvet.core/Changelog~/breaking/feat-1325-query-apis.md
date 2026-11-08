@@ -9,6 +9,9 @@
   whose query function takes a `QueryFunctionContext` (client, key, meta, token), v5's `QueryFunctionContext`.
   Its request is cancelled with its last reader only once it has read `QueryFunctionContext.CancellationToken`.
 - `Hooks.UseIsFetching` and `QueryClient.IsFetching`, TanStack Query's `useIsFetching` and `isFetching`.
+- `Hooks.UseQueries` and `Hooks.UseSuspenseQueries`, TanStack Query's `useQueries` and `useSuspenseQueries`,
+  with and without a `combine`: a list of queries read in one hook, each keeping its observer while some query
+  of the list reads its entry.
 
 ### Changed
 

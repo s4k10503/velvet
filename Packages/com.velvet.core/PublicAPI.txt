@@ -578,6 +578,8 @@
 [Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseOutletContext`1(): T?
 [Velvet] method Velvet.Hooks.UseParams(): System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] method Velvet.Hooks.UseQueries`2(System.Collections.Generic.IReadOnlyList`1[Velvet.QueryOptions`2[TQueryFnData, TData]], Velvet.QueryClient?): System.Collections.Generic.IReadOnlyList`1[Velvet.QueryResult`1[TData]]
+[Velvet] method Velvet.Hooks.UseQueries`3(System.Collections.Generic.IReadOnlyList`1[Velvet.QueryOptions`2[TQueryFnData, TData]], System.Func`2[System.Collections.Generic.IReadOnlyList`1[Velvet.QueryResult`1[TData]], TCombined], Velvet.QueryClient?): TCombined
 [Velvet] method Velvet.Hooks.UseQueryErrorResetBoundary(): Velvet.QueryErrorResetBoundary
 [Velvet] method Velvet.Hooks.UseQuery`1(Velvet.QueryOptions`1[T], Velvet.QueryClient?): Velvet.QueryResult`1[T]
 [Velvet] method Velvet.Hooks.UseQuery`2(Velvet.QueryOptions`2[TQueryFnData, TData], Velvet.QueryClient?): Velvet.QueryResult`1[TData]
@@ -595,6 +597,8 @@
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
 [Velvet] method Velvet.Hooks.UseSubmit(): Velvet.SubmitFunction
+[Velvet] method Velvet.Hooks.UseSuspenseQueries`2(System.Collections.Generic.IReadOnlyList`1[Velvet.QueryOptions`2[TQueryFnData, TData]], Velvet.QueryClient?): System.Collections.Generic.IReadOnlyList`1[Velvet.QueryResult`1[TData]]
+[Velvet] method Velvet.Hooks.UseSuspenseQueries`3(System.Collections.Generic.IReadOnlyList`1[Velvet.QueryOptions`2[TQueryFnData, TData]], System.Func`2[System.Collections.Generic.IReadOnlyList`1[Velvet.QueryResult`1[TData]], TCombined], Velvet.QueryClient?): TCombined
 [Velvet] method Velvet.Hooks.UseSuspenseQuery`1(Velvet.QueryOptions`1[T], Velvet.QueryClient?): Velvet.QueryResult`1[T]
 [Velvet] method Velvet.Hooks.UseSuspenseQuery`2(Velvet.QueryOptions`2[TQueryFnData, TData], Velvet.QueryClient?): Velvet.QueryResult`1[TData]
 [Velvet] method Velvet.Hooks.UseSyncExternalStore`1(System.Func`2[System.Action, System.Action], System.Func`1[T]): T

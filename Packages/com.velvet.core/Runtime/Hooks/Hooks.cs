@@ -3200,6 +3200,173 @@ namespace Velvet
         }
 
         /// <summary>
+        /// TanStack Query's <c>useQueries({ queries })</c>: <see cref="UseQuery{TQueryFnData, TData}"/> over each of
+        /// <paramref name="queries"/> in one hook, so the number of queries can change from render to render. Each
+        /// query keeps its observer across renders while some query of the list reads the same entry, whatever its
+        /// position, and the component re-renders when a property of a result it has read changes in any of them:
+        /// a property read from one result is tracked for all of them. The first query whose error
+        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from this call.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s; queries of different
+        /// data types share one list as <c>object</c>.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="queries">The queries, each as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of <paramref name="queries"/>.</returns>
+        public static IReadOnlyList<QueryResult<TData>> UseQueries<TQueryFnData, TData>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries, QueryClient? client = null)
+            => UseQueriesCore<TQueryFnData, TData, IReadOnlyList<QueryResult<TData>>>(queries, null, client, suspense: false);
+
+        /// <summary>
+        /// TanStack Query's <c>useQueries({ queries, combine })</c>: <see cref="UseQueries{TQueryFnData, TData}"/>
+        /// returning what <paramref name="combine"/> makes of the results. It runs again only when a result changed,
+        /// the queries' keys changed or it is another instance, so pass a stable one, and what it returns keeps the
+        /// instance it returned before where the two are deeply equal. The component re-renders when what it returns
+        /// changes, the properties it reads from the results tracked as <see cref="UseQueries{TQueryFnData, TData}"/>
+        /// tracks them.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="combine">Turns the results, in the order of <paramref name="queries"/>, into one value.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(queries, combine, client, suspense: false);
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQueries({ queries })</c>: <see cref="UseQueries{TQueryFnData, TData}"/> with
+        /// each query as <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> takes it. While any result is
+        /// <see cref="QueryStatus.Pending"/> the component suspends to the nearest <c>V.Suspense</c>, its render
+        /// starting the request of each pending query, and renders again once every one of them holds data or has
+        /// settled; the first query whose request failed with no data throws its error.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result once all hold data or an error.</returns>
+        public static IReadOnlyList<QueryResult<TData>> UseSuspenseQueries<TQueryFnData, TData>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries, QueryClient? client = null)
+            => UseQueriesCore<TQueryFnData, TData, IReadOnlyList<QueryResult<TData>>>(queries, null, client, suspense: true);
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQueries({ queries, combine })</c>: <see cref="UseSuspenseQueries{TQueryFnData, TData}"/>
+        /// returning what <paramref name="combine"/> makes of the results, on the terms of
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(queries, combine, client, suspense: true);
+        }
+
+        private static TCombined UseQueriesCore<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined>? combine,
+            QueryClient? client,
+            bool suspense)
+        {
+            var hookName = suspense ? nameof(UseSuspenseQueries) : nameof(UseQueries);
+            if (queries == null) throw new ArgumentNullException(nameof(queries));
+            foreach (var query in queries)
+            {
+                ValidateQueryOptions(query);
+            }
+            // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(hookName);
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                $"{hookName} found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                $"above the caller, or pass the client to {hookName}.");
+            var boundary = UseContext(QueryErrorResetBoundaryContext.Ref)!;
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
+            var observer = UseMutableRef(() => new QueriesObserver<TQueryFnData, TData, TCombined>(() => setVersion.Invoke(v => v + 1))).Current;
+            var read = observer.Read(queryClient, queries, suspense, boundary);
+
+            // TanStack's useClearResetErrorBoundary.
+            UseEffect((Func<Action?>)(() =>
+            {
+                boundary.ClearReset();
+                return null;
+            }), new object?[] { boundary });
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, read, combine);
+                return null;
+            }));
+
+            if (suspense) UseSuspendWhileAnyPending(read, queryClient, boundary);
+            read.ThrowFirstError(boundary);
+            if (combine == null) return (TCombined)(object)read.Results;
+            var keys = new QueryKey[read.Settings.Length];
+            for (var i = 0; i < keys.Length; i++)
+            {
+                keys[i] = read.Settings[i].KeyId;
+            }
+            return observer.Combine(read.Results, keys, combine);
+        }
+
+        // UseSuspendWhilePending over every query whose result is pending: the render starts each one's request and
+        // waits for all of them, as v5's useQueries throws Promise.all of their fetchOptimistic.
+        private static void UseSuspendWhileAnyPending<TQueryFnData, TData>(
+            QueriesRead<TQueryFnData, TData> read, QueryClient client, QueryErrorResetBoundary boundary)
+        {
+            List<QueryEntry<TQueryFnData>>? pending = null;
+            for (var i = 0; i < read.Observers.Length; i++)
+            {
+                if (read.Observers[i].Current.Status != QueryStatus.Pending) continue;
+                var entry = read.Entries[i];
+                entry.Fetch(new QueryFetchOptions<TQueryFnData>().Assign(read.Settings[i].Options, client), cancelRefetch: false);
+                (pending ??= new List<QueryEntry<TQueryFnData>>()).Add(entry);
+            }
+            object key = s_settledSuspendedQueryKey;
+            if (pending != null)
+            {
+                var requests = new object?[pending.Count];
+                for (var i = 0; i < requests.Length; i++)
+                {
+                    requests[i] = pending[i].Request ?? pending[i];
+                }
+                key = new QueryKey(requests);
+            }
+            UseCore(
+                pending == null ? s_settledSuspendedQuery : token => WaitForSuspendedQueries(pending!, boundary, token),
+                key,
+                resourceKeyExplicit: true,
+                nameof(UseSuspenseQueries));
+        }
+
+        private static async VelvetTask<Unit> WaitForSuspendedQueries<T>(
+            List<QueryEntry<T>> entries, QueryErrorResetBoundary boundary, CancellationToken token)
+        {
+            foreach (var entry in entries)
+            {
+                await WaitForSuspendedQuery(entry, boundary, token);
+            }
+            return Unit.Default;
+        }
+
+        /// <summary>
         /// TanStack Query's <c>useIsFetching(filters)</c>: how many of the entries <paramref name="filters"/> selects
         /// have a request in flight and running, as <see cref="QueryClient.IsFetching"/> counts them, re-rendering the
         /// component when the number changes. The filters' own <see cref="QueryFilters.FetchStatus"/> is replaced.

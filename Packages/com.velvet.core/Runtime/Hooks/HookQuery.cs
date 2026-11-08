@@ -1366,11 +1366,24 @@ namespace Velvet
         }
 
         internal QueryResult<TData> Read(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings)
+            => Read(entry, settings, this);
+
+        // A result whose reads are tracked by another source: UseQueries shares one set across its observers.
+        internal QueryResult<TData> Read(
+            QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, IQueryResultSource source)
         {
             _current = CreateResult(entry, settings, inRender: true);
             _hasCurrent = true;
-            return new QueryResult<TData>(_current, this);
+            return new QueryResult<TData>(_current, source);
         }
+
+        // What names the entry the latest commit subscribed to, which UseQueries matches a render's queries by;
+        // null before the first commit.
+        internal QueryKey? CommittedKeyId => _settings.Options == null ? null : _settings.KeyId;
+
+        // UseQueries drops an observer whose query left the list.
+        internal void Leave() => Unsubscribe();
+
 
         // The reading the latest render or update took, which UseQuery's error rule reads without marking any
         // property as read.

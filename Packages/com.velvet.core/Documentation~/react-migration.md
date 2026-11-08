@@ -399,6 +399,8 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `new QueryCache({ onError, onSuccess, onSettled })` / `new QueryClient({ queryCache })` | `new QueryCache { OnError = (error, query) => ..., OnSuccess = (data, query) => ..., OnSettled = (data, error, query) => ... }` / `new QueryClientOptions { QueryCache = ... }` |
 | `queryClient.getQueryCache()` / `queryCache.subscribe(listener)` / `find(filters)` / `findAll(filters)` / `getAll()` / `remove(query)` / `clear()` | `client.GetQueryCache()` / `cache.Subscribe(e => ...)`, handed a `QueryCacheEvent` / `Find` / `FindAll` / `GetAll` / `Remove` / `Clear` |
 | `useIsFetching(filters)` / `queryClient.isFetching(filters)` | `Hooks.UseIsFetching(filters)` / `client.IsFetching(filters)` |
+| `useQueries({ queries })` / `useQueries({ queries, combine })` | `Hooks.UseQueries(queries)` / `Hooks.UseQueries(queries, results => ...)`, over a list of `QueryOptions<TQueryFnData, TData>`; queries of several data types share `object` |
+| `useSuspenseQueries({ queries })` / `useSuspenseQueries({ queries, combine })` | `Hooks.UseSuspenseQueries(queries)` / `Hooks.UseSuspenseQueries(queries, results => ...)` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
 under `object.Equals`, so a key rebuilt every render names the same entry, and a string or a boxed
@@ -687,6 +689,19 @@ data the entry holds, and when `CancelQueries(revert: false)` cancels one; a thr
 `OnSettled` and is what a `FetchQuery` caller is handed. `SetQueryData` runs none of them. `Find` matches
 exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `IsFetching` and
 `Hooks.UseIsFetching` count the entries selected that are `Fetching`, a paused one left out.
+
+**Several queries in one hook.** `UseQueries` reads each query of its list as `UseQuery` would and returns the
+results in the list's order, so the number of queries can change between renders. A query keeps its observer
+while some query of the list reads the same entry, whatever its position, as v5 matches observers by
+`queryHash`; a query leaving the list leaves its entry, and the Editor warns once when two queries of one list
+read one entry. A property read from any result is tracked for all of them, as v5's `trackResult` shares one
+set. The first query whose error its `ThrowOnError` throws is thrown from the hook. With a `combine`, the hook
+returns what it makes of the results: it runs again only when a query's result has changed, the queries' keys
+have changed or it is another instance, what it returns keeps the previous instance where the two are deeply
+equal, and the component re-renders only when that instance changes. `UseSuspenseQueries` takes each query as
+`UseSuspenseQuery` does: a render with any result pending starts each pending query's request and suspends
+until all of them hold data or have settled.
+
 
 **Commands on the cache.** `RefetchQueries` fetches the entries a filter selects that a query reads and
 is enabled for, and those nothing reads that were fetched before, with the options of that fetch; an entry
