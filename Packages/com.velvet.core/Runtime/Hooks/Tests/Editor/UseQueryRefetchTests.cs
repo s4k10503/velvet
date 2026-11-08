@@ -63,11 +63,11 @@ namespace Velvet.Tests
         private static bool s_enabled;
         private static QueryRefetchMode? s_onFocus;
         private static QueryRefetchMode? s_onReconnect;
-        private static Func<QueryInfo, TimeSpan?>? s_intervalFn;
-        private static Func<QueryInfo, QueryRefetchMode>? s_onFocusFn;
-        private static Func<QueryInfo, QueryRefetchMode>? s_onReconnectFn;
-        private static Func<QueryInfo, QueryRefetchMode>? s_clientOnFocusFn;
-        private static Func<QueryInfo, QueryRefetchMode>? s_clientOnReconnectFn;
+        private static Func<Query, TimeSpan?>? s_intervalFn;
+        private static Func<Query, QueryRefetchMode>? s_onFocusFn;
+        private static Func<Query, QueryRefetchMode>? s_onReconnectFn;
+        private static Func<Query, QueryRefetchMode>? s_clientOnFocusFn;
+        private static Func<Query, QueryRefetchMode>? s_clientOnReconnectFn;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
         private static readonly List<CancellationToken> s_tokens = new();
         private static readonly List<QueryResult<int>> s_renders = new();
@@ -77,7 +77,7 @@ namespace Velvet.Tests
         private static int s_otherCalls;
         private static StateUpdater<bool> s_setShowOther;
         private static readonly List<VelvetTaskCompletionSource<int>> s_otherSources = new();
-        private static Func<int, QueryInfo?, QueryPlaceholder<int>>? s_placeholder;
+        private static Func<int, Query?, QueryPlaceholder<int>>? s_placeholder;
 
         [SetUp]
         public void SetUp()
@@ -725,7 +725,7 @@ namespace Velvet.Tests
         public void Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands()
         {
             // Arrange
-            QueryInfo? seen = null;
+            Query? seen = null;
             s_intervalFn = info =>
             {
                 seen = info;
@@ -859,7 +859,7 @@ namespace Velvet.Tests
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            QueryInfo? seen = null;
+            Query? seen = null;
             s_onFocusFn = info =>
             {
                 seen = info;
@@ -1388,7 +1388,7 @@ namespace Velvet.Tests
         private static VNode OtherReader()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("other"), _ =>
+                new QueryOptions<int>(new QueryKey("other"), (CancellationToken _) =>
                 {
                     s_otherCalls++;
                     var source = new VelvetTaskCompletionSource<int>();

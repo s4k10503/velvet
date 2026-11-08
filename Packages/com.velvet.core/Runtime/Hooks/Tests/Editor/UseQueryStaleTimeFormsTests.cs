@@ -39,8 +39,8 @@ namespace Velvet.Tests
         private static TimeSpan s_now;
         private static int s_calls;
         private static QueryStaleTime? s_staleTime;
-        private static Func<QueryInfo, QueryStaleTime>? s_staleTimeFn;
-        private static Func<QueryInfo, QueryStaleTime>? s_secondStaleTimeFn;
+        private static Func<Query, QueryStaleTime>? s_staleTimeFn;
+        private static Func<Query, QueryStaleTime>? s_secondStaleTimeFn;
         private static QueryRefetchMode? s_refetchOnMount;
         private static object? s_seenData;
         private static StateUpdater<bool> s_setShowSecond;
@@ -249,7 +249,7 @@ namespace Velvet.Tests
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
 
-        private static QueryClient NewClient(Func<QueryInfo, QueryStaleTime>? staleTimeFn)
+        private static QueryClient NewClient(Func<Query, QueryStaleTime>? staleTimeFn)
             => new(new QueryClientOptions
             {
                 StaleTimeFn = staleTimeFn,

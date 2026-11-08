@@ -3200,6 +3200,26 @@ namespace Velvet
         }
 
         /// <summary>
+        /// TanStack Query's <c>useIsFetching(filters)</c>: how many of the entries <paramref name="filters"/> selects
+        /// have a request in flight and running, as <see cref="QueryClient.IsFetching"/> counts them, re-rendering the
+        /// component when the number changes. The filters' own <see cref="QueryFilters.FetchStatus"/> is replaced.
+        /// </summary>
+        /// <param name="filters">The entries to count; null counts every entry.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The number of entries fetching.</returns>
+        public static int UseIsFetching(QueryFilters? filters = null, QueryClient? client = null)
+        {
+            // Surface "UseIsFetching" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(nameof(UseIsFetching));
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseIsFetching found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseIsFetching.");
+            return UseSyncExternalStore(queryClient.GetQueryCache().StoreSubscribe, () => queryClient.IsFetching(filters));
+        }
+
+        /// <summary>
         /// TanStack Query's <c>useQueryErrorResetBoundary</c>: the <see cref="QueryErrorResetBoundary"/>
         /// <see cref="QueryErrorResetBoundaryContext.Ref"/> provides, or the one shared by every query without a
         /// Provider above it.

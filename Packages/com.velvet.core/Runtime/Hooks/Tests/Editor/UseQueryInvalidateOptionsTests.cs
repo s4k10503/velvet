@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -168,7 +169,7 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options(string reader, int page)
-            => new(Page(page), _ =>
+            => new(Page(page), (CancellationToken _) =>
             {
                 s_fetched.Add(reader + page);
                 var source = new VelvetTaskCompletionSource<int>();

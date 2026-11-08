@@ -30,9 +30,9 @@ namespace Velvet.Tests
 
         private VisualElement _root = null!;
         private static QueryClient s_client = null!;
-        private static Func<QueryInfo, bool>? s_enabledFn;
+        private static Func<Query, bool>? s_enabledFn;
         private static bool s_retryOnMount;
-        private static Func<QueryInfo, bool>? s_retryOnMountFn;
+        private static Func<Query, bool>? s_retryOnMountFn;
         private static QueryKey? s_seenKey;
         private static int s_calls;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();

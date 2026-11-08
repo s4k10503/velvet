@@ -34,7 +34,7 @@ namespace Velvet.Tests
         private static int s_calls;
         private static TimeSpan s_staleTime;
         private static QueryRefetchMode? s_secondMode;
-        private static Func<QueryInfo, QueryRefetchMode>? s_secondFn;
+        private static Func<Query, QueryRefetchMode>? s_secondFn;
         private static object? s_seenData;
         private static StateUpdater<bool> s_setShowSecond;
         private static StateUpdater<string> s_setFirstKey;

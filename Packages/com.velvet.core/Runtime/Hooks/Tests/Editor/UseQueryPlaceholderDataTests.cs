@@ -34,7 +34,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class UseQueryPlaceholderDataTests
     {
-        private static readonly Func<int, QueryInfo?, QueryPlaceholder<int>> Nine = (_, _) =>
+        private static readonly Func<int, Query?, QueryPlaceholder<int>> Nine = (_, _) =>
         {
             s_placeholderCalls++;
             return 9;
@@ -42,7 +42,7 @@ namespace Velvet.Tests
 
         private VisualElement _root = null!;
         private static QueryClient s_client = null!;
-        private static Func<int, QueryInfo?, QueryPlaceholder<int>>? s_placeholder;
+        private static Func<int, Query?, QueryPlaceholder<int>>? s_placeholder;
         private static int s_placeholderCalls;
         private static string? s_previousKey;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
@@ -236,7 +236,7 @@ namespace Velvet.Tests
             var handedQuery = true;
             s_placeholder = (_, previousQuery) =>
             {
-                handedQuery = previousQuery.HasValue;
+                handedQuery = previousQuery != null;
                 return 7;
             };
 

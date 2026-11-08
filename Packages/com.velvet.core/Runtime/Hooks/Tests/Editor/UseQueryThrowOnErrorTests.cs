@@ -40,7 +40,7 @@ namespace Velvet.Tests
         private static ErrorBoundaryReset? s_reset;
         private static bool s_resetsQueries;
         private static bool? s_throwOnError;
-        private static Func<Exception, QueryInfo, bool>? s_throwOnErrorFn;
+        private static Func<Exception, Query, bool>? s_throwOnErrorFn;
         private static string? s_seenError;
         private static bool s_enabled;
         private static int s_calls;

@@ -370,12 +370,14 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `<QueryErrorResetBoundary>` / `useQueryErrorResetBoundary()` | `V.Provider(QueryErrorResetBoundaryContext.Ref, boundary, children: ...)` with a `new QueryErrorResetBoundary()` kept across renders / `Hooks.UseQueryErrorResetBoundary()` |
 | `enabled` / `enabled: (query) => ...` | `new QueryOptions<T>(...) { Enabled = ... }` / `EnabledFn = info => ...` |
 | `select: (data) => ...` | `new QueryOptions<TQueryFnData, TData>(...) { Select = data => ... }` |
-| `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousQuery) => ...`, `previousQuery` a nullable `QueryInfo` |
+| `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousQuery) => ...`, `previousQuery` a nullable `Query` |
 | `refetchInterval` / `refetchIntervalInBackground` as a number and a boolean | `new QueryOptions<T>(...) { RefetchInterval = ..., RefetchIntervalInBackground = ... }` |
-| `refetchInterval: (query) => ...` | `RefetchIntervalFn = info => ...`, handed a `QueryInfo` |
+| `refetchInterval: (query) => ...` | `RefetchIntervalFn = query => ...`, handed the entry's `Query` |
 | `refetchOnWindowFocus` / `refetchOnReconnect` as `false` / `true` / `'always'` | `RefetchOnWindowFocus` / `RefetchOnReconnect` = `QueryRefetchMode.Never` / `IfStale` / `Always`, on one query or on `QueryClientOptions` |
 | `refetchOnWindowFocus: (query) => ...` / `refetchOnReconnect: (query) => ...` | `RefetchOnWindowFocusFn` / `RefetchOnReconnectFn` = `info => QueryRefetchMode...`, on one query or on `QueryClientOptions` |
 | `queryFn: ({ signal }) => ...` | `new QueryOptions<T>(key, token => ...)`; a function taking no token is the one that never reads the signal |
+| `queryFn: ({ client, queryKey, signal, meta }) => ...` | `new QueryOptions<T>(key, (QueryFunctionContext context) => ...)`, reading `context.Client`, `QueryKey`, `CancellationToken` and `Meta`; a lambda names its parameter's type, which tells the two constructors apart |
+| `meta` on a query | `new QueryOptions<T>(...) { Meta = new Dictionary<string, object?> { ... } }`, read back as `Query.Meta` |
 | `focusManager` / `onlineManager` | `NetworkSignals.IsVisible` / `IsOnline` |
 | `retry` as a number, `true`, `false` or `(failureCount, error) => ...` / `retryDelay` as a function | `new QueryOptions<T>(...) { Retry = 3 \| true \| false \| RetryRule.When((failureCount, error) => ...), RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
 | `networkMode: 'online' \| 'always' \| 'offlineFirst'` | `new QueryOptions<T>(...) { NetworkMode = NetworkMode.Online \| Always \| OfflineFirst }`, or `QueryClientOptions.NetworkMode` for every query; `Online` is the default |
@@ -392,8 +394,11 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `queryClient.fetchQuery(options)` / `prefetchQuery(options)` / `ensureQueryData(options)` | `client.FetchQuery(options)` / `client.PrefetchQuery(options)` / `client.EnsureQueryData(options, revalidateIfStale)` |
 | `queryClient.getQueryState(queryKey)` | `client.GetQueryState<T>(key)`, a `QueryState<T>` snapshot or null |
 | `queryClient.getQueriesData(filters)` / `setQueriesData(filters, updater)` | `client.GetQueriesData<T>(filters)` / `client.SetQueriesData<T>(filters, held => ...)` |
-| `{ queryKey, exact, type, stale, fetchStatus, predicate }` filters | `new QueryFilters { QueryKey = ..., Exact = ..., Type = QueryTypeFilter.Active, Stale = ..., FetchStatus = QueryFetchStatus.Fetching, Predicate = info => ... }` |
+| `{ queryKey, exact, type, stale, fetchStatus, predicate }` filters | `new QueryFilters { QueryKey = ..., Exact = ..., Type = QueryTypeFilter.Active, Stale = ..., FetchStatus = QueryFetchStatus.Fetching, Predicate = query => ... }` |
 | `queryClient.clear()` | `client.Clear()` |
+| `new QueryCache({ onError, onSuccess, onSettled })` / `new QueryClient({ queryCache })` | `new QueryCache { OnError = (error, query) => ..., OnSuccess = (data, query) => ..., OnSettled = (data, error, query) => ... }` / `new QueryClientOptions { QueryCache = ... }` |
+| `queryClient.getQueryCache()` / `queryCache.subscribe(listener)` / `find(filters)` / `findAll(filters)` / `getAll()` / `remove(query)` / `clear()` | `client.GetQueryCache()` / `cache.Subscribe(e => ...)`, handed a `QueryCacheEvent` / `Find` / `FindAll` / `GetAll` / `Remove` / `Clear` |
+| `useIsFetching(filters)` / `queryClient.isFetching(filters)` | `Hooks.UseIsFetching(filters)` / `client.IsFetching(filters)` |
 
 **One entry per key.** Two keys are the same entry when they hold as many parts and each pair is equal
 under `object.Equals`, so a key rebuilt every render names the same entry, and a string or a boxed
@@ -552,7 +557,7 @@ until the data it ran on is gone: a key change to an entry with no data shows th
 **Placeholder data.** While the entry is pending with no data, `PlaceholderData` stands in: the result is
 `Success` with `IsPlaceholderData` true and `IsFetching` true, and the entry stays without data, so
 `GetQueryData` reads none. A failure with no data shows the error, not the placeholder. The function is
-handed the data and the `QueryInfo` of the last entry this component read that had data and still has it —
+handed the data and the `Query` of the last entry this component read that had data and still has it —
 default and null when there is none — and returns `QueryPlaceholder<T>`, to which a value converts; a null value is no placeholder.
 `QueryPlaceholder.KeepPreviousData` returns the previous data, so paging keeps the old page on screen until
 the new one lands. While the result before showed the placeholder, the function is asked again only when
@@ -593,8 +598,8 @@ wait and a client's first reading. Only the first failure of each reading is log
 
 **Options as functions.** `EnabledFn`, `RetryOnMountFn`, `RefetchIntervalFn`, `StaleTimeFn`,
 `RefetchOnMountFn`, `RefetchOnWindowFocusFn`, `RefetchOnReconnectFn` and `ThrowOnErrorFn` are v5's function
-forms of those options. Each is handed a `QueryInfo` — the entry's `QueryKey`, `Status`, `Data` (the query
-function's data, not what `Select` makes of it), `Error` and `IsFetching` as they stand at the call — and
+forms of those options. Each is handed the entry's `Query` — its `QueryKey`, `Meta`, `Status`, `Data` (the
+query function's data, not what `Select` makes of it), `Error`, `FetchStatus` and the rest of its state — and
 replaces the value set beside it; the stale-time, mount, focus, reconnect and error functions can also be set
 on `QueryClientOptions`, and a query's own setting, in either form, stands ahead of the client's. The interval
 function returns a `TimeSpan?` and is asked when the entry changes and at every commit of the component, not
@@ -613,7 +618,9 @@ starts that request over, by `Clear`, and when the last query reading the entry 
 in flight; in that last case the entry is put back as it stood before the request, as v5's
 `cancel({ revert: true })` does, so a component mounting again fetches afresh. v5 does this for a function
 that read its `signal`, and lets any other run on; here a function taking the token (`token => ...`) counts as having
-read it, and a function taking none (`() => ...`) runs on and lands its result. StrictMode's extra cleanup
+read it, and a function taking none (`() => ...`) runs on and lands its result. A function taking the
+`QueryFunctionContext` counts as having read the signal once it reads `context.CancellationToken`, as v5 tells
+by the read. StrictMode's extra cleanup
 and setup of a mounting component's effects therefore cancels the first request and starts a second one
 for a function taking the token, as in v5.
 
@@ -665,7 +672,21 @@ enabled query reads and `Inactive` for the rest. `Stale` is the staleness of the
 one reading it stale), and for an entry nothing reads, whether it has no data or was invalidated.
 `FetchStatus` is `Fetching` while a request is in flight and running, `Paused` while it waits for the
 connection or the application's visibility (below), and `Idle` otherwise. `Predicate` is handed the entry's
-`QueryInfo`.
+`Query`.
+
+**The query cache.** `QueryCache` holds the client's entries, one `Query` each, the same instance for as long
+as the entry stays. `Subscribe` hears an entry `Added` and `Removed` — by `RemoveQueries`, `Clear` and garbage
+collection alike — `Updated` with the `QueryActionType` that changed it (`Fetch`, `Success`, `Error`,
+`Failed`, `Pause`, `Continue`, `Invalidate`, and `SetState` for initial data, a reverted cancellation and a
+reset), and a mounted query `ObserverAdded`, `ObserverRemoved`, `ObserverResultsUpdated` whenever its result
+changes, whatever the component reads, and `ObserverOptionsUpdated` when a commit hands it options unequal
+to the previous commit's. `OnSuccess` and then `OnSettled` run once a request's data has landed, with the
+data the query function returned; a throw from either turns the request into a failure over the data it
+landed, as v5's does. `OnError` and then `OnSettled` run once a request fails for good, the latter handed the
+data the entry holds, and when `CancelQueries(revert: false)` cancels one; a throw from `OnError` skips
+`OnSettled` and is what a `FetchQuery` caller is handed. `SetQueryData` runs none of them. `Find` matches
+exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `IsFetching` and
+`Hooks.UseIsFetching` count the entries selected that are `Fetching`, a paused one left out.
 
 **Commands on the cache.** `RefetchQueries` fetches the entries a filter selects that a query reads and
 is enabled for, and those nothing reads that were fetched before, with the options of that fetch; an entry
@@ -699,9 +720,13 @@ another type, since a filter selects across keys.
 - A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
   previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
   is not seen.
-- The functions v5 hands its `Query`, the placeholder function's `previousQuery` among them, are handed a
-  `QueryInfo` instead, a read-only view of the entry's key, status, data, error and fetch state; the rest
-  of the query object is not available.
+- `Query` carries its state's properties itself, where v5 nests them under `query.state`. It has no
+  `queryHash`, and `QueryCache` no `get(queryHash)`, since an entry is named by its key's equality rather
+  than by a string, and neither the query's methods that change it (`setState`, `fetch`, `cancel`, `reset`,
+  `invalidate`) nor its `options`; the client's commands do that work.
+- A query function written `_ => ...` is ambiguous between the token-taking and the context-taking
+  constructors, so its parameter needs a type.
+
 
 ### 1-3. State Management (React + Zustand)
 

@@ -1542,7 +1542,7 @@ namespace Velvet.Tests
         public void Given_OptionsWithoutAKey_When_AQueryRenders_Then_ItThrowsNamingTheKey()
         {
             // Arrange
-            s_badOptions = new QueryOptions<int>(null!, _ => VelvetTask.FromResult(0));
+            s_badOptions = new QueryOptions<int>(null!, (CancellationToken _) => VelvetTask.FromResult(0));
             LogAssert.Expect(LogType.Exception, new Regex("QueryOptions.QueryKey must not be null"));
 
             // Act

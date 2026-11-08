@@ -9,7 +9,7 @@
   (`QueryOptions.NetworkMode`) or every query (`QueryClientOptions.NetworkMode`) `NetworkMode.Always` to never
   wait, or `OfflineFirst` to make the first request whatever the connection.
 - A query's retry now waits until the application is visible, and outside `NetworkMode.Always` until the
-  device is online, as TanStack Query's retryer does. `QueryResult.IsFetching`, `QueryInfo.IsFetching` and
+  device is online, as TanStack Query's retryer does. `QueryResult.IsFetching`, `Query.IsFetching` and
   `QueryState<T>.IsFetching` are false while a request is paused, and `QueryFilters.FetchStatus` `Fetching`
   does not select a paused entry; an entry with a paused request is not collected.
 - A `QueryKey` part that is a tuple, a record or an anonymous type now compares by its members, each compared

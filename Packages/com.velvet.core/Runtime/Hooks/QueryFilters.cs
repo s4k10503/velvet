@@ -46,8 +46,9 @@ namespace Velvet
         /// </summary>
         public QueryKey? QueryKey { get; init; }
 
-        /// <summary>True selects only the entry whose key equals <see cref="QueryKey"/>.</summary>
-        public bool Exact { get; init; }
+        /// <summary>True selects only the entry whose key equals <see cref="QueryKey"/>. Null is false, except for
+        /// <see cref="QueryCache.Find"/>, where it is true.</summary>
+        public bool? Exact { get; init; }
 
         /// <summary>Selects by whether an enabled query reads the entry; null is
         /// <see cref="QueryTypeFilter.All"/>, except where a method documents another default.</summary>
@@ -61,9 +62,26 @@ namespace Velvet
         /// <summary>Selects by the entry's <see cref="QueryFetchStatus"/>; null selects every entry.</summary>
         public QueryFetchStatus? FetchStatus { get; init; }
 
-        /// <summary>Accepts or declines each entry the other properties select, handed its
-        /// <see cref="QueryInfo"/>.</summary>
-        public Func<QueryInfo, bool>? Predicate { get; init; }
+        /// <summary>Accepts or declines each entry the other properties select.</summary>
+        public Func<Query, bool>? Predicate { get; init; }
+
+        // TanStack's matchQuery.
+        internal static bool Match(QueryFilters? filters, QueryEntry entry)
+        {
+            if (filters == null) return true;
+            if (filters.QueryKey != null
+                && !(filters.Exact == true
+                    ? entry.Id.Equals(QueryClient.Identify(filters.QueryKey, entry.KeyHashFn))
+                    : entry.Key.Matches(filters.QueryKey)))
+            {
+                return false;
+            }
+            if (filters.Type == QueryTypeFilter.Active && !entry.IsActive) return false;
+            if (filters.Type == QueryTypeFilter.Inactive && entry.IsActive) return false;
+            if (filters.Stale.HasValue && entry.IsStaleForFilter != filters.Stale.Value) return false;
+            if (filters.FetchStatus.HasValue && filters.FetchStatus.Value != entry.FetchStatus) return false;
+            return filters.Predicate == null || filters.Predicate(entry.Query);
+        }
     }
 
     /// <summary>
