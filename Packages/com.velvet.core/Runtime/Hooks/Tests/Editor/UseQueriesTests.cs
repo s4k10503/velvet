@@ -474,6 +474,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AQueryListingNoProps_When_ItsDataLands_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            using var mounted = Mount(UnlistedReader);
+            var renders = s_renders.Count;
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders), "v5 reads an empty list as watching nothing, as UseQuery does");
+        }
+
+        [Test]
         public void Given_AReadFromAQueryListingItsProps_When_AnotherQuerysDataChanges_Then_TheComponentDoesNotRenderAgain()
         {
             // Arrange
@@ -664,6 +678,14 @@ namespace Velvet.Tests
                 s_client);
             s_typed = count.Data + ":" + raw.Data;
             return V.Label(text: "mixed");
+        }
+
+        [Component]
+        private static VNode UnlistedReader()
+        {
+            var results = Hooks.UseQueries(new[] { Options("a") with { NotifyOnChangeProps = QueryProperties.None } }, s_client);
+            s_renders.Add(results);
+            return V.Label(text: "unlisted");
         }
 
         [Component]

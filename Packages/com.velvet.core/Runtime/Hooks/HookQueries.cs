@@ -383,8 +383,8 @@ namespace Velvet
 
         private Action<QueryProperties>? TrackOf(QueriesItem item) => item.ListsNotifyProps ? null : _trackProperty;
 
-        // TanStack's shouldNotifyListeners, asked of each query's own result: its listed properties, else the ones read
-        // from any result, else any change. Every query's result is computed afresh, so the next comparison starts from
+        // TanStack's shouldNotifyListeners, asked of each query's own result: its listed properties, an empty list
+        // included, else the ones read from any result, else any change. Every query's result is computed afresh, so the next comparison starts from
         // it.
         private bool AnyQueryNotifies()
         {
@@ -394,8 +394,9 @@ namespace Velvet
                 var changed = item.RefreshChanges();
                 if (changed == QueryProperties.None) continue;
                 item.AnnounceResultsUpdated();
-                var watched = item.NotifyOnChangeProps ?? _tracked;
-                if (watched == QueryProperties.None || (changed & (watched | item.ErrorWatch)) != QueryProperties.None) notifies = true;
+                var listed = item.NotifyOnChangeProps;
+                if (listed == null && _tracked == QueryProperties.None) notifies = true;
+                else if ((changed & ((listed ?? _tracked) | item.ErrorWatch)) != QueryProperties.None) notifies = true;
             }
             return notifies;
         }

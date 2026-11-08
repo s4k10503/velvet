@@ -874,11 +874,11 @@ namespace Velvet
         internal bool Throws<T>(Exception error, QueryEntry<T> entry)
             => _fn != null ? _fn(error, entry.Query) : _value;
 
-        // ensurePreventErrorBoundaryRetry asks a function only over an entry in error, and otherwise counts it as
-        // true, as v5 reads the function itself as truthy.
         // Whether throwOnError is set at all, which v5 reads as truthy, a function included.
         internal bool IsSet => _fn != null || _value;
 
+        // ensurePreventErrorBoundaryRetry asks a function only over an entry in error, and otherwise counts it as
+        // true, as v5 reads the function itself as truthy.
         internal bool ThrowsOnMount<T>(QueryEntry<T> entry)
         {
             if (_fn == null) return _value;
