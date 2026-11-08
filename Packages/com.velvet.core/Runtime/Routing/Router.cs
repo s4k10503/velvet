@@ -225,7 +225,12 @@ namespace Velvet
             _loaderRunner.OnSuspendLoaderFailed += (routeId, ex) =>
             {
                 UnityEngine.Debug.LogException(ex);
-                _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [routeId] = ex };
+                var matches = CurrentLocation?.Matches;
+                var boundaryId = matches == null ? routeId : matches[FindNearestBoundary(matches, routeId)].RouteId;
+                if (!_loaderErrors.ContainsKey(boundaryId))
+                {
+                    _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [boundaryId] = ex };
+                }
                 RepublishCurrentLocation(routeId);
             };
             _loaderRunner.OnSuspendLoaderCompleted += (routeId, result) =>
@@ -776,7 +781,7 @@ namespace Velvet
         {
             CommitHistoryEntry(location, mode, pending);
             CurrentLocation = location;
-            CommitAction(matches, null);
+            _actionData = EmptyActionData;
             _blockerManager.ResetAll();
             PublishNavigation(NavigationLifecycle.Idle, null, null);
             AnnounceLocation(location);
@@ -937,15 +942,13 @@ namespace Velvet
             // Copied rather than aliased: a Suspend loader of this round that resolves after the commit writes
             // into round.Results, and CurrentLoaderData publishes whatever this field holds as a read-only
             // snapshot.
+            _loaderErrors = unmatched
+                ? new Dictionary<string?, Exception> { [matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(path)) }
+                : CommittedErrors(matches, round, action);
             _loaderData = new Dictionary<string?, object>(round.Results);
-            _loaderErrors = new Dictionary<string?, Exception>(round.Errors);
-            if (unmatched)
-            {
-                _loaderErrors[matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(path));
-            }
             CurrentLocation = location;
             _revalidationRequired = false;
-            CommitAction(matches, action);
+            _actionData = action == null ? EmptyActionData : action.Error == null ? _actionData : EmptyActionData;
             // Only now may the round's late results reach the live state: the republish they trigger reads
             // CurrentLocation, which describes this round's location from here on. This is also where the
             // round it replaces ends — up to this line that round's loaders were streaming into the route the
@@ -1373,7 +1376,9 @@ namespace Velvet
         public IReadOnlyDictionary<string?, object> CurrentLoaderData => _loaderData;
 
         /// <summary>
-        /// Snapshot of the current loader errors, keyed by <see cref="RouteMatch.RouteId"/>.
+        /// Snapshot of the committed errors, React Router's <c>state.errors</c>: a loader's, an action's or a
+        /// refusal, each keyed by the <see cref="RouteMatch.RouteId"/> of the nearest route with an
+        /// <c>ErrorElement</c> at or above the route that failed, or of the root.
         /// <c>V.RouterProvider</c> exposes this through <see cref="RouterContext.Errors"/> for the
         /// <c>UseRouteError</c> hook and for <c>ErrorElement</c> rendering.
         /// </summary>
@@ -1486,10 +1491,14 @@ namespace Velvet
             internal object? Data;
             internal Exception? Error;
             internal int Target;
+            // Whether Target is the route the submission reached, React Router's third pendingActionResult
+            // entry, rather than the leaf a refusal is committed from.
+            internal bool Ran;
         }
 
         // React Router revalidates every loader after an action, and after a failed one only those above the
-        // route that renders the error, which keeps its own data (mergeLoaderData).
+        // route its error is keyed by, which keeps its own data (mergeLoaderData) unless CommittedErrors clears
+        // it as the action's route.
         private static int LaunchLimit(IReadOnlyList<RouteMatch> matches, ActionOutcome? action) =>
             action?.Error == null ? int.MaxValue : RouteOutlet.NearestErrorBoundary(matches, action.Target);
 
@@ -1510,20 +1519,64 @@ namespace Velvet
             RepublishCurrentLocation(routeId);
         }
 
-        // Every commit clears the action data but the one an action produced, and records a failure as the error
-        // of the route it belongs to.
-        private void CommitAction(IReadOnlyList<RouteMatch> matches, ActionOutcome? action)
+        // React Router's processRouteLoaderData and mergeLoaderData over this round: every error is keyed by the
+        // nearest boundary at or above the route that failed, the first to reach a boundary keeping it; a failed
+        // action or a refusal takes the place of the first loader error, or is committed at its own boundary when
+        // no loader failed, and an action's own route then holds no data. Data the round kept from the live one is
+        // dropped below the first boundary an error is committed at. Writes into round, whose results are both
+        // what commits and what the next navigation keeps from.
+        private static Dictionary<string?, Exception> CommittedErrors(
+            IReadOnlyList<RouteMatch> matches, RouteLoaderRunner.LoaderRound round, ActionOutcome? action)
         {
-            if (action?.Error == null)
+            var errors = new Dictionary<string?, Exception>();
+            var pending = action?.Error;
+            foreach (var match in matches)
             {
-                _actionData = action == null ? EmptyActionData : _actionData;
-                return;
+                if (!round.Errors.TryGetValue(match.RouteId, out var error))
+                {
+                    continue;
+                }
+                if (pending != null)
+                {
+                    error = pending;
+                    pending = null;
+                }
+                var boundaryId = matches[FindNearestBoundary(matches, match.RouteId)].RouteId;
+                if (!errors.ContainsKey(boundaryId))
+                {
+                    errors[boundaryId] = error;
+                }
             }
-            _actionData = EmptyActionData;
-            _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors)
+            if (pending != null)
             {
-                [matches[action.Target].RouteId] = action.Error,
-            };
+                errors[matches[RouteOutlet.NearestErrorBoundary(matches, action!.Target)].RouteId] = pending;
+                if (action.Ran)
+                {
+                    round.Results[matches[action.Target].RouteId] = null!;
+                    round.Kept.Remove(matches[action.Target].RouteId);
+                }
+            }
+            var pastBoundary = false;
+            foreach (var match in matches)
+            {
+                if (pastBoundary && round.Kept.Remove(match.RouteId))
+                {
+                    round.Results.Remove(match.RouteId);
+                }
+                pastBoundary |= errors.ContainsKey(match.RouteId);
+            }
+            return errors;
+        }
+
+        // React Router's findNearestBoundary from the route with that id: its index in matches.
+        private static int FindNearestBoundary(IReadOnlyList<RouteMatch> matches, string? routeId)
+        {
+            var index = matches.Count - 1;
+            while (index > 0 && matches[index].RouteId != routeId)
+            {
+                index--;
+            }
+            return RouteOutlet.NearestErrorBoundary(matches, index);
         }
 
         // Null for a navigation with no action to run.
@@ -1546,7 +1599,7 @@ namespace Velvet
             var request = new RouteRequest(
                 submission.Method, path, submission.EncType, submission.FormData, submission.Json, submission.Text);
             _revalidationRequired = true;
-            var outcome = new ActionOutcome { Target = ActionTargetIndex(matches, path) };
+            var outcome = new ActionOutcome { Target = ActionTargetIndex(matches, path), Ran = true };
             var match = matches[outcome.Target];
             if (match.Route?.Action == null)
             {

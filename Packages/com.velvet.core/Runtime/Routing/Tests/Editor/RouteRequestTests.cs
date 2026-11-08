@@ -58,7 +58,7 @@ namespace Velvet.Tests
             var router = ItemsRouter(read);
             router.SubmitAsync(body, new SubmitOptions { Method = method, Action = "/items", EncType = encType })
                 .GetAwaiter().GetResult();
-            return router.CurrentLoaderErrors.GetValueOrDefault("0-0");
+            return router.CurrentLoaderErrors.GetValueOrDefault("0");
         }
 
         private static string Entries(FormData formData)

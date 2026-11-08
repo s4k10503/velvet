@@ -82,10 +82,8 @@ namespace Velvet
 
             match = location.Matches[depth];
 
-            // A loader error bubbles to the nearest ancestor route (at or above the errored route) that
-            // defines an ErrorElement. That boundary route renders its ErrorElement in place of its Element
-            // and descendant Outlet subtree; ancestors above the boundary render normally, and routes below
-            // the boundary do not render. Errors are keyed by RouteId on RouterContext.Errors.
+            // The route an error is keyed by renders its ErrorElement in place of its Element and descendant
+            // Outlet subtree; ancestors above it render normally, and routes below it do not render.
             var boundaryDepth = ResolveErrorBoundaryDepth(location.Matches, errors);
             if (boundaryDepth >= 0)
             {
@@ -117,42 +115,25 @@ namespace Velvet
             return true;
         }
 
-        // The nearest route, scanning from the deepest errored route up toward the root, that defines a
-        // RouteDefinition.ErrorElement. Returns -1 when no route errored. When a route errored but no route
-        // at or above it defines an ErrorElement, returns the root index 0 as an implicit boundary.
+        // React Router's _renderMatches: the highest matched route an error is keyed by renders it, and nothing
+        // below it renders. Returns -1 when no matched route has one. The router keys every error by the
+        // boundary that renders it, so this is the boundary.
         private static int ResolveErrorBoundaryDepth(
             IReadOnlyList<RouteMatch> matches,
             IReadOnlyDictionary<string, Exception>? errors)
         {
-            // MUTANT_SURVIVES(equivalent): a fast path over an answer the scan below reaches anyway.
-            // Its one caller has already rejected a null Matches and a depth past its end and indexed
-            // Matches at that depth, so both matches terms here are false, and where errors is empty the
-            // scan finds no errored route and returns the same -1. The null term is the one that decides
-            // something: it short-circuits ahead of a Count read on the same reference.
-            if (errors == null || errors.Count == 0 || matches == null || matches.Count == 0)
+            if (errors == null)
             {
                 return -1;
             }
 
-            // The deepest errored route determines the boundary: a deeper error truncates the chain at the
-            // nearest boundary at or above it, which is at least as deep as any shallower error's boundary.
-            var deepestErrored = -1;
-            for (var i = matches.Count - 1; i >= 0; i--)
+            var depth = 0;
+            while (depth < matches.Count && (matches[depth].RouteId == null || !errors.ContainsKey(matches[depth].RouteId!)))
             {
-                var routeId = matches[i].RouteId;
-                if (routeId != null && errors.ContainsKey(routeId))
-                {
-                    deepestErrored = i;
-                    break;
-                }
+                depth++;
             }
 
-            if (deepestErrored < 0)
-            {
-                return -1;
-            }
-
-            return NearestErrorBoundary(matches, deepestErrored);
+            return depth < matches.Count ? depth : -1;
         }
 
         // The route at or above index that renders an error there: the nearest with an ErrorElement, or the

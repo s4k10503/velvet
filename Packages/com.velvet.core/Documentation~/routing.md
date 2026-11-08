@@ -107,9 +107,14 @@ throws is reported through `Debug.LogException` rather than raised at the naviga
 that caused it.
 
 A loader that throws — or whose task fails — does not abort the navigation. The location commits and
-the error is recorded against that route: the nearest route at or above the failing one that carries
-an `errorElement` renders it in place of its own `element`, and `Hooks.UseRouteError` returns the
-exception there. With no `errorElement` anywhere in the matched chain the root route renders a default
+the error is recorded as React Router's `state.errors` records it: keyed by the nearest route at or above
+the failing one that carries an `errorElement`, or by the root where none does (`findNearestBoundary`), so
+`Router.CurrentLoaderErrors` holds it under that route's id. Of two errors reaching one such route, the
+higher failing route's stays. The highest matched route an error is keyed by renders it in place of its own
+`element`, nothing below it renders, and `Hooks.UseRouteError` returns the error keyed by the route it is
+called in. The failing route holds no loader data, and data a navigation kept from the location before it
+is dropped below the route its error is keyed by, as `mergeLoaderData` drops it, so the next navigation runs
+those loaders again. Every commit replaces the errors whole, a fragment-only navigation's excepted. With no `errorElement` anywhere in the matched chain the root route renders a default
 one in place of its `element`, the layout routes below it included, as React Router's default error
 element does: a heading, the exception's message and its stack trace. In the editor and in a
 development build it also logs the exception.
@@ -266,7 +271,8 @@ a `FormData` is `[object FormData]` and any other object read as a plain one is 
 JavaScript has no type for, a `DateTime` say, is its invariant text. Every one of them keeps the order its
 entries were written in. A body that throws while it is read, or a sequence with an entry that is no pair, is
 one React Router cannot encode either. A refused `get`, and a body that cannot be encoded, run no action: the
-navigation commits the 400 above as the error of the leaf route, to the action's path with its query.
+navigation commits the 400 above keyed by the route with an `errorElement` nearest the leaf, or the root, to the
+action's path with its query.
 
 - The method defaults to `get`, which runs no action: it navigates to the action's path with the form
   data as its query string, written as URLSearchParams writes itself: a space is `+`, and every byte but the
@@ -289,9 +295,11 @@ navigation commits the 400 above as the error of the leaf route, to the action's
   screen reads it while every matched loader runs; the location then commits with it. The next navigation
   that commits clears it.
 - An action that throws commits the exception as that route's error, and a route with no action the 405
-  above, rendered by the nearest `errorElement` as a loader's is; only the loaders above the route rendering
-  it run, that route keeps the data it held, and no action data commits.
-- Any other method runs no action: the navigation commits the 405 above for it as the error of the leaf route,
+  above, keyed and rendered as a loader's is; only the loaders above the route it is keyed by run, and that
+  route keeps the data it held unless it is the action's own route, whose data is cleared when no loader fails. A loader of those
+  that fails reports the action's error in its place, as React Router's `processRouteLoaderData` does. No
+  action data commits. A refusal is committed the same way, keyed from the leaf.
+- Any other method runs no action: the navigation commits the 405 above for it, keyed from the leaf,
   as a failed action's is.
 - A mutation submitted to the location already committed replaces that history entry, unless its action
   fails or `Replace` says otherwise, as React Router's does.

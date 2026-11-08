@@ -25,6 +25,10 @@ namespace Velvet
 
             internal readonly Dictionary<string?, Exception> Errors = new();
 
+            // The results taken from the live round rather than loaded in this one, React Router's preserved
+            // loaderData, which mergeLoaderData keeps only down to the route an error is committed at.
+            internal readonly HashSet<string?> Kept = new();
+
             // One source per loader rather than one per round, so a route whose result the next round keeps
             // takes its token along at the promotion and the retire of this round leaves it running.
             internal readonly Dictionary<string?, RouteCancellationSource> Loads = new();
@@ -216,6 +220,7 @@ namespace Velvet
                 return false;
             }
             round.Results[key] = result!;
+            round.Kept.Add(key);
             return true;
         }
 

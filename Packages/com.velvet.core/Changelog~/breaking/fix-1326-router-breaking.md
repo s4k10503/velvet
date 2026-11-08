@@ -21,6 +21,14 @@
 
 ### Changed
 
+- The router's committed errors are React Router's `state.errors`: a loader's, an action's, a Suspend
+  loader's and a refusal are keyed in `Router.CurrentLoaderErrors` by the nearest route with an `errorElement`
+  at or above the route that failed, or by the root, where they were keyed by the failing route; of two reaching
+  one route the higher failing route's stays, and a failed action takes the place of the first loader error.
+  The highest matched route an error is keyed by renders it, and `Hooks.UseRouteError` reads the error keyed
+  by the route it is called in. Loader data kept from the location before is dropped below that route, and a
+  failed action's own route holds no data when no loader fails.
+
 - The router commits an `ErrorResponse` as React Router's `getInternalRouterError` makes one: 405
   "Method Not Allowed" for a submission whose method no form takes and for one to a route with no action,
   400 "Bad Request" for a body it cannot encode, where it committed an `InvalidOperationException`. Its

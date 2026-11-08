@@ -90,7 +90,7 @@ namespace Velvet.Tests
             Submit(router, new[] { 1, 2 }, new SubmitOptions { Method = "post", Action = "/items" });
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Detail,
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0") as ErrorResponse)?.Detail,
                 Is.EqualTo("Error: Unable to encode submission body"));
         }
 
@@ -130,7 +130,7 @@ namespace Velvet.Tests
             Submit(router, "a=1", new SubmitOptions { Method = "head", Action = "/items" });
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.StatusText,
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0") as ErrorResponse)?.StatusText,
                 Is.EqualTo("Method Not Allowed"));
         }
 
@@ -144,7 +144,7 @@ namespace Velvet.Tests
             Submit(router, new[] { 1, 2 }, new SubmitOptions { Action = "/items" });
 
             // Assert
-            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0-0") as ErrorResponse)?.Status, Is.EqualTo(400));
+            Assert.That((router.CurrentLoaderErrors.GetValueOrDefault("0") as ErrorResponse)?.Status, Is.EqualTo(400));
         }
 
         [Test]
