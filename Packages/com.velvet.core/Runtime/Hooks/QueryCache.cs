@@ -24,8 +24,8 @@ namespace Velvet
         /// TanStack Query's <c>queryHash</c>, what <see cref="QueryCache.Get"/> finds the entry by: the string the
         /// query's <see cref="QueryOptionsBase{TQueryFnData, TData}.QueryKeyHashFn"/> made of the key, or the key written
         /// as text that equal keys write alike, as v5's <c>hashKey</c> writes JSON: a dictionary's entries sorted by
-        /// key, each key written as a JSON string (a key that is not a string as the text its part writes), and a
-        /// set's elements sorted by their text. A part compared by its own <c>Equals</c> is written as a number the cache gives every
+        /// key, a string key written as a JSON string and any other as the text its part writes, and a set's elements
+        /// sorted by their text. A part compared by its own <c>Equals</c> is written as a number the cache gives every
         /// part equal to it while an entry holding one is in the cache.
         /// </summary>
         public string QueryHash => Entry.Hash;
@@ -68,7 +68,8 @@ namespace Velvet
         /// call.</summary>
         public QueryState State => Entry.ReadState();
 
-        /// <summary>The options the entry was last handed, TanStack Query's <c>query.options</c>; null for an entry
+        /// <summary>The options the entry was last handed, as the query that handed them built them, select included:
+        /// TanStack Query's <c>query.options</c>; null for an entry
         /// only ever written by hand.</summary>
         public QueryOptionsBase? Options => Entry.Options;
 

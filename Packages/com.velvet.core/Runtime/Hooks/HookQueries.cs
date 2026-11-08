@@ -20,6 +20,9 @@ namespace Velvet
         internal abstract void Match(QueryObserver? held, object? computer, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
         internal abstract object Refresh(IQueryResultSource source);
+        // The query's own result computed afresh from its entry, and what differs from the one before.
+        internal abstract QueryProperties RefreshChanges();
+        internal abstract QueryProperties? NotifyOnChangeProps { get; }
         internal abstract void Sync(QueryClient client);
         internal abstract void ThrowIfError(QueryErrorResetBoundary boundary);
         // TanStack's shouldSuspend and fetchOptimistic for one query: a pending result starts the entry's request, and
@@ -84,6 +87,10 @@ namespace Velvet
         internal override object Refresh(IQueryResultSource source)
             => _computer.Refresh(_observer.Entry ?? _entry, _settings, source);
 
+        internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
+
+        internal override QueryProperties? NotifyOnChangeProps => _options.NotifyOnChangeProps;
+
         internal override void Sync(QueryClient client) => _observer.Sync(client, _shared);
 
         internal override void ThrowIfError(QueryErrorResetBoundary boundary)
@@ -114,17 +121,24 @@ namespace Velvet
     // A query's options without the select, for the observer the queries of one entry share.
     internal sealed record RawQueryOptions<TQueryFnData> : QueryOptionsBase<TQueryFnData, TQueryFnData>
     {
-        private RawQueryOptions(QueryKey queryKey, QueryFunction<TQueryFnData> function)
-            : base(queryKey)
+        private RawQueryOptions(QueryOptionsBase origin, QueryFunction<TQueryFnData> function)
+            : base(origin.QueryKey)
         {
+            Origin = origin;
             Fn = function;
         }
 
         private QueryFunction<TQueryFnData> Fn { get; }
 
+        // The options the query was built with, which the entry reports as its options and whose equality, select
+        // included, decides whether a commit announces ObserverOptionsUpdated, as v5 compares the options it holds.
+        internal QueryOptionsBase Origin { get; }
+
         internal override QueryFunction<TQueryFnData> Function => Fn;
 
-        internal static RawQueryOptions<TQueryFnData> Of<TData>(QueryOptionsBase<TQueryFnData, TData> source) => new(source.QueryKey, source.Function)
+        // The shared observer tells the hook of every change to the entry, and each query decides from its own
+        // result whether it re-renders, as v5's observer compares its selected result's tracked properties.
+        internal static RawQueryOptions<TQueryFnData> Of<TData>(QueryOptionsBase<TQueryFnData, TData> source) => new(source, source.Function)
         {
             Meta = source.Meta,
             StaleTime = source.StaleTime,
@@ -135,7 +149,7 @@ namespace Velvet
             NetworkMode = source.NetworkMode,
             QueryKeyHashFn = source.QueryKeyHashFn,
             StructuralSharing = source.StructuralSharing,
-            NotifyOnChangeProps = source.NotifyOnChangeProps,
+            NotifyOnChangeProps = QueryProperties.All,
             Enabled = source.Enabled,
             EnabledFn = source.EnabledFn,
             RetryOnMount = source.RetryOnMount,
@@ -164,25 +178,19 @@ namespace Velvet
     {
         private readonly QueryObserver[] _observers;
         private readonly int _index;
-        private readonly bool _untracked;
+        private readonly Action<QueryProperties>? _track;
 
-        internal QueriesResultSource(QueryObserver[] observers, int index, bool untracked)
+        // A null track is a result handed back untracked.
+        internal QueriesResultSource(QueryObserver[] observers, int index, Action<QueryProperties>? track)
         {
             _observers = observers;
             _index = index;
-            _untracked = untracked;
+            _track = track;
         }
 
         public void Refetch() => ((IQueryResultSource)_observers[_index]).Refetch();
 
-        public void Track(QueryProperties property)
-        {
-            if (_untracked) return;
-            foreach (var observer in _observers)
-            {
-                observer.TrackFor(property);
-            }
-        }
+        public void Track(QueryProperties property) => _track?.Invoke(property);
     }
 
     // What a render of UseQueries read, in the queries' order.
@@ -234,9 +242,12 @@ namespace Velvet
         private bool _hasCombined;
         private TCombined _combined = default!;
 
+        private readonly Action<QueryProperties> _trackProperty;
+
         internal QueriesObserver(Action rerender)
         {
             _rerender = rerender;
+            _trackProperty = property => _tracked |= property;
             UnmountEffect = () => LeaveAll;
         }
 
@@ -254,7 +265,7 @@ namespace Velvet
             for (var i = 0; i < items.Length; i++)
             {
                 read.Keys[i] = items[i].KeyId;
-                read.Results[i] = items[i].Read(client, boundary, new QueriesResultSource(read.Observers, i, items[i].ListsNotifyProps));
+                read.Results[i] = items[i].Read(client, boundary, new QueriesResultSource(read.Observers, i, TrackOf(items[i])));
             }
             return read;
         }
@@ -321,7 +332,7 @@ namespace Velvet
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             WarnOnDuplicates(read.Keys);
 #endif
-            if (_changedWhileSyncing) Notify();
+            if (_changedWhileSyncing && AnyQueryNotifies()) Notify();
             else if (structural || ResultsChanged()) RecordResults();
         }
 
@@ -353,7 +364,30 @@ namespace Velvet
                 _changedWhileSyncing = true;
                 return;
             }
-            Notify();
+            if (AnyQueryNotifies()) Notify();
+        }
+
+        // TanStack's trackResult: a property read from one result is tracked for them all, and a result whose query
+        // lists notifyOnChangeProps is handed back untracked.
+        private QueryProperties _tracked;
+
+        private Action<QueryProperties>? TrackOf(QueriesItem item) => item.ListsNotifyProps ? null : _trackProperty;
+
+        // TanStack's shouldNotifyListeners, asked of each query's own result: its listed properties, else the ones read
+        // from any result, else any change. Every query's result is computed afresh, so the next comparison starts from
+        // it.
+        private bool AnyQueryNotifies()
+        {
+            var notifies = false;
+            foreach (var item in _items)
+            {
+                var changed = item.RefreshChanges();
+                if (changed == QueryProperties.None) continue;
+                var listed = item.NotifyOnChangeProps;
+                var watched = listed ?? _tracked;
+                if (watched == QueryProperties.None || (changed & watched) != QueryProperties.None) notifies = true;
+            }
+            return notifies;
         }
 
         // TanStack's #notify: without a combine the component re-renders; with one, while a suspending query holds no
@@ -388,7 +422,7 @@ namespace Velvet
             var results = new object[_observers.Length];
             for (var i = 0; i < results.Length; i++)
             {
-                results[i] = _items[i].Refresh(new QueriesResultSource(_observers, i, _items[i].ListsNotifyProps));
+                results[i] = _items[i].Refresh(new QueriesResultSource(_observers, i, TrackOf(_items[i])));
             }
             return results;
         }

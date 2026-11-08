@@ -697,7 +697,7 @@ data the entry holds, and when `CancelQueries(revert: false)` cancels one; a thr
 exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `Get` finds an entry by its
 `QueryHash`: the string its `QueryKeyHashFn` made, or the key written as JSON is — `["todos",1]` — with each
 number other than an `int` suffixed by its type, a dictionary's entries sorted by key as v5 sorts an object's
-keys — each key written as a JSON string, one that is not a string as the text its part writes — a set's
+keys — a string key written as a JSON string, any other as the text its part writes — a set's
 elements sorted by their text, and a part compared by its own `Equals` written `#` and a number the cache
 gives every part equal to it while an entry holds one, so equal keys hash alike. An invalidation tells the entry's mounted queries before the cache, as v5's dispatch does, so a
 result reading `IsStale` turns stale with it. `IsFetching` and `Hooks.UseIsFetching` count the entries selected

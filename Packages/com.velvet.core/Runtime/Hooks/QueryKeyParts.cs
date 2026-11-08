@@ -322,30 +322,30 @@ namespace Velvet
             return texts;
         }
 
-        // TanStack's hashKey sorts an object's keys alone, in UTF-16 order, and JSON writes each as a string: a string
-        // key is itself, and any other key is the text its part writes.
+        // TanStack's hashKey sorts an object's keys alone, in UTF-16 order: a string key by itself, and any other by the
+        // text its part writes. A string key is written as a JSON string and any other as that text, unquoted, so a
+        // key 1 and a key "1", which are unequal, write differently.
         private static void AppendEntriesByKey(StringBuilder builder, IDictionary dictionary, Func<object, int> opaque)
         {
-            var entries = new List<KeyValuePair<string, object?>>();
+            var entries = new List<(string Order, string Written, object? Value)>();
             var enumerator = dictionary.GetEnumerator();
             while (enumerator.MoveNext())
             {
-                var key = enumerator.Key as string;
-                if (key == null)
-                {
-                    var text = new StringBuilder();
-                    AppendHash(text, enumerator.Key, opaque);
-                    key = text.ToString();
-                }
-                entries.Add(new KeyValuePair<string, object?>(key, enumerator.Value));
+                var text = new StringBuilder();
+                AppendHash(text, enumerator.Key, opaque);
+                var written = text.ToString();
+                entries.Add((enumerator.Key as string ?? written, written, enumerator.Value));
             }
-            entries.Sort((left, right) => string.CompareOrdinal(left.Key, right.Key));
+            entries.Sort((left, right) =>
+            {
+                var byKey = string.CompareOrdinal(left.Order, right.Order);
+                return byKey != 0 ? byKey : string.CompareOrdinal(left.Written, right.Written);
+            });
             builder.Append('{');
             for (var i = 0; i < entries.Count; i++)
             {
                 if (i > 0) builder.Append(',');
-                AppendJsonString(builder, entries[i].Key);
-                builder.Append(':');
+                builder.Append(entries[i].Written).Append(':');
                 AppendHash(builder, entries[i].Value, opaque);
             }
             builder.Append('}');

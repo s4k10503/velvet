@@ -1089,7 +1089,7 @@ namespace Velvet
 
         internal QueryFetchOptions<T> Assign<TData>(QueryOptionsBase<T, TData> options, QueryClient client)
         {
-            Source = options;
+            Source = options is RawQueryOptions<T> raw ? raw.Origin : options;
             Meta = options.Meta;
             Behavior = (options as IInfiniteQueryOptions<T>)?.CreateBehavior(pages: null);
             KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;
@@ -1636,6 +1636,17 @@ namespace Velvet
         internal void Host(QueryEntryObserver<TQueryFnData> host) => _host = host;
 
         internal override QueryEntry<TQueryFnData>? SubscribedEntry => Entry;
+
+        // What differs between the result before and one computed afresh from the entry, which becomes the current one.
+        internal QueryProperties RefreshChanges(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings)
+        {
+            var had = _hasCurrent;
+            var previous = _current;
+            if (entry.HasData) _lastWithData = entry;
+            _current = CreateResult(entry, settings, inRender: false);
+            _hasCurrent = true;
+            return had ? _current.DifferencesFrom(previous) : QueryProperties.All;
+        }
 
         // A result computed outside a render from the entry as it stands, as v5 reads a query's result after its
         // shared observer told of a change.

@@ -39,6 +39,10 @@ namespace Velvet.Tests
         private static int s_combineCalls;
         private static bool s_throwOnError;
         private static StateUpdater<int> s_setTick;
+        private static readonly QueryKey Lists = new("lists");
+        private static readonly List<QueryResult<int>> s_lengths = new();
+        private static Func<int[], int> s_select = SelectLength;
+        private static readonly List<QueryCacheEvent> s_events = new();
         private static int s_warnings;
         private static string s_typed = string.Empty;
         private static readonly List<VelvetTaskCompletionSource<string>> s_textSources = new();
@@ -57,6 +61,9 @@ namespace Velvet.Tests
             s_warnings = 0;
             s_typed = string.Empty;
             s_textSources.Clear();
+            s_lengths.Clear();
+            s_select = SelectLength;
+            s_events.Clear();
             s_throwOnError = false;
             s_setTick = default;
         }
@@ -287,6 +294,98 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_typed, Is.EqualTo("1+b"));
+        }
+
+        #endregion
+
+        #region Each query's own result
+
+        [Test]
+        public void Given_ASelectThatThrowsOverEmptyData_When_EmptyDataLandsUnderAStatusRead_Then_TheComponentRendersTheError()
+        {
+            // Arrange
+            s_client.SetQueryData(Lists, new[] { 1 });
+            using var mounted = Mount(StatusOfLengthReader);
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(Lists, Array.Empty<int>()));
+
+            // Assert
+            Assert.That(s_lengths[s_lengths.Count - 1].Status, Is.EqualTo(QueryStatus.Error),
+                "v5's observer compares its selected result, which the throwing select turns into an error");
+        }
+
+        [Test]
+        public void Given_ASelectedLength_When_DataOfTheSameLengthLandsUnderADataRead_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            s_client.SetQueryData(Lists, new[] { 1, 2 });
+            using var mounted = Mount(LengthReader);
+            var renders = s_lengths.Count;
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(Lists, new[] { 3, 4 }));
+
+            // Assert
+            Assert.That(s_lengths.Count, Is.EqualTo(renders), "v5 compares the selected data, which the landing leaves equal");
+        }
+
+        [Test]
+        public void Given_AQueryWithASelect_When_ItsEntryIsRead_Then_ItsOptionsAreTheQuerys()
+        {
+            // Arrange
+            s_client.SetQueryData(Lists, new[] { 1 });
+
+            // Act
+            using var mounted = Mount(LengthReader);
+
+            // Assert
+            Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = Lists })!.Options, Is.InstanceOf<QueryOptions<int[], int>>(),
+                "v5's query.options are the observer's options, select included");
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_ACommitChangesOnlyItsSelect_Then_TheCacheAnnouncesItsOptionsUpdated()
+        {
+            // Arrange
+            s_client.SetQueryData(Lists, new[] { 1 });
+            s_client.GetQueryCache().Subscribe(s_events.Add);
+            using var mounted = Mount(LengthReader);
+            s_events.Clear();
+
+            // Act
+            s_select = data => data.Length + 1;
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_events.Exists(e => e.Type == QueryCacheEventType.ObserverOptionsUpdated), Is.True,
+                "v5's shallow comparison of the options sees the new select");
+        }
+
+        private static int SelectLength(int[] data) => data.Length == 0 ? throw new InvalidOperationException("empty") : data.Length;
+
+        private static QueryOptions<int[], int> LengthOptions() => new(Lists, () => VelvetTask.FromResult(new[] { 9 }))
+        {
+            Select = s_select,
+            StaleTime = TimeSpan.MaxValue,
+        };
+
+        [Component]
+        private static VNode StatusOfLengthReader()
+        {
+            var results = Hooks.UseQueries(new[] { LengthOptions() }, s_client);
+            s_lengths.Add(results[0]);
+            return V.Label(text: "status:" + results[0].Status);
+        }
+
+        [Component]
+        private static VNode LengthReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var results = Hooks.UseQueries(new[] { LengthOptions() }, s_client);
+            s_lengths.Add(results[0]);
+            return V.Label(text: "length:" + results[0].Data);
         }
 
         #endregion

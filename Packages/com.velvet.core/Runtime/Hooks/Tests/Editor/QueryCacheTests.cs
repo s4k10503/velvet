@@ -675,6 +675,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_KeysHoldingANumberKeyAndAStringKeyOfOneText_When_GetLooksUpTheNumbersHash_Then_ItFindsThatEntry()
+        {
+            // Arrange
+            var numbered = new QueryKey("k", new Dictionary<int, int> { [1] = 5 });
+            s_client.SetQueryData(new QueryKey("k", new Dictionary<string, int> { ["1"] = 5 }), 1);
+            s_client.SetQueryData(numbered, 1);
+
+            // Act
+            var found = s_client.GetQueryCache().Get("[\"k\",{1:5}]");
+
+            // Assert
+            Assert.That(found?.QueryKey, Is.EqualTo(numbered), "Unequal keys write unequal hashes, so Get finds the entry asked for");
+        }
+
+        [Test]
         public void Given_ADictionaryWithAKeyThatLeadsAnother_When_ItsHashIsRead_Then_ItsKeysAreSortedAlone()
         {
             // Arrange
