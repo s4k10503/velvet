@@ -112,6 +112,12 @@ client is the one the first render found.
 | `useMutation({ mutationFn, retry: 3, retryDelay })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { Retry = new RetryPolicy { Retry = 3, RetryDelay = ... } }` |
 | `useMutation({ mutationFn, mutationKey, scope: { id }, meta, gcTime })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { MutationKey = new QueryKey(...), Scope = new MutationScope(id), Meta = ..., GcTime = ... }`, on every option record |
 | `useMutation(options, queryClient)` | `Hooks.UseMutation(options, client)` |
+| `mutationFn: (variables, context) => …`, `onSuccess: (data, variables, onMutateResult, context) => …` | `MutationFn: (variables, context) => …`, `OnSuccess: (data, variables, context) => …` (the context records take the `OnMutate` result before `context`); `context` is a `MutationFunctionContext` |
+| `useMutation({ …, throwOnError })` | `{ ThrowOnError = true }` or `ThrowOnErrorRule.When(error => …)` |
+| `queryClient.setMutationDefaults(key, options)` / `getMutationDefaults(key)` / `defaultMutationOptions(options)` | `client.SetMutationDefaults(key, options)` / `GetMutationDefaults(key)` / `DefaultMutationOptions(options)` |
+| `new QueryClient({ defaultOptions: { mutations } })` | `new QueryClient(new QueryClientOptions { Mutations = new MutationDefaults { … } })` |
+| `queryClient.resumePausedMutations()` / `mutationCache.resumePausedMutations()` | `client.ResumePausedMutations()` / `cache.ResumePausedMutations()` |
+| `event.observer` on a mutation cache event | `cacheEvent.Observer`, a `MutationObserver` |
 | `useMutationState({ filters, select })` | `Hooks.UseMutationState(new MutationStateOptions<TResult> { Filters = new MutationFilters { ... }, Select = mutation => ... })`; `Hooks.UseMutationState(filters)` returns each `MutationState` |
 | `useIsMutating(filters)` | `Hooks.UseIsMutating(filters)` |
 | `new MutationCache({ onMutate, onSuccess, onError, onSettled })` | `new MutationCache { OnMutate = ..., OnSuccess = ..., OnError = ..., OnSettled = ... }`, handed to `new QueryClient(new QueryClientOptions { MutationCache = ... })` |
@@ -143,26 +149,26 @@ take are not awaited, as v5 does not await `mutate(variables, { onSuccess })` ei
 ```csharp
 // Loadout is a class, so a context OnMutate never returned arrives as null.
 var equip = Hooks.UseMutation(new MutationOptions<ItemId, Unit, Loadout>(
-    MutationFn: async (item, ct) =>
+    MutationFn: async (item, context) =>
     {
-        await inventoryApi.EquipAsync(item, ct);    // a VelvetTask
+        await inventoryApi.EquipAsync(item, context.CancellationToken);    // a VelvetTask
         return Unit.Default;
     },
-    OnMutate: async item =>
+    OnMutate: async (item, _) =>
     {
         await client.CancelQueries(new QueryFilters { QueryKey = new QueryKey("loadout") });
         var previous = inventory.Current.Loadout;   // snapshot
         inventory.Equip(item);                      // optimistic write through a Store action
         return previous;
     },
-    OnError: (error, _, previous) =>
+    OnError: (error, _, previous, _) =>
     {
         // The caller cancelled the request: the server may have applied it, so reload rather than guess.
         if (error is OperationCanceledException) inventory.Reload();
         else if (previous != null) inventory.RestoreLoadout(previous);   // null when OnMutate threw
         return VelvetTask.CompletedTask;
     },
-    OnSettled: (_, _, _, _) => client.InvalidateQueries(new QueryKey("loadout"))));
+    OnSettled: (_, _, _, _, _) => client.InvalidateQueries(new QueryKey("loadout"))));
 ```
 
 **Per-call callbacks.** `Mutate` and `MutateAsync` take a `MutateOptions<TVariables, TData>` whose
@@ -178,8 +184,10 @@ only detaches the observer, a call in flight runs to completion and its `OnMutat
 and `OnSettled` run with its real outcome. They are the hook options' callbacks, which outlive the observer
 in v5 too; the handle is no longer written and the component no longer re-rendered. A `MutateAsync` in
 flight resolves or rejects with the function's own result, and one called after the unmount runs rather than
-rejecting, writing no handle. Per-call callbacks passed to `Mutate` / `MutateAsync` are the exception, as in
-v5: they are dropped once the component has unmounted.
+rejecting, writing no handle. As v5's `mutate` does after its observer has unsubscribed, such a call is taken by
+the observer again — the mutation the handle last showed hears it leave a second time — and so stays in the
+cache until it is removed by hand or the cache is cleared. Per-call callbacks passed to `Mutate` /
+`MutateAsync` are the exception, as in v5: they are dropped once the component has unmounted.
 
 A write that reached the server is therefore never reported as failed because its screen went away, so an
 optimistic rollback in `OnError` only sees failures the function itself raised.
@@ -191,9 +199,12 @@ write. Starting a call resets all four to that call's own — `Data` included, s
 shows the previous one's result. Not cancelling on re-entry, following the newest, and clearing
 `Data` when a call starts are all v5's behaviour.
 
-The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
-its variables and a context of the query client, the mutation's `meta` and its `mutationKey`, with no
-cancellation signal. It is `default` unless the caller sets `MutateOptions.CancellationToken` on that call,
+**The function context.** `MutationFn` and every callback are handed a `MutationFunctionContext` last, as
+v5's `mutationFn`, `onMutate`, `onSuccess`, `onError` and `onSettled` are: the `Client`, and the `Meta` and
+`MutationKey` of the options the call started with. The cache's callbacks get the same instance; the per-call
+callbacks get one built from the options the component last committed, as v5's observer builds it from its
+own. Its `CancellationToken` has **no v5 counterpart**, since v5 hands a mutation no cancellation signal.
+It is `default` unless the caller sets `MutateOptions.CancellationToken` on that call,
 and only the caller cancels it: an unmount, a later call and `Reset` leave it alone. A function that
 honours a token its caller cancelled ends in the `OperationCanceledException`, which fails the call like
 any other, so `OnError` receives it and a rollback there can tell it by type, since the request may already
@@ -218,9 +229,10 @@ is what one call produced and `Error` is how one call failed, so `Data` stands o
 `MutationFn` again inside the same call, so between attempts the call stays pending, `OnMutate` runs once
 when the call starts and before any pause, `OnSuccess` / `OnError` / `OnSettled` run once for the last
 attempt's outcome, as do the per-call callbacks of a call the handle still follows, and a call a newer one has superseded writes nothing
-to the handle when its retry lands, as under **Concurrent calls** above. Each attempt calls the latest
-render's `MutationFn`, as v5's retryer reads `mutationFn` on every run, and gets the call's
-`CancellationToken`. Unmounting does not end the retries, as it does not cancel the attempt. The policy itself:
+to the handle when its retry lands, as under **Concurrent calls** above. Each attempt calls the
+`MutationFn` of the call's own options, as v5's retryer reads `mutationFn` off the mutation on every run, and
+gets the call's `CancellationToken`. Unmounting does not end the retries, as it does not cancel the attempt.
+The policy itself:
 
 | v5 | `RetryPolicy` |
 |----|---------------|
@@ -239,8 +251,9 @@ mutation under `networkMode: 'online'`. Under `Online` a call started offline wa
 first attempt, with `IsPaused` true and `MutationFn` not yet called; under `OfflineFirst` it does not wait; under
 `Always` nothing waits for a connection. A mutation that needs `Always` and no retries sets
 `Retry = new RetryPolicy { Retry = false, NetworkMode = NetworkMode.Always }`, since the policy is where
-Velvet holds the mode. Every retry that comes due waits until the application is visible and, outside
-`Always`, a connection. Reading the connection on the application's behalf happens on the main thread, so a
+Velvet holds the mode. The first attempt waits only for what its start needs — the connection under `Online`
+and the scope (below) — as v5's retryer waits to start on `canStart`; every retry that comes due waits until
+the application is visible and, outside `Always`, a connection. Reading the connection on the application's behalf happens on the main thread, so a
 call started elsewhere under `Online` continues on the main thread.
 
 The readings come from `NetworkSignals`, which an application replaces once for every mutation and every
@@ -284,13 +297,38 @@ The cache's `OnMutate`, `OnSuccess`, `OnError` and `OnSettled` run for every mut
 callback of its name and awaited as it is, handed the variables, the context `OnMutate` returned and the
 `Mutation` (so `mutation.Meta` reaches them). A throw from the cache's `OnMutate` or `OnSuccess`, or from its
 `OnSettled` after a success, fails the call as the options' would; one from its `OnError`, or from its
-`OnSettled` on the failure path, is logged and costs no later callback. A `Subscribe` listener hears `Added`, `Removed`, `Updated` (with the `MutationActionType`:
+`OnSettled` on the failure path, is logged and costs no later callback. Each is handed the call's
+`MutationFunctionContext` last. A `Subscribe` listener hears `Added`, `Removed`, `Updated` (with the `MutationActionType`:
 `Pending`, `Failed`, `Pause`, `Continue`, `Success`, `Error`), `ObserverAdded` and `ObserverRemoved` as the
 handle takes and leaves a mutation (a newer call, `Reset` and unmounting each leave it), and
 `ObserverOptionsUpdated` when a commit hands the handle options unequal to those it last applied — the first
-commit included, with no mutation. That commit also applies v5's `setOptions`: where both carry a
+commit included, with no mutation. The three observer events carry the handle's `MutationObserver` in
+`Observer`, whose `Options` are those it last committed. That commit also applies v5's `setOptions`: where both carry a
 `MutationKey` and the two are unequal, the handle is detached as `Reset` detaches it, and otherwise a pending
 mutation takes the new options. `QueryClient.Clear` empties the mutation cache too.
+
+**Which options a call runs with.** The options pass through `QueryClient.DefaultMutationOptions` on every
+render, v5's `defaultMutationOptions`: whatever they leave null is taken from the defaults
+`SetMutationDefaults(key, options)` registered for keys leading their `MutationKey` — merged in registration
+order, a later registration winning, a key registered again keeping its place — and then from
+`QueryClientOptions.Mutations`. `GetMutationDefaults(key)` returns that merge. A `MutationDefaults` carries the
+options every record shares (`MutationKey`, `Scope`, `Meta`, `GcTime`, `Retry`, `ThrowOnError`); a typed option
+record registered there also supplies its `MutationFn` and callbacks to options of its own type, so a
+`MutationFn` may be left null, and a call whose options still have none fails with `No mutationFn found`, as
+in v5. A call is built from the options the component last committed, as v5's observer receives them in an
+effect, and keeps them once a newer call supersedes it; a later commit hands its options only to the call the
+handle shows, while that call is pending.
+
+**`ThrowOnError`.** `true`, or a `ThrowOnErrorRule.When(error => ...)` that accepts the failure, makes the hook
+throw the failure the handle shows from the component's render to the nearest error boundary, as v5's
+`throwOnError` does; it is read from the options the handle last committed.
+
+**Resuming paused mutations.** `QueryClient.ResumePausedMutations()` wakes every paused mutation of the client
+at once rather than at its next once-a-frame reading, while `NetworkSignals` reads online, and does nothing
+offline, as v5's does; `MutationCache.ResumePausedMutations()` wakes them whatever the connection reads. A
+woken mutation that its network mode or its scope still holds, or one waiting to retry while the application is
+not visible, stays paused. The task completes once the function of every mutation woken has settled, which for
+a call that fails before its function runs is never, as with v5's promise.
 
 **Scopes.** Mutations whose `Scope` ids are equal run one at a time, in the order they started, whichever
 handles started them: a later one is `Pending` with `IsPaused` true — after its `OnMutate` has run, as in v5 —
@@ -548,8 +586,8 @@ instead.
 ```csharp
 var client = Hooks.UseContext(QueryClientContext.Ref)!;
 var save = Hooks.UseMutation(new MutationOptions<Todo, Todo>(
-    MutationFn: (todo, ct) => api.SaveAsync(todo, ct),
-    OnSuccess: (_, _) => client.InvalidateQueries(new QueryKey("todos"))));
+    MutationFn: (todo, context) => api.SaveAsync(todo, context.CancellationToken),
+    OnSuccess: (_, _, context) => context.Client.InvalidateQueries(new QueryKey("todos"))));
 ```
 
 **Filters.** `QueryFilters` selects entries for `InvalidateQueries`, `RefetchQueries`, `CancelQueries`,

@@ -61,7 +61,7 @@ namespace Velvet.Tests.Performance
         [Component]
         private static VNode CaptureMutationRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn), s_mutationClient);
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken)), s_mutationClient);
             return V.Label(text: s_captured.Status.ToString());
         }
     }

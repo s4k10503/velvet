@@ -772,14 +772,14 @@ namespace Velvet.Tests
         [Component]
         public static VNode CaptureMutationStatusRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn), s_mutationClient);
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken)), s_mutationClient);
             return V.Label(text: s_captured.Status.ToString());
         }
 
         [Component]
         public static VNode CaptureMutationRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn), s_mutationClient);
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken)), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -787,8 +787,8 @@ namespace Velvet.Tests
         public static VNode CaptureMutationRecordingSuccessesRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnSuccess: (data, _) =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnSuccess: (data, _, _) =>
                 {
                     s_delivered.Add(data);
                     return VelvetTask.CompletedTask;
@@ -800,8 +800,8 @@ namespace Velvet.Tests
         public static VNode CaptureMutationWithOnErrorRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnError: (_, _) =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnError: (_, _, _) =>
                 {
                     s_onErrorCount++;
                     return VelvetTask.CompletedTask;
@@ -813,9 +813,9 @@ namespace Velvet.Tests
         public static VNode CaptureMutationWithThrowingOnSuccessRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnSuccess: (_, _) => throw s_onSuccessThrowException!,
-                OnError: (_, _) =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnSuccess: (_, _, _) => throw s_onSuccessThrowException!,
+                OnError: (_, _, _) =>
                 {
                     s_onErrorCount++;
                     return VelvetTask.CompletedTask;
@@ -827,8 +827,8 @@ namespace Velvet.Tests
         public static VNode CaptureMutationWithThrowingOnErrorRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnError: (ex, _) =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnError: (ex, _, _) =>
                 {
                     s_onErrorCount++;
                     throw s_onErrorThrowException!;
@@ -840,8 +840,8 @@ namespace Velvet.Tests
         public static VNode CaptureMutationObservingInOnSuccessRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnSuccess: (_, _) =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnSuccess: (_, _, _) =>
                 {
                     s_onSuccessObserved = (s_captured!.Status, s_captured.Data);
                     return VelvetTask.CompletedTask;
@@ -853,8 +853,8 @@ namespace Velvet.Tests
         public static VNode CaptureMutationObservingInOnErrorRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: s_mutationFn,
-                OnError: (_, _) =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnError: (_, _, _) =>
                 {
                     s_onErrorObserved = (s_captured!.Status, s_captured.Error);
                     return VelvetTask.CompletedTask;

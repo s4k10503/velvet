@@ -33,7 +33,7 @@
 225f957b0a77	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 22b8107c2d8a	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 23bd7d8a9832	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-249a51115746	Runtime/Hooks/HookSlots.cs,Runtime/Routing/Router.cs
+249a51115746	Runtime/Hooks/HookSlots.cs,Runtime/Hooks/MutationOptionsBase.cs,Runtime/Routing/Router.cs
 264717eb83ed	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 2707b7d0046f	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 28583b3e3dd8	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs

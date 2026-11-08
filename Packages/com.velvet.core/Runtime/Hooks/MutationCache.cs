@@ -5,46 +5,6 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
-    /// TanStack Query's mutation <c>scope</c>: mutations whose scopes share an <see cref="Id"/> run one after
-    /// another, in the order they were started, rather than side by side. A mutation that cannot run yet is
-    /// pending and paused until every earlier one in its scope has settled.
-    /// </summary>
-    /// <param name="Id">The scope's name.</param>
-    public sealed record MutationScope(string Id);
-
-    /// <summary>
-    /// The options every mutation options record shares: TanStack Query's <c>mutationKey</c>, <c>scope</c>,
-    /// <c>meta</c> and <c>gcTime</c>. <see cref="Mutation.Options"/> is the record the hook was given, so a cache
-    /// callback can read these off any mutation, and test it for the concrete record to read the rest.
-    /// </summary>
-    public abstract record MutationOptionsBase
-    {
-        /// <summary>
-        /// Names the mutation for <see cref="MutationFilters.MutationKey"/>. Null, the default, matches no filter
-        /// that sets a key. A key replaced by an unequal key between two commits of the component detaches the
-        /// handle from the mutation it shows, as <see cref="MutationResult{TVariables, TData}.Reset"/> does.
-        /// </summary>
-        public QueryKey? MutationKey { get; init; }
-
-        /// <summary>Serialises the mutation with the others of its scope; null, the default, runs it at once.</summary>
-        public MutationScope? Scope { get; init; }
-
-        /// <summary>
-        /// Values the application attaches to the mutation for the <see cref="MutationCache"/> callbacks and filter
-        /// predicates to read, as <see cref="Mutation.Meta"/>.
-        /// </summary>
-        public IReadOnlyDictionary<string, object?>? Meta { get; init; }
-
-        /// <summary>
-        /// How long after it is built, or after a handle stops showing it, the mutation is removed from the
-        /// <see cref="MutationCache"/>, on the client's clock; one still pending then is checked again that long
-        /// later, and it is not collected while a handle shows it. Null takes TanStack Query's default, five
-        /// minutes; <see cref="TimeSpan.MaxValue"/> keeps it until it is removed by hand or the cache is cleared.
-        /// </summary>
-        public TimeSpan? GcTime { get; init; }
-    }
-
-    /// <summary>
     /// A mutation's state, TanStack Query's <c>MutationState</c>: a snapshot replaced whole by each change, so two
     /// readings are the same instance until the mutation moves.
     /// </summary>
@@ -124,11 +84,16 @@ namespace Velvet
     /// <summary>What a <see cref="MutationCache.Subscribe"/> listener is handed.</summary>
     public sealed class MutationCacheEvent
     {
-        internal MutationCacheEvent(MutationCacheEventType type, Mutation? mutation, MutationActionType? action = null)
+        internal MutationCacheEvent(
+            MutationCacheEventType type,
+            Mutation? mutation,
+            MutationActionType? action = null,
+            MutationObserver? observer = null)
         {
             Type = type;
             Mutation = mutation;
             Action = action;
+            Observer = observer;
         }
 
         /// <summary>What happened.</summary>
@@ -140,6 +105,10 @@ namespace Velvet
 
         /// <summary>How the state changed, for <see cref="MutationCacheEventType.Updated"/>; null otherwise.</summary>
         public MutationActionType? Action { get; }
+
+        /// <summary>The observer that was added, removed or handed options, for the three observer events; null
+        /// otherwise.</summary>
+        public MutationObserver? Observer { get; }
     }
 
     /// <summary>
@@ -193,7 +162,7 @@ namespace Velvet
 
         private readonly MutationCache _cache;
         private readonly Func<TimeSpan> _clock;
-        private int _observers;
+        private readonly List<MutationObserver> _observers = new();
         private VelvetTaskCompletionSource? _continue;
 
         internal Mutation(MutationCache cache, int mutationId, MutationOptionsBase options, Func<TimeSpan> clock)
@@ -231,24 +200,37 @@ namespace Velvet
             if (requested > GcTime) GcTime = requested;
         }
 
-        internal void AddObserver()
+        // The slot-typed options the call's function and callbacks are read from: the record the observer had
+        // committed when the call was built, replaced only while the call is pending and the handle still shows it,
+        // as v5's mutation keeps the options object it was built with.
+        internal object Invocation { get; set; } = null!;
+
+        // Completes when the call's function has settled, however it settled, as v5's retryer promise does, for
+        // ResumePausedMutations to wait on. A call that failed before its function was reached never completes it.
+        internal VelvetTaskCompletionSource Settled { get; } = new();
+
+        // TanStack's addObserver: an observer already watching is not added again.
+        internal void AddObserver(MutationObserver observer)
         {
-            _observers++;
+            if (_observers.Contains(observer)) return;
+            _observers.Add(observer);
             _cache.ClearGc(this);
-            _cache.Notify(new MutationCacheEvent(MutationCacheEventType.ObserverAdded, this));
+            _cache.Notify(new MutationCacheEvent(MutationCacheEventType.ObserverAdded, this, observer: observer));
         }
 
-        internal void RemoveObserver()
+        // TanStack's removeObserver, which reschedules the removal and announces it whether or not the observer was
+        // watching.
+        internal void RemoveObserver(MutationObserver observer)
         {
-            _observers--;
+            _observers.Remove(observer);
             _cache.ScheduleGc(this);
-            _cache.Notify(new MutationCacheEvent(MutationCacheEventType.ObserverRemoved, this));
+            _cache.Notify(new MutationCacheEvent(MutationCacheEventType.ObserverRemoved, this, observer: observer));
         }
 
         // TanStack's optionalRemove, which its gc timeout calls.
         internal void OptionalRemove()
         {
-            if (_observers > 0) return;
+            if (_observers.Count > 0) return;
             if (State.Status == MutationStatus.Pending) _cache.ScheduleGc(this);
             else _cache.Remove(this);
         }
@@ -263,7 +245,12 @@ namespace Velvet
             return source.Task;
         }
 
-        internal void Continue() => _continue?.TrySetResult();
+        // TanStack's continue: wakes a paused run and hands back its settling.
+        internal VelvetTask Continue()
+        {
+            _continue?.TrySetResult();
+            return Settled.Task;
+        }
 
         private static async VelvetTask CompleteOnNextFrame(VelvetTaskCompletionSource source)
         {
@@ -347,19 +334,23 @@ namespace Velvet
             StoreSubscribe = onStoreChange => Subscribe(_ => onStoreChange());
         }
 
-        /// <summary>Runs as each mutation starts, with its variables and the mutation, before the options'
-        /// <c>OnMutate</c>. What it returns is waited for and is not a context.</summary>
-        public Func<object?, Mutation, VelvetTask>? OnMutate { get; init; }
+        /// <summary>Runs as each mutation starts, with its variables, the mutation and the call's
+        /// <see cref="MutationFunctionContext"/>, before the options' <c>OnMutate</c>. What it returns is waited for
+        /// and is not a context.</summary>
+        public Func<object?, Mutation, MutationFunctionContext, VelvetTask>? OnMutate { get; init; }
 
-        /// <summary>Runs when a mutation succeeds, with its data, variables, context and the mutation.</summary>
-        public Func<object?, object?, object?, Mutation, VelvetTask>? OnSuccess { get; init; }
+        /// <summary>Runs when a mutation succeeds, with its data, variables, the options' <c>OnMutate</c> result, the
+        /// mutation and the call's <see cref="MutationFunctionContext"/>.</summary>
+        public Func<object?, object?, object?, Mutation, MutationFunctionContext, VelvetTask>? OnSuccess { get; init; }
 
-        /// <summary>Runs when a mutation fails, with the exception, its variables, context and the mutation.</summary>
-        public Func<Exception, object?, object?, Mutation, VelvetTask>? OnError { get; init; }
+        /// <summary>Runs when a mutation fails, with the exception, its variables, the <c>OnMutate</c> result, the
+        /// mutation and the call's <see cref="MutationFunctionContext"/>.</summary>
+        public Func<Exception, object?, object?, Mutation, MutationFunctionContext, VelvetTask>? OnError { get; init; }
 
         /// <summary>Runs after <see cref="OnSuccess"/> or <see cref="OnError"/> and the options' callback of that
-        /// outcome, with the data or null, the exception or null, the variables, context and the mutation.</summary>
-        public Func<object?, Exception?, object?, object?, Mutation, VelvetTask>? OnSettled { get; init; }
+        /// outcome, with the data or null, the exception or null, the variables, the <c>OnMutate</c> result, the
+        /// mutation and the call's <see cref="MutationFunctionContext"/>.</summary>
+        public Func<object?, Exception?, object?, object?, Mutation, MutationFunctionContext, VelvetTask>? OnSettled { get; init; }
 
         // One delegate per cache, so a UseSyncExternalStore over it subscribes again only when the cache changes.
         internal Func<Action, Action> StoreSubscribe { get; }
@@ -421,6 +412,30 @@ namespace Velvet
                 }
             }
             Notify(new MutationCacheEvent(MutationCacheEventType.Removed, mutation));
+        }
+
+        /// <summary>
+        /// Wakes every paused mutation, TanStack Query's <c>resumePausedMutations</c>. One that its network mode or
+        /// its scope still holds, or one waiting to retry while the application is not visible, stays paused.
+        /// </summary>
+        /// <returns>A task that completes once the function of every mutation it woke has settled, however it
+        /// settled.</returns>
+        public VelvetTask ResumePausedMutations()
+        {
+            var runs = new List<VelvetTask>();
+            foreach (var mutation in GetAll())
+            {
+                if (mutation.State.IsPaused) runs.Add(mutation.Continue());
+            }
+            return SettleAll(runs);
+        }
+
+        private static async VelvetTask SettleAll(List<VelvetTask> runs)
+        {
+            foreach (var run in runs)
+            {
+                await run;
+            }
         }
 
         /// <summary>Removes every mutation and announces each removal.</summary>

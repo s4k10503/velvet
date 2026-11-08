@@ -749,7 +749,7 @@ namespace Velvet.Tests
             var settled = 0;
 
             // Act
-            s_noInputCaptured!.Mutate(new MutateOptions<Unit, Unit> { OnSettled = (_, _, _, _) => settled++ });
+            s_noInputCaptured!.Mutate(new MutateOptions<Unit, Unit> { OnSettled = (_, _, _, _, _) => settled++ });
             await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
@@ -765,7 +765,7 @@ namespace Velvet.Tests
             var settled = 0;
 
             // Act
-            await s_noInputCaptured!.MutateAsync(new MutateOptions<Unit, Unit> { OnSettled = (_, _, _, _) => settled++ });
+            await s_noInputCaptured!.MutateAsync(new MutateOptions<Unit, Unit> { OnSettled = (_, _, _, _, _) => settled++ });
             mounted.FlushStateForTest();
 
             // Assert
@@ -780,7 +780,7 @@ namespace Velvet.Tests
             object? received = "unset";
 
             // Act
-            await s_captured!.MutateAsync(1, new MutateOptions<int, int> { OnSuccess = (_, _, context) => received = context });
+            await s_captured!.MutateAsync(1, new MutateOptions<int, int> { OnSuccess = (_, _, context, _) => received = context });
             mounted.FlushStateForTest();
 
             // Assert
@@ -888,7 +888,7 @@ namespace Velvet.Tests
         [Component]
         public static VNode CleanupMutatesRender()
         {
-            var handle = Hooks.UseMutation(new MutationOptions<int, int, string>(MutationFn: s_mutationFn), s_mutationClient);
+            var handle = Hooks.UseMutation(new MutationOptions<int, int, string>(MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken)), s_mutationClient);
             s_captured = handle;
             Hooks.UseEffect((Func<Action?>)(() => () => handle.Mutate(1)), Array.Empty<object?>());
             return V.Label(text: "ok");
@@ -898,25 +898,25 @@ namespace Velvet.Tests
         {
             s_renderCount++;
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, string>(
-                MutationFn: s_mutationFn,
-                OnMutate: v =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnMutate: (v, _) =>
                 {
                     Record("mutate", 0, null, v, null);
                     if (s_onMutateThrows != null) throw s_onMutateThrows;
                     return VelvetTask.FromResult($"ctx{v}");
                 },
-                OnSuccess: (data, v, context) =>
+                OnSuccess: (data, v, context, _) =>
                 {
                     Record("success", data, null, v, context);
                     return VelvetTask.CompletedTask;
                 },
-                OnError: (error, v, context) =>
+                OnError: (error, v, context, _) =>
                 {
                     Record("error", 0, error, v, context);
                     if (s_onErrorThrows != null) throw s_onErrorThrows;
                     return VelvetTask.CompletedTask;
                 },
-                OnSettled: (data, error, v, context) =>
+                OnSettled: (data, error, v, context, _) =>
                 {
                     Record("settled", data, error, v, context);
                     if (error == null && s_settledThrowsOnSuccess != null) throw s_settledThrowsOnSuccess;
@@ -929,9 +929,9 @@ namespace Velvet.Tests
         [Component]
         public static VNode ContextFreeMutationRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn)
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken))
             {
-                OnSettled = (data, error, v) =>
+                OnSettled = (data, error, v, _) =>
                 {
                     Record("settled", data, error, v, null);
                     return VelvetTask.CompletedTask;
@@ -943,9 +943,9 @@ namespace Velvet.Tests
         [Component]
         public static VNode VoidMutationRender()
         {
-            s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(MutationFn: s_voidMutationFn)
+            s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(MutationFn: (v, context) => s_voidMutationFn(v, context.CancellationToken))
             {
-                OnSettled = (error, v) =>
+                OnSettled = (error, v, _) =>
                 {
                     Record("settled", 0, error, v, null);
                     return VelvetTask.CompletedTask;
@@ -959,7 +959,7 @@ namespace Velvet.Tests
         {
             s_noInputCaptured = Hooks.UseMutation(new MutationOptions(MutationFn: _ => VelvetTask.CompletedTask)
             {
-                OnSettled = error =>
+                OnSettled = (error, _) =>
                 {
                     Record("settled", 0, error, 0, null);
                     return VelvetTask.CompletedTask;
@@ -970,13 +970,13 @@ namespace Velvet.Tests
 
         private static MutateOptions<int, int> CallOptions() => new()
         {
-            OnSuccess = (data, v, context) =>
+            OnSuccess = (data, v, context, _) =>
             {
                 Record("call-success", data, null, v, context as string);
                 if (s_callSuccessThrows != null) throw s_callSuccessThrows;
             },
-            OnError = (error, v, context) => Record("call-error", 0, error, v, context as string),
-            OnSettled = (data, error, v, context) => Record("call-settled", data, error, v, context as string),
+            OnError = (error, v, context, _) => Record("call-error", 0, error, v, context as string),
+            OnSettled = (data, error, v, context, _) => Record("call-settled", data, error, v, context as string),
         };
 
         // The handle's status and variables are read when the entry is written, which is what a callback

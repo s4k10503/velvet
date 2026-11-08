@@ -494,6 +494,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnApplicationNotVisible_When_TheDeviceComesOnlineBeforeTheFirstAttempt_Then_TheAttemptRuns()
+        {
+            // Arrange — v5's retryer waits to start on canStart, which reads the connection and not the visibility.
+            var online = false;
+            var attempts = 0;
+            var policy = s_ready with { IsOnline = () => online, IsFocused = () => false };
+            _ = policy.RunAsync(_ => VelvetTask.FromResult(++attempts));
+            DrainFrames();
+
+            // Act
+            online = true;
+            DrainFrames();
+
+            // Assert
+            Assert.That(attempts, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Given_NoIsOnlineOnThePolicy_When_NetworkSignalsReadOffline_Then_NoAttemptRunsUntilItReadsOnline()
         {
             // Arrange

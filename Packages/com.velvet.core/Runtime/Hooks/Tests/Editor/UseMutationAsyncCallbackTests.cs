@@ -399,27 +399,27 @@ namespace Velvet.Tests
         public static VNode AsyncMutationRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, string>(
-                MutationFn: (v, ct) => s_mutationFn(v, ct),
-                OnMutate: async v =>
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnMutate: async (v, _) =>
                 {
                     s_log.Add("mutate-start");
                     await s_mutateGate.Task;
                     s_log.Add("mutate-end");
                     return "ctx" + v;
                 },
-                OnSuccess: async (data, v, context) =>
+                OnSuccess: async (data, v, context, _) =>
                 {
                     s_log.Add("success-start " + context);
                     await s_successGate.Task;
                     s_log.Add("success-end");
                 },
-                OnError: async (error, v, context) =>
+                OnError: async (error, v, context, _) =>
                 {
                     s_log.Add($"error-start {error.Message} {context}");
                     await s_errorGate.Task;
                     s_log.Add("error-end");
                 },
-                OnSettled: async (data, error, v, context) =>
+                OnSettled: async (data, error, v, context, _) =>
                 {
                     s_log.Add("settled-start");
                     await s_settledGate.Task;
@@ -432,8 +432,8 @@ namespace Velvet.Tests
         public static VNode ContextFreeRender()
         {
             s_contextFreeCaptured = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: (v, ct) => s_mutationFn(v, ct),
-                OnSuccess: async (data, v) => await s_successGate.Task), s_mutationClient);
+                MutationFn: (v, context) => s_mutationFn(v, context.CancellationToken),
+                OnSuccess: async (data, v, _) => await s_successGate.Task), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -442,7 +442,7 @@ namespace Velvet.Tests
         {
             s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
                 MutationFn: (_, _) => VelvetTask.CompletedTask,
-                OnSuccess: async v => await s_successGate.Task), s_mutationClient);
+                OnSuccess: async (v, _) => await s_successGate.Task), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -453,7 +453,7 @@ namespace Velvet.Tests
                 MutationFn: _ => VelvetTask.CompletedTask,
                 OnSuccess: null)
             {
-                OnSettled = async _ => await s_settledGate.Task,
+                OnSettled = async (_, _) => await s_settledGate.Task,
             }, s_mutationClient);
             return V.Label(text: "ok");
         }

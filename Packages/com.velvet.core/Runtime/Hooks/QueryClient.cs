@@ -89,6 +89,14 @@ namespace Velvet
         /// a new one.
         /// </summary>
         public MutationCache? MutationCache { get; init; }
+
+        /// <summary>
+        /// The options every mutation of the client starts from, TanStack Query's <c>defaultOptions.mutations</c>:
+        /// what a mutation's own options and the defaults <see cref="QueryClient.SetMutationDefaults"/> registered
+        /// for its key leave null is taken from here. A <see cref="MutationDefaults"/> fills the options every record
+        /// shares; a typed options record also supplies its function and callbacks to options of its own type.
+        /// </summary>
+        public MutationOptionsBase? Mutations { get; init; }
     }
 
     /// <summary>
@@ -136,6 +144,9 @@ namespace Velvet
 
         private readonly Func<TimeSpan> _clock;
         private readonly MutationCache _mutationCache;
+        private readonly MutationOptionsBase? _mutationOptions;
+        // In registration order, a key registered again keeping its place, as v5's Map does.
+        private readonly List<KeyValuePair<QueryKey, MutationOptionsBase>> _mutationDefaults = new();
         // Advanced by every render that reads this client, so an entry whose last reader left under the current
         // value left after the render whose effects are subscribing now.
         private int _readEpoch;
@@ -160,6 +171,7 @@ namespace Velvet
             DefaultRefetchOnWindowFocusFn = options.RefetchOnWindowFocusFn;
             DefaultRefetchOnReconnectFn = options.RefetchOnReconnectFn;
             _mutationCache = options.MutationCache ?? new MutationCache();
+            _mutationOptions = options.Mutations;
             if (options.Clock != null)
             {
                 _clock = options.Clock;
@@ -493,6 +505,69 @@ namespace Velvet
         /// </summary>
         public int IsMutating(MutationFilters? filters = null)
             => _mutationCache.FindAll((filters ?? new MutationFilters()) with { Status = MutationStatus.Pending }).Count;
+
+        /// <summary>
+        /// Registers <paramref name="options"/> as the defaults of every mutation whose key
+        /// <paramref name="mutationKey"/> leads, TanStack Query's <c>setMutationDefaults</c>. Registering a key
+        /// again replaces its defaults where they stood in the order.
+        /// </summary>
+        public void SetMutationDefaults(QueryKey mutationKey, MutationOptionsBase options)
+        {
+            if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            for (var i = 0; i < _mutationDefaults.Count; i++)
+            {
+                if (!_mutationDefaults[i].Key.Equals(mutationKey)) continue;
+                _mutationDefaults[i] = new KeyValuePair<QueryKey, MutationOptionsBase>(mutationKey, options);
+                return;
+            }
+            _mutationDefaults.Add(new KeyValuePair<QueryKey, MutationOptionsBase>(mutationKey, options));
+        }
+
+        /// <summary>
+        /// The defaults <see cref="SetMutationDefaults"/> registered for keys leading <paramref name="mutationKey"/>,
+        /// merged in registration order with a later registration's options winning, TanStack Query's
+        /// <c>getMutationDefaults</c>. An empty <see cref="MutationDefaults"/> when none matches.
+        /// </summary>
+        public MutationOptionsBase GetMutationDefaults(QueryKey mutationKey)
+        {
+            if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
+            MutationOptionsBase merged = new MutationDefaults();
+            foreach (var registered in _mutationDefaults)
+            {
+                if (mutationKey.Matches(registered.Key)) merged = Assign(merged, registered.Value);
+            }
+            return merged;
+        }
+
+        /// <summary>
+        /// <paramref name="options"/> with what it leaves null taken from the defaults
+        /// <see cref="GetMutationDefaults"/> finds for its key and then from <see cref="QueryClientOptions.Mutations"/>,
+        /// TanStack Query's <c>defaultMutationOptions</c>. <see cref="Hooks.UseMutation{TVariables, TData}"/> runs its
+        /// options through this.
+        /// </summary>
+        public T DefaultMutationOptions<T>(T options) where T : MutationOptionsBase
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            MutationOptionsBase defaults = new MutationDefaults();
+            if (_mutationOptions != null) defaults = Assign(defaults, _mutationOptions);
+            if (options.MutationKey != null) defaults = Assign(defaults, GetMutationDefaults(options.MutationKey));
+            return (T)options.WithDefaults(defaults);
+        }
+
+        // Object.assign(target, source) over two option records: what source sets wins. The result takes source's
+        // type, except that a MutationDefaults laid over a typed record keeps the record and its callbacks.
+        private static MutationOptionsBase Assign(MutationOptionsBase target, MutationOptionsBase source)
+            => source is MutationDefaults && target is not MutationDefaults
+                ? target.WithSharedOverrides(source)
+                : source.WithDefaults(target);
+
+        /// <summary>
+        /// Wakes the client's paused mutations while the device reads as online, TanStack Query's
+        /// <c>resumePausedMutations</c>; offline it does nothing. See <see cref="MutationCache.ResumePausedMutations"/>.
+        /// </summary>
+        public VelvetTask ResumePausedMutations()
+            => NetworkSignals.ReadOnline() ? _mutationCache.ResumePausedMutations() : VelvetTask.CompletedTask;
 
         internal TimeSpan Now => _clock();
 

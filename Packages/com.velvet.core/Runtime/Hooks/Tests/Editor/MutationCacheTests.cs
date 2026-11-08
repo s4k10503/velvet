@@ -277,7 +277,7 @@ namespace Velvet.Tests
             // Arrange
             InstallCache(new MutationCache
             {
-                OnSuccess = (data, variables, context, mutation) =>
+                OnSuccess = (data, variables, context, mutation, _) =>
                 {
                     s_log.Add($"{data}|{variables}|{context}|{mutation.Meta!["toast"]}");
                     return VelvetTask.CompletedTask;
@@ -620,33 +620,33 @@ namespace Velvet.Tests
                     return s_gate?.Task ?? VelvetTask.FromResult(v * 2);
                 },
                 OnMutate: withContext
-                    ? v =>
+                    ? (v, _) =>
                     {
                         s_log.Add("onMutate");
                         return VelvetTask.FromResult($"context-{v}");
                     }
                     : null,
-                OnSuccess: (_, _, _) => Log("onSuccess"),
-                OnError: (_, _, _) => Log("onError"),
-                OnSettled: (_, _, _, _) => Log("onSettled"))
+                OnSuccess: (_, _, _, _) => Log("onSuccess"),
+                OnError: (_, _, _, _) => Log("onError"),
+                OnSettled: (_, _, _, _, _) => Log("onSettled"))
             {
                 MutationKey = key,
             };
 
         private static MutationCache LoggingCache(bool throwOnMutate = false, bool throwOnError = false) => new()
         {
-            OnMutate = (_, _) =>
+            OnMutate = (_, _, _) =>
             {
                 Log("cache.onMutate");
                 return throwOnMutate ? throw new InvalidOperationException("cache.onMutate") : VelvetTask.CompletedTask;
             },
-            OnSuccess = (_, _, _, _) => Log("cache.onSuccess"),
-            OnError = (_, _, _, _) =>
+            OnSuccess = (_, _, _, _, _) => Log("cache.onSuccess"),
+            OnError = (_, _, _, _, _) =>
             {
                 Log("cache.onError");
                 return throwOnError ? throw new InvalidOperationException("cache.onError") : VelvetTask.CompletedTask;
             },
-            OnSettled = (_, _, _, _, _) => Log("cache.onSettled"),
+            OnSettled = (_, _, _, _, _, _) => Log("cache.onSettled"),
         };
 
         private static VelvetTask Log(string entry)
