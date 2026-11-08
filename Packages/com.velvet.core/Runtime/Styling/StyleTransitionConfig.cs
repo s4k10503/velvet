@@ -422,8 +422,8 @@ namespace Velvet
         /// order, each on its own: as with Framer Motion's per-value transitions, a property no override names
         /// keeps the top-level timing. Currently wired only where a variant swap would otherwise set transition-property:
         /// all (a variant-driven enter, or an exit driven by a <c>variants</c> + <c>exit</c> label) — a preset
-        /// transition's own USS-declared transition-property is untouched. Null (default) preserves today's
-        /// behavior unchanged.
+        /// transition's own USS-declared transition-property is untouched — and in <see cref="Animator"/>, which reads
+        /// an entry as a per-value transition. Null (default) preserves today's behavior unchanged.
         /// On a <see cref="TransitionType.Spring"/> or <see cref="TransitionType.Bezier"/> play, a channel an entry
         /// names runs a tween on that entry's timing in place of the play's curve, once whatever the play repeats;
         /// <c>Documentation~/motion.md</c> owns the rule.
@@ -667,10 +667,10 @@ namespace Velvet
     }
 
     /// <summary>
-    /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>.
-    /// Any null field falls back to the enclosing config's corresponding top-level value — <see cref="Easing"/>
-    /// falls back to the config's EFFECTIVE easing for the direction being played (<c>Easing</c> for an enter,
-    /// <c>ExitEasing ?? Easing</c> for an exit), matching how the top-level fields already resolve per direction.
+    /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>. It
+    /// replaces the enclosing config for its property, as Framer Motion's per-value transition does: only a null
+    /// <see cref="DelaySec"/> takes the enclosing config's, and a null <see cref="DurationSec"/> or
+    /// <see cref="Easing"/> takes Framer's keyframes defaults of 0.3 s and an ease-out.
     /// </summary>
     public readonly struct StylePropertyTransition
     {
@@ -680,10 +680,10 @@ namespace Velvet
         /// </summary>
         public string Property { get; }
 
-        /// <summary>Duration override (seconds). Null falls back to <see cref="StyleTransitionConfig.DurationSec"/>.</summary>
+        /// <summary>Duration (seconds). Null runs 0.3 s.</summary>
         public float? DurationSec { get; }
 
-        /// <summary>Easing override. Null falls back to the enclosing config's effective easing for the direction being played.</summary>
+        /// <summary>Easing. Null eases out.</summary>
         public EasingMode? Easing { get; }
 
         /// <summary>Delay override (seconds). Null falls back to <see cref="StyleTransitionConfig.DelaySec"/>.</summary>
@@ -696,6 +696,14 @@ namespace Velvet
             Easing = easing;
             DelaySec = delaySec;
         }
+
+        internal float DurationOrDefaultSec => DurationSec ?? StyleTransitionConfig.DefaultDurationSec;
+
+        internal EasingMode EasingOrDefault => Easing ?? EasingMode.EaseOut;
+
+        // The entry's delay counted from the end of playDelaySec, the play's own, which it replaces where it names
+        // one: negative where it names a shorter one.
+        internal float DelayAfterSec(float playDelaySec) => (DelaySec ?? playDelaySec) - playDelaySec;
     }
 
     /// <summary>

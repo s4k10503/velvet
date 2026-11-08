@@ -306,7 +306,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_LoweredFinishOverStepsWithNoTransition_When_TheNextFramesTick_Then_TheTransitionIsFade()
+        public void Given_LoweredFinishOverStepsWithNoTransition_When_TheNextFramesTick_Then_TheTransitionRunsTheSequenceDefault()
         {
             // Arrange
             LowerDuringSecondPass(1);
@@ -314,14 +314,14 @@ namespace Velvet.Tests
             // Act
             AdvancePast(0f);
 
-            // Assert
-            Assert.That(s_state.CurrentTransition?.PlaybackOrigin, Is.SameAs(StyleTransition.Fade));
+            // Assert — Framer's sequence default: 0.3s on an ease-out.
+            Assert.That(s_state.CurrentTransition?.PlaybackOrigin?.DurationSec ?? float.NaN, Is.EqualTo(0.3f));
         }
 
         [Test]
-        public void Given_LoweredFinishWhereOnlyAnEarlierStepNamesATransition_When_TheNextFramesTick_Then_TheLastStepInheritsIt()
+        public void Given_LoweredFinishWhereOnlyAnEarlierStepNamesATransition_When_TheNextFramesTick_Then_TheLastStepRunsTheSequenceDefault()
         {
-            // Arrange
+            // Arrange — SlideUp runs 0.25s, so a carried transition reads apart from the 0.3s default.
             LowerDuringSecondPass(1, new[]
             {
                 AnimationSequenceStep.To("a", StyleTransition.SlideUp, holdSec: 0.1f),
@@ -332,7 +332,7 @@ namespace Velvet.Tests
             AdvancePast(0f);
 
             // Assert
-            Assert.That(s_state.CurrentTransition?.PlaybackOrigin, Is.SameAs(StyleTransition.SlideUp));
+            Assert.That(s_state.CurrentTransition?.PlaybackOrigin?.DurationSec ?? float.NaN, Is.EqualTo(0.3f));
         }
 
         [Test]
@@ -398,27 +398,28 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ThreeIterationsWhoseSecondPassInheritsALongerTransition_When_TheCountIsLoweredToTwoInTheThirdPass_Then_TimeSecIsTheTwoPassesPlayed()
+        public void Given_ThreeIterationsWhoseFirstStepNamesNoTransition_When_TheCountIsLoweredToTwoInTheThirdPass_Then_TimeSecIsTheTwoPassesPlayed()
         {
-            // Arrange — the first To step names no transition: the first pass holds it for Fade's 0.2s and the
-            // second for the 0.3s the first pass left, so the passes take 0.5s and 0.6s and the third starts at 1.1s.
+            // Arrange — the first To step names no transition and holds for the sequence default's 0.3s in every
+            // pass, rather than taking the 0.5s the pass before left, so each pass takes 0.8s and the third starts
+            // at 1.6s.
             s_steps = new[]
             {
                 AnimationSequenceStep.To("a"),
-                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.3f }),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.5f }),
             };
             s_iterations = 3;
             Mount();
-            AdvancePast(1.1f);
+            AdvancePast(1.6f);
             s_iterations = 2;
             s_rerender();
             _mounted.FlushStateForTest();
 
-            // Act — the count was lowered at 1.12s, 0.02s into the third pass.
+            // Act — the count was lowered at 1.632s, 0.032s into the third pass.
             AdvancePast(0f);
 
             // Assert
-            Assert.That(s_controls.TimeSec, Is.EqualTo(1.1f).Within(1e-3f));
+            Assert.That(s_controls.TimeSec, Is.EqualTo(1.6f).Within(1e-3f));
         }
 
         [Test]

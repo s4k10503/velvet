@@ -700,7 +700,7 @@ namespace Velvet
             ReconcileLayoutIdCorrection(element, newNode, appliedNew);
             if (newNode.LayoutId != null)
             {
-                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.TransitionDefaulted ? null : newNode.Transition), _ctx);
+                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId, LayoutIdTiming.From(newNode.LayoutTransition), _ctx);
             }
             else
             {

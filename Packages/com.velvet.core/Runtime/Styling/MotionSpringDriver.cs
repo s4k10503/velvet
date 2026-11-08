@@ -340,11 +340,11 @@ namespace Velvet
         }
 
         // Framer Motion's calcGeneratorDuration over its spring generator: the first 50 ms sample at which a spring
-        // released `delta` from its target with `velocity` has come to rest, or infinity when none before 20 s does.
+        // released `delta` from its target with `velocity` has come to rest, or infinity when none before maxMs does.
         internal static float PassDurationSec(float delta, float stiffness, float damping, float mass, float velocity = 0f,
-            float? restSpeed = null)
+            float? restSpeed = null, int maxMs = MaxPassMs)
         {
-            for (var ms = 0; ms < MaxPassMs; ms += PassSampleMs)
+            for (var ms = 0; ms < maxMs; ms += PassSampleMs)
             {
                 var (displacement, speed) = SpringIntegrator.Solve(-delta, velocity, ms / 1000.0,
                     (stiffness, damping, mass));
@@ -396,6 +396,10 @@ namespace Velvet
 
         private const int PassSampleMs = 50;
         private const int MaxPassMs = 20000;
+
+        // The bound PassDurationSec takes for a spring searched until it rests: one past it is reported as never
+        // resting.
+        internal const int UncappedPassMs = 2_000_000_000;
 
         // Framer Motion's rest test, with its thresholds for a travel under 5 and for any other.
         private static bool Rests(double delta, double displacement, double velocity, float? restSpeed = null)
@@ -602,11 +606,12 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's delay, duration and easing (the
-        /// play's easing where it names none) in place of the state's spring, the last entry naming a channel winning.
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names that entry's delay, duration and easing in
+        /// place of the state's spring, the last entry naming a channel winning. <paramref name="playDelaySec"/> is the
+        /// delay the play waits before the driver runs, which an entry's own delay replaces.
         /// </summary>
         public static MotionSpringState? WithOverrides(MotionSpringState? state,
-            IReadOnlyList<StylePropertyTransition>? overrides, EasingMode easing, float durationSec)
+            IReadOnlyList<StylePropertyTransition>? overrides, float playDelaySec)
         {
             if (state == null || overrides == null || overrides.Count == 0)
             {
@@ -621,8 +626,8 @@ namespace Velvet
                     {
                         continue;
                     }
-                    channel.Timing = new TweenChannelTiming(entry.DelaySec ?? 0f, Mathf.Max(0f, entry.DurationSec ?? durationSec),
-                        entry.Easing ?? easing);
+                    channel.Timing = new TweenChannelTiming(entry.DelayAfterSec(playDelaySec),
+                        Mathf.Max(0f, entry.DurationOrDefaultSec), entry.EasingOrDefault);
                     Release(state, channel, channel.Origin, 0f);
                     break;
                 }

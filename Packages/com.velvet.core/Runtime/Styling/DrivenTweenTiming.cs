@@ -72,7 +72,7 @@ namespace Velvet
                 if (Named(entry.Property).Overlaps(longhands))
                 {
                     var (delaySec, durationSec) = Entry(entry);
-                    return new TweenChannelTiming(delaySec - StartDelaySec, durationSec, entry.Easing ?? Easing);
+                    return new TweenChannelTiming(delaySec - StartDelaySec, durationSec, entry.EasingOrDefault);
                 }
             }
             return null;
@@ -80,7 +80,7 @@ namespace Velvet
 
         // A negative duration runs as none, as UI Toolkit floors it (StyleFilterTransitionDriver.TryFindTransition).
         private (float delaySec, float durationSec) Entry(StylePropertyTransition entry)
-            => (entry.DelaySec ?? _topDelaySec, Math.Max(0f, entry.DurationSec ?? DurationSec));
+            => (entry.DelaySec ?? _topDelaySec, Math.Max(0f, entry.DurationOrDefaultSec));
 
         internal static StyleLonghandSet Named(string property)
             => s_named.TryGetValue(property, out var named) ? named : StyleLonghandSet.Empty;

@@ -314,7 +314,7 @@ namespace Velvet
                 var first = tracks.Count;
                 foreach (var element in elementsOf(segment))
                 {
-                    AddTracks(tracks, element, segment, start + (segment.Transition?.DelaySec ?? 0f), kind);
+                    AddTracks(tracks, element, segment, start, kind);
                 }
                 var segmentEnd = start;
                 for (var i = first; i < tracks.Count; i++) segmentEnd = Math.Max(segmentEnd, tracks[i].EndSec);
@@ -348,10 +348,45 @@ namespace Velvet
             {
                 if (keys is { Length: > 0 })
                 {
-                    tracks.Add(new ScopedTrack(element, channel, keys, segment.Transition, start, kind));
+                    var transition = ValueTransition(segment.Transition, channel, kind);
+                    tracks.Add(new ScopedTrack(element, channel, keys, transition, start + (transition?.DelaySec ?? 0f), kind));
                 }
             }
         }
+
+        // The transition one value takes where a PropertyOverrides entry names its property, the last such entry
+        // winning: a single call takes the entry alone and the transition's delay where the entry names none, as
+        // Framer's getValueTransition does, and a sequence takes the entry over the transition, as its own does.
+        private static StyleTransitionConfig? ValueTransition(StyleTransitionConfig? transition, AnimateChannel channel,
+            Kind kind)
+        {
+            var overrides = transition?.PropertyOverrides;
+            for (var i = (overrides?.Count ?? 0) - 1; i >= 0; i--)
+            {
+                var entry = overrides![i];
+                if (!DrivenTweenTiming.Named(entry.Property).Overlaps(StyleLonghandSet.Of(LonghandOf(channel))))
+                {
+                    continue;
+                }
+                return kind == ScopedTimeline.Kind.Single
+                    ? s_undefined.With(entry.DurationSec, entry.Easing, delaySec: entry.DelaySec ?? transition!.DelaySec)
+                    : transition!.With(entry.DurationSec, entry.Easing, delaySec: entry.DelaySec);
+            }
+            return transition;
+        }
+
+        private static readonly StyleTransitionConfig s_undefined = new();
+
+#pragma warning disable CS8524 // no discard arm: a new channel has to say which property names it
+        private static StyleLonghand LonghandOf(AnimateChannel channel) => channel switch
+        {
+            AnimateChannel.Opacity => StyleLonghand.Opacity,
+            AnimateChannel.X => StyleLonghand.Translate,
+            AnimateChannel.Y => StyleLonghand.Translate,
+            AnimateChannel.Scale => StyleLonghand.Scale,
+            AnimateChannel.Rotate => StyleLonghand.Rotate,
+        };
+#pragma warning restore CS8524
     }
 
     // The translate an element's x and y tracks compose into one inline value.
@@ -418,8 +453,10 @@ namespace Velvet
                 }
                 _passSec = _springSettleSec is { } settle
                     ? (float)settle
-                    : Mathf.Min(MotionSpringDriver.PassDurationSec(single ? OwnTravel() : _springTravel,
-                        spring.Stiffness, spring.Damping, spring.Mass), MaxSpringSec);
+                    : single
+                        ? RestSec(spring.Stiffness, spring.Damping, spring.Mass, null)
+                        : Mathf.Min(MotionSpringDriver.PassDurationSec(_springTravel, spring.Stiffness, spring.Damping,
+                            spring.Mass), MaxSpringSec);
             }
             else
             {
@@ -469,9 +506,14 @@ namespace Velvet
                     break;
             }
             var (stiffness, damping, mass) = spring.Value;
-            return Mathf.Min(MotionSpringDriver.PassDurationSec(OwnTravel(), stiffness, damping, mass, 0f,
-                MotionSpringDriver.DefaultSpringRestSpeed), MaxSpringSec);
+            return RestSec(stiffness, damping, mass, MotionSpringDriver.DefaultSpringRestSpeed);
         }
+
+        // A single animation's spring ends where it rests, as Framer's JSAnimation ends when its generator is done,
+        // however long that takes; a sequence's is cut at MaxSpringSec, as the easing Framer samples from it is.
+        private float RestSec(float stiffness, float damping, float mass, float? restSpeed)
+            => MotionSpringDriver.PassDurationSec(OwnTravel(), stiffness, damping, mass, 0f, restSpeed,
+                MotionSpringDriver.UncappedPassMs);
 
         // A single animation's spring runs over the value's own travel, so a lone keyframe's start is read when the
         // track is laid out rather than when it begins.
@@ -533,7 +575,8 @@ namespace Velvet
 
         private float ValueAt(double local)
         {
-            if (_repeat.Count <= 0f)
+            // A pass that never rests repeats nothing.
+            if (_repeat.Count <= 0f || float.IsPositiveInfinity(_passSec))
             {
                 return PassValue(Math.Min(local, _passSec), mirrored: false);
             }

@@ -167,6 +167,15 @@ namespace Velvet
 
         private StyleTransitionConfig? _delayedDefault;
 
+        // What a layoutId move takes (LayoutIdTiming.From): Framer's projection hands the Motion's own transition to
+        // animateMotionValue with a velocity, which makes even a delay alone a defined transition, so a Motion given
+        // only a delay moves on the keyframes default after it rather than on the preset V.Motion stood in.
+        internal StyleTransitionConfig? LayoutTransition => TransitionDefaulted ? null
+            : TransitionDelayOnly ? (_delayedLayout ??= new StyleTransitionConfig { DelaySec = Transition?.DelaySec ?? 0f })
+            : Transition;
+
+        private StyleTransitionConfig? _delayedLayout;
+
         // What a swap into a pose naming pose.Transition plays on.
         internal StyleTransitionConfig? PoseTransition(StyleTransitionConfig? pose) => pose?.PlayedOnVariant ?? VariantTransition;
 

@@ -244,7 +244,7 @@ namespace Velvet
                 if (_steps[i].Kind == AnimationSequenceStepKind.To)
                 {
                     label = _steps[i].Label;
-                    carry = SegmentTransition(_steps[i].Transition ?? carry ?? StyleTransition.Fade);
+                    carry = SegmentTransition(_steps[i].Transition);
                 }
                 passSec += HoldOf(_steps[i], carry);
             }
@@ -451,7 +451,7 @@ namespace Velvet
             {
                 case AnimationSequenceStepKind.To:
                     _currentLabel = step.Label;
-                    _currentTransition = SegmentTransition(step.Transition ?? _currentTransition ?? StyleTransition.Fade);
+                    _currentTransition = SegmentTransition(step.Transition);
                     _currentHoldSec = HoldOf(step, _currentTransition);
                     break;
                 case AnimationSequenceStepKind.Wait:
@@ -608,7 +608,7 @@ namespace Velvet
                 for (var i = 0; i < overrides.Count; i++)
                 {
                     var o = overrides[i];
-                    var overrideHold = (o.DurationSec ?? transition.DurationSec) + (o.DelaySec ?? transition.DelaySec);
+                    var overrideHold = o.DurationOrDefaultSec + (o.DelaySec ?? transition.DelaySec);
                     if (overrideHold > hold)
                     {
                         hold = overrideHold;
@@ -632,12 +632,21 @@ namespace Velvet
         private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_segmentOnce = new();
         private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_inSequence = new();
 
-        private static StyleTransitionConfig SegmentTransition(StyleTransitionConfig authored)
+        // Framer's sequence plays a segment naming no transition, or one naming none but its delay, repeat and
+        // orchestration, for 0.3 s on an ease-out rather than on the per-value defaults a variant play would take.
+        private static readonly StyleTransitionConfig s_segmentDefault = new() { DurationSec = StyleTransitionConfig.DefaultDurationSec };
+
+        private static readonly ConditionalWeakTable<StyleTransitionConfig, StyleTransitionConfig> s_segmentDefined = new();
+
+        private static StyleTransitionConfig SegmentTransition(StyleTransitionConfig? authored)
         {
-            // Cached, as the repeat's copy below is, so a step arriving again hands the same transition on.
-            var transition = authored.SpringIsInstant
-                ? s_inSequence.GetValue(authored, static instant => instant.InSequence())
-                : authored;
+            // Cached, as the copies below are, so a step arriving again hands the same transition on.
+            var defined = authored == null ? s_segmentDefault
+                : authored.IsDefined ? authored
+                : s_segmentDefined.GetValue(authored, static undefined => undefined.With(durationSec: StyleTransitionConfig.DefaultDurationSec));
+            var transition = defined.SpringIsInstant
+                ? s_inSequence.GetValue(defined, static instant => instant.InSequence())
+                : defined;
             if (transition.Repeat < MaxSegmentRepeat)
             {
                 return transition;

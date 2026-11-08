@@ -232,5 +232,72 @@ namespace Velvet.Tests
             // Assert
             Assert.That(controls.IsStopped ? controls.Finished.Status : (VelvetTaskStatus)(-1), Is.EqualTo(VelvetTaskStatus.Pending));
         }
+
+        private static StyleTransitionConfig OneSecondLinearOverriding(StylePropertyTransition entry)
+            => new() { DurationSec = 1f, Easing = EasingMode.Linear, PropertyOverrides = new[] { entry } };
+
+        [Test]
+        public void Given_ASingleCallWhoseOpacityEntryNamesOnlyADuration_When_AQuarterSecondPasses_Then_OpacityEasesOutOverThatDuration()
+        {
+            // Arrange — the entry replaces the call's linear second rather than inheriting its easing.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                OneSecondLinearOverriding(new StylePropertyTransition("opacity", durationSec: 0.5f)));
+
+            // Act
+            controls.Tick(0.25f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseOut, 0.5f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASingleCallWhoseTranslateEntryNamesOnlyADelay_When_TheDelayAndATenthOfASecondPass_Then_XIsWhereTheTransformSpringPutsIt()
+        {
+            // Arrange — an entry naming nothing but a delay is no transition, so the value takes its default.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { X = new[] { 0f, 100f } },
+                OneSecondLinearOverriding(new StylePropertyTransition("translate", delaySec: 0.1f)));
+
+            // Act
+            controls.Tick(0.2f);
+
+            // Assert
+            Assert.That(TranslateX(element),
+                Is.EqualTo(MotionSpringDriver.SampleSpring(0f, 100f, 1f, 0f, 0.1, (500f, 25f, 1f), null, 10f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentWhoseOpacityEntryNamesOnlyADuration_When_AQuarterSecondPasses_Then_ItKeepsTheSegmentsEasing()
+        {
+            // Arrange — a sequence lays the entry over the segment's transition rather than in place of it.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                    OneSecondLinearOverriding(new StylePropertyTransition("opacity", durationSec: 0.5f))),
+            });
+
+            // Act
+            controls.Tick(0.25f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASingleCallOnASpringThatRestsPastTwentySeconds_When_TwentyFiveSecondsPass_Then_ItIsStillPlaying()
+        {
+            // Arrange — a damping ratio of 0.015 decays a travel of 100 below its rest distance only after about 35 s.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { X = new[] { 0f, 100f } },
+                new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 0.3f, Mass = 1f });
+
+            // Act
+            controls.Tick(25f);
+
+            // Assert
+            Assert.That(controls.IsFinished, Is.False);
+        }
     }
 }

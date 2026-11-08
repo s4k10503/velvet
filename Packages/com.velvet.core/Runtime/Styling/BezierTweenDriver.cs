@@ -224,35 +224,37 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Gives each channel a <see cref="StylePropertyTransition"/> names the timing that entry carries, the last entry
-        /// naming it winning: its delay and duration (the play's, where it names none) and its easing, or the play's own
-        /// curve where it names none. Such a channel plays its entry once whatever the play repeats.
+        /// Gives each channel a <see cref="StylePropertyTransition"/> names the timing that entry carries in place of the
+        /// play's, the last entry naming it winning. <paramref name="playDelaySec"/> is the delay the play waits before
+        /// the driver runs, which an entry's own delay replaces. Such a channel plays its entry once whatever the play
+        /// repeats.
         /// </summary>
-        public static BezierTweenState? WithOverrides(BezierTweenState? state, IReadOnlyList<StylePropertyTransition>? overrides)
+        public static BezierTweenState? WithOverrides(BezierTweenState? state, IReadOnlyList<StylePropertyTransition>? overrides,
+            float playDelaySec)
         {
             if (state == null || overrides == null || overrides.Count == 0)
             {
                 return state;
             }
-            Override(state, state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity), overrides);
-            Override(state, state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
-            Override(state, state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
-            Override(state, state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
-            Override(state, state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
-            Override(state, state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate), overrides);
+            Override(state, playDelaySec, state.Opacity, StyleLonghandSet.Of(StyleLonghand.Opacity), overrides);
+            Override(state, playDelaySec, state.TranslateX, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
+            Override(state, playDelaySec, state.TranslateY, StyleLonghandSet.Of(StyleLonghand.Translate), overrides);
+            Override(state, playDelaySec, state.Scale, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
+            Override(state, playDelaySec, state.ScaleY, StyleLonghandSet.Of(StyleLonghand.Scale), overrides);
+            Override(state, playDelaySec, state.Rotate, StyleLonghandSet.Of(StyleLonghand.Rotate), overrides);
             foreach (var c in state.Colors ?? s_noColors)
             {
-                Override(state, c.Progress, StyleArbitraryLonghands.Of(c.Property), overrides);
+                Override(state, playDelaySec, c.Progress, StyleArbitraryLonghands.Of(c.Property), overrides);
             }
             foreach (var l in state.Lengths ?? s_noLengths)
             {
-                Override(state, l.Value, StyleArbitraryLonghands.Of(l.Property), overrides);
+                Override(state, playDelaySec, l.Value, StyleArbitraryLonghands.Of(l.Property), overrides);
             }
             return state;
         }
 
-        private static void Override(BezierTweenState state, BezierTweenChannel? channel, StyleLonghandSet longhands,
-            IReadOnlyList<StylePropertyTransition> overrides)
+        private static void Override(BezierTweenState state, float playDelaySec, BezierTweenChannel? channel,
+            StyleLonghandSet longhands, IReadOnlyList<StylePropertyTransition> overrides)
         {
             if (channel == null)
             {
@@ -265,10 +267,9 @@ namespace Velvet
                 {
                     continue;
                 }
-                var delaySec = entry.DelaySec ?? 0f;
-                var durationSec = Mathf.Max(0f, entry.DurationSec ?? state.DurationSec);
-                channel.Timing = new TweenChannelTiming(delaySec, durationSec, entry.Easing ?? EasingMode.Linear,
-                    curve: !entry.Easing.HasValue);
+                var delaySec = entry.DelayAfterSec(playDelaySec);
+                var durationSec = Mathf.Max(0f, entry.DurationOrDefaultSec);
+                channel.Timing = new TweenChannelTiming(delaySec, durationSec, entry.EasingOrDefault);
                 state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, delaySec + durationSec);
                 return;
             }

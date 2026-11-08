@@ -25,7 +25,7 @@ namespace Velvet
             var end = 0.0;
             foreach (var entry in config.PropertyOverrides ?? System.Array.Empty<StylePropertyTransition>())
             {
-                end = System.Math.Max(end, (entry.DelaySec ?? 0f) + System.Math.Max(0f, entry.DurationSec ?? config.DurationSec));
+                end = System.Math.Max(end, entry.DelayAfterSec(config.DelaySec) + System.Math.Max(0f, entry.DurationOrDefaultSec));
             }
             return end;
         }
@@ -53,7 +53,7 @@ namespace Velvet
                                 MotionSpringDriver.Create(MotionSpringClassParser.Resolve(fromClasses, toClasses, context: context),
                                     config.Stiffness, config.Damping, config.Mass, MotionRepeat.Of(config), config.SpringSettleSec,
                                     perValueDefaults: config.PerValueDefaults),
-                                config.PropertyOverrides, config.Easing, config.DurationSec),
+                                config.PropertyOverrides, config.DelaySec),
                             MotionRepeat.Of(config))
                         : 0.0;
                 default:

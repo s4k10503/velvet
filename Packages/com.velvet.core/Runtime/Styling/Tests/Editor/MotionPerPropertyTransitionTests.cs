@@ -77,7 +77,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APropertyOverrideWithNoDurationField_When_Resolved_Then_ItFallsBackToTheTopLevelDurationSec()
+        public void Given_APropertyOverrideWithNoDurationField_When_Resolved_Then_ItRunsFramersDefaultDuration()
         {
             // Arrange — one override sets its own duration; the other omits it (null DurationSec).
             var element = MountOnRealPanel();
@@ -94,10 +94,10 @@ namespace Velvet.Tests
                 durationSec: 0.4f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
             EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
 
-            // Assert — the un-overridden "scale" duration falls back to the top-level DurationSec (0.4f = 400ms),
-            // behind the "all" entry that carries it too.
+            // Assert — "scale" names no duration and runs 300ms rather than the top-level 400ms the "all" entry
+            // carries, as a value's own transition replaces the enclosing one in Framer.
             var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
-            Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 400f }).Within(1e-3f));
+            Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 300f }).Within(1e-3f));
         }
 
         [Test]

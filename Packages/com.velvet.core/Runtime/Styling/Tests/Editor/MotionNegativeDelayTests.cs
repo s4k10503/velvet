@@ -238,6 +238,8 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.7f).Within(0.003f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [Test]
         public void Given_APropertyOverrideWithANegativeCombinedDelay_When_TheFirstFrameRuns_Then_ItHasAlreadyProgressed()
         {
@@ -247,7 +249,7 @@ namespace Velvet.Tests
             var scheduler = _scheduler = new StyleAnimationScheduler();
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
                 durationSec: 1f, easing: EasingMode.Linear, delaySec: 0f, additionalDelaySec: 0.2f,
-                propertyOverrides: new[] { new StylePropertyTransition("opacity", delaySec: -0.5f) });
+                propertyOverrides: new[] { new StylePropertyTransition("opacity", delaySec: -0.5f, durationSec: 1f, easing: EasingMode.Linear) });
             ForcePanelUpdate(element.panel);
 
             // Act
@@ -257,6 +259,8 @@ namespace Velvet.Tests
             Assert.That(element.resolvedStyle.opacity, Is.EqualTo(0.3f).Within(0.003f));
         }
 
+        // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
+        // because an entry no longer takes the enclosing config's easing or duration.
         [TestCase(false)]
         [TestCase(true)]
         public void Given_ATweenEnterWithAPositiveCombinedDelay_When_TheDelayElapses_Then_ItAnimatesFromTheStart(
@@ -269,7 +273,7 @@ namespace Velvet.Tests
             element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
             scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
                 durationSec: 1f, easing: EasingMode.Linear, delaySec: -0.1f, additionalDelaySec: 0.2f,
-                propertyOverrides: propertyOverride ? new[] { new StylePropertyTransition("opacity") } : null);
+                propertyOverrides: propertyOverride ? new[] { new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.Linear) } : null);
             ForcePanelUpdate(element.panel);
 
             // Act

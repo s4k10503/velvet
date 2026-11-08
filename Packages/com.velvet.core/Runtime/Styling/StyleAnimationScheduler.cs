@@ -739,7 +739,7 @@ namespace Velvet
                 ? MotionSpringDriver.WithOverrides(
                     MotionSpringDriver.Create(plan, stiffness, damping, mass, play.Repeat, settleSec, description,
                         play.PerValueDefaults),
-                    play.PropertyOverrides, play.Easing, play.DurationSec)
+                    play.PropertyOverrides, play.DelaySec)
                 : null);
             GestureChannelMask.MarkExit(state, isExit);
             // A spring or bezier play this one interrupts hands on its velocity, and a native transition its rate, both
@@ -870,10 +870,11 @@ namespace Velvet
             // Copied out because a lambda cannot capture an `in` parameter.
             var repeat = play.Repeat;
             var overrides = play.PropertyOverrides;
+            var delaySec = play.DelaySec;
             StartDriven(in play, play.FromClasses, play.ToClasses,
                 plan => ValidateBezierParameters(x1, y1, x2, y2, durationSec)
                     ? BezierTweenDriver.WithOverrides(
-                        BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides)
+                        BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec, repeat), overrides, delaySec)
                     : null,
                 play.DelaySec + play.AdditionalDelaySec, removesToClasses: false);
         }
@@ -2108,15 +2109,12 @@ namespace Velvet
         // Duration / delay are positionally-matched lists, rented EMPTY
         // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
         // the SAME pools the single-entry path above uses, so they are returned through the existing
-        // PendingAnimation.DurationList / DelayList bookkeeping unchanged. A null override field falls back to
-        // the value the caller already resolved for this direction (durationSec / easing / delaySec — for an
-        // exit, easing here is already ExitEasing ?? Easing, so the fallback stays direction-correct without
-        // this method needing to know enter from exit).
-        // The easing list IS direction-dependent (an override's null Easing falls back to defaultEasing, which
-        // differs between an enter and an exit) and is rebuilt each call rather than cached: PropertyOverrides
-        // is a handful of entries, so the allocation is bounded and one-shot per animation start (never
-        // per-frame) — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static
-        // cache (GetOrCreateEasingList) rather than reallocated.
+        // PendingAnimation.DurationList / DelayList bookkeeping unchanged. An entry's null delay falls back to
+        // defaultDelaySec; its null duration and easing take StylePropertyTransition's own defaults. The easing list
+        // is built each call rather than cached, since the "all" entry's easing is the direction's: PropertyOverrides
+        // is a handful of entries, so the allocation is bounded and one-shot per animation start (never per-frame)
+        // — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static cache
+        // (GetOrCreateEasingList) rather than reallocated.
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
             VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
             IReadOnlyList<StylePropertyTransition> overrides, float delayOffsetSec)
@@ -2139,8 +2137,8 @@ namespace Velvet
             for (var i = -1; i < count; i++)
             {
                 var o = i < 0 ? default : overrides[i];
-                easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
-                var durationMs = (int)((o.DurationSec ?? defaultDurationSec) * 1000);
+                easingList.Add(GetOrCreateEasingList(i < 0 ? defaultEasing : o.EasingOrDefault)[0]);
+                var durationMs = (int)((i < 0 ? defaultDurationSec : o.DurationOrDefaultSec) * 1000);
                 var delaySec = (o.DelaySec ?? defaultDelaySec) + delayOffsetSec;
                 if (delaySec != 0f)
                 {
