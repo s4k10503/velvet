@@ -71,7 +71,7 @@ namespace Velvet.Tests
             "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "VELVET_STORY_CAPTURE_DIR",
-            "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
+            "Unreleased", "Highlights", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
 
         // Paths the tree is right not to hold: each is written at run time inside a git-ignored

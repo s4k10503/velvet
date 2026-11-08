@@ -20,7 +20,7 @@
 ### Changed
 
 - `Hooks.UseMutation` reads a `QueryClient` from `QueryClientContext.Ref`, or takes one as its new second
-  argument, and throws when it finds none, as `useMutation` does without a `QueryClientProvider`. A component
+  argument, and throws when it finds none, as `useMutation` does without a QueryClientProvider. A component
   calling it now needs a client provided above it.
 - `QueryClient.Clear` empties the client's mutation cache too.
 - A mutation's `MutationFn` and callbacks, its cache callbacks and its per-call `MutateOptions` callbacks are

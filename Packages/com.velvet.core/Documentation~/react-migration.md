@@ -99,7 +99,7 @@ public static VNode UserCard()
 
 TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-and-forget) and `MutateAsync` (awaitable), plus `Status` / `Data` / `Error` / `Variables` snapshots and `Reset`.
 It reads its `QueryClient` as `Hooks.UseQuery` does — from `QueryClientContext.Ref`, or the client passed as its
-second argument — and throws when there is none, as `useMutation` does without a `QueryClientProvider`; the
+second argument — and throws when there is none, as `useMutation` does without a QueryClientProvider; the
 client is the one the first render found.
 
 | React Query | Velvet |
