@@ -159,6 +159,66 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_InitialData_When_FetchQueryMakesTheEntry_Then_TheCacheAnnouncesItAddedFirst()
+        {
+            // Act
+            _ = s_client.FetchQuery(Options() with { InitialData = () => 1, StaleTime = TimeSpan.MaxValue });
+
+            // Assert
+            Assert.That(s_events[0].Type, Is.EqualTo(QueryCacheEventType.Added),
+                "v5's build constructs the query with its initial data before adding it, announcing no update first");
+        }
+
+        [Test]
+        public void Given_NoEntry_When_FetchQueryStartsARequest_Then_TheCacheAnnouncesAFetchUpdate()
+        {
+            // Act
+            _ = s_client.FetchQuery(Options());
+
+            // Assert
+            Assert.That(s_events[s_events.Count - 1].Action, Is.EqualTo(QueryActionType.Fetch));
+        }
+
+        [Test]
+        public void Given_ARequestThatRetries_When_ItsFirstAttemptFails_Then_TheCacheAnnouncesAFailedUpdate()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options() with { Retry = 1, RetryDelay = (_, _) => TimeSpan.Zero });
+
+            // Act
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+
+            // Assert
+            Assert.That(s_events[s_events.Count - 1].Action, Is.EqualTo(QueryActionType.Failed));
+        }
+
+        [Test]
+        public void Given_ARequest_When_ItFailsForGood_Then_TheCacheAnnouncesAnErrorUpdate()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+
+            // Act
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+
+            // Assert
+            Assert.That(s_events[s_events.Count - 1].Action, Is.EqualTo(QueryActionType.Error));
+        }
+
+        [Test]
+        public void Given_AnEntry_When_ResetQueriesResetsIt_Then_TheCacheAnnouncesASetStateUpdate()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+
+            // Act
+            _ = s_client.ResetQueries();
+
+            // Assert
+            Assert.That(s_events[s_events.Count - 1].Action, Is.EqualTo(QueryActionType.SetState));
+        }
+
+        [Test]
         public void Given_TwoEntries_When_ClearRuns_Then_TheCacheAnnouncesEachRemoved()
         {
             // Arrange
@@ -472,6 +532,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_context?.Meta, Is.SameAs(s_meta));
+        }
+
+        [Test]
+        public void Given_AContextTakingQueryFunction_When_ItRuns_Then_ItIsHandedTheKey()
+        {
+            // Act
+            _ = s_client.FetchQuery(ContextOptions());
+
+            // Assert
+            Assert.That(s_context?.QueryKey, Is.EqualTo(Todos));
+        }
+
+        [Test]
+        public void Given_AContextTakingQueryFunction_When_ItRuns_Then_ItIsHandedTheClient()
+        {
+            // Act
+            _ = s_client.FetchQuery(ContextOptions());
+
+            // Assert
+            Assert.That(s_context?.Client, Is.SameAs(s_client));
         }
 
         [Test]
