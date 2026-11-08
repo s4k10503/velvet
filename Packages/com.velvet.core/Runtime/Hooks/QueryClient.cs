@@ -529,7 +529,8 @@ namespace Velvet
         /// leading <paramref name="mutationKey"/> set them, merged in registration order with a later registration
         /// winning: TanStack Query's <c>getMutationDefaults</c>, and what <see cref="DefaultMutationOptions"/> fills
         /// those options from. An empty <see cref="MutationDefaults"/> when none matches. A registration's function
-        /// and callbacks are not in it, since they reach only options of the registration's own type.
+        /// and callbacks are not in it, since they reach only options of the registration's own type: read them with
+        /// <see cref="GetMutationDefaults{TOptions}"/>.
         /// </summary>
         public MutationDefaults GetMutationDefaults(QueryKey mutationKey)
         {
@@ -538,18 +539,49 @@ namespace Velvet
         }
 
         /// <summary>
+        /// The defaults <see cref="SetMutationDefaults"/> registered for keys leading <paramref name="mutationKey"/>
+        /// as options of type <typeparamref name="TOptions"/>: the shared options as
+        /// <see cref="GetMutationDefaults"/> reports them, and the function and callbacks of the registrations of
+        /// exactly that type, merged in registration order with a later one winning. Null when no registration of
+        /// that type matches.
+        /// </summary>
+        public TOptions? GetMutationDefaults<TOptions>(QueryKey mutationKey) where TOptions : MutationOptionsBase
+        {
+            if (mutationKey == null) throw new ArgumentNullException(nameof(mutationKey));
+            return (TOptions?)TypedKeyDefaults(typeof(TOptions), mutationKey);
+        }
+
+        /// <summary>
         /// <paramref name="options"/> with what it leaves null taken from the defaults registered for keys leading
-        /// its key — the shared options as <see cref="GetMutationDefaults"/> reports them, and the function and
-        /// callbacks of registrations of the options' own type — and then from
+        /// its key, as <see cref="GetMutationDefaults{TOptions}"/> reads them for the options' own type, and then from
         /// <see cref="QueryClientOptions.Mutations"/>: TanStack Query's <c>defaultMutationOptions</c>.
         /// <see cref="Hooks.UseMutation{TVariables, TData}"/> runs its options through this.
         /// </summary>
         public T DefaultMutationOptions<T>(T options) where T : MutationOptionsBase
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            var filled = options.MutationKey is { } mutationKey ? FillFromKeyDefaults(options, mutationKey) : options;
+            MutationOptionsBase filled = options;
+            if (options.MutationKey is { } mutationKey)
+            {
+                filled = filled.WithDefaults(
+                    TypedKeyDefaults(options.GetType(), mutationKey) ?? FillFromKeyDefaults(new MutationDefaults(), mutationKey));
+            }
             if (_mutationOptions != null) filled = filled.WithDefaults(_mutationOptions);
             return (T)filled;
+        }
+
+        // The registrations of exactly this type merged latest first, carrying the shared options of every
+        // matching registration; null when none of this type matches.
+        private MutationOptionsBase? TypedKeyDefaults(Type type, QueryKey mutationKey)
+        {
+            MutationOptionsBase? typed = null;
+            for (var i = _mutationDefaults.Count - 1; i >= 0; i--)
+            {
+                var registered = _mutationDefaults[i];
+                if (registered.Value.GetType() != type || !mutationKey.Matches(registered.Key)) continue;
+                typed = typed == null ? registered.Value : typed.WithDefaults(registered.Value);
+            }
+            return typed?.WithSharedFrom(FillFromKeyDefaults(new MutationDefaults(), mutationKey));
         }
 
         // Fills from each matching registration in turn, the latest first, taking only what is still null. For the

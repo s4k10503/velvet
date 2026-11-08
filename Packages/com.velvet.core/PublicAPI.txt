@@ -617,6 +617,7 @@
 [Velvet] method Velvet.QueryClient.FetchQuery`1(Velvet.QueryOptions`2[T, T]): Velvet.VelvetTask`1[T]
 [Velvet] method Velvet.QueryClient.GetMutationCache(): Velvet.MutationCache
 [Velvet] method Velvet.QueryClient.GetMutationDefaults(Velvet.QueryKey): Velvet.MutationDefaults
+[Velvet] method Velvet.QueryClient.GetMutationDefaults`1(Velvet.QueryKey): TOptions?
 [Velvet] method Velvet.QueryClient.GetQueriesData`1(Velvet.QueryFilters?): System.Collections.Generic.IReadOnlyList`1[System.Collections.Generic.KeyValuePair`2[Velvet.QueryKey, T?]]
 [Velvet] method Velvet.QueryClient.GetQueryData`1(Velvet.QueryKey): T?
 [Velvet] method Velvet.QueryClient.GetQueryState`1(Velvet.QueryKey): Velvet.QueryState`1[T]?

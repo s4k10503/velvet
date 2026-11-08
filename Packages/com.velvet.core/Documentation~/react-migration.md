@@ -114,7 +114,7 @@ client is the one the first render found.
 | `useMutation(options, queryClient)` | `Hooks.UseMutation(options, client)` |
 | `mutationFn: (variables, context) => …`, `onSuccess: (data, variables, onMutateResult, context) => …` | `MutationFn: (variables, context) => …`, `OnSuccess: (data, variables, context) => …` (the context records take the `OnMutate` result before `context`); `context` is a `MutationFunctionContext` |
 | `useMutation({ …, throwOnError })` | `{ ThrowOnError = true }` or `ThrowOnErrorRule.When(error => …)` |
-| `queryClient.setMutationDefaults(key, options)` / `getMutationDefaults(key)` / `defaultMutationOptions(options)` | `client.SetMutationDefaults(key, options)` / `GetMutationDefaults(key)` / `DefaultMutationOptions(options)` |
+| `queryClient.setMutationDefaults(key, options)` / `getMutationDefaults(key)` / `defaultMutationOptions(options)` | `client.SetMutationDefaults(key, options)` / `GetMutationDefaults(key)` (shared options) or `GetMutationDefaults<TOptions>(key)` (with functions) / `DefaultMutationOptions(options)` |
 | `new QueryClient({ defaultOptions: { mutations } })` | `new QueryClient(new QueryClientOptions { Mutations = new MutationDefaults { … } })` |
 | `queryClient.resumePausedMutations()` / `mutationCache.resumePausedMutations()` | `client.ResumePausedMutations()` / `cache.ResumePausedMutations()` |
 | `event.observer` on a mutation cache event | `cacheEvent.Observer`, a `MutationObserver` |
@@ -313,7 +313,8 @@ render, v5's `defaultMutationOptions`: whatever they leave null is taken from th
 order, a later registration winning, a key registered again keeping its place — and then from
 `QueryClientOptions.Mutations`. A `MutationDefaults` carries the options every record shares (`MutationKey`,
 `Scope`, `Meta`, `GcTime`, `Retry`, `ThrowOnError`), and `GetMutationDefaults(key)` returns those as the
-registrations for the key merge them. A typed option record registered there also supplies its `MutationFn` and
+registrations for the key merge them; `GetMutationDefaults<TOptions>(key)` adds the function and callbacks of the
+registrations of type `TOptions`, which is what `DefaultMutationOptions` reads for options of that type. A typed option record registered there also supplies its `MutationFn` and
 callbacks to options of its own type, so a `MutationFn` may be left null, and a call whose options still have
 none fails with `No mutationFn found`, as in v5. A function a registration of another record type sets is
 passed over, since it could never be called with the mutation's types: the mutation takes its function from the

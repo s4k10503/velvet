@@ -324,6 +324,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoTypedRegistrationsLeadingAKey_When_TheTypedDefaultsAreRead_Then_TheLaterFunctionIsReturned()
+        {
+            // Arrange — a registration of another type between them sets a function too, which the typed read
+            // passes over.
+            Func<int, MutationFunctionContext, VelvetTask<int>> later = (v, _) => VelvetTask.FromResult(v);
+            s_client.SetMutationDefaults(TodoOne, new MutationOptions<int, int, string>(MutationFn: (v, _) => VelvetTask.FromResult(-v)));
+            s_client.SetMutationDefaults(new QueryKey("todos", 1, "x"), new MutationOptions<string, string>(MutationFn: (v, _) => VelvetTask.FromResult(v)));
+            s_client.SetMutationDefaults(Todos, new MutationOptions<int, int, string>(MutationFn: later));
+
+            // Act
+            var defaults = s_client.GetMutationDefaults<MutationOptions<int, int, string>>(new QueryKey("todos", 1, "x"));
+
+            // Assert
+            Assert.That(defaults?.MutationFn, Is.SameAs(later));
+        }
+
+        [Test]
         public void Given_AKeyRegisteredAgain_When_TheDefaultsAreRead_Then_ItKeepsItsPlaceInTheOrder()
         {
             // Arrange

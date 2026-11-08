@@ -79,6 +79,17 @@ namespace Velvet
         // option the caller set wins. Internal, so no record outside this assembly derives from this one.
         internal abstract MutationOptionsBase WithDefaults(MutationOptionsBase defaults);
 
+        // This record's function and callbacks with the shared options taken from shared, set or not.
+        internal MutationOptionsBase WithSharedFrom(MutationOptionsBase shared) => this with
+        {
+            MutationKey = shared.MutationKey,
+            Scope = shared.Scope,
+            Meta = shared.Meta,
+            GcTime = shared.GcTime,
+            Retry = shared.Retry,
+            ThrowOnError = shared.ThrowOnError,
+        };
+
         private protected MutationOptionsBase WithSharedDefaults(MutationOptionsBase defaults) => this with
         {
             MutationKey = MutationKey ?? defaults.MutationKey,
