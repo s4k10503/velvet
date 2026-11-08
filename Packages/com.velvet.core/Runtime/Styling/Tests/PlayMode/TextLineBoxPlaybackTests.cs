@@ -246,6 +246,9 @@ namespace Velvet.Tests
             Assert.That(difference[0], Is.EqualTo(20f).Within(1f));
         }
 
+        // GREEN_ON_BASE(characterization): on the base a label is aligned upper-left, which keeps its glyphs at the top
+        // of a tall box. A label aligned middle-* with no raise, as one created with no text effect was before its
+        // line box was given a context, centres them, so they move down with the box's extra height.
         [UnityTest]
         public IEnumerator Given_ALabelWithNoTextEffectInATallBox_When_Rendered_Then_TheGlyphsStayInTheFirstLineBox()
         {
