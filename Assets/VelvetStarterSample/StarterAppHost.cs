@@ -19,9 +19,9 @@ namespace Velvet.Samples.StarterApp
         private void OnEnable()
         {
             _document = GetComponent<UIDocument>();
-            _router = new Router(StarterApp.Routes());
+            _router = new Router(StarterApp.Routes(),
+                options: new RouterOptions { InitialEntries = new[] { StarterApp.TasksPath } });
             RefreshMount();
-            _router.NavigateAsync(StarterApp.TasksPath).Forget();
         }
 
         private void Update() => RefreshMount();

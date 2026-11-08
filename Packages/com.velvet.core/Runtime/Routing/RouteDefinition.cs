@@ -59,6 +59,14 @@ namespace Velvet
         /// </summary>
         public ComponentNode? ErrorElement { get; init; }
 
+        /// <summary>
+        /// Component shown in place of this route while a route at or below it, down to the next route that has
+        /// one, has an <see cref="LoaderMode.Await"/> loader with no data and no error yet — the router's initial
+        /// load — as React Router's <c>hydrateFallbackElement</c>. Where no route above such a loader has one, the
+        /// routes render nothing until it settles.
+        /// </summary>
+        public ComponentNode? HydrateFallbackElement { get; init; }
+
         /// <summary>Nested child routes rendered into this route's <c>Outlet</c>.</summary>
         public RouteDefinition[]? Children { get; init; }
 

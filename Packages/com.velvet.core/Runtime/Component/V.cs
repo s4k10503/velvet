@@ -3200,6 +3200,8 @@ namespace Velvet
         /// <param name="id">Identifies the route among the matches; see <see cref="RouteDefinition.Id"/>.</param>
         /// <param name="handle">Data the route carries for <c>Hooks.UseMatches</c>; see <see cref="RouteDefinition.Handle"/>.</param>
         /// <param name="index">Makes the route an index route; see <see cref="RouteDefinition.Index"/>.</param>
+        /// <param name="hydrateFallbackElement">Shown while the initial load runs; see
+        /// <see cref="RouteDefinition.HydrateFallbackElement"/>.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="loaderMode"/> names no member of
         /// <see cref="LoaderMode"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="index"/> is true and <paramref name="children"/> is
@@ -3219,7 +3221,8 @@ namespace Velvet
             Func<RouteActionContext, CancellationToken, VelvetTask<object>>? action = null,
             string? id = null,
             object? handle = null,
-            bool index = false)
+            bool index = false,
+            ComponentNode? hydrateFallbackElement = null)
         {
             if (index && children != null)
             {
@@ -3260,6 +3263,7 @@ namespace Velvet
                 Id = id,
                 Handle = handle,
                 Index = index,
+                HydrateFallbackElement = hydrateFallbackElement,
             };
         }
 

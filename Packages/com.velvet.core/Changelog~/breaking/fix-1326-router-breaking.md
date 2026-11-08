@@ -19,7 +19,18 @@
 - `ErrorResponse.Internal`, React Router's `internal`, is true on the responses the router makes.
 - `SearchParams.Set`, `Delete`, `Sort` and `ToString`, and `ISearchParams.Values`, as URLSearchParams has them.
 
+- `RouterOptions`, taken by `new Router(routes, scopeFactory, options)`, holds React Router's
+  `createMemoryRouter` `initialEntries` and `initialIndex`; `Router.Initialized` is its `state.initialized`;
+  `RouteDefinition.HydrateFallbackElement` and `V.Route(hydrateFallbackElement:)` are its
+  `hydrateFallbackElement`.
+
 ### Changed
+
+- A router stands on a location from construction, as `createMemoryRouter` does: on `/` with no options, its
+  history's one entry keyed `"default"`, so a first navigation pushes a second entry with a key of its own where it
+  used to make the first. A starting path no route matches commits its 404 at once, and one whose routes have
+  a loader, a guard or a `redirectTo` runs them at once without reporting a navigation, the routes rendering
+  their hydrate fallback, or nothing, until the first commit.
 
 - The router's committed errors are React Router's `state.errors`: a loader's, an action's, a Suspend
   loader's and a refusal are keyed in `Router.CurrentLoaderErrors` by the nearest route with an `errorElement`

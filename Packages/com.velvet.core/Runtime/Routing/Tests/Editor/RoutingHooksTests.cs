@@ -815,8 +815,8 @@ namespace Velvet.Tests
             {
                 Route("start", element: V.Component(StubA)),
                 Route("dest", element: V.Component(StubB)),
-            });
-            router.NavigateSync("/start");
+            },
+                options: new RouterOptions { InitialEntries = new[] { "/start" } });
 
             // Act
             using var mounted = MountWith(router, V.Navigate("/dest", replace: true, key: "nav"));

@@ -86,8 +86,23 @@ namespace Velvet
         // The submission of the attempt holding the claim, or of the initiator a redirect is part of.
         private Submission? _pendingSubmission;
 
-        /// <summary>Location information for the most recently successful navigation. null before the first navigation.</summary>
+        /// <summary>
+        /// The committed location, React Router's <c>state.location</c>: from construction, the entry of
+        /// <see cref="RouterOptions.InitialEntries"/> the router starts on, and afterwards the one the last
+        /// navigation committed.
+        /// </summary>
         public RouterLocation? CurrentLocation { get; private set; }
+
+        /// <summary>
+        /// Whether the router's initial load has finished, React Router's <c>state.initialized</c>. A router whose
+        /// starting location matches a route with a loader starts uninitialized and runs those loaders at once, as
+        /// <c>router.initialize()</c> does, without reporting a navigation; the first commit initializes it.
+        /// </summary>
+        public bool Initialized { get; private set; }
+
+        // Whether the attempt holding the claim is the initial load, which reports no navigation as React
+        // Router's initialHydration does not.
+        private bool _hydrating;
 
         /// <summary>
         /// The navigation in flight, as React Router's <c>router.state.navigation</c> describes it: from the
@@ -216,7 +231,11 @@ namespace Velvet
         /// </summary>
         /// <param name="routes">Root route definitions (may contain nested <see cref="RouteDefinition.Children"/>).</param>
         /// <param name="scopeFactory">Optional factory for per-route DI scopes; null disables route scoping.</param>
-        public Router(RouteDefinition[] routes, IRouteScopeFactory? scopeFactory = null)
+        /// <param name="options">The history it starts with, as <c>createMemoryRouter</c>'s options; null starts
+        /// on <c>/</c>.</param>
+        /// <exception cref="ArgumentException"><see cref="RouterOptions.InitialEntries"/> is empty or holds a
+        /// null.</exception>
+        public Router(RouteDefinition[] routes, IRouteScopeFactory? scopeFactory = null, RouterOptions? options = null)
         {
             _routeTree = new RouteTree(routes ?? throw new ArgumentNullException(nameof(routes)));
             _loaderRunner = new RouteLoaderRunner();
@@ -243,7 +262,65 @@ namespace Velvet
             ForgetFinishedRouters();
             s_constructed.Add(new WeakReference<Router>(this));
             s_newest = this;
+            Start(options);
         }
+
+        private static readonly string[] DefaultInitialEntries = { "/" };
+
+        // React Router's createMemoryHistory and createRouter: the history holds the initial entries, the first
+        // keyed "default", and the router stands on one of them from the start, with its 404 when no route matches
+        // it. A matched route with a loader leaves the router uninitialized, and initialize() loads them as a Pop
+        // onto that same entry.
+        private void Start(RouterOptions? options)
+        {
+            var entries = options?.InitialEntries ?? DefaultInitialEntries;
+            if (entries.Count == 0)
+            {
+                throw new ArgumentException("A router's initial entries hold at least one entry.", nameof(options));
+            }
+            for (var index = 0; index < entries.Count; index++)
+            {
+                var entry = entries[index]
+                    ?? throw new ArgumentException("A router's initial entries hold no null.", nameof(options));
+                var path = SplitHash(entry, out var hash);
+                _history.Add(new HistoryEntry(path, hash, index == 0 ? DefaultKey : NewKey()));
+            }
+            _historyIndex = Math.Clamp(options?.InitialIndex ?? entries.Count - 1, 0, entries.Count - 1);
+
+            var start = _history[_historyIndex];
+            var matches = _routeTree.Match(RouteQuery.StripQuery(start.Path));
+            var unmatched = matches == null;
+            matches ??= _routeTree.NotFoundMatches;
+            if (unmatched)
+            {
+                _loaderErrors = new Dictionary<string?, Exception>
+                {
+                    [matches[0].RouteId] = ErrorResponse.NotFound(RouteQuery.StripQuery(start.Path)),
+                };
+            }
+            CurrentLocation = BuildLocation(start.Path, start.Hash, matches, Visit.Step(_historyIndex));
+            Initialized = unmatched || !NeedsInitialLoad(matches);
+            if (!Initialized)
+            {
+                Begin(start.Path + start.Hash, NavigationMode.Back, default, submission: null,
+                    Visit.Hydrate(_historyIndex)).Forget();
+            }
+        }
+
+        // A loader, as React Router's; a guard or a static redirect too, which are Velvet's and run in the same
+        // load, so a router never starts out standing on a route one of them sends elsewhere.
+        private static bool NeedsInitialLoad(IReadOnlyList<RouteMatch> matches)
+        {
+            var index = 0;
+            while (index < matches.Count && !RunsOnLoad(matches[index].Route))
+            {
+                index++;
+            }
+            return index < matches.Count;
+        }
+
+        private static bool RunsOnLoad(RouteDefinition? route)
+            => route != null && (route.Loader != null || route.Guard != null || route.RedirectTo != null);
 
         /// <summary>
         /// Navigates to the given path. Evaluation order is Blocker -&gt; Guard -&gt; Loader: the Blocker is
@@ -483,20 +560,24 @@ namespace Velvet
             internal readonly object? State;
             internal readonly int Landing;
             internal readonly bool IsStep;
+            // The initial load, a step onto the entry the router starts on.
+            internal readonly bool Hydrating;
             // Filled in by NavigateInternalAsync, which is what hands NavigateCore a mode and a visit as one.
             internal readonly NavigationMode Mode;
 
-            private Visit(object? state, int landing, bool isStep, NavigationMode mode)
+            private Visit(object? state, int landing, bool isStep, bool hydrating, NavigationMode mode)
             {
                 State = state;
                 Landing = landing;
                 IsStep = isStep;
+                Hydrating = hydrating;
                 Mode = mode;
             }
 
-            internal static Visit Push(object? state) => new(state, -1, false, NavigationMode.Push);
-            internal static Visit Step(int landing) => new(null, landing, true, NavigationMode.Push);
-            internal Visit In(NavigationMode mode) => new(State, Landing, IsStep, mode);
+            internal static Visit Push(object? state) => new(state, -1, false, false, NavigationMode.Push);
+            internal static Visit Step(int landing) => new(null, landing, true, false, NavigationMode.Push);
+            internal static Visit Hydrate(int landing) => new(null, landing, true, true, NavigationMode.Push);
+            internal Visit In(NavigationMode mode) => new(State, Landing, IsStep, Hydrating, mode);
         }
 
         private readonly struct HistoryEntry
@@ -512,6 +593,14 @@ namespace Velvet
                 Hash = location.Hash;
                 State = location.State;
                 Key = location.Key;
+            }
+
+            internal HistoryEntry(string path, string hash, string key)
+            {
+                Path = path;
+                Hash = hash;
+                State = null;
+                Key = key;
             }
         }
 
@@ -748,6 +837,7 @@ namespace Velvet
             // predecessor that unwinds inside the cancel has lost the claim by then, so it does not end the
             // navigation this one is about to publish in its place.
             var sequence = ++_navigationSequence;
+            _hydrating = visit.Hydrating;
             if (takeover != null)
             {
                 // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
@@ -781,6 +871,7 @@ namespace Velvet
         {
             CommitHistoryEntry(location, mode, pending);
             CurrentLocation = location;
+            Initialized = true;
             _actionData = EmptyActionData;
             _blockerManager.ResetAll();
             PublishNavigation(NavigationLifecycle.Idle, null, null);
@@ -850,7 +941,7 @@ namespace Velvet
             var location = BuildLocation(path, hash, matches, visit);
             // Only the fragment changes: nothing runs and nothing loads, as React Router's startNavigation completes
             // a hash change at once. A redirect is never one, its target being the Guard's.
-            if (!initiator.HasValue && IsHashChangeOnly(path, hash, submission))
+            if (!initiator.HasValue && !visit.Hydrating && IsHashChangeOnly(path, hash, submission))
             {
                 return CommitHashChange(location, matches, mode, pending);
             }
@@ -947,6 +1038,7 @@ namespace Velvet
                 : CommittedErrors(matches, round, action);
             _loaderData = new Dictionary<string?, object>(round.Results);
             CurrentLocation = location;
+            Initialized = true;
             _revalidationRequired = false;
             _actionData = action == null ? EmptyActionData : action.Error == null ? _actionData : EmptyActionData;
             // Only now may the round's late results reach the live state: the republish they trigger reads
@@ -1017,6 +1109,10 @@ namespace Velvet
 
         private void PublishNavigation(NavigationLifecycle phase, RouterLocation? location, Submission? submission)
         {
+            if (_hydrating && phase != NavigationLifecycle.Idle)
+            {
+                return;
+            }
             if (_navigationPhase == phase && ReferenceEquals(_pendingLocation, location)
                 && ReferenceEquals(_pendingSubmission, submission))
             {

@@ -16,10 +16,8 @@ public static class App
 
     public static MountedTree Mount(VisualElement root, out Router router)
     {
-        router = new Router(Routes());
-        var tree = V.Mount(root, V.RouterProvider(router));
-        router.NavigateAsync("/users/7").Forget();
-        return tree;
+        router = new Router(Routes(), options: new RouterOptions { InitialEntries = new[] { "/users/7" } });
+        return V.Mount(root, V.RouterProvider(router));
     }
 
     [Component] private static VNode Chrome() => V.Div(children: new VNode[] { V.Outlet() });
@@ -34,6 +32,20 @@ public static class App
     }
 }
 ```
+
+## Starting
+
+`new Router(routes, scopeFactory, options)` is `createMemoryRouter(routes, opts)`: the router stands on a location
+from the moment it is constructed. `RouterOptions.InitialEntries` is the history it starts with, `["/"]` when none
+is given, the first entry keyed `"default"`; `RouterOptions.InitialIndex` is the entry it stands on, clamped into
+the list, the last when none is given. A navigation pushes onto that history. A starting path no route matches
+commits its 404 at once. Where a route matched at the start has a loader — or a guard or a `redirectTo`, which
+are Velvet's — the router starts with `Router.Initialized` false and runs them at once, as React Router's
+`initialize()` runs the initial load: `Router.Navigation` stays `Idle` throughout, and the first commit sets
+`Initialized`. Until then a route renders its `RouteDefinition.HydrateFallbackElement` (`V.Route(hydrateFallbackElement: …)`)
+in place of itself and the routes below it, where the routes from it down to an `Await` loader that has neither
+data nor an error yet declare none closer; with none at or above that loader nothing renders, as React Router
+renders its HydrateFallback or nothing. A `Suspend` loader, Velvet's, holds back no rendering.
 
 ## The root
 
