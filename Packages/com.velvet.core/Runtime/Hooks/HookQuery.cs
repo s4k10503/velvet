@@ -209,6 +209,13 @@ namespace Velvet
     }
 
     /// <summary>
+    /// What a query's options are, whatever its data types: what <see cref="Query.Options"/> hands back. Cast it to
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}"/> of the entry's types to read the rest.
+    /// </summary>
+    /// <param name="QueryKey">Names the cache entry.</param>
+    public abstract record QueryOptionsBase(QueryKey QueryKey);
+
+    /// <summary>
     /// What every query's options hold, whatever fetches its data: TanStack Query's options with their
     /// <c>queryKey</c>, <c>meta</c>, <c>enabled</c>, <c>select</c>, <c>placeholderData</c>, <c>initialData</c>,
     /// <c>initialDataUpdatedAt</c>, <c>staleTime</c>, <c>gcTime</c>, <c>refetchInterval</c>,
@@ -222,7 +229,7 @@ namespace Velvet
     /// <typeparam name="TData">What the result's <see cref="QueryResult{T}.Data"/> holds; the entry's data unless
     /// <see cref="Select"/> turns it into something else.</typeparam>
     /// <param name="QueryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-    public abstract record QueryOptionsBase<TQueryFnData, TData>(QueryKey QueryKey)
+    public abstract record QueryOptionsBase<TQueryFnData, TData>(QueryKey QueryKey) : QueryOptionsBase(QueryKey)
     {
         // What a request runs, as v5 reads options.queryFn; an infinite query's runs its behavior instead.
         internal abstract QueryFunction<TQueryFnData> Function { get; }
@@ -1075,8 +1082,12 @@ namespace Velvet
         // TanStack's options.behavior: what a request runs in place of QueryFn, an infinite query's paging.
         internal IQueryBehavior<T>? Behavior { get; private set; }
 
+        // The options record the entry was handed, TanStack's query.options.
+        internal QueryOptionsBase? Source { get; private set; }
+
         internal QueryFetchOptions<T> Assign<TData>(QueryOptionsBase<T, TData> options, QueryClient client)
         {
+            Source = options;
             Meta = options.Meta;
             Behavior = (options as IInfiniteQueryOptions<T>)?.CreateBehavior(pages: null);
             KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;

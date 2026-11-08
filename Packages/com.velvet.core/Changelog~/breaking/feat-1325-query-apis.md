@@ -22,6 +22,9 @@
   for `NotifyOnChangeProps`. A refetch fetches the pages again from the first, as many as the entry holds.
   `QueryClient.FetchInfiniteQuery`, `PrefetchInfiniteQuery` and `EnsureInfiniteQueryData` fill the cache ahead
   of it.
+- `Query.State`, a `QueryState` snapshot with v5's `QueryState` fields (`DataUpdateCount`, `ErrorUpdatedAt`,
+  `ErrorUpdateCount`, `FetchFailureCount`, `FetchFailureReason`, `FetchDirection` among them), and `Query.Options`,
+  `SetState`, `Fetch`, `Cancel`, `Reset` and `Invalidate`, v5's query methods.
 - `QueryResult.IsRefetching` and `IsRefetchError`, v5's `isRefetching` and `isRefetchError`, with their
   `QueryProperties` flags.
 
@@ -37,6 +40,8 @@
 - The `QueryOptions` constructors taking a function of a `CancellationToken` are removed: a query function takes
   the `QueryFunctionContext`, as v5's does, and reads `context.CancellationToken`, or takes nothing. Reading the
   token is what makes the last reader leaving cancel the request.
+- `QueryState<T>.FailureCount` and `FailureReason` are named `FetchFailureCount` and `FetchFailureReason`, as v5's
+  `QueryState` names them, and `QueryOptionsBase<TQueryFnData, TData>` derives from a non-generic `QueryOptionsBase`.
 - `QueryFilters.Exact` is a `bool?`; `QueryCache.Find` reads null as true, as v5's `find` defaults `exact`.
 - Invalidating an entry tells the queries reading it, as v5's invalidate dispatch does, so a result reading
   `IsStale` re-renders with the invalidation.

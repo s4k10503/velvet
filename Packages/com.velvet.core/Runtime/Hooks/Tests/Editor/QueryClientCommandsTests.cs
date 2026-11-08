@@ -190,7 +190,7 @@ namespace Velvet.Tests
             var state = s_client.GetQueryState<int>(Todos)!;
 
             // Assert
-            Assert.That(state.FailureCount, Is.EqualTo(1));
+            Assert.That(state.FetchFailureCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -880,7 +880,7 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That(state.FailureCount, Is.EqualTo(1),
+            Assert.That(state.FetchFailureCount, Is.EqualTo(1),
                 "The state the request found is what comes back, not the one it set when it started");
         }
 
@@ -911,7 +911,7 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That(state.FailureReason is OperationCanceledException, Is.EqualTo(true));
+            Assert.That(state.FetchFailureReason is OperationCanceledException, Is.EqualTo(true));
         }
 
         // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
@@ -927,7 +927,7 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That(state.FailureCount, Is.EqualTo(1));
+            Assert.That(state.FetchFailureCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -1202,7 +1202,7 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That(state.FailureCount, Is.EqualTo(0));
+            Assert.That(state.FetchFailureCount, Is.EqualTo(0));
         }
 
         // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
@@ -1218,7 +1218,7 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That(state.FailureReason == null, Is.EqualTo(true));
+            Assert.That(state.FetchFailureReason == null, Is.EqualTo(true));
         }
 
         [Test]

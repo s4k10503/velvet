@@ -510,8 +510,12 @@ namespace Velvet
                 IsInvalidated = entry.IsInvalidated,
                 FetchStatus = entry.FetchStatus,
                 DataUpdatedAt = entry.HasData ? entry.DataUpdatedAt : TimeSpan.Zero,
-                FailureCount = entry.FailureCount,
-                FailureReason = entry.FailureReason,
+                DataUpdateCount = entry.DataUpdateCount,
+                ErrorUpdatedAt = entry.ErrorUpdatedAt,
+                ErrorUpdateCount = entry.ErrorUpdateCount,
+                FetchFailureCount = entry.FailureCount,
+                FetchFailureReason = entry.FailureReason,
+                FetchDirection = entry.FetchDirection,
             };
         }
 
@@ -1106,6 +1110,17 @@ namespace Velvet
         internal int FailureCount { get; private protected set; }
         internal Exception? FailureReason { get; private protected set; }
         internal bool IsInvalidated { get; private protected set; }
+        // TanStack's dataUpdateCount, errorUpdateCount and errorUpdatedAt.
+        internal int DataUpdateCount { get; private protected set; }
+        internal int ErrorUpdateCount { get; private protected set; }
+        internal TimeSpan ErrorUpdatedAt { get; private protected set; }
+        // What Query.State reads and Query.SetState writes, and the query's own fetch, cancel and invalidate.
+        internal abstract QueryState ReadState();
+        internal abstract void WriteState(QueryState state);
+        internal abstract VelvetTask<object?> FetchBoxed(bool cancelRefetch);
+        internal abstract void CancelSilently();
+        internal abstract void MarkInvalidated();
+        internal abstract QueryOptionsBase? Options { get; }
         internal abstract object? BoxedData { get; }
         internal abstract TimeSpan DataUpdatedAt { get; }
         internal abstract IReadOnlyDictionary<string, object?>? Meta { get; }
@@ -1195,6 +1210,9 @@ namespace Velvet
                 DataUpdatedAt = entry._dataUpdatedAt;
                 Fetched = entry._fetched;
                 FetchDirection = entry._fetchDirection;
+                DataUpdateCount = entry.DataUpdateCount;
+                ErrorUpdateCount = entry.ErrorUpdateCount;
+                ErrorUpdatedAt = entry.ErrorUpdatedAt;
             }
 
             // TanStack's getDefaultState with initial data.
@@ -1217,6 +1235,9 @@ namespace Velvet
             internal Exception? FailureReason { get; }
             internal bool IsInvalidated { get; }
             internal TimeSpan DataUpdatedAt { get; }
+            internal int DataUpdateCount { get; }
+            internal int ErrorUpdateCount { get; }
+            internal TimeSpan ErrorUpdatedAt { get; }
         }
 
         internal QueryEntry(QueryClient client, QueryKey key, QueryKey id, Func<QueryKey, string>? keyHashFn, TimeSpan gcTime)
@@ -1623,6 +1644,7 @@ namespace Velvet
             Data = shared;
             HasData = true;
             _fetched = true;
+            DataUpdateCount++;
             Error = null;
             Status = QueryStatus.Success;
             IsInvalidated = false;
@@ -1664,6 +1686,7 @@ namespace Velvet
         // the entry takes the error over its data, and the callers waiting are handed it.
         private void FailLanded(Exception error)
         {
+            CountError();
             Error = error;
             Status = QueryStatus.Error;
             IsInvalidated = true;
@@ -1707,6 +1730,7 @@ namespace Velvet
             Data = shared;
             HasData = true;
             _fetched = true;
+            DataUpdateCount++;
             Error = null;
             Status = QueryStatus.Success;
             IsInvalidated = false;
@@ -1726,6 +1750,7 @@ namespace Velvet
         {
             if (!ReferenceEquals(_inFlight, request)) return;
             End(request);
+            CountError();
             // The last good data stays beside the error, as TanStack keeps it, and stale: TanStack flags it
             // invalidated so that the next reader fetches again.
             Error = error;
@@ -1767,12 +1792,7 @@ namespace Velvet
         // holds static, which v5's refetchQueries passes over.
         internal override VelvetTask Invalidate(bool cancelRefetch)
         {
-            // v5's invalidate dispatches only over an entry not yet invalidated, telling its readers and the cache.
-            if (!IsInvalidated)
-            {
-                IsInvalidated = true;
-                Notify(QueryActionType.Invalidate);
-            }
+            MarkInvalidated();
             if (IsStatic) return VelvetTask.CompletedTask;
             foreach (var observer in _observers)
             {
@@ -1837,6 +1857,7 @@ namespace Velvet
                 return;
             }
             var error = new OperationCanceledException();
+            CountError();
             Error = error;
             Status = QueryStatus.Error;
             IsInvalidated = true;
@@ -1881,6 +1902,83 @@ namespace Velvet
             }
         }
 
+        // TanStack's error action counts the failure and dates it.
+        private void CountError()
+        {
+            ErrorUpdateCount++;
+            ErrorUpdatedAt = Client.Now;
+        }
+
+        internal override QueryState ReadState() => new()
+        {
+            Status = Status,
+            HasData = HasData,
+            Data = HasData ? Data : null,
+            Error = Error,
+            IsInvalidated = IsInvalidated,
+            FetchStatus = FetchStatus,
+            DataUpdatedAt = HasData ? _dataUpdatedAt : TimeSpan.Zero,
+            DataUpdateCount = DataUpdateCount,
+            ErrorUpdatedAt = ErrorUpdatedAt,
+            ErrorUpdateCount = ErrorUpdateCount,
+            FetchFailureCount = FailureCount,
+            FetchFailureReason = FailureReason,
+            FetchDirection = _fetchDirection,
+        };
+
+        // TanStack's setState: the state is replaced and the readers and the cache told. Whether a request is in
+        // flight is the entry's own, since a state written by hand starts or stops none.
+        internal override void WriteState(QueryState state)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            if (state.HasData && state.Data is not T && !(state.Data is null && default(T) is null))
+            {
+                throw new InvalidOperationException(
+                    $"Query {Key} holds {typeof(T).Name}, and the state written holds {state.Data?.GetType().Name}.");
+            }
+            Status = state.Status;
+            HasData = state.HasData;
+            Data = state.HasData ? (T)state.Data! : default!;
+            Error = state.Error;
+            IsInvalidated = state.IsInvalidated;
+            _dataUpdatedAt = state.DataUpdatedAt;
+            DataUpdateCount = state.DataUpdateCount;
+            ErrorUpdatedAt = state.ErrorUpdatedAt;
+            ErrorUpdateCount = state.ErrorUpdateCount;
+            FailureCount = state.FetchFailureCount;
+            FailureReason = state.FetchFailureReason;
+            _fetchDirection = state.FetchDirection;
+            _fetched = DataUpdateCount + ErrorUpdateCount > 0;
+            Notify(QueryActionType.SetState);
+            ReleaseSuspended();
+        }
+
+        // TanStack's query.fetch with the options the entry was last handed; one handed none has no function to run,
+        // which v5 reports as a missing queryFn.
+        internal override VelvetTask<object?> FetchBoxed(bool cancelRefetch)
+        {
+            if (_options == null)
+            {
+                return VelvetTask.FromException<object?>(new InvalidOperationException($"Missing queryFn: '{Hash}'"));
+            }
+            return Box(FetchAndWait(_options, cancelRefetch));
+        }
+
+        private static async VelvetTask<object?> Box(VelvetTask<T> task) => await task;
+
+        // TanStack's cancel({ silent: true }): the request stops and nothing about the state is announced.
+        internal override void CancelSilently() => CancelInFlight();
+
+        // TanStack's query.invalidate: marks the entry stale and tells its readers, and fetches nothing.
+        internal override void MarkInvalidated()
+        {
+            if (IsInvalidated) return;
+            IsInvalidated = true;
+            Notify(QueryActionType.Invalidate);
+        }
+
+        internal override QueryOptionsBase? Options => _options?.Source;
+
         internal override void Remove()
         {
             IsRemoved = true;
@@ -1909,6 +2007,9 @@ namespace Velvet
             FailureReason = saved.FailureReason;
             IsInvalidated = saved.IsInvalidated;
             _dataUpdatedAt = saved.DataUpdatedAt;
+            DataUpdateCount = saved.DataUpdateCount;
+            ErrorUpdateCount = saved.ErrorUpdateCount;
+            ErrorUpdatedAt = saved.ErrorUpdatedAt;
         }
 
         private void CancelInFlight()

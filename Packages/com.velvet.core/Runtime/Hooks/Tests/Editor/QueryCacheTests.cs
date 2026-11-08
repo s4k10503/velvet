@@ -524,6 +524,179 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region The query's state and methods
+
+        [Test]
+        public void Given_TwoWrites_When_TheStateIsRead_Then_ItCountsBothDataUpdates()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            s_client.SetQueryData(Todos, 2);
+
+            // Act
+            var state = Find().State;
+
+            // Assert
+            Assert.That(state.DataUpdateCount, Is.EqualTo(2), "v5's success action counts each data update");
+        }
+
+        [Test]
+        public void Given_ARequestThatFailed_When_TheStateIsRead_Then_ItCountsTheErrorUpdate()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            s_sources[0].TrySetException(new InvalidOperationException("failed"));
+
+            // Act
+            var state = Find().State;
+
+            // Assert
+            Assert.That(state.ErrorUpdateCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AnEntry_When_SetStateWritesAnError_Then_GetQueryStateReadsIt()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            var query = Find();
+
+            // Act
+            query.SetState(query.State with { Status = QueryStatus.Error, Error = new InvalidOperationException("written") });
+
+            // Assert
+            Assert.That(s_client.GetQueryState<int>(Todos)!.Error?.Message, Is.EqualTo("written"));
+        }
+
+        [Test]
+        public void Given_AnEntry_When_SetStateWrites_Then_TheCacheAnnouncesASetStateUpdate()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            var query = Find();
+
+            // Act
+            query.SetState(query.State with { IsInvalidated = true });
+
+            // Assert
+            Assert.That(s_events[s_events.Count - 1].Action, Is.EqualTo(QueryActionType.SetState));
+        }
+
+        [Test]
+        public void Given_AnEntryFetchedBefore_When_FetchRuns_Then_ItsTaskHoldsTheNewData()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            s_sources[0].TrySetResult(1);
+
+            // Act
+            var task = Find().Fetch();
+            s_sources[1].TrySetResult(2);
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_ItFaultsForTheMissingFunction()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+
+            // Act
+            var task = Find().Fetch();
+
+            // Assert
+            Assert.That(ExceptionOf(task)?.Message, Does.StartWith("Missing queryFn"));
+        }
+
+        [Test]
+        public void Given_ARequestInFlight_When_CancelRevertsIt_Then_TheEntryIsIdle()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+
+            // Act
+            _ = Find().Cancel(revert: true);
+
+            // Assert
+            Assert.That(Find().State.FetchStatus, Is.EqualTo(QueryFetchStatus.Idle));
+        }
+
+        [Test]
+        public void Given_ARequestInFlight_When_CancelIsSilent_Then_TheCacheHearsNothing()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            s_events.Clear();
+
+            // Act
+            _ = Find().Cancel(silent: true);
+
+            // Assert
+            Assert.That(s_events, Is.Empty, "v5's silent cancellation dispatches nothing");
+        }
+
+        [Test]
+        public void Given_DataWritten_When_ResetRuns_Then_TheEntryHoldsNoData()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+
+            // Act
+            Find().Reset();
+
+            // Assert
+            Assert.That(Find().State.HasData, Is.False);
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_TheQueryIsInvalidated_Then_NothingIsFetched()
+        {
+            // Arrange
+            s_staleTime = TimeSpan.FromMinutes(1);
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(4);
+
+            // Act
+            Find().Invalidate();
+
+            // Assert
+            Assert.That(s_sources.Count, Is.EqualTo(1), "v5's query.invalidate marks the query and fetches nothing");
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_TheQueryIsInvalidated_Then_ItIsInvalidated()
+        {
+            // Arrange
+            using var mounted = Mount();
+            s_sources[0].TrySetResult(4);
+
+            // Act
+            Find().Invalidate();
+
+            // Assert
+            Assert.That(Find().State.IsInvalidated, Is.True);
+        }
+
+        [Test]
+        public void Given_OptionsWithMeta_When_TheQueryIsRead_Then_ItsOptionsAreThem()
+        {
+            // Arrange
+            var options = Options() with { Meta = s_meta };
+            _ = s_client.FetchQuery(options);
+
+            // Act
+            var held = Find().Options;
+
+            // Assert
+            Assert.That(held, Is.SameAs(options));
+        }
+
+        private static Query Find() => s_client.GetQueryCache().Find(new QueryFilters { QueryKey = Todos })!;
+
+        #endregion
+
         #region The query
 
         [Test]
@@ -719,7 +892,7 @@ namespace Velvet.Tests
             return mounted;
         }
 
-        private static Exception? ExceptionOf(VelvetTask<int> task)
+        private static Exception? ExceptionOf<T>(VelvetTask<T> task)
         {
             try
             {

@@ -63,6 +63,53 @@ namespace Velvet
         /// <summary>Whether the entry was invalidated, or its last request failed, since its data landed.</summary>
         public bool IsInvalidated => Entry.IsInvalidated;
 
+        /// <summary>The entry's state as it stands, TanStack Query's <c>query.state</c>: a snapshot, read anew at each
+        /// call.</summary>
+        public QueryState State => Entry.ReadState();
+
+        /// <summary>The options the entry was last handed, TanStack Query's <c>query.options</c>; null for an entry
+        /// only ever written by hand.</summary>
+        public QueryOptionsBase? Options => Entry.Options;
+
+        /// <summary>
+        /// Replaces the entry's state, TanStack Query's <c>setState</c>: its readers re-render and the cache announces
+        /// a <see cref="QueryActionType.SetState"/>. Write <c>query.SetState(query.State with { ... })</c> to change
+        /// some fields. A request in flight is left as it is.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The state holds data of a type the entry cannot.</exception>
+        public void SetState(QueryState state) => Entry.WriteState(state);
+
+        /// <summary>
+        /// Fetches the entry with the options it was last handed, TanStack Query's <c>fetch</c>: a request in flight
+        /// is joined, or, with <paramref name="cancelRefetch"/> over data the entry holds, cancelled and started over.
+        /// </summary>
+        /// <returns>A task of the entry's data; it faults with the request's failure, and with
+        /// <see cref="InvalidOperationException"/> for an entry handed no options.</returns>
+        public VelvetTask<object?> Fetch(bool cancelRefetch = false) => Entry.FetchBoxed(cancelRefetch);
+
+        /// <summary>
+        /// Cancels the entry's request, TanStack Query's <c>cancel</c>. <paramref name="revert"/> puts the entry back
+        /// as the request found it, and otherwise the cancellation is its error, as
+        /// <see cref="QueryClient.CancelQueries"/> describes; <paramref name="silent"/> stops the request and announces
+        /// nothing.
+        /// </summary>
+        /// <returns>A completed task.</returns>
+        public VelvetTask Cancel(bool revert = false, bool silent = false)
+        {
+            if (silent) Entry.CancelSilently();
+            else Entry.CancelRequest(revert);
+            return VelvetTask.CompletedTask;
+        }
+
+        /// <summary>Puts the entry back to the state it was made in, its initial data included, cancelling its
+        /// request, TanStack Query's <c>reset</c>.</summary>
+        public void Reset() => Entry.ResetState();
+
+        /// <summary>Marks the entry stale and tells its readers, TanStack Query's <c>invalidate</c>; it fetches
+        /// nothing, where <see cref="QueryClient.InvalidateQueries(QueryFilters, RefetchOptions)"/> also
+        /// refetches.</summary>
+        public void Invalidate() => Entry.MarkInvalidated();
+
         /// <summary>How many mounted queries read the entry, TanStack Query's <c>getObserversCount</c>.</summary>
         public int GetObserversCount() => Entry.ObserverCount;
 
