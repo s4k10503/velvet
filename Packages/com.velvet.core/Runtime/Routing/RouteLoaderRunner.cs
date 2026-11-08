@@ -25,6 +25,11 @@ namespace Velvet
 
             internal readonly Dictionary<string?, Exception> Errors = new();
 
+            // The results taken from the live round rather than loaded in this one, React Router's preserved
+            // loaderData, which mergeLoaderData keeps only down to the route an error is committed at.
+            // Null until a result is kept.
+            internal HashSet<string?>? Kept;
+
             // One source per loader rather than one per round, so a route whose result the next round keeps
             // takes its token along at the promotion and the retire of this round leaves it running.
             internal readonly Dictionary<string?, RouteCancellationSource> Loads = new();
@@ -54,7 +59,8 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken,
             IReadOnlyList<RouteMatch>? keptFrom = null,
-            int launchLimit = int.MaxValue)
+            int launchLimit = int.MaxValue,
+            string url = "/")
         {
             var round = BeginRound();
 
@@ -83,6 +89,7 @@ namespace Velvet
                 {
                     Params = match.Params,
                     Path = match.MatchedPath,
+                    RequestPath = url,
                 };
 
                 var load = new RouteCancellationSource(externalToken);
@@ -112,7 +119,7 @@ namespace Velvet
                 }
                 else
                 {
-                    RunSuspendLoader(key, task, round).Forget();
+                    RunSuspendLoader(key, task, round, load.Token).Forget();
                 }
             }
 
@@ -122,10 +129,11 @@ namespace Velvet
                 {
                     round.Results[routeId] = await task;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (LoadCancelled(round, routeId))
                 {
-                    // A cancellation is not this route's load failure. What this loop leaves in
-                    // Errors is what the navigation's commit publishes for UseRouteError.
+                    // React Router drops a rejection only when the request's own signal aborted; any other, an
+                    // OperationCanceledException of the loader's own included, is the route's failure below. What
+                    // this loop leaves in Errors is what the navigation's commit publishes for UseRouteError.
                 }
                 catch (Exception ex)
                 {
@@ -213,6 +221,7 @@ namespace Velvet
                 return false;
             }
             round.Results[key] = result!;
+            (round.Kept ??= new HashSet<string?>()).Add(key);
             return true;
         }
 
@@ -235,7 +244,17 @@ namespace Velvet
             }
         }
 
-        private async VelvetTask RunSuspendLoader(string? routeId, VelvetTask<object> task, LoaderRound round)
+        private static bool LoadCancelled(LoaderRound round, string? routeId)
+        {
+            if (!round.Loads.TryGetValue(routeId, out var load))
+            {
+                return true;
+            }
+            return load.Token.IsCancellationRequested;
+        }
+
+        private async VelvetTask RunSuspendLoader(
+            string? routeId, VelvetTask<object> task, LoaderRound round, CancellationToken token)
         {
             try
             {
@@ -245,7 +264,7 @@ namespace Velvet
                 {
                     result = await task;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     return;
                 }

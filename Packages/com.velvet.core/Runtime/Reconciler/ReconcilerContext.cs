@@ -2900,9 +2900,10 @@ namespace Velvet
         }
 
         // One descendant Motion's exit: the element, the config PlayExit was handed, and whether that config's
-        // from classes are the resting pose a cancel returns to.
+        // from classes are the resting pose a cancel returns to. WaitSec: the part of DelaySec a wait above makes up
+        // (MotionOrchestrationFrame.WaitSec).
         internal readonly record struct PresenceDescendantExit(
-            VisualElement Element, StyleTransitionConfig Config, bool RestoresResting, float DelaySec);
+            VisualElement Element, StyleTransitionConfig Config, bool RestoresResting, float DelaySec, float WaitSec = 0f);
 
         // Counts one exiting presence child's exits down and settles when the last has completed or left the
         // tree. A re-entry cancels the exits still playing and drops the wait from

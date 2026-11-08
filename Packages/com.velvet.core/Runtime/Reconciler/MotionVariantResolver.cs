@@ -54,10 +54,7 @@ namespace Velvet
             // a swap into it reads. Measured on a pose that carries a transition and applies no class: from
             // under those gates it left the swap on the node's config while TryResolveVariantInitial gave
             // the mount enter the pose's, so one declaration animated at two speeds.
-            if (variant.Transition != null)
-            {
-                poseTransition = variant.Transition;
-            }
+            poseTransition = node.PoseTransition(variant.Transition);
 
             if (string.IsNullOrEmpty(variant.ClassName))
             {

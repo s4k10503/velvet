@@ -2440,16 +2440,16 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ALayoutIdMotionGivenOnlyAnEasing_When_ThePresetsDurationHasPassed_Then_TheTweenHasEnded()
+        public void Given_ALayoutIdMotionGivenOnlyAnEasing_When_TheFadePresetsDurationHasPassed_Then_ItIsStillMoving()
         {
-            // Arrange
+            // Arrange — an easing alone is a transition to Framer's projection, which runs its keyframes default.
             var element = MoveOn(null, easing: EasingMode.Linear);
 
-            // Act — about 0.24s: past the Fade preset's 0.2s, inside Framer's 0.45s default.
+            // Act — about 0.24s: past the Fade preset's 0.2s, inside the 0.3s that easing runs for.
             for (var i = 0; i < 15; i++) Tick();
 
             // Assert
-            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Undefined));
         }
 
         [Test]

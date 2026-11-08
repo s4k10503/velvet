@@ -402,7 +402,9 @@ namespace Velvet
                             enter.Transition!, enterComplete,
                             MotionOrchestrationWait.PlayStartSec(childOrchestration, enter.DelaySec), onSwap,
                             playback: MotionVariantResolver.PlaybackForChildren(motionNode,
-                                _ctx.ComponentContextStack.Get(MotionContext.Playback)));
+                                _ctx.ComponentContextStack.Get(MotionContext.Playback)),
+                            waitSec: enter.WaitSec + MotionOrchestrationWait.PlayStartSec(childOrchestration, enter.DelaySec)
+                                - enter.DelaySec);
                     }
                 }
                 else if (motionNode.Initial != null && motionNode.Animate != null)
@@ -425,7 +427,7 @@ namespace Velvet
             // routes through PatchMotion's own registration.
             if (motionNode.LayoutId != null)
             {
-                MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.TransitionDefaulted ? null : motionNode.Transition), _ctx);
+                MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.LayoutTransition), _ctx);
             }
             // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
             var stackingClasses = _patcher.ResolveStackingClasses(element, appliedClasses);
@@ -452,9 +454,8 @@ namespace Velvet
             var resolved = GeneralPathReconciler.TryResolveVariantEnter(motionNode, initialLabel,
                 MotionVariantResolver.LabelForChildren(motionNode, motionAmbient), out var from, out var to,
                 out var transition);
-            var delaySec = MotionVariantResolver.IsVariantChild(motionNode) && ambient != null
-                ? ambient.ClaimNextChildDelaySec()
-                : 0f;
+            var claims = MotionVariantResolver.IsVariantChild(motionNode) && ambient != null;
+            var delaySec = claims ? ambient!.ClaimNextChildDelaySec() : 0f;
             if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
             {
                 delaySec += _ctx.PresenceAnchorEnterDelaySec;
@@ -462,7 +463,7 @@ namespace Velvet
             return new MountEnter
             {
                 From = from, To = to, Transition = transition, InitialLabel = initialLabel, Ambient = ambient,
-                Resolved = resolved, DelaySec = delaySec,
+                Resolved = resolved, DelaySec = delaySec, WaitSec = claims ? ambient!.WaitSec : 0f,
             };
         }
 
@@ -477,7 +478,7 @@ namespace Velvet
                     Playback = MotionVariantResolver.PlaybackForChildren(motionNode,
                         _ctx.ComponentContextStack.Get(MotionContext.Playback)),
                     Transition = enter.Transition, Resolved = enter.Resolved, Ambient = enter.Ambient,
-                    DelaySec = enter.DelaySec, From = enter.From, To = enter.To,
+                    DelaySec = enter.DelaySec, From = enter.From, To = enter.To, WaitSec = enter.WaitSec,
                 },
                 (factory: this, element, children: motionNode.Children, holdsId: motionNode.LayoutId != null,
                     classes: writtenClasses),
@@ -513,6 +514,8 @@ namespace Velvet
             internal MotionOrchestrationFrame? Ambient { get; init; }
             internal bool Resolved { get; init; }
             internal float DelaySec { get; init; }
+            // The part of DelaySec a wait above makes up (MotionOrchestrationFrame.WaitSec).
+            internal float WaitSec { get; init; }
         }
 
         // Exit plays only when an AnimatePresence removal defers the unmount, so it is inert outside one.

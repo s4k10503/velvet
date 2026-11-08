@@ -14,6 +14,7 @@ namespace Velvet
             var location = Hooks.UseContext(RouterContext.Location);
             var depth = Hooks.UseContext(RouterContext.Depth);
             var errors = Hooks.UseContext(RouterContext.Errors);
+            var loaderData = Hooks.UseContext(RouterContext.LoaderData);
             var router = Hooks.UseContext(RouterContext.Router);
             // Beneath an errorElement a route's boundary shows for an error thrown below it, an Outlet renders
             // nothing, as React Router renders that errorElement with no outlet.
@@ -26,8 +27,35 @@ namespace Velvet
                 return V.Fragment(Array.Empty<VNode>());
             }
 
-            FiberOutletScope.SyncRenderingOutletScope(match!.Route, routeElement!.ResolvedIdentity,
-                router?.ScopeFactory);
+            // React Router's _renderMatches: the deepest hydrate fallback above a loader still owed data renders in
+            // place of the routes from it down, except where an error is keyed, which renders its error instead.
+            var fallbackDepth = router?.Initialized == false ? HydrateFallbackDepth(location!.Matches!, errors, loaderData) : -1;
+            if (fallbackDepth >= 0 && depth >= fallbackDepth
+                && depth != ResolveErrorBoundaryDepth(location.Matches!, errors))
+            {
+                routeElement = depth == fallbackDepth ? match!.Route?.HydrateFallbackElement : null;
+                if (routeElement == null)
+                {
+                    FiberOutletScope.ReleaseRenderingOutletScope();
+                    return V.Fragment(Array.Empty<VNode>());
+                }
+            }
+
+            // A route with no element renders its child route in its place, as React Router renders the outlet,
+            // under the Outlet context it was itself rendered with.
+            // The route itself identifies an element-less one: every Outlet shares one component identity, and the
+            // scope this Outlet holds is the one a different route must replace.
+            object identity;
+            if (routeElement == null)
+            {
+                routeElement = V.Outlet(outletContext);
+                identity = (object?)match!.Route ?? routeElement.ResolvedIdentity;
+            }
+            else
+            {
+                identity = routeElement.ResolvedIdentity;
+            }
+            FiberOutletScope.SyncRenderingOutletScope(match!.Route, identity, router?.ScopeFactory);
 
             // Depth+1 so a nested Outlet in the route's subtree resolves the following match, and the
             // Outlet's own context value so the route can read it back through Hooks.UseOutletContext.
@@ -35,7 +63,7 @@ namespace Velvet
                 children: new VNode[]
                 {
                     V.Provider(RouterContext.OutletContext, outletContext!,
-                        children: new VNode[] { WithRenderErrorBoundary(location, match, depth, routeElement!) }),
+                        children: new VNode[] { WithRenderErrorBoundary(location, match, depth, routeElement) }),
                 });
         }
 
@@ -79,10 +107,8 @@ namespace Velvet
 
             match = location.Matches[depth];
 
-            // A loader error bubbles to the nearest ancestor route (at or above the errored route) that
-            // defines an ErrorElement. That boundary route renders its ErrorElement in place of its Element
-            // and descendant Outlet subtree; ancestors above the boundary render normally, and routes below
-            // the boundary do not render. Errors are keyed by RouteId on RouterContext.Errors.
+            // The route an error is keyed by renders its ErrorElement in place of its Element and descendant
+            // Outlet subtree; ancestors above it render normally, and routes below it do not render.
             var boundaryDepth = ResolveErrorBoundaryDepth(location.Matches, errors);
             if (boundaryDepth >= 0)
             {
@@ -108,53 +134,71 @@ namespace Velvet
                 // depth < boundaryDepth: an ancestor above the boundary renders normally below.
             }
 
+            // Null for a route with no element, which Render fills.
             routeElement = match.Route?.Element;
-            if (routeElement == null)
-            {
-                match = null;
-                return false;
-            }
-
             routeDepth = depth + 1;
             return true;
         }
 
-        // The nearest route, scanning from the deepest errored route up toward the root, that defines a
-        // RouteDefinition.ErrorElement. Returns -1 when no route errored. When a route errored but no route
-        // at or above it defines an ErrorElement, returns the root index 0 as an implicit boundary.
+        // React Router's _renderMatches: the highest matched route an error is keyed by renders it, and nothing
+        // below it renders. Returns -1 when no matched route has one. The router keys every error by the
+        // boundary that renders it, so this is the boundary.
         private static int ResolveErrorBoundaryDepth(
             IReadOnlyList<RouteMatch> matches,
             IReadOnlyDictionary<string, Exception>? errors)
         {
-            // MUTANT_SURVIVES(equivalent): a fast path over an answer the scan below reaches anyway.
-            // Its one caller has already rejected a null Matches and a depth past its end and indexed
-            // Matches at that depth, so both matches terms here are false, and where errors is empty the
-            // scan finds no errored route and returns the same -1. The null term is the one that decides
-            // something: it short-circuits ahead of a Count read on the same reference.
-            if (errors == null || errors.Count == 0 || matches == null || matches.Count == 0)
+            if (errors == null)
             {
                 return -1;
             }
 
-            // The deepest errored route determines the boundary: a deeper error truncates the chain at the
-            // nearest boundary at or above it, which is at least as deep as any shallower error's boundary.
-            var deepestErrored = -1;
-            for (var i = matches.Count - 1; i >= 0; i--)
+            var depth = 0;
+            while (depth < matches.Count && (matches[depth].RouteId == null || !errors.ContainsKey(matches[depth].RouteId!)))
             {
-                var routeId = matches[i].RouteId;
-                if (routeId != null && errors.ContainsKey(routeId))
+                depth++;
+            }
+
+            return depth < matches.Count ? depth : -1;
+        }
+
+        // The depth whose hydrate fallback shows, or -1 for none: over the matches down to the one an error is
+        // keyed by, the deepest with a fallback above the first whose Await loader has neither data nor an error,
+        // else the root, which then shows nothing.
+        private static int HydrateFallbackDepth(
+            IReadOnlyList<RouteMatch> matches,
+            IReadOnlyDictionary<string, Exception>? errors,
+            IReadOnlyDictionary<string, object>? loaderData)
+        {
+            var errorDepth = ResolveErrorBoundaryDepth(matches, errors);
+            var last = errorDepth < 0 ? matches.Count - 1 : errorDepth;
+            var fallbackDepth = -1;
+            for (var i = 0; i <= last; i++)
+            {
+                var route = matches[i].Route;
+                if (route?.HydrateFallbackElement != null)
                 {
-                    deepestErrored = i;
-                    break;
+                    fallbackDepth = i;
+                }
+                if (OwesData(matches[i], errors, loaderData))
+                {
+                    return fallbackDepth >= 0 ? fallbackDepth : 0;
                 }
             }
+            return -1;
+        }
 
-            if (deepestErrored < 0)
-            {
-                return -1;
-            }
-
-            return NearestErrorBoundary(matches, deepestErrored);
+        private static bool OwesData(
+            RouteMatch match,
+            IReadOnlyDictionary<string, Exception>? errors,
+            IReadOnlyDictionary<string, object>? loaderData)
+        {
+            var route = match.Route;
+            var id = match.RouteId;
+            return route?.Loader != null
+                && route.LoaderMode == LoaderMode.Await
+                && id != null
+                && (loaderData == null || !loaderData.ContainsKey(id))
+                && (errors == null || !errors.ContainsKey(id));
         }
 
         // The route at or above index that renders an error there: the nearest with an ErrorElement, or the

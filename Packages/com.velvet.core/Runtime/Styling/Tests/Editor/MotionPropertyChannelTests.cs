@@ -239,7 +239,7 @@ namespace Velvet.Tests
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "bg-black" }, new[] { "opacity-100", "bg-white" });
             var state = BezierTweenDriver.WithOverrides(
                 BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f),
-                new[] { new StylePropertyTransition("opacity", durationSec: 0.25f) });
+                new[] { new StylePropertyTransition("opacity", durationSec: 0.25f) }, 0f);
 
             // Act
             if (state != null)
@@ -260,8 +260,7 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = MotionSpringDriver.WithOverrides(MotionSpringDriver.Create(plan, 100f, 10f, 1f),
-                new[] { new StylePropertyTransition("opacity", durationSec: 0.5f, easing: EasingMode.Linear) },
-                EasingMode.EaseOut, 0f);
+                new[] { new StylePropertyTransition("opacity", durationSec: 0.5f, easing: EasingMode.Linear) }, 0f);
 
             // Act
             if (state != null)

@@ -229,7 +229,7 @@ namespace Velvet.Tests
             {
                 Route("room", children: new[]
                 {
-                    Route(""),
+                    new RouteDefinition { Index = true, Element = V.Component(StubA) },
                     Route("edit"),
                 }),
             });
@@ -239,8 +239,8 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                new[] { result[0].Route.Path, result[1].Route.Path },
-                Is.EqualTo(new[] { "room", "" }));
+                new[] { result[0].Route.Path, result[1].Route.Index.ToString() },
+                Is.EqualTo(new[] { "room", "True" }));
         }
 
         #endregion
@@ -543,15 +543,12 @@ namespace Velvet.Tests
             Assert.That(result[0].Params.ContainsKey("id"), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the restore is already there, and this says what it
-        // restores — the capture the abandoned present path made, rather than merely that the match
-        // succeeded.
+        // GREEN_ON_BASE(characterization): the base dropped the capture its abandoned reading made, and here the branch without `:id` carries none.
         [Test]
         public void Given_AnOptionalParamTheSkipPathMatchesPast_When_Matched_Then_TheAbandonedCaptureIsGone()
         {
-            // Arrange — the present path captures `id` as "end" and then fails, having nothing left for
-            // the segment behind it; the skip path is what matches. `users/:id?` cannot reach this: the
-            // optional is last there, so the present path either succeeds or is never tried.
+            // Arrange — the branch with `:id` takes "end" as `id` and then has nothing left for the
+            // segment behind it; the branch without `:id` is what matches.
             var tree = new RouteTree(new[] { Route(":id?/end") });
 
             // Act
@@ -563,14 +560,12 @@ namespace Velvet.Tests
                         Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(characterization): a route neither reading reaches already matches nothing.
-        // Measured: making the optional arm report a match when both fail leaves the fixture green
-        // apart from this case.
+        // GREEN_ON_BASE(characterization): a route neither of its branches reaches matched nothing on the base as well.
         [Test]
         public void Given_AnOptionalParamWhosePresentAndSkipPathsBothFail_When_Matched_Then_NothingMatches()
         {
-            // Arrange — the same route, at a URL neither reading reaches: taking `wrong` as `id` leaves
-            // nothing for `end`, and skipping it puts `end` against `wrong`.
+            // Arrange — the same route, at a URL neither branch reaches: taking `wrong` as `id` leaves
+            // nothing for `end`, and the branch without `:id` puts `end` against `wrong`.
             var tree = new RouteTree(new[] { Route(":id?/end") });
 
             // Act
@@ -580,21 +575,18 @@ namespace Velvet.Tests
             Assert.That(result, Is.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the restore is already gated on the segment being a param.
-        // Measured: widening that gate to `||` leaves the fixture green apart from this case, and the
-        // gate is what this change's `Taken` bookkeeping sits next to.
+        // GREEN_ON_BASE(characterization): the base kept the param through the literal's failed reading, as the branch without the literal keeps it here.
         [Test]
         public void Given_AnOptionalLiteralSharingAParamsName_When_ItsPresentPathFails_Then_TheParamSurvives()
         {
             // Arrange — the optional is a literal spelled `p`, and the param before it is named `p` too.
-            // The present path tries the literal against "a", fails, and runs the restore on its way out.
+            // The branch with the literal fails against "a".
             var tree = new RouteTree(new[] { Route(":p/p?/a") });
 
             // Act
             var result = tree.Match("/a/a");
 
-            // Assert — a restore that ran for a literal would read the segment's text as a capture key
-            // and take `p` with it.
+            // Assert — a capture keyed on the literal's text would take `p` with it.
             Assert.That((result != null, result != null ? result[0].Params["p"] : null),
                         Is.EqualTo((true, "a")));
         }
@@ -618,14 +610,11 @@ namespace Velvet.Tests
                         Is.EqualTo(("", "/docs/edit")));
         }
 
-        // GREEN_ON_BASE(characterization): the control for the skip. A base built from every declared
-        // segment gives the same answer here as one built from the segments taken, which is what makes
-        // it the case that fails if the skip is applied to an optional the URL did carry.
+        // GREEN_ON_BASE(characterization): the segment an optional literal took is in the pathname base on the base tree as here.
         [Test]
         public void Given_AnOptionalLiteralTakingTheFirstSegment_When_Matched_Then_TheBaseCarriesIt()
         {
-            // Arrange — the segment it took is index 0, which is what separates "took none" from "took
-            // the first one" in the record the base is built from.
+            // Arrange — the segment it takes is the URL's first.
             var tree = new RouteTree(new[] { Route("intro?") });
 
             // Act
@@ -675,8 +664,7 @@ namespace Velvet.Tests
             Assert.That(result[0].PathnameBase, Is.EqualTo("/docs"));
         }
 
-        // GREEN_ON_BASE(characterization): the present half of the pair below, unchanged by this fix
-        // and here so a skip that fired unconditionally could not pass as one that fired correctly.
+        // GREEN_ON_BASE(characterization): the present half of the pair below, so dropping every optional segment cannot pass as dropping an absent one.
         [Test]
         public void Given_OptionalLiteralRoute_When_SegmentPresent_Then_TheBaseCarriesIt()
         {
@@ -795,7 +783,7 @@ namespace Velvet.Tests
             {
                 Route("room", children: new[]
                 {
-                    Route(""),
+                    new RouteDefinition { Index = true, Element = V.Component(StubA) },
                 }),
             });
 

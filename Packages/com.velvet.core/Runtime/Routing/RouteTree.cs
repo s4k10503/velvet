@@ -1,39 +1,55 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace Velvet
 {
     /// <summary>
-    /// Ranks route branches by specificity before matching; declaration order breaks score ties only.
-    /// Supports literal, dynamic (<c>:param</c>), optional (<c>:param?</c> / <c>segment?</c>), and splat
-    /// (<c>*</c>) segments.
+    /// Ranks route branches as React Router's <c>flattenRoutes</c> and <c>rankRouteBranches</c> do: by
+    /// <c>computeScore</c> over the branch's joined path, then siblings by declaration, sorted as V8 sorts, with
+    /// each child's branch flattened ahead of its parent's. A path's optional segments (<c>:param?</c>,
+    /// <c>segment?</c>) each make a branch with and without the segment; <c>*</c> is a splat.
     /// </summary>
     public sealed class RouteTree
     {
         private readonly RouteDefinition[] _routes;
         private readonly List<RouteBranch> _rankedBranches;
 
-        // One buffer for every branch probe rather than one array each. Match walks the ranked branches
-        // until one succeeds, so a per-probe array is an allocation per branch not taken. Held on the
-        // tree and not static: two trees are two navigations, and Match runs no caller code, so nothing
-        // re-enters one tree's probe while it is using this.
-        private int[] _taken = Array.Empty<int>();
-
         /// <param name="routes">Array of route definitions. null is not allowed.</param>
+        /// <exception cref="ArgumentException">Two routes share an id; an index route declares children, an
+        /// empty array included; a splat route declares children; or an absolute child path does not start
+        /// with the joined path of the routes above it.</exception>
         public RouteTree(RouteDefinition[] routes)
         {
             _routes = routes ?? throw new ArgumentNullException(nameof(routes));
             _rankedBranches = new List<RouteBranch>();
-            FlattenBranches(_routes, new List<RouteDefinition>(), new List<string>(), null, _rankedBranches);
+            FlattenBranches(BuildNodes(_routes, null), new List<RouteMeta>(), string.Empty, false, _rankedBranches);
+            JsArraySort.Sort(_rankedBranches, RankComparison);
+        }
 
-            // Stable sort by descending score so that, among branches of equal specificity, the earlier
-            // declaration order is preserved (List.Sort is not stable, so encode the original index).
-            _rankedBranches.Sort((a, b) =>
+        private static readonly Comparison<RouteBranch> RankComparison = RankRouteBranches;
+
+        // React Router's rankRouteBranches comparator, with compareIndexes.
+        private static int RankRouteBranches(RouteBranch a, RouteBranch b)
+        {
+            if (a.Score != b.Score)
             {
-                var byScore = b.Score.CompareTo(a.Score);
-                return byScore != 0 ? byScore : a.Order.CompareTo(b.Order);
-            });
+                return b.Score - a.Score;
+            }
+            // Siblings share every route above the last, and the tree refuses two routes one id.
+            var left = a.Ids;
+            var right = b.Ids;
+            if (left.Length != right.Length)
+            {
+                return 0;
+            }
+            var shared = 0;
+            while (shared < left.Length - 1 && left[shared] == right[shared])
+            {
+                shared++;
+            }
+            return shared == left.Length - 1 ? a.Position - b.Position : 0;
         }
 
         /// <param name="path">Path to match. null and empty string are invalid and return null (use "/" for the root path).</param>
@@ -60,8 +76,8 @@ namespace Velvet
 
         /// <summary>
         /// The chain a navigation to a path no route matches commits: the one route a 404 renders at, whose
-        /// boundary shows the error. It is the only top-level route when there is one, else the first with an
-        /// empty path or <c>/</c>, else a route of no element.
+        /// boundary shows the error. It is the only top-level route when there is one, else the first that is
+        /// an index route or has a null, empty or <c>/</c> path, else a route of no element.
         /// </summary>
         internal IReadOnlyList<RouteMatch> NotFoundMatches => _notFoundMatches ??= BuildNotFoundMatches(_routes);
 
@@ -71,7 +87,33 @@ namespace Velvet
 
         private const string NotFoundShimId = "__shim-error-route__";
 
-        private readonly HashSet<string> _ids = new();
+        private readonly struct RouteNode
+        {
+            public readonly RouteDefinition Route;
+            public readonly string Id;
+            public readonly int Position;
+            public readonly RouteNode[] Children;
+
+            public RouteNode(RouteDefinition route, string id, int position, RouteNode[] children)
+            {
+                Route = route;
+                Id = id;
+                Position = position;
+                Children = children;
+            }
+        }
+
+        private readonly struct RouteMeta
+        {
+            public readonly RouteNode Node;
+            public readonly string RelativePath;
+
+            public RouteMeta(RouteNode node, string relativePath)
+            {
+                Node = node;
+                RelativePath = relativePath;
+            }
+        }
 
         private sealed class RouteBranch
         {
@@ -83,16 +125,21 @@ namespace Velvet
             /// match reads its slice rather than parsing the route's path again.</summary>
             public readonly int[] SegmentCounts;
 
+            /// <summary>The last chain entry's position among its siblings, React Router's
+            /// <c>childrenIndex</c> of the leaf.</summary>
+            public readonly int Position;
+
             public int Score;
-            public int Order;
 
             public RouteBranch(
-                RouteDefinition[] chain, string[] ids, List<RouteSegment> pattern, int[] segmentCounts)
+                RouteDefinition[] chain, string[] ids, List<RouteSegment> pattern, int[] segmentCounts,
+                int position)
             {
                 Chain = chain;
                 Ids = ids;
                 Pattern = pattern;
                 SegmentCounts = segmentCounts;
+                Position = position;
             }
         }
 
@@ -100,87 +147,199 @@ namespace Velvet
         {
             public readonly string Value;
             public readonly bool IsParam;
-            public readonly bool IsOptional;
             public readonly bool IsSplat;
             public readonly bool CaseSensitive;
 
-            public RouteSegment(string value, bool isParam, bool isOptional, bool isSplat, bool caseSensitive)
+            public RouteSegment(string value, bool isParam, bool isSplat, bool caseSensitive)
             {
                 Value = value;
                 IsParam = isParam;
-                IsOptional = isOptional;
                 IsSplat = isSplat;
                 CaseSensitive = caseSensitive;
             }
         }
 
-        private int _branchCounter;
+        private readonly HashSet<string> _ids = new();
 
-        private void FlattenBranches(
-            RouteDefinition[]? routes,
-            List<RouteDefinition> ancestors,
-            List<string> ancestorIds,
-            string? parentPath,
-            List<RouteBranch> output)
+        // React Router's convertRoutesToDataRoutes, which runs over the whole tree before flattenRoutes: an
+        // id is the route's place in the declaration, however many branches its optional segments make.
+        private RouteNode[] BuildNodes(RouteDefinition[] routes, string? parentPath)
         {
-            if (routes == null) return;
+            var nodes = new RouteNode[routes.Length];
             for (var position = 0; position < routes.Length; position++)
             {
                 var route = routes[position];
-                // The position down the tree, whatever ids the routes above carry.
                 var treePath = parentPath == null
                     ? position.ToString(CultureInfo.InvariantCulture)
                     : string.Concat(parentPath, "-", position.ToString(CultureInfo.InvariantCulture));
                 var id = route.Id ?? treePath;
+                if (route.Index && route.Children != null)
+                {
+                    throw new ArgumentException(
+                        $"Cannot specify children on an index route: route \"{id}\" is an index route and declares "
+                        + "a child list. Move the children beside it, under its parent.");
+                }
                 if (!_ids.Add(id))
                 {
                     throw new ArgumentException(
                         $"Found a route id collision on id \"{id}\". Route ids must be unique; give the routes "
                         + "that share it distinct Id values.");
                 }
-                ancestors.Add(route);
-                ancestorIds.Add(id);
+                nodes[position] = new RouteNode(
+                    route, id, position,
+                    route.Children == null ? Array.Empty<RouteNode>() : BuildNodes(route.Children, treePath));
+            }
 
-                var hasChildren = route.Children is { Length: > 0 };
+            return nodes;
+        }
 
+        // React Router's flattenRoutes.
+        private void FlattenBranches(
+            RouteNode[] nodes, List<RouteMeta> parents, string parentPath, bool hasParentOptionalSegments,
+            List<RouteBranch> output)
+        {
+            foreach (var node in nodes)
+            {
+                var path = node.Route.Path;
+                if (string.IsNullOrEmpty(path) || !path.Contains('?'))
+                {
+                    FlattenRoute(node, null, parents, parentPath, hasParentOptionalSegments, output);
+                    continue;
+                }
+                foreach (var exploded in ExplodeOptionalSegments(path))
+                {
+                    FlattenRoute(node, exploded, parents, parentPath, true, output);
+                }
+            }
+        }
+
+        private void FlattenRoute(
+            RouteNode node, string? explodedPath, List<RouteMeta> parents, string parentPath,
+            bool hasParentOptionalSegments, List<RouteBranch> output)
+        {
+            var route = node.Route;
+            var relativePath = explodedPath ?? route.Path ?? string.Empty;
+            if (relativePath.StartsWith("/", StringComparison.Ordinal))
+            {
+                if (!relativePath.StartsWith(parentPath, StringComparison.Ordinal))
+                {
+                    // A variant an optional segment made, on this route or above it, can leave a path this
+                    // route was not written under, and that variant is dropped.
+                    if (hasParentOptionalSegments)
+                    {
+                        return;
+                    }
+                    throw new ArgumentException(
+                        $"Absolute route path \"{relativePath}\" nested under path \"{parentPath}\" is not valid. "
+                        + "An absolute child route path must start with the combined path of all its parent routes.");
+                }
+                relativePath = relativePath.Substring(parentPath.Length);
+            }
+
+            var joined = JoinPaths(parentPath, relativePath);
+            parents.Add(new RouteMeta(node, relativePath));
+
+            if (node.Children.Length > 0)
+            {
                 // The refusal inside ParseRouteSegments is over one route's own path, and a branch is
                 // every ancestor's segments joined. A splat stops the walk where it matches, so a child
                 // segment behind one is never compared: the branch outscores its splat-only parent and
                 // wins for every path the parent would have taken, which is the swallowing the
                 // one-path refusal is worded against.
-                if (hasChildren && EndsWithSplat(route))
+                if (EndsWithSplat(relativePath))
                 {
                     throw new ArgumentException(
                         $"Splat segment '*' must be the last segment of a route path, but route "
-                        + $"'{route.Path}' declares {route.Children!.Length} child route(s) behind it. "
+                        + $"'{route.Path}' declares {node.Children.Length} child route(s) behind it. "
                         + "A splat takes the whole tail, so nothing under it can be reached as "
                         + "declared. Move the children beside the splat route rather than under it.");
                 }
 
-                // A parent matches on its own with an empty Outlet, but a pathless layout does not: it
-                // consumes no path, so it is reached only through a child.
-                if (!IsPathlessLayout(route))
-                {
-                    output.Add(BuildBranch(ancestors, ancestorIds));
-                }
-
-                if (hasChildren)
-                {
-                    FlattenBranches(route.Children, ancestors, ancestorIds, treePath, output);
-                }
-
-                ancestors.RemoveAt(ancestors.Count - 1);
-                ancestorIds.RemoveAt(ancestorIds.Count - 1);
+                FlattenBranches(node.Children, parents, joined, hasParentOptionalSegments, output);
             }
+
+            // A route with no path is reached only through a child, unless it is an index route.
+            if (route.Path != null || route.Index)
+            {
+                output.Add(BuildBranch(parents, joined, route.Index));
+            }
+
+            parents.RemoveAt(parents.Count - 1);
         }
 
-        private static bool IsPathlessLayout(RouteDefinition route) =>
-            string.IsNullOrEmpty(route.Path) && route.Children is { Length: > 0 };
+        // React Router's explodeOptionalSegments.
+        private static List<string> ExplodeOptionalSegments(string path)
+        {
+            var result = new List<string>();
+            var slash = path.IndexOf('/');
+            var first = slash < 0 ? path : path.Substring(0, slash);
+            var isOptional = first.EndsWith("?", StringComparison.Ordinal);
+            var required = isOptional ? first.Substring(0, first.Length - 1) : first;
 
-        private static bool EndsWithSplat(RouteDefinition route)
+            if (slash < 0)
+            {
+                result.Add(required);
+                if (isOptional)
+                {
+                    result.Add(string.Empty);
+                }
+            }
+            else
+            {
+                var restExploded = ExplodeOptionalSegments(path.Substring(slash + 1));
+                foreach (var subpath in restExploded)
+                {
+                    result.Add(subpath.Length == 0 ? required : required + "/" + subpath);
+                }
+                if (isOptional)
+                {
+                    result.AddRange(restExploded);
+                }
+            }
+
+            if (path.StartsWith("/", StringComparison.Ordinal))
+            {
+                for (var index = 0; index < result.Count; index++)
+                {
+                    if (result[index].Length == 0)
+                    {
+                        result[index] = "/";
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        // React Router's joinPaths over two parts: joined by "/", every run of slashes made one. Where neither part
+        // holds a run of its own, the run can only be where they meet, so the parts are joined around it.
+        private static string JoinPaths(string parentPath, string relativePath)
+        {
+            if (parentPath.IndexOf("//", StringComparison.Ordinal) < 0
+                && relativePath.IndexOf("//", StringComparison.Ordinal) < 0)
+            {
+                var head = parentPath.EndsWith("/", StringComparison.Ordinal) ? parentPath : parentPath + "/";
+                return relativePath.StartsWith("/", StringComparison.Ordinal)
+                    ? string.Concat(head, relativePath.Substring(1))
+                    : string.Concat(head, relativePath);
+            }
+            var joined = string.Concat(parentPath, "/", relativePath);
+            var collapsed = new StringBuilder(joined.Length);
+            foreach (var character in joined)
+            {
+                if (character != '/' || collapsed.Length == 0 || collapsed[collapsed.Length - 1] != '/')
+                {
+                    collapsed.Append(character);
+                }
+            }
+
+            return collapsed.ToString();
+        }
+
+        private static bool EndsWithSplat(string path)
         {
             var last = false;
-            foreach (var seg in ParseRouteSegments(route))
+            foreach (var seg in ParseRouteSegments(path, caseSensitive: false))
             {
                 last = seg.IsSplat;
             }
@@ -188,38 +347,30 @@ namespace Velvet
             return last;
         }
 
-        private RouteBranch BuildBranch(List<RouteDefinition> chain, List<string> ids)
+        private static RouteBranch BuildBranch(List<RouteMeta> metas, string path, bool index)
         {
             var pattern = new List<RouteSegment>();
-            var counts = new int[chain.Count];
-            for (var index = 0; index < chain.Count; index++)
+            var counts = new int[metas.Count];
+            var chain = new RouteDefinition[metas.Count];
+            var ids = new string[metas.Count];
+            for (var level = 0; level < metas.Count; level++)
             {
+                var meta = metas[level];
                 var before = pattern.Count;
-                foreach (var seg in ParseRouteSegments(chain[index]))
-                {
-                    pattern.Add(seg);
-                }
-                counts[index] = pattern.Count - before;
+                pattern.AddRange(ParseRouteSegments(meta.RelativePath, meta.Node.Route.CaseSensitive));
+                counts[level] = pattern.Count - before;
+                chain[level] = meta.Node.Route;
+                ids[level] = meta.Node.Id;
             }
 
-            var leaf = chain[chain.Count - 1];
-            var isIndexLeaf = leaf.Path == "";
-
-            return new RouteBranch(chain.ToArray(), ids.ToArray(), pattern, counts)
+            return new RouteBranch(chain, ids, pattern, counts, metas[metas.Count - 1].Node.Position)
             {
-                Score = ComputeScore(pattern, isIndexLeaf),
-                Order = _branchCounter++,
+                Score = ComputeScore(path, index),
             };
         }
 
-        private static IEnumerable<RouteSegment> ParseRouteSegments(RouteDefinition route)
+        private static IEnumerable<RouteSegment> ParseRouteSegments(string path, bool caseSensitive)
         {
-            var path = route.Path;
-            if (string.IsNullOrEmpty(path) || path == "/")
-            {
-                yield break;
-            }
-
             var trimmed = TrimSlashes(path);
             if (trimmed.Length == 0)
             {
@@ -240,21 +391,13 @@ namespace Velvet
                             "places it before another segment. Use a trailing '*' (e.g. 'files/*').");
                     }
 
-                    yield return new RouteSegment("*", isParam: false, isOptional: false, isSplat: true, route.CaseSensitive);
+                    yield return new RouteSegment("*", isParam: false, isSplat: true, caseSensitive);
                     continue;
                 }
 
-                var isOptional = part.EndsWith("?");
-                var core = isOptional ? part.Substring(0, part.Length - 1) : part;
-
-                if (core.StartsWith(":"))
-                {
-                    yield return new RouteSegment(core.Substring(1), isParam: true, isOptional, isSplat: false, route.CaseSensitive);
-                }
-                else
-                {
-                    yield return new RouteSegment(core, isParam: false, isOptional, isSplat: false, route.CaseSensitive);
-                }
+                yield return part.StartsWith(":", StringComparison.Ordinal)
+                    ? new RouteSegment(part.Substring(1), isParam: true, isSplat: false, caseSensitive)
+                    : new RouteSegment(part, isParam: false, isSplat: false, caseSensitive);
             }
         }
 
@@ -262,206 +405,107 @@ namespace Velvet
 
         #region Scoring
 
-        // Per-segment scoring weights used to rank branches by specificity. The relative magnitudes and
-        // ordering carry the meaning, not the absolute numbers: at equal depth static >> dynamic > splat, and
-        // the splat weight is negative so a literal segment always outranks a "*" catch-all.
         private const int StaticSegmentScore = 10;
         private const int DynamicSegmentScore = 3;
         private const int IndexRouteScore = 2;
         private const int SplatPenalty = -2;
-        private const int OptionalBonus = 1;
         private const int EmptySegmentScore = 1;
 
-        private static int ComputeScore(List<RouteSegment> pattern, bool isIndexLeaf)
+        // React Router's computeScore over the branch's joined path, read segment by segment in place of
+        // path.split("/").
+        private static int ComputeScore(string path, bool index)
         {
-            var score = isIndexLeaf ? IndexRouteScore : 0;
-
-            foreach (var seg in pattern)
+            var score = index ? IndexRouteScore : 0;
+            var splat = false;
+            var start = 0;
+            while (start <= path.Length)
             {
-                if (seg.IsSplat)
+                var end = path.IndexOf('/', start);
+                end = end < 0 ? path.Length : end;
+                var segment = path.AsSpan(start, end - start);
+                score++;
+                if (segment.Length == 1 && segment[0] == '*')
                 {
-                    score += SplatPenalty;
-                }
-                else if (seg.IsParam)
-                {
-                    score += DynamicSegmentScore;
-                }
-                else if (seg.Value.Length == 0)
-                {
-                    score += EmptySegmentScore;
+                    splat = true;
                 }
                 else
                 {
-                    score += StaticSegmentScore;
+                    score += IsParamSegment(segment)
+                        ? DynamicSegmentScore
+                        : segment.Length == 0 ? EmptySegmentScore : StaticSegmentScore;
                 }
-
-                if (seg.IsOptional)
-                {
-                    score += OptionalBonus;
-                }
+                start = end + 1;
             }
 
-            return score;
+            return splat ? score + SplatPenalty : score;
         }
+
+        // React Router's /^:[\w-]+$/, whose \w is ASCII.
+        private static bool IsParamSegment(ReadOnlySpan<char> segment)
+        {
+            var at = segment.Length > 1 && segment[0] == ':' ? 1 : segment.Length + 1;
+            while (at < segment.Length && IsWordCharacter(segment[at]))
+            {
+                at++;
+            }
+            return at == segment.Length;
+        }
+
+        private static bool IsWordCharacter(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-';
 
         #endregion
 
         #region Branch matching
 
-        private ref struct Walk
-        {
-            public readonly List<RouteSegment> Pattern;
-            public readonly string[] Segments;
-
-            /// <summary>Which path segment each pattern segment took, or -1 for one the match skipped.
-            /// An absent optional literal is otherwise indistinguishable from one the URL held, and
-            /// <see cref="BuildMatches"/> reads a literal's text from the segment it took.</summary>
-            public readonly int[] Taken;
-
-            public Dictionary<string, string>? Captured;
-
-            public Walk(List<RouteSegment> pattern, string[] segments, int[] taken)
-            {
-                Pattern = pattern;
-                Segments = segments;
-                Taken = taken;
-                for (var index = 0; index < pattern.Count; index++)
-                {
-                    Taken[index] = -1;
-                }
-
-                Captured = null;
-            }
-        }
-
-        private bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
+        private static bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
         {
             matches = null;
-
-            if (_taken.Length < branch.Pattern.Count)
+            Dictionary<string, string>? captured = null;
+            var pattern = branch.Pattern;
+            var si = 0;
+            var splatTaken = false;
+            for (var pi = 0; pi < pattern.Count && !splatTaken; pi++)
             {
-                _taken = new int[branch.Pattern.Count];
-            }
-
-            var walk = new Walk(branch.Pattern, segments, _taken);
-
-            if (!TryConsume(ref walk, 0, 0))
-            {
-                return false;
-            }
-
-            var captured = walk.Captured;
-            var taken = walk.Taken;
-
-            // A paramless successful match still exposes a (shared, empty) dictionary at every level,
-            // preserving the pre-lazy contract that RouteMatch.Params is never null.
-            matches = BuildMatches(branch, segments, captured ?? new Dictionary<string, string>(), taken);
-            return true;
-        }
-
-        /// <remarks>
-        /// Writes into `taken` as it walks and never unwrites. Undoing a failed probe's entries was
-        /// written here at first, on the strength of the capture snapshot below being the same
-        /// discipline -- and it is not: `taken` is indexed by pattern position, which the next probe
-        /// overwrites as it passes, where a dictionary keyed by name has no such property.
-        /// </remarks>
-        private static bool TryConsume(ref Walk walk, int pi, int si)
-        {
-            while (pi < walk.Pattern.Count)
-            {
-                var seg = walk.Pattern[pi];
-
+                var seg = pattern[pi];
                 if (seg.IsSplat)
                 {
                     // MUTANT_SURVIVES(equivalent): at si == Length the join is asked for zero
                     // elements and returns the empty string, which is what the other arm yields.
-                    var rest = si >= walk.Segments.Length
+                    var rest = si >= segments.Length
                         ? string.Empty
-                        : string.Join("/", walk.Segments, si, walk.Segments.Length - si);
-                    walk.Captured ??= new Dictionary<string, string>();
-                    walk.Captured["*"] = rest;
-                    return true;
+                        : string.Join("/", segments, si, segments.Length - si);
+                    captured ??= new Dictionary<string, string>();
+                    captured["*"] = rest;
+                    si = segments.Length;
+                    splatTaken = true;
+                    continue;
                 }
 
-                if (seg.IsOptional)
-                {
-                    // Greedily try the optional segment as present before falling through to the skip
-                    // branch, which consumes no path segment.
-                    if (si < walk.Segments.Length && TryConsumeOptionalPresent(ref walk, pi, si, seg))
-                    {
-                        walk.Taken[pi] = si;
-                        return true;
-                    }
-
-                    if (TryConsume(ref walk, pi + 1, si))
-                    {
-                        return true;
-                    }
-
-                    return false;
-                }
-
-                if (si >= walk.Segments.Length || !TryMatchSingle(ref walk, seg, walk.Segments[si]))
+                if (si >= segments.Length || !TryMatchSingle(seg, segments[si], ref captured))
                 {
                     return false;
                 }
 
-                walk.Taken[pi] = si;
-                pi++;
                 si++;
             }
 
-            if (si == walk.Segments.Length)
+            if (si != segments.Length)
             {
-                return true;
+                return false;
             }
 
-            return false;
+            // A paramless successful match still exposes a (shared, empty) dictionary at every level,
+            // preserving the pre-lazy contract that RouteMatch.Params is never null.
+            matches = BuildMatches(branch, segments, captured ?? new Dictionary<string, string>());
+            return true;
         }
 
-        /// <remarks>
-        /// A capture made here must not leak into the caller's skip branch, so the param key is snapshotted
-        /// and restored when the downstream match fails.
-        /// </remarks>
-        private static bool TryConsumeOptionalPresent(ref Walk walk, int pi, int si, RouteSegment seg)
-        {
-            var keyExisted = false;
-            string snap = "";
-            if (seg.IsParam && walk.Captured != null)
-            {
-                keyExisted = walk.Captured.TryGetValue(seg.Value, out snap);
-            }
-
-            if (TryMatchSingle(ref walk, seg, walk.Segments[si]) && TryConsume(ref walk, pi + 1, si + 1))
-            {
-                return true;
-            }
-
-            // No null check, unlike the snapshot above: `TryMatchSingle` runs on the way in and creates
-            // the dictionary for a param, so reaching here with `seg.IsParam` means it exists. The
-            // `IsParam` test itself is load-bearing -- for a literal, `seg.Value` is its text, and
-            // removing under it takes whatever param happens to share the spelling.
-            if (seg.IsParam)
-            {
-                if (keyExisted)
-                {
-                    walk.Captured[seg.Value] = snap;
-                }
-                else
-                {
-                    walk.Captured.Remove(seg.Value);
-                }
-            }
-
-            return false;
-        }
-
-        private static bool TryMatchSingle(ref Walk walk, RouteSegment seg, string pathSeg)
+        private static bool TryMatchSingle(RouteSegment seg, string pathSeg, ref Dictionary<string, string>? captured)
         {
             if (seg.IsParam)
             {
-                walk.Captured ??= new Dictionary<string, string>();
-                walk.Captured[seg.Value] = pathSeg;
+                captured ??= new Dictionary<string, string>();
+                captured[seg.Value] = pathSeg;
                 return true;
             }
 
@@ -470,15 +514,15 @@ namespace Velvet
         }
 
         private static List<RouteMatch> BuildMatches(
-            RouteBranch branch, string[] segments, Dictionary<string, string> captured, int[] taken)
+            RouteBranch branch, string[] segments, Dictionary<string, string> captured)
         {
             var chain = branch.Chain;
             var matches = new List<RouteMatch>(chain.Length);
             // Each level stores a cumulative base because route-relative `..` pops a whole route level,
             // not one URL segment.
             var cumulativeResolved = string.Empty;
-            // `taken` is indexed over the branch's flattened pattern, which is each route's segments in
-            // chain order, so a route's slice starts where the routes above it ended.
+            // A branch's pattern is each route's segments in chain order, and every segment before a splat
+            // took the path segment at its own index, so a route's slice starts where the routes above it ended.
             var patternOffset = 0;
 
             for (var level = 0; level < chain.Length; level++)
@@ -486,7 +530,7 @@ namespace Velvet
                 var route = chain[level];
 
                 var resolvedSegment = ResolveRouteSegments(
-                    branch.Pattern, branch.SegmentCounts[level], segments, captured, taken, ref patternOffset);
+                    branch.Pattern, branch.SegmentCounts[level], segments, captured, ref patternOffset);
                 if (resolvedSegment.Length > 0)
                 {
                     cumulativeResolved = cumulativeResolved.Length == 0
@@ -510,23 +554,19 @@ namespace Velvet
 
         // Read off the branch's already-parsed pattern rather than the route's path. Two readings of one
         // path do not agree segment for segment -- one drops the empty part in `a//b` and the other keeps
-        // it -- and `taken` is indexed over the pattern, so the pattern is the reading that can be
-        // indexed. Re-parsing here also allocated an enumerator per route on every match.
+        // it -- and the pattern is the reading the URL's segments line up with.
         private static string ResolveRouteSegments(
             List<RouteSegment> pattern, int count, string[] segments, IReadOnlyDictionary<string, string> captured,
-            int[] taken, ref int patternOffset)
+            ref int patternOffset)
         {
             var resolved = ScratchSegments;
             resolved.Clear();
 
             for (var step = 0; step < count; step++)
             {
-                var seg = pattern[patternOffset];
                 var index = patternOffset++;
+                var seg = pattern[index];
 
-                // `taken` is not read for a splat or a param: the first resolves from the captured
-                // tail and the second from its capture, and only a literal has nothing else to say
-                // whether the URL held it.
                 if (seg.IsSplat)
                 {
                     if (captured.TryGetValue("*", out var splat) && splat.Length > 0)
@@ -548,18 +588,9 @@ namespace Velvet
                     continue;
                 }
 
-                // A literal the match skipped is one the URL never held, so a base built from it would
-                // resolve the next relative hop against a path that does not exist.
-                // MUTANT_SURVIVES(unreachable): `taken` is as long as the branch pattern and `index`
-                // walks that same pattern, so the bound is never the arm that decides.
-                if (seg.IsOptional && (index >= taken.Length || taken[index] < 0))
-                {
-                    continue;
-                }
-
                 // The URL's own text rather than the pattern's, which a case-insensitive literal can differ
                 // from, as React Router's pathname is the URL's.
-                resolved.Add(segments[taken[index]]);
+                resolved.Add(segments[index]);
             }
 
             return string.Join("/", resolved);
@@ -581,14 +612,14 @@ namespace Velvet
             {
                 for (var index = 0; index < routes.Length && position < 0; index++)
                 {
-                    if (string.IsNullOrEmpty(routes[index].Path) || routes[index].Path == "/")
+                    if (routes[index].Index || string.IsNullOrEmpty(routes[index].Path) || routes[index].Path == "/")
                     {
                         position = index;
                     }
                 }
             }
 
-            var route = position < 0 ? new RouteDefinition { Path = "" } : routes[position];
+            var route = position < 0 ? new RouteDefinition() : routes[position];
             return new[]
             {
                 new RouteMatch

@@ -430,8 +430,8 @@ namespace Velvet.Tests
         public void Given_AtHistoryStart_When_GoBack_Then_ReturnsCancelled()
         {
             // Arrange
-            var router = new Router(_routes);
-            router.NavigateSync("/home");
+            var router = new Router(_routes,
+                options: new RouterOptions { InitialEntries = new[] { "/home" } });
             Assume.That(router.CanGoBack, Is.False, "Precondition: at the start of history");
 
             // Act
@@ -526,8 +526,9 @@ namespace Velvet.Tests
         {
             // Arrange
             const int pushes = 120;
-            var router = new Router(new[] { Route(":page") });
-            for (var i = 1; i <= pushes; i++)
+            var router = new Router(new[] { Route(":page") },
+                options: new RouterOptions { InitialEntries = new[] { "/p1" } });
+            for (var i = 2; i <= pushes; i++)
             {
                 router.NavigateSync($"/p{i}");
             }
@@ -711,7 +712,7 @@ namespace Velvet.Tests
             router.GoBackSync();
 
             // Assert
-            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0-0")?.Message, Is.EqualTo("boom-2"));
+            Assert.That(router.CurrentLoaderErrors.GetValueOrDefault("0")?.Message, Is.EqualTo("boom-2"));
         }
 
         #endregion

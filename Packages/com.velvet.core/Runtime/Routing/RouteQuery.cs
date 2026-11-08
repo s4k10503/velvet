@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Text;
 
 namespace Velvet
 {
     internal static class RouteQuery
     {
-        internal static ISearchParams ParseQuery(string path)
+        internal static SearchParams ParseQuery(string path)
         {
             var result = new SearchParams();
             foreach (var pair in ParsePairs(path))
@@ -52,39 +54,52 @@ namespace Velvet
             return qIndex < 0 ? path : path.Substring(0, qIndex);
         }
 
-        internal static string BuildQuery(ISearchParams values)
+        // A query as React Router writes `?${searchParams}`: the entries in order through the
+        // application/x-www-form-urlencoded serializer, and no query at all for no entry.
+        internal static string BuildQuery(IEnumerable<KeyValuePair<string, string>> entries)
         {
-            if (values == null || values.Count == 0)
-            {
-                return string.Empty;
-            }
-
-            var parts = new List<string>(values.Count);
-            foreach (var key in values.Keys)
-            {
-                var escapedKey = Uri.EscapeDataString(key);
-                foreach (var value in values.GetAll(key))
-                {
-                    parts.Add($"{escapedKey}={Uri.EscapeDataString(value ?? string.Empty)}");
-                }
-            }
-            return "?" + string.Join("&", parts);
+            var encoded = FormUrlEncode(entries);
+            return encoded.Length == 0 ? string.Empty : "?" + encoded;
         }
 
-        // BuildQuery(ISearchParams) groups the values of one key; a pair list keeps the order it was given.
-        internal static string BuildQuery(IReadOnlyList<KeyValuePair<string, string>> pairs)
+        // URLSearchParams' toString: each name and value as UTF-8, a space as '+', the ASCII letters and digits
+        // and '*', '-', '.', '_' as they are, and every other byte percent-escaped in upper case.
+        internal static string FormUrlEncode(IEnumerable<KeyValuePair<string, string>> pairs)
         {
-            if (pairs.Count == 0)
-            {
-                return string.Empty;
-            }
-
-            var parts = new List<string>(pairs.Count);
+            var text = new StringBuilder();
+            var first = true;
             foreach (var pair in pairs)
             {
-                parts.Add($"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}");
+                if (!first)
+                {
+                    text.Append('&');
+                }
+                first = false;
+                AppendFormComponent(text, pair.Key);
+                text.Append('=');
+                AppendFormComponent(text, pair.Value);
             }
-            return "?" + string.Join("&", parts);
+            return text.ToString();
+        }
+
+        private static void AppendFormComponent(StringBuilder text, string component)
+        {
+            foreach (var b in Encoding.UTF8.GetBytes(component))
+            {
+                var c = (char)b;
+                if (c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '*' or '-' or '.' or '_')
+                {
+                    text.Append(c);
+                }
+                else if (c == ' ')
+                {
+                    text.Append('+');
+                }
+                else
+                {
+                    text.Append('%').Append(b.ToString("X2", CultureInfo.InvariantCulture));
+                }
+            }
         }
     }
 }

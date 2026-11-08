@@ -23,7 +23,9 @@ namespace Velvet.Tests
         // is understood.
         // The tree's route ids are built at construction (id strings, the id and path lists, the id set and
         // one id array per branch), which accounts for the rise from 92 to 101 net of the id string a
-        // navigation no longer concatenates.
+        // navigation no longer concatenates. The router stands on its first entry from construction, as
+        // createMemoryRouter's does, so that entry's match and location are in the pin as well: 7 of the 106,
+        // measured as the drop when construction builds neither.
         static Router CreateRouter()
         {
             var router = new Router(new[]
@@ -80,7 +82,7 @@ namespace Velvet.Tests
             var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
 
             // Assert
-            Assert.That(blocks, Is.EqualTo(101));
+            Assert.That(blocks, Is.EqualTo(106));
         }
 
 #if UNITY_EDITOR
@@ -104,7 +106,7 @@ namespace Velvet.Tests
             var blocks = GCAllocationProbe.MedianBlocksDuring(NavigateOnce);
 
             // Assert
-            Assert.That(blocks, Is.EqualTo(101));
+            Assert.That(blocks, Is.EqualTo(106));
         }
 #endif
     }

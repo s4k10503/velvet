@@ -109,8 +109,7 @@ namespace Velvet
         public RouterLocation? Location { get; init; }
 
         /// <summary>
-        /// The lower-case method of the submission in flight, while one is, as React Router 6.28 reports it
-        /// without <c>v7_normalizeFormMethod</c>; null otherwise, as
+        /// The upper-case method of the submission in flight, while one is; null otherwise, as
         /// <c>navigation.formMethod</c> is <c>undefined</c> then.
         /// </summary>
         public string? FormMethod { get; init; }
@@ -118,7 +117,22 @@ namespace Velvet
         /// <summary>The path the submission in flight was made to; null while none is.</summary>
         public string? FormAction { get; init; }
 
-        /// <summary>What the submission in flight sent; null while none is.</summary>
-        public object? FormData { get; init; }
+        /// <summary>The encType of the submission in flight; null while none is.</summary>
+        public string? FormEncType { get; init; }
+
+        /// <summary>
+        /// The body of the submission in flight as entries, for every encType but <c>application/json</c> and
+        /// <c>text/plain</c>; null otherwise.
+        /// </summary>
+        public FormData? FormData { get; init; }
+
+        /// <summary>
+        /// The body of an <c>application/json</c> submission in flight, as it was handed to the submit function,
+        /// or parsed when that was a string; null otherwise.
+        /// </summary>
+        public object? Json { get; init; }
+
+        /// <summary>The body of a <c>text/plain</c> submission in flight as text; null otherwise.</summary>
+        public string? Text { get; init; }
     }
 }

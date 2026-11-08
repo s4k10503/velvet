@@ -9,10 +9,39 @@ using System.Runtime.CompilerServices;
 
 namespace Velvet
 {
-    // A get submission's body as React Router's normalizeNavigateOptions encodes it with
-    // new URLSearchParams(body), in the order the body holds its pairs.
+    // A submission's body as React Router's normalizeNavigateOptions encodes it: with new URLSearchParams(body),
+    // in the order the body holds its pairs, or as text/plain's text.
     internal static class SubmissionBody
     {
+        // text/plain: a string as it is, a FormData's or a search params' entries each as name=value and a line
+        // feed, and anything else as String(body).
+        internal static string PlainText(object? body)
+        {
+            switch (body)
+            {
+                case string text:
+                    return text;
+                case FormData formData:
+                    return Lines(formData);
+                case ISearchParams searchParams:
+                    var pairs = new List<KeyValuePair<string, string>>();
+                    AddAll(pairs, searchParams);
+                    return Lines(pairs);
+                default:
+                    return Text(body);
+            }
+        }
+
+        private static string Lines(IEnumerable<KeyValuePair<string, string>> entries)
+        {
+            var text = new System.Text.StringBuilder();
+            foreach (var entry in entries)
+            {
+                text.Append(entry.Key).Append('=').Append(entry.Value).Append('\n');
+            }
+            return text.ToString();
+        }
+
         // False for a body URLSearchParams throws on: a sequence whose entries are not name/value pairs, or
         // anything the encoding itself throws, as React Router's try around new URLSearchParams has it.
         internal static bool TryEncode(object? body, out List<KeyValuePair<string, string>> pairs)
@@ -59,18 +88,9 @@ namespace Velvet
 
         private static void AddAll(List<KeyValuePair<string, string>> pairs, ISearchParams searchParams)
         {
-            foreach (var key in searchParams.Keys)
-            {
-                foreach (var value in searchParams.GetAll(key))
-                {
-                    pairs.Add(new KeyValuePair<string, string>(key, value ?? string.Empty));
-                }
-            }
+            pairs.AddRange(searchParams);
         }
 
-        // A plain object's own enumerable properties: the readable public properties and then the public fields a
-        // type declares itself, each in declaration order, read by reflection as ComponentPropsComparer reads a
-        // props bag.
         private static void AddProperties(List<KeyValuePair<string, string>> pairs, object body)
         {
             if (body.GetType().IsPrimitive || body is Enum || body is decimal || body is BigInteger)
@@ -78,18 +98,29 @@ namespace Velvet
                 pairs.AddRange(RouteQuery.ParsePairs("?" + Text(body)));
                 return;
             }
+            foreach (var property in OwnProperties(body))
+            {
+                pairs.Add(Pair(property.Key, property.Value));
+            }
+        }
+
+        // A plain object's own enumerable properties: the readable public properties and then the public fields a
+        // type declares itself, each in declaration order, read by reflection as ComponentPropsComparer reads a
+        // props bag.
+        internal static IEnumerable<KeyValuePair<string, object?>> OwnProperties(object body)
+        {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
             var type = body.GetType();
             foreach (var property in type.GetProperties(flags).OrderBy(member => member.MetadataToken))
             {
                 if (property.GetIndexParameters().Length == 0 && property.CanRead)
                 {
-                    pairs.Add(Pair(property.Name, property.GetValue(body)));
+                    yield return new KeyValuePair<string, object?>(property.Name, property.GetValue(body));
                 }
             }
             foreach (var field in type.GetFields(flags).OrderBy(member => member.MetadataToken))
             {
-                pairs.Add(Pair(field.Name, field.GetValue(body)));
+                yield return new KeyValuePair<string, object?>(field.Name, field.GetValue(body));
             }
         }
 
@@ -133,9 +164,11 @@ namespace Velvet
         private static KeyValuePair<string, string> Pair(object? key, object? value)
             => new(Text(key), Text(value));
 
-        // JavaScript's String(value): null is "null", a boolean is lower-case, a number has no culture, and a
-        // list is its elements joined by "," with a null one empty, as Array.prototype.toString has it.
-        private static string Text(object? value) => value switch
+        // JavaScript's String(value): null is "null", a boolean is lower-case, a number has no culture, a search
+        // params is its serialization, a list is its elements joined by "," with a null one empty, as
+        // Array.prototype.toString has it, and a FormData or any object read as a plain one is what
+        // Object.prototype.toString names it. A formattable C# value with no JavaScript type is its invariant text.
+        internal static string Text(object? value) => value switch
         {
             null => "null",
             bool flag => flag ? "true" : "false",
@@ -143,10 +176,13 @@ namespace Velvet
             float number => JsNumber(double.Parse(number.ToString("R", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture)),
             decimal number => (number / 1.0000000000000000000000000000m).ToString(CultureInfo.InvariantCulture),
             string text => text,
+            char character => character.ToString(),
+            ISearchParams searchParams => RouteQuery.FormUrlEncode(searchParams),
+            FormData => "[object FormData]",
             IDictionary => "[object Object]",
             IEnumerable list => string.Join(",", list.Cast<object?>().Select(item => item == null ? string.Empty : Text(item))),
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? string.Empty,
+            _ => "[object Object]",
         };
 
         // Number::toString: the shortest round-trip digits, positional between 1e-6 and 1e21 and otherwise
