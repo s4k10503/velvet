@@ -34,8 +34,14 @@ The shaders apply CSS `brightness()`'s uniform multiply and `saturate()`'s lerp-
 directly, unclamped, so the **full CSS range** applies: over-brightening (`brightness-150`) and
 over-saturation (`saturate-150`) work, and both match the browser exactly (the arithmetic runs on
 the encoded pixel before the engine's Linear-colorspace conversion, so a Linear project does not
-over-darken). Only negative amounts are rejected, as CSS disallows them. Both shaders are put in front of the
-build by the step [player-builds.md](player-builds.md) describes, which needs nothing from you.
+over-darken). Only negative amounts are rejected, as CSS disallows them.
+
+`hue-rotate` renders through `Velvet/FilterHueRotate` in the same way: the Filter Effects `feColorMatrix`
+`hueRotate` matrix applied to the encoded pixel, as CSS `hue-rotate()` is. UI Toolkit's own hue-rotate filter
+type is not used. `animate-hue` drives the same shader.
+
+All three shaders are put in front of the build by the step [player-builds.md](player-builds.md) describes,
+which needs nothing from you.
 
 Stacked filters compose in a fixed order (blur, brightness, contrast, grayscale, hue-rotate, invert,
 saturate, sepia, drop-shadow) regardless of class order, as Tailwind composes its filter utilities into one
@@ -210,7 +216,7 @@ stops a filter tween already running on the element.
 The definition asset and its shader contract are Unity's:
 [FilterFunctionDefinition](https://docs.unity3d.com/6000.3/Documentation/ScriptReference/UIElements.FilterFunctionDefinition.html)
 (`filterName`, `parameters`, `passes`). Velvet's own `Velvet/FilterBrightness`,
-`Velvet/FilterSaturate` and `Velvet/FilterDropShadow` shaders are written against `UnityUIEFilter.cginc`, and
+`Velvet/FilterSaturate`, `Velvet/FilterHueRotate` and `Velvet/FilterDropShadow` shaders are written against `UnityUIEFilter.cginc`, and
 `BuiltInFilterShaderPlaybackTests` and `DropShadowFilterPlaybackTests` render them on this project's URP
 pipeline.
 

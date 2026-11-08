@@ -4639,39 +4639,22 @@ namespace Velvet
             return fn;
         }
 
-        // Null only when a built-in custom-filter shader (brightness/saturate) is unavailable in the build;
-        // the caller drops that layer. Every other branch always returns a value.
+        // Null only when a built-in custom-filter shader (brightness/saturate/hue-rotate) is unavailable in the
+        // build; the caller drops that layer. Every other branch always returns a value.
         private static FilterFunction? BuildFilter(ArbitraryProperty prop, float value)
         {
-            // brightness and saturate have no UITK filter type; each renders through a first-party
-            // custom-filter shader (BuiltInFilterDefinitions) as a FilterFunctionType.Custom function. The
-            // shaders take the full CSS range (over-brighten and over-saturate, N>1) and do the multiply/lerp
-            // on the encoded pixel before the Linear-output conversion, matching browser semantics exactly.
-            // The stored Value is the raw CSS factor N — the
-            // shader implements saturate's lerp-toward-luminance natively, so there is no 1-N complement to
-            // pre-compute. A null definition (shader stripped from the build) drops the layer, the same degrade
-            // the bake shaders take when their shader is missing.
-            if (prop == ArbitraryProperty.FilterBrightness)
+            // brightness, saturate and hue-rotate render through a first-party custom-filter shader
+            // (BuiltInFilterDefinitions) as a FilterFunctionType.Custom function carrying the raw CSS amount. A null
+            // definition (shader stripped from the build) drops the layer, the same degrade the bake shaders take
+            // when their shader is missing.
+            switch (prop)
             {
-                var def = BuiltInFilterDefinitions.Brightness;
-                if (def == null)
-                {
-                    return null;
-                }
-                var brightness = new FilterFunction(def!);
-                brightness.AddParameter(new FilterParameter(value));
-                return brightness;
-            }
-            if (prop == ArbitraryProperty.FilterSaturate)
-            {
-                var def = BuiltInFilterDefinitions.Saturate;
-                if (def == null)
-                {
-                    return null;
-                }
-                var saturate = new FilterFunction(def!);
-                saturate.AddParameter(new FilterParameter(value));
-                return saturate;
+                case ArbitraryProperty.FilterBrightness:
+                    return BuiltInFilterDefinitions.Amount(BuiltInFilterDefinitions.Brightness, value);
+                case ArbitraryProperty.FilterSaturate:
+                    return BuiltInFilterDefinitions.Amount(BuiltInFilterDefinitions.Saturate, value);
+                case ArbitraryProperty.FilterHueRotate:
+                    return BuiltInFilterDefinitions.Amount(BuiltInFilterDefinitions.HueRotate, value);
             }
 
             // This method's domain is s_filterOrder, which ApplyCombinedFilter — its only caller —
@@ -4683,7 +4666,6 @@ namespace Velvet
                 ArbitraryProperty.FilterBlur => FilterFunctionType.Blur,
                 ArbitraryProperty.FilterContrast => FilterFunctionType.Contrast,
                 ArbitraryProperty.FilterGrayscale => FilterFunctionType.Grayscale,
-                ArbitraryProperty.FilterHueRotate => FilterFunctionType.HueRotate,
                 ArbitraryProperty.FilterInvert => FilterFunctionType.Invert,
                 ArbitraryProperty.FilterSepia => FilterFunctionType.Sepia,
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, "not a built-in filter"),

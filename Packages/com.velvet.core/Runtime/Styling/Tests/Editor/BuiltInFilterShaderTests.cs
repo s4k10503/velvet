@@ -77,6 +77,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ANegatedHueRotatePreset_When_Resolved_Then_TheInlineFilterBindsTheBuiltInHueRotateDefinition()
+        {
+            // Act
+            var fn = ResolveSingle("-hue-rotate-90");
+
+            // Assert
+            Assert.That($"{fn?.customDefinition?.filterName}({fn?.GetParameter(0).floatValue})",
+                Is.EqualTo("velvet-hue-rotate(-90)"));
+        }
+
+        [Test]
+        public void Given_TheBuiltInHueRotateDefinition_When_Inspected_Then_ItsOneParameterDefaultsToZeroDegrees()
+        {
+            // Arrange
+            var def = BuiltInFilterDefinitions.HueRotate;
+
+            // Act
+            var parameters = def?.parameters;
+
+            // Assert — hue-rotate(0) is the identity a cross-transition pads with.
+            Assert.That(parameters is { Length: 1 } ? parameters[0].interpolationDefaultValue.floatValue : float.NaN,
+                Is.EqualTo(0f));
+        }
+
+        [Test]
         public void Given_BrightnessAppliedAfterContrast_When_Composed_Then_BrightnessStillPrecedesContrastInTheList()
         {
             // Arrange — the built-in arrives first; brightness (now a Custom function) must still slot ahead

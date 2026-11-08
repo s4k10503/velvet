@@ -1166,7 +1166,7 @@ namespace Velvet.Tests
             StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
 
             // Assert
-            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
+            Assert.That(element.style.filter.value[0].customDefinition?.filterName, Is.EqualTo("velvet-hue-rotate"));
         }
 
         [Test]
@@ -1182,7 +1182,7 @@ namespace Velvet.Tests
             StyleFilterTransitionDriver.Detach(element, binding);
 
             // Assert
-            Assert.That(element.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.HueRotate));
+            Assert.That(element.style.filter.value[0].customDefinition?.filterName, Is.EqualTo("velvet-hue-rotate"));
         }
 
         #endregion

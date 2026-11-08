@@ -3,10 +3,11 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The first-party custom-filter definitions that back the brightness-*, saturate-* and drop-shadow-*
-    // utilities. UI Toolkit's FilterFunctionType enum has no member for any of them, so the only way to render
-    // one is a FilterFunctionType.Custom function bound to a FilterFunctionDefinition. Brightness and saturate
-    // are one single-pass unlit shader each (Velvet/FilterBrightness, Velvet/FilterSaturate), authored to the
+    // The first-party custom-filter definitions that back the brightness-*, saturate-*, hue-rotate-* and
+    // drop-shadow-* utilities. UI Toolkit's FilterFunctionType enum has no member for the first, second and
+    // fourth, and its HueRotate does not render the Filter Effects matrix, so each is a FilterFunctionType.Custom
+    // function bound to a FilterFunctionDefinition. Brightness, saturate and hue-rotate are one single-pass
+    // unlit shader each (Velvet/FilterBrightness, Velvet/FilterSaturate, Velvet/FilterHueRotate), authored to the
     // full CSS range (over-brighten / over-saturate) that the old Tint / grayscale(1-N) approximations could not
     // reach; drop-shadow is Velvet/FilterDropShadow's two passes.
     //
@@ -20,13 +21,29 @@ namespace Velvet
     {
         private static FilterFunctionDefinition? s_brightness;
         private static FilterFunctionDefinition? s_saturate;
+        private static FilterFunctionDefinition? s_hueRotate;
         private static FilterFunctionDefinition? s_dropShadow;
 
         internal static FilterFunctionDefinition? Brightness
-            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", FilterNamePrefix + "brightness");
+            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", FilterNamePrefix + "brightness", 1f);
 
         internal static FilterFunctionDefinition? Saturate
-            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", FilterNamePrefix + "saturate");
+            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", FilterNamePrefix + "saturate", 1f);
+
+        internal static FilterFunctionDefinition? HueRotate
+            => IsUsable(s_hueRotate) ? s_hueRotate : s_hueRotate = Build(VelvetShaders.FilterHueRotate, "_HueRotate", FilterNamePrefix + "hue-rotate", 0f);
+
+        // A function of one of the single-amount definitions above, or null where its shader is unavailable.
+        internal static FilterFunction? Amount(FilterFunctionDefinition? definition, float amount)
+        {
+            if (definition == null)
+            {
+                return null;
+            }
+            var function = new FilterFunction(definition!);
+            function.AddParameter(new FilterParameter(amount));
+            return function;
+        }
 
         // First-party is keyed on the filter-name prefix Build gives its definitions rather than on the cached two: a
         // shader reimport and the subsystem reset below both replace a cached one while elements still hold the one
@@ -57,9 +74,9 @@ namespace Velvet
 
         // An unavailable shader degrades to "layer omitted" rather than throwing, mirroring
         // BoxShadowBaker.EnsureMaterial.
-        private static FilterFunctionDefinition? Build(string shaderPath, string propertyName, string filterName)
+        private static FilterFunctionDefinition? Build(string shaderPath, string propertyName, string filterName, float identity)
         {
-            var shader = VelvetShaders.Find(shaderPath, "Filter", "brightness/saturate layer");
+            var shader = VelvetShaders.Find(shaderPath, "Filter", filterName.Substring(FilterNamePrefix.Length) + " layer");
             if (shader == null)
             {
                 return null;
@@ -68,15 +85,15 @@ namespace Velvet
             var def = ScriptableObject.CreateInstance<FilterFunctionDefinition>();
             def.hideFlags = HideFlags.HideAndDontSave;
             def.filterName = filterName;
-            // Exactly one declared parameter, defaulting to the CSS identity (brightness(1)/saturate(1) are
-            // no-ops). It is also the value UI Toolkit falls back to when padding a cross-transition, per
+            // Exactly one declared parameter, defaulting to the CSS identity (brightness(1), saturate(1) and
+            // hue-rotate(0) are no-ops). It is also the value UI Toolkit falls back to when padding a cross-transition, per
             // FilterParameterDeclaration.interpolationDefaultValue.
             def.parameters = new[]
             {
                 new FilterParameterDeclaration
                 {
                     name = "amount",
-                    interpolationDefaultValue = new FilterParameter(1f),
+                    interpolationDefaultValue = new FilterParameter(identity),
                 },
             };
             def.passes = new[]
@@ -194,6 +211,7 @@ namespace Velvet
         {
             s_brightness = null;
             s_saturate = null;
+            s_hueRotate = null;
             s_dropShadow = null;
         }
 #endif
