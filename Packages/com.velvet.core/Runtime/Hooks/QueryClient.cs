@@ -162,8 +162,8 @@ namespace Velvet
     /// TanStack Query's <c>QueryClient</c>: a cache of query results keyed by <see cref="QueryKey"/>, shared
     /// by every <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> that reaches it. One entry holds one result and at most one
     /// request in flight, whichever component started it, and keeps the result after the components reading
-    /// it unmount, until it is collected. A request in flight is kept too when its query function takes no token;
-    /// one that does is cancelled when the last component reading the entry leaves, as
+    /// it unmount, until it is collected. A request in flight is kept too when its query function has not read the
+    /// token; one that has is cancelled when the last component reading the entry leaves, as
     /// <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/> describes.
     /// </summary>
     /// <remarks>
@@ -295,7 +295,7 @@ namespace Velvet
         /// a result fetched before the change that invalidated it does not land as current, and joined when
         /// the entry is still waiting on its first result. An entry nothing reads is not fetched: a query
         /// mounting over it later fetches it, and a request it still has in flight, one whose query function
-        /// takes no token, is left to land.
+        /// has not read the token, is left to land.
         /// </summary>
         /// <param name="queryKey">The filter; null matches every entry.</param>
         /// <returns>A task that completes once the requests this started have settled, whatever they did, so
@@ -1167,9 +1167,8 @@ namespace Velvet
         private QueryFetchOptions<T>? _options;
         // TanStack's #revertState: the state a request found the entry in, which cancelling it with revert puts back.
         private EntryState? _revertState;
-        // Whether the request in flight runs a query function that takes the token, which v5 tells by the function
-        // reading its signal.
-        private bool _requestTakesToken;
+        // Whether the request in flight ran a query function that read the token, v5's #abortSignalConsumed.
+        private bool _tokenRead;
         // The callers waiting on the request in flight, each settled when the request lands, fails or is cancelled.
         private List<VelvetTaskCompletionSource<T>>? _waiters;
         private List<VelvetTaskCompletionSource<Unit>>? _suspended;
@@ -1334,7 +1333,7 @@ namespace Velvet
 
         }
 
-        // With the last observer gone, a request whose query function takes the token is cancelled and the entry
+        // With the last observer gone, a request whose query function read the token is cancelled and the entry
         // put back as it stood before the request, as TanStack's removeObserver cancels with revert a request whose
         // function read its signal, and one that is paused with no data. Any other request finishes but is not
         // retried, where removeObserver calls cancelRetry.
@@ -1351,7 +1350,7 @@ namespace Velvet
 
         private void OnLastObserverLeft()
         {
-            if (_inFlight != null && (_requestTakesToken || (_paused && Status == QueryStatus.Pending)))
+            if (_inFlight != null && (_tokenRead || (_paused && Status == QueryStatus.Pending)))
             {
                 CancelInFlight();
                 Revert();
@@ -1433,7 +1432,7 @@ namespace Velvet
             _fetchDirection = direction;
             // TanStack's behavior.onFetch, which reads the data as the request finds it.
             var attempt = options.Behavior?.OnFetch(HasData, Data, direction);
-            _requestTakesToken = false;
+            _tokenRead = false;
             var request = new CancellationTokenSource();
             _inFlight = request;
             _retriesStopped = false;
@@ -1482,7 +1481,7 @@ namespace Velvet
                 var token = request.Token;
                 // Each attempt starts unread: its function reads the token or does not as it runs, which a request
                 // paused at the outset has not done yet.
-                if (ReferenceEquals(_inFlight, request)) _requestTakesToken = false;
+                if (ReferenceEquals(_inFlight, request)) _tokenRead = false;
                 var task = Start(attempt ?? queryFn.Invoke, meta, request);
 
                 try
@@ -1560,7 +1559,7 @@ namespace Velvet
             {
                 return run(new QueryFunctionContext(Client, Key, meta, request.Token, () =>
                 {
-                    if (ReferenceEquals(_inFlight, request)) _requestTakesToken = true;
+                    if (ReferenceEquals(_inFlight, request)) _tokenRead = true;
                 }));
             }
             catch (Exception ex)

@@ -133,7 +133,7 @@ namespace Velvet.Tests
         public void Given_AnIdleEntryWithNoData_When_AReaderWhoseFetchGivesItInitialDataMountsAndTheMainThreadTurns_Then_ItRendersThatData()
         {
             // Arrange — a prefetch whose request is cancelled leaves the entry pending, idle and without data.
-            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
             s_client.CancelQueries().Forget();
             s_initialData = () => 3;
             using var mounted = Mount();
@@ -212,7 +212,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             var result = Hooks.UseSuspenseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = TimeSpan.Zero, Enabled = s_enabled, InitialData = s_initialData },
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = TimeSpan.Zero, Enabled = s_enabled, InitialData = s_initialData },
                 s_client);
             return V.Label(text: "data:" + result.Data);
         }

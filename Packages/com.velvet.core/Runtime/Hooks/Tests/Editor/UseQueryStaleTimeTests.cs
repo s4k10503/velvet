@@ -329,7 +329,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch) { StaleTime = s_staleTime, Enabled = s_enabled, Retry = 0 },
+                new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = s_staleTime, Enabled = s_enabled, Retry = 0 },
                 s_client);
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;

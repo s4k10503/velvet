@@ -444,7 +444,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     Retry = 0,

@@ -32,11 +32,11 @@
   and `QueryFilters.Predicate` are handed the entry's `Query`, which reads the entry as it stands rather than
   as it stood at the call. A nullable `previousQuery` is tested with `!= null` rather than `HasValue`.
 - The options every query shares move to `QueryOptionsBase`, which `QueryOptions` and `InfiniteQueryOptions`
-  derive from. `QueryOptions.QueryFn` is a `QueryFunction<T>`, holding a function that takes the context, the
-  token or nothing; a `with { QueryFn = ... }` hands it `QueryFunction.Of(...)`.
+  derive from. `QueryOptions.QueryFn` is a `QueryFunction<T>`, holding a function that takes the context or
+  nothing; a `with { QueryFn = ... }` hands it `QueryFunction.Of(...)`.
+- The `QueryOptions` constructors taking a function of a `CancellationToken` are removed: a query function takes
+  the `QueryFunctionContext`, as v5's does, and reads `context.CancellationToken`, or takes nothing. Reading the
+  token is what makes the last reader leaving cancel the request.
 - `QueryFilters.Exact` is a `bool?`; `QueryCache.Find` reads null as true, as v5's `find` defaults `exact`.
 - Invalidating an entry tells the queries reading it, as v5's invalidate dispatch does, so a result reading
   `IsStale` re-renders with the invalidation.
-- A query function lambda whose untyped parameter its body never uses, such as `_ => ...`, no longer compiles,
-  being ambiguous between the token-taking and the context-taking constructors: write
-  `(CancellationToken _) => ...`.

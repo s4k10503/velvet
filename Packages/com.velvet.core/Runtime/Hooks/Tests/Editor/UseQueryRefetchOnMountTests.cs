@@ -217,7 +217,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode FirstReader(string key)
         {
-            Hooks.UseQuery(new QueryOptions<int>(new QueryKey(key), Fetch) { StaleTime = s_staleTime }, s_client);
+            Hooks.UseQuery(new QueryOptions<int>(new QueryKey(key), (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = s_staleTime }, s_client);
             return V.Label(text: "first");
         }
 
@@ -225,7 +225,7 @@ namespace Velvet.Tests
         private static VNode SecondReader()
         {
             s_secondRenders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch)
+                new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     RefetchOnMount = s_secondMode,

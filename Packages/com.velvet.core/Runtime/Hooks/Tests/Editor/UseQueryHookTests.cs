@@ -2173,7 +2173,7 @@ namespace Velvet.Tests
         public void Given_OptionsWithoutAKey_When_AQueryRenders_Then_ItThrowsNamingTheKey()
         {
             // Arrange
-            s_badOptions = new QueryOptions<int>(null!, (CancellationToken _) => VelvetTask.FromResult(0));
+            s_badOptions = new QueryOptions<int>(null!, _ => VelvetTask.FromResult(0));
             LogAssert.Expect(LogType.Exception, new Regex("QueryOptions.QueryKey must not be null"));
 
             // Act
@@ -2186,7 +2186,7 @@ namespace Velvet.Tests
         public void Given_OptionsWithoutAFunction_When_AQueryRenders_Then_ItThrowsNamingTheFunction()
         {
             // Arrange
-            s_badOptions = new QueryOptions<int>(Todos, (Func<CancellationToken, VelvetTask<int>>)null!);
+            s_badOptions = new QueryOptions<int>(Todos, (Func<QueryFunctionContext, VelvetTask<int>>)null!);
             LogAssert.Expect(LogType.Exception, new Regex("QueryOptions.QueryFn must not be null"));
 
             // Act
@@ -2215,9 +2215,9 @@ namespace Velvet.Tests
         {
             var key = new QueryKey(parts);
             var options = s_takesToken
-                ? new QueryOptions<int>(key, token => Fetch(key, token))
+                ? new QueryOptions<int>(key, context => Fetch(key, context.CancellationToken))
                 : new QueryOptions<int>(key, () => Fetch(key, default));
-            if (s_replaceFunction) options = options with { QueryFn = QueryFunction.Of((CancellationToken token) => Fetch(key, token)) };
+            if (s_replaceFunction) options = options with { QueryFn = QueryFunction.Of((QueryFunctionContext context) => Fetch(key, context.CancellationToken)) };
             return options with
             {
                 StaleTime = s_staleTime,

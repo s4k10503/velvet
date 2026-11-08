@@ -358,7 +358,7 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `new QueryClient({ defaultOptions: { queries: { staleTime, gcTime } } })` | `new QueryClient(new QueryClientOptions { StaleTime = ..., GcTime = ... })` |
 | `<QueryClientProvider client={client}>` | `V.Provider(QueryClientContext.Ref, client, children: ...)` |
 | `useQueryClient()` | `Hooks.UseContext(QueryClientContext.Ref)` |
-| `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), ct => ...))` |
+| `useQuery({ queryKey: ['todos', id], queryFn })` | `Hooks.UseQuery(new QueryOptions<T>(new QueryKey("todos", id), context => ...))` |
 | `useQuery(options, queryClient)` | `Hooks.UseQuery(options, client)` |
 | `useSuspenseQuery(options)` | `Hooks.UseSuspenseQuery(options)` |
 | `staleTime` / `gcTime` on one query | `new QueryOptions<T>(...) { StaleTime = ..., GcTime = ... }` |
@@ -375,8 +375,7 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `refetchInterval: (query) => ...` | `RefetchIntervalFn = query => ...`, handed the entry's `Query` |
 | `refetchOnWindowFocus` / `refetchOnReconnect` as `false` / `true` / `'always'` | `RefetchOnWindowFocus` / `RefetchOnReconnect` = `QueryRefetchMode.Never` / `IfStale` / `Always`, on one query or on `QueryClientOptions` |
 | `refetchOnWindowFocus: (query) => ...` / `refetchOnReconnect: (query) => ...` | `RefetchOnWindowFocusFn` / `RefetchOnReconnectFn` = `info => QueryRefetchMode...`, on one query or on `QueryClientOptions` |
-| `queryFn: ({ signal }) => ...` | `new QueryOptions<T>(key, token => ...)`; a function taking no token is the one that never reads the signal |
-| `queryFn: ({ client, queryKey, signal, meta }) => ...` | `new QueryOptions<T>(key, (QueryFunctionContext context) => ...)`, reading `context.Client`, `QueryKey`, `CancellationToken` and `Meta`; a lambda names its parameter's type, which tells the two constructors apart |
+| `queryFn: ({ client, queryKey, signal, meta }) => ...` / `queryFn: () => ...` | `new QueryOptions<T>(key, context => ...)`, reading `context.Client`, `QueryKey`, `CancellationToken` and `Meta` / `new QueryOptions<T>(key, () => ...)` |
 | `meta` on a query | `new QueryOptions<T>(...) { Meta = new Dictionary<string, object?> { ... } }`, read back as `Query.Meta` |
 | `focusManager` / `onlineManager` | `NetworkSignals.IsVisible` / `IsOnline` |
 | `retry` as a number, `true`, `false` or `(failureCount, error) => ...` / `retryDelay` as a function | `new QueryOptions<T>(...) { Retry = 3 \| true \| false \| RetryRule.When((failureCount, error) => ...), RetryDelay = ... }`, or `QueryClientOptions.Retry` / `RetryDelay` for every query |
@@ -446,7 +445,7 @@ starting another. `OfflineFirst` makes the first request whatever the connection
 `Always` never pauses for the connection. Every retry that comes due waits until the application is
 visible, in every mode, and outside `Always` a connection. A paused entry is a request in flight: it
 is selected by `FetchStatus = Paused`, `GetQueryState` reports it, and its entry is not collected while it
-waits. The last reader leaving ends it as v5 does: a request whose function takes the token, or one with no data to show, is cancelled and the entry put back as it was, while a paused refetch over data whose function takes no token stays in flight. A query's
+waits. The last reader leaving ends it as v5 does: a request whose function read the token, or one with no data to show, is cancelled and the entry put back as it was, while a paused refetch over data whose function has not read it stays in flight. A query's
 `NetworkMode` replaces the client's, which replaces the default. Mutations take the same readings through
 [`RetryPolicy`](#1-2a-async-mutations--hooksusemutation).
 
@@ -576,7 +575,7 @@ its instance changes. A `Select` applies to the placeholder too, and one that th
 that is not flagged `IsPlaceholderData`, as v5's main does.
 
 ```csharp
-var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageIndex), ct => api.Page(pageIndex, ct))
+var page = Hooks.UseQuery(new QueryOptions<Todo[]>(new QueryKey("todos", pageIndex), context => api.Page(pageIndex, context.CancellationToken))
 {
     PlaceholderData = QueryPlaceholder.KeepPreviousData,
 });
@@ -628,12 +627,10 @@ an interval, stale-time, enabled or retry-on-mount function's once per function 
 starts that request over, by `Clear`, and when the last query reading the entry leaves while the request is
 in flight; in that last case the entry is put back as it stood before the request, as v5's
 `cancel({ revert: true })` does, so a component mounting again fetches afresh. v5 does this for a function
-that read its `signal`, and lets any other run on; here a function taking the token (`token => ...`) counts as having
-read it, and a function taking none (`() => ...`) runs on and lands its result. A function taking the
-`QueryFunctionContext` counts as having read the signal once it reads `context.CancellationToken`, as v5 tells
-by the read. StrictMode's extra cleanup
-and setup of a mounting component's effects therefore cancels the first request and starts a second one
-for a function taking the token, as in v5.
+that read its `signal`, and lets any other run on; here a function that read `context.CancellationToken` is
+cancelled, and one that did not, a function taking no context among them, runs on and lands its result.
+StrictMode's extra cleanup and setup of a mounting component's effects therefore cancels the first request
+and starts a second one for a function that reads the token, as in v5.
 
 **Reading and writing the cache by hand.** `GetQueryData` returns an entry's data, default when it has
 none or has expired unread. `SetQueryData` writes data as a request landing would: the entry is `Success`
@@ -763,17 +760,10 @@ another type, since a filter selects across keys.
   share one request; v5's result arrives a microtask later.
 - Sharing into a class instance works on fields where v5 works on enumerable properties, so a private field,
   and one a base class declares, is shared too.
-- A query function counts as having read v5's `signal` when it takes the `CancellationToken`, whether or not
-  it uses it; v5 tells by the function reading `signal`. A token-taking function that ignores the token is
-  cancelled with its last reader here, where v5 lets it run on.
 - A key holds one data type. A query reading it as another throws `InvalidOperationException`.
 - A client with a mounted query reads `NetworkSignals` once a frame, and a reading that turns true since its
   previous one stands for the event v5's managers listen to. A change that comes and goes within one frame
   is not seen.
-- `Query` carries its state's properties itself, where v5 nests them under `query.state`, and has neither the
-  query's methods that change it (`setState`, `fetch`, `cancel`, `reset`, `invalidate`) nor its `options`; the
-  client's commands do that work.
-
 
 ### 1-3. State Management (React + Zustand)
 

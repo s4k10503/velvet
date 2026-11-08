@@ -397,7 +397,7 @@ namespace Velvet.Tests
 
         private static VelvetTaskCompletionSource<int> Source(string key) => s_sources[key][s_sources[key].Count - 1];
 
-        private static QueryOptions<int> Options(string key) => new(new QueryKey(key), (CancellationToken _) =>
+        private static QueryOptions<int> Options(string key) => new(new QueryKey(key), _ =>
         {
             if (!s_sources.TryGetValue(key, out var list)) s_sources.Add(key, list = new List<VelvetTaskCompletionSource<int>>());
             var source = new VelvetTaskCompletionSource<int>();
@@ -461,7 +461,7 @@ namespace Velvet.Tests
             if (type == UnityEngine.LogType.Warning && message.Contains("Duplicate Queries found")) s_warnings++;
         }
 
-        private static QueryOptions<string> TextOptions() => new(new QueryKey("text"), (CancellationToken _) =>
+        private static QueryOptions<string> TextOptions() => new(new QueryKey("text"), _ =>
         {
             var source = new VelvetTaskCompletionSource<string>();
             s_textSources.Add(source);

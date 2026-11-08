@@ -11,7 +11,7 @@
 - `QueryOptions.RefetchIntervalFn`, `RefetchOnWindowFocusFn` and `RefetchOnReconnectFn` (the last two also on
   `QueryClientOptions`), TanStack Query v5's function forms of those options, handed the entry's
   `Query`.
-- `QueryOptions` constructors taking a query function without a `CancellationToken`, whose request is not
+- `QueryOptions` constructors taking a query function with no arguments, whose request is not
   cancelled when its last reader leaves, as TanStack Query's is for a function that never reads its `signal`.
 
 ### Fixed

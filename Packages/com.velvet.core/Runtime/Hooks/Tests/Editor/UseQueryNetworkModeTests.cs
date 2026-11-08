@@ -407,7 +407,7 @@ namespace Velvet.Tests
             s_online = false;
 
             // Act
-            _ = s_client.FetchQuery(new QueryOptions<int>(new QueryKey("todos"), Fetch));
+            _ = s_client.FetchQuery(new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken)));
 
             // Assert
             Assert.That(s_client.GetQueryState<int>(new QueryKey("todos"))?.FetchStatus, Is.EqualTo(QueryFetchStatus.Paused),
@@ -637,7 +637,7 @@ namespace Velvet.Tests
         {
             var key = new QueryKey("todos");
             var options = s_takesToken
-                ? new QueryOptions<int>(key, Fetch)
+                ? new QueryOptions<int>(key, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 : new QueryOptions<int>(key, () => Fetch(default));
             s_renders.Add(Hooks.UseQuery(
                 options with { NetworkMode = s_mode, NotifyOnChangeProps = s_notify },

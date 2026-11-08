@@ -169,7 +169,7 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options(string reader, int page)
-            => new(Page(page), (CancellationToken _) =>
+            => new(Page(page), _ =>
             {
                 s_fetched.Add(reader + page);
                 var source = new VelvetTaskCompletionSource<int>();

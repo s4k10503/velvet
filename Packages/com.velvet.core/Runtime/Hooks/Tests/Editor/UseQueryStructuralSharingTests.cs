@@ -762,7 +762,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<object>(new QueryKey("todos"), Fetch)
+                new QueryOptions<object>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Retry = 0,
                     StructuralSharing = s_sharing,
@@ -776,7 +776,7 @@ namespace Velvet.Tests
         private static VNode DataReader()
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<object>(new QueryKey("todos"), Fetch) { Retry = 0, StructuralSharing = s_sharing },
+                new QueryOptions<object>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken)) { Retry = 0, StructuralSharing = s_sharing },
                 s_client);
             s_renderCount++;
             s_renders.Add(result);

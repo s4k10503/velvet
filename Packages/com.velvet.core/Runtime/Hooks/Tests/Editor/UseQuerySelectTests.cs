@@ -431,7 +431,7 @@ namespace Velvet.Tests
             // A copy of the field's delegate is a new instance, as a lambda capturing a render's values would be.
             var select = s_freshSelectEachRender ? (Func<int[], List<int>>)AboveOne.Invoke : AboveOne;
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                new QueryOptions<int[], List<int>>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = select,
                     Retry = 0,
@@ -448,7 +448,7 @@ namespace Velvet.Tests
             s_setTick = setTick;
             s_watchRenders++;
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                new QueryOptions<int[], List<int>>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = AboveOne,
                     Retry = 0,
@@ -465,7 +465,7 @@ namespace Velvet.Tests
             s_setTick = setTick;
             s_watchRenders++;
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                new QueryOptions<int[], List<int>>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = AtMostTwo,
                     Retry = 0,
@@ -479,7 +479,7 @@ namespace Velvet.Tests
         private static VNode Recovering()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                new QueryOptions<int[], List<int>>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = NotEmpty,
                     Retry = 0,
@@ -493,7 +493,7 @@ namespace Velvet.Tests
         private static VNode Counting()
         {
             s_counts.Add(Hooks.UseQuery(
-                new QueryOptions<int[], int>(Todos, Fetch) { Select = data => data.Length, Retry = 0 },
+                new QueryOptions<int[], int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { Select = data => data.Length, Retry = 0 },
                 s_client));
             return V.Label(text: "counting");
         }
@@ -502,7 +502,7 @@ namespace Velvet.Tests
         private static VNode CountingWithSharing()
         {
             s_counts.Add(Hooks.UseQuery(
-                new QueryOptions<int[], int>(Todos, Fetch)
+                new QueryOptions<int[], int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = data => data.Length,
                     Retry = 0,
@@ -520,7 +520,7 @@ namespace Velvet.Tests
         private static VNode Throwing()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int[], List<int>>(Todos, Fetch)
+                new QueryOptions<int[], List<int>>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = _ => throw new InvalidOperationException("select-failed"),
                     Retry = 0,
@@ -536,7 +536,7 @@ namespace Velvet.Tests
             var (page, setPage) = Hooks.UseState(1);
             s_setPage = setPage;
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int[], List<int>>(new QueryKey("todos", page), Fetch)
+                new QueryOptions<int[], List<int>>(new QueryKey("todos", page), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = Failing,
                     Retry = 0,
@@ -552,7 +552,7 @@ namespace Velvet.Tests
             var (page, setPage) = Hooks.UseState(1);
             s_setPage = setPage;
             s_counts.Add(Hooks.UseQuery(
-                new QueryOptions<int[], int>(new QueryKey("todos", page), Fetch)
+                new QueryOptions<int[], int>(new QueryKey("todos", page), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = FailingCount,
                     Retry = 0,
@@ -565,7 +565,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode Unselected()
         {
-            Hooks.UseQuery(new QueryOptions<int[], int>(Todos, Fetch), s_client);
+            Hooks.UseQuery(new QueryOptions<int[], int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)), s_client);
             return V.Label(text: "unselected");
         }
 

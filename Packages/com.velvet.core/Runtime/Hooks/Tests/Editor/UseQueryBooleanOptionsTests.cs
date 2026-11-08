@@ -123,7 +123,7 @@ namespace Velvet.Tests
 
         private static void FailedEntry()
         {
-            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
             s_sources[0].TrySetException(new InvalidOperationException("offline"));
         }
 
@@ -145,7 +145,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     EnabledFn = s_enabledFn,
                     RetryOnMount = s_retryOnMount,

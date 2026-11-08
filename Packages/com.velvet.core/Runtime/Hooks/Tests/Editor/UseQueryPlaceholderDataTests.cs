@@ -620,7 +620,7 @@ namespace Velvet.Tests
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("page", page), Fetch)
+                new QueryOptions<int>(new QueryKey("page", page), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     PlaceholderData = s_placeholder,
                     Retry = 0,
@@ -636,7 +636,7 @@ namespace Velvet.Tests
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             s_selected.Add(Hooks.UseQuery(
-                new QueryOptions<int, string>(new QueryKey("page", 1), Fetch)
+                new QueryOptions<int, string>(new QueryKey("page", 1), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     PlaceholderData = Nine,
                     Select = s_select,
@@ -651,7 +651,7 @@ namespace Velvet.Tests
         {
             s_flagRenders++;
             Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("page", 1), Fetch)
+                new QueryOptions<int>(new QueryKey("page", 1), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     PlaceholderData = Nine,
                     Retry = 0,

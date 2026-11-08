@@ -286,7 +286,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch)
+                new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = TimeSpan.FromMinutes(1),
                     Retry = 0,

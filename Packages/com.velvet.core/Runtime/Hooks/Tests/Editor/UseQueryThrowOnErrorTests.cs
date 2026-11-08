@@ -184,7 +184,7 @@ namespace Velvet.Tests
             // Arrange — the reader is disabled, so it mounts over the failure without fetching it.
             s_throwOnError = true;
             s_enabled = false;
-            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
             s_sources[0].TrySetException(new InvalidOperationException("offline"));
             s_resetBoundary.Reset();
 
@@ -253,7 +253,7 @@ namespace Velvet.Tests
         {
             s_readBoundary = Hooks.UseQueryErrorResetBoundary();
             var result = Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     ThrowOnError = s_throwOnError,
                     ThrowOnErrorFn = s_throwOnErrorFn,

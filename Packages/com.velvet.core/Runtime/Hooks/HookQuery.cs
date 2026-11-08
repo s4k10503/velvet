@@ -476,9 +476,8 @@ namespace Velvet
     /// request, when <see cref="QueryClient.Clear"/> removes the entry, and when the last query reading the
     /// entry leaves while the request is in flight, which also puts the entry back as it stood before the
     /// request started: TanStack Query aborts the request of a query function that read its <c>signal</c> in
-    /// the same case. A function that reads <see cref="QueryFunctionContext.CancellationToken"/> has read it, and so
-    /// has a function taking the token; one taking no token never has, and its request runs on after the last
-    /// reader leaves.</param>
+    /// the same case, which is what reading <see cref="QueryFunctionContext.CancellationToken"/> counts as here; a
+    /// function taking no context never reads it, and its request runs on after the last reader leaves.</param>
     public record QueryOptions<TQueryFnData, TData>(QueryKey QueryKey, QueryFunction<TQueryFnData> QueryFn)
         : QueryOptionsBase<TQueryFnData, TData>(QueryKey)
     {
@@ -491,16 +490,8 @@ namespace Velvet
         {
         }
 
-        /// <summary>Options whose query function takes the token, and so has read it.</summary>
-        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-        /// <param name="queryFn">Fetches the entry's data.</param>
-        public QueryOptions(QueryKey queryKey, Func<CancellationToken, VelvetTask<TQueryFnData>> queryFn)
-            : this(queryKey, QueryFunction.Of(queryFn))
-        {
-        }
-
         /// <summary>
-        /// Options whose query function takes no token: its request is not cancelled when the last query
+        /// Options whose query function takes no context: its request is not cancelled when the last query
         /// reading the entry leaves, and lands in the entry for the next reader to find.
         /// </summary>
         /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
@@ -529,16 +520,8 @@ namespace Velvet
         {
         }
 
-        /// <summary>Options whose query function takes the token.</summary>
-        /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
-        /// <param name="queryFn">Fetches the entry's data.</param>
-        public QueryOptions(QueryKey queryKey, Func<CancellationToken, VelvetTask<T>> queryFn)
-            : this(queryKey, QueryFunction.Of(queryFn))
-        {
-        }
-
-        /// <summary>Options whose query function takes no token; see the constructor of
-        /// <see cref="QueryOptions{TQueryFnData, TData}"/> taking one.</summary>
+        /// <summary>Options whose query function takes no context; see the constructor of
+        /// <see cref="QueryOptions{TQueryFnData, TData}"/> taking none.</summary>
         /// <param name="queryKey">Names the cache entry. Queries presenting equal keys share one entry.</param>
         /// <param name="queryFn">Fetches the entry's data.</param>
         public QueryOptions(QueryKey queryKey, Func<VelvetTask<T>> queryFn)
@@ -547,24 +530,21 @@ namespace Velvet
         }
     }
 
-    /// <summary>Makes a <see cref="QueryFunction{T}"/> of a function of any of the three forms.</summary>
+    /// <summary>Makes a <see cref="QueryFunction{T}"/> of a function of either form.</summary>
     public static class QueryFunction
     {
         /// <summary>A function taking the <see cref="QueryFunctionContext"/>.</summary>
         public static QueryFunction<T> Of<T>(Func<QueryFunctionContext, VelvetTask<T>> queryFn) => new(queryFn);
-
-        /// <summary>A function taking the token, which counts as reading it.</summary>
-        public static QueryFunction<T> Of<T>(Func<CancellationToken, VelvetTask<T>> queryFn) => new(queryFn);
 
         /// <summary>A function taking nothing, which never reads the token.</summary>
         public static QueryFunction<T> Of<T>(Func<VelvetTask<T>> queryFn) => new(queryFn);
     }
 
     /// <summary>
-    /// A query function in one of its three forms — taking the <see cref="QueryFunctionContext"/>, the token, or
-    /// nothing — as <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/> holds it. Two compare equal when they
-    /// hold equal delegates, so options rebuilt each render around one function compare equal. Each of the three
-    /// delegate types converts to it implicitly.
+    /// A query function taking TanStack Query's <see cref="QueryFunctionContext"/>, or nothing, as
+    /// <see cref="QueryOptions{TQueryFnData, TData}.QueryFn"/> holds it. Two compare equal when they hold equal
+    /// delegates, so options rebuilt each render around one function compare equal. Either delegate type converts
+    /// to it implicitly.
     /// </summary>
     /// <typeparam name="T">What the function returns.</typeparam>
     public readonly struct QueryFunction<T> : IEquatable<QueryFunction<T>>
@@ -576,14 +556,12 @@ namespace Velvet
         /// <summary>Whether a function is held.</summary>
         public bool HasValue => _fn != null;
 
-        /// <summary>The function as it was given: a <c>Func</c> of the context, of the token, or of nothing.</summary>
+        /// <summary>The function as it was given: a <c>Func</c> of the context, or of nothing.</summary>
         public Delegate? Delegate => _fn;
 
-        // The token-taking form reads the context's token as it starts, which is the read that marks the request.
         internal VelvetTask<T> Invoke(QueryFunctionContext context) => _fn switch
         {
             Func<QueryFunctionContext, VelvetTask<T>> contextual => contextual(context),
-            Func<CancellationToken, VelvetTask<T>> tokenTaking => tokenTaking(context.CancellationToken),
             Func<VelvetTask<T>> tokenless => tokenless(),
             _ => throw new InvalidOperationException("The query has no QueryFn."),
         };
@@ -599,9 +577,6 @@ namespace Velvet
 
         /// <summary>Wraps a function taking the context.</summary>
         public static implicit operator QueryFunction<T>(Func<QueryFunctionContext, VelvetTask<T>> queryFn) => new(queryFn);
-
-        /// <summary>Wraps a function taking the token.</summary>
-        public static implicit operator QueryFunction<T>(Func<CancellationToken, VelvetTask<T>> queryFn) => new(queryFn);
 
         /// <summary>Wraps a function taking nothing.</summary>
         public static implicit operator QueryFunction<T>(Func<VelvetTask<T>> queryFn) => new(queryFn);

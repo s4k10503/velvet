@@ -117,7 +117,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = TimeSpan.MaxValue, NotifyOnChangeProps = QueryProperties.All },
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = TimeSpan.MaxValue, NotifyOnChangeProps = QueryProperties.All },
                 s_client));
             return V.Label(text: "reader");
         }

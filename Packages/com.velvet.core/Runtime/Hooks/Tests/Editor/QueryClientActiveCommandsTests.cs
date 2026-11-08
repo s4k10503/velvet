@@ -403,7 +403,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = Mount();
-            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, Fetch));
+            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)));
 
             // Act
             s_sources[0].TrySetResult(4);
@@ -418,7 +418,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = Mount();
-            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, Fetch));
+            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)));
 
             // Act
             s_sources[0].TrySetResult(4);
@@ -457,7 +457,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     Retry = 0,

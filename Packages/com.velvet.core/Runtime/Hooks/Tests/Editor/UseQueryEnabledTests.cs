@@ -344,10 +344,10 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options(string reader, bool enabled)
-            => new(Todos, token =>
+            => new(Todos, context =>
             {
                 s_fetched.Add(reader);
-                s_tokens.Add(token);
+                s_tokens.Add(context.CancellationToken);
                 var source = new VelvetTaskCompletionSource<int>();
                 s_sources.Add(source);
                 return source.Task;

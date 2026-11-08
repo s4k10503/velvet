@@ -732,7 +732,7 @@ namespace Velvet.Tests
             }
         }
 
-        private static QueryOptions<int> Options() => new(Todos, Fetch) { Retry = 0 };
+        private static QueryOptions<int> Options() => new(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { Retry = 0 };
 
         private static QueryOptions<int> ContextOptions() => new(Todos, (QueryFunctionContext context) =>
         {

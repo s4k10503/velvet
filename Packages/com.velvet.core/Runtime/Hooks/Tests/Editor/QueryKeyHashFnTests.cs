@@ -263,6 +263,6 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options(string key)
-            => new QueryOptions<int>(new QueryKey(key), Fetch) with { QueryKeyHashFn = s_queryHashFn };
+            => new QueryOptions<int>(new QueryKey(key), (QueryFunctionContext context) => Fetch(context.CancellationToken)) with { QueryKeyHashFn = s_queryHashFn };
     }
 }

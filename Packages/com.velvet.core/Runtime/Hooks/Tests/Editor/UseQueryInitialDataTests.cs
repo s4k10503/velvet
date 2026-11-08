@@ -146,7 +146,7 @@ namespace Velvet.Tests
         public void Given_AnEntryThatFailedWithNoData_When_AQueryWithInitialDataMounts_Then_TheEntryTakesIt()
         {
             // Arrange
-            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
             s_sources[0].TrySetException(new InvalidOperationException("offline"));
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
 
@@ -201,7 +201,7 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options()
-            => new(Todos, Fetch)
+            => new(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
             {
                 InitialData = InitialData,
                 InitialDataUpdatedAt = s_updatedAt,

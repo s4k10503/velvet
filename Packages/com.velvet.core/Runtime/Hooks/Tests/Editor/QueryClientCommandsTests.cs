@@ -1801,7 +1801,7 @@ namespace Velvet.Tests
         #endregion
 
         private static QueryOptions<int> Options(QueryKey key, TimeSpan? staleTime = null)
-            => new(key, Fetch) { StaleTime = staleTime };
+            => new(key, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = staleTime };
 
         private static VelvetTask<int> Fetch(CancellationToken token)
         {

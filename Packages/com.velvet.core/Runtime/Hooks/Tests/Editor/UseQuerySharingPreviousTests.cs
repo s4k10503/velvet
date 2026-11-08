@@ -71,7 +71,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             Hooks.UseQuery(
-                new QueryOptions<int, int>(new QueryKey("todos"), Fetch)
+                new QueryOptions<int, int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Select = Double,
                     StructuralSharing = Share,

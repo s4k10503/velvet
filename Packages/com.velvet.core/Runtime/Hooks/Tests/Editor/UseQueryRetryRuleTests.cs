@@ -180,7 +180,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch)
+                new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Retry = s_retry,
                     NotifyOnChangeProps = QueryProperties.All,

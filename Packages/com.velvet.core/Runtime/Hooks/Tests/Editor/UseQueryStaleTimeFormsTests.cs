@@ -235,7 +235,7 @@ namespace Velvet.Tests
         public void Given_AStaleTimeFunctionThatThrows_When_FetchQueryRuns_Then_TheCallThrowsIt()
         {
             // Arrange
-            var options = new QueryOptions<int>(Todos, Fetch) { StaleTimeFn = _ => throw new InvalidOperationException("stale-failed") };
+            var options = new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTimeFn = _ => throw new InvalidOperationException("stale-failed") };
 
             // Act
             TestDelegate fetch = () => s_client.FetchQuery(options).Forget();
@@ -289,7 +289,7 @@ namespace Velvet.Tests
         private static VNode Reader(bool second)
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     StaleTimeFn = second && s_secondStaleTimeFn != null ? s_secondStaleTimeFn : s_staleTimeFn,

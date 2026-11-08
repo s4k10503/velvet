@@ -1626,7 +1626,7 @@ namespace Velvet.Tests
             var (_, setTick) = Hooks.UseState(0);
             s_setTick = setTick;
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch)
+                new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Enabled = s_enabled,
                     StaleTime = s_staleTime,
@@ -1647,7 +1647,7 @@ namespace Velvet.Tests
         private static VNode OtherReader()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("other"), (CancellationToken _) =>
+                new QueryOptions<int>(new QueryKey("other"), _ =>
                 {
                     s_otherCalls++;
                     var source = new VelvetTaskCompletionSource<int>();

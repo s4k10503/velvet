@@ -938,7 +938,7 @@ namespace Velvet.Tests
         {
             var key = new QueryKey("todos");
             var options = s_takesToken
-                ? new QueryOptions<int>(key, Fetch)
+                ? new QueryOptions<int>(key, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 : new QueryOptions<int>(key, () => Fetch(default));
             s_renders.Add(Hooks.UseQuery(
                 options with
