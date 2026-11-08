@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 344 case(s) that ran the site: Given_AComponentReadingOneProperty_When_TheEntryChanges_Then_ItRerendersOnlyIfThatPropertyMoved(\"RefetchStarts\",\"IsFetching\",True), Given_AComponentReadingOneProperty_When_TheEntryChanges_Then_ItRerendersOnlyIfThatPropertyMoved(\"RefetchFails\",\"IsFetching\",True)",
+ "file": "5bb82c3b85a7e3edc41a57f95ad01cef42ec8a80f0d096907e0877d48e73bfa8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryTrackedPropsTests.Given_AComponentReadingOneProperty_When_TheEntryChanges_Then_ItRerendersOnlyIfThatPropertyMoved(\"RefetchFails\",\"IsFetching\",True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryTrackedPropsTests.cs": "7293ce692761d1a6809c553c3796e18e0b3d38e66d2d128169a9984da4f19981",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryTrackedPropsTests.Given_AComponentReadingOneProperty_When_TheEntryChanges_Then_ItRerendersOnlyIfThatPropertyMoved(\"RefetchStarts\",\"IsFetching\",True)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryTrackedPropsTests.cs": "7293ce692761d1a6809c553c3796e18e0b3d38e66d2d128169a9984da4f19981",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 473,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": [
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 37 case(s) that ran the site: Given_ComponentThatThrewOnMount_When_TheRootRendersItAgain_Then_RendersAgain",
+ "file": "605d5d298fdc05f0efd06c04c503117e4d8c9b5e3065c6b713b0f7c542e4b97d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FunctionalComponentErrorTests.Given_ComponentThatThrewOnMount_When_TheRootRendersItAgain_Then_RendersAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/FunctionalComponentErrorTests.cs": "7bed061970c129f4f2bf64a0cfa8526d0f36ea0a40fa54615b4787de0c83ec63",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": ";",
+  "before": "Root.CaughtError = null;",
+  "column": 12,
+  "line": 140,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/V.Mount.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

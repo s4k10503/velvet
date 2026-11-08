@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands",
+ "file": "5bb82c3b85a7e3edc41a57f95ad01cef42ec8a80f0d096907e0877d48e73bfa8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryRefetchTests.Given_ARefetchIntervalFunction_When_TheDataLands_Then_ItIsHandedTheEntryAsItNowStands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryRefetchTests.cs": "c538b3b854f400b0562cbc0c9598dd0924c45485c2c2933431155d1861847e0d",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 45,
+  "line": 111,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: MatchedRulesExtractor)",
+ "file": "b76adad9ed7527daf294a3bfb9b1bb073eace87f73d3e4b9845e7db6084d64dc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.EngineMemberResolutionTests.Given_ADeclaredEngineMember_When_ResolvedInThisEditor_Then_ItIsFoundWithItsDeclaredShape(MatchedRulesExtractor.MatchedRulesExtractor)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/EngineMemberResolutionTests.cs": "f1b765f1760e4a0f93bf3cb9f83b30038406275f877c5a29933a586d9ae849be"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 62,
+  "line": 720,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/EngineMember.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

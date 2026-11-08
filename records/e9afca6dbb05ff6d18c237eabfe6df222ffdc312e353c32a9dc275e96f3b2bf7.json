@@ -1,0 +1,86 @@
+{
+ "detail": "EditMode: 8 failed: Given_ButtonWithCustomClass_When_Reset_Then_CustomClassRemovedAndBuiltinClassesRestored, Given_ButtonWithCustomState_When_Reset_Then_ConsumerSetStateIsCleared, Given_MoreReturnsThanCap_When_RentedBack_Then_ExactlyMaxPoolSizeAreRecycled",
+ "file": "b76adad9ed7527daf294a3bfb9b1bb073eace87f73d3e4b9845e7db6084d64dc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_ButtonWithCustomClass_When_Reset_Then_CustomClassRemovedAndBuiltinClassesRestored",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_ButtonWithCustomState_When_Reset_Then_ConsumerSetStateIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_MoreReturnsThanCap_When_RentedBack_Then_ExactlyMaxPoolSizeAreRecycled",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_NullElement_When_Reset_Then_DoesNotThrow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_ReturnedElementWithCustomClass_When_RentedAgain_Then_CustomClassGhostIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_ReturnedElementWithUserData_When_RentedAgain_Then_UserDataGhostIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_ReturnedElementWithWidgetValue_When_RentedAgain_Then_ValueGhostIsCleared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ButtonPoolHelperTests.Given_ReturnedElement_When_RentedAgain_Then_SameInstanceIsHandedBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PoolHelperTestsBase.cs": "72c59556e80f2986bb4ed48d09ba912bb66f68a3f781795e0d860109186ce9b0",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/WidgetPoolHelperTests.cs": "8371ca29a199dc8fcce13adc7b6c1ded3a37715461fcb6d4e7032ffc63e1b320",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 20,
+  "line": 694,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/EngineMember.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

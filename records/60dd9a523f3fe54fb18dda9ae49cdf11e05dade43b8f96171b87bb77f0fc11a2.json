@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 344 case(s) that ran the site: Given_AQueryNotifyingOnlyOnIsPaused_When_ThePausedRequestContinues_Then_ItRerendersAsNotPaused",
+ "file": "5bb82c3b85a7e3edc41a57f95ad01cef42ec8a80f0d096907e0877d48e73bfa8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryNetworkModeTests.Given_AQueryNotifyingOnlyOnIsPaused_When_ThePausedRequestContinues_Then_ItRerendersAsNotPaused",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryNetworkModeTests.cs": "026f6e5c58d3df9cca2d00ea6007b228964bdaa166b15b40ef62b41889dd1123",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 474,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": [
+   "equality"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

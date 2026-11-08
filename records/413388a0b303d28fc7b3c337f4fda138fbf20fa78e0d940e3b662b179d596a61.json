@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "86adad902ec6672c189840898600aa227e53bb3648dfa1f8cd075dfd5195699c",
+ "killers": [],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 35,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssImporterSelection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "survived"
+}

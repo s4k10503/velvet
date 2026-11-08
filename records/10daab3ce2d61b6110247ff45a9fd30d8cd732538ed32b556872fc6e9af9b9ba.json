@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 24 case(s) that ran the site: Given_AFileImportedWithATokenInRem_When_TheEditorPostprocessesTheImport_Then_VelvetsImporterIsSelected",
+ "file": "86adad902ec6672c189840898600aa227e53bb3648dfa1f8cd075dfd5195699c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssImporterSelectionTests.Given_AFileImportedWithATokenInRem_When_TheEditorPostprocessesTheImport_Then_VelvetsImporterIsSelected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssImporterSelectionTests.cs": "1e3fabf6e3e5c3f5bcae0f5aacb1d6639db8ad5368035ac21d3c3ee36dfb0adc"
+   }
+  }
+ ],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": ";",
+  "before": "Ensure(path);",
+  "column": 20,
+  "line": 22,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssImporterSelection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "killed"
+}

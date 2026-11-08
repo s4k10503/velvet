@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b76adad9ed7527daf294a3bfb9b1bb073eace87f73d3e4b9845e7db6084d64dc",
+ "killers": [],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 23,
+  "line": 719,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/EngineMember.cs",
+  "shadowed": [
+   "clause removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "survived"
+}

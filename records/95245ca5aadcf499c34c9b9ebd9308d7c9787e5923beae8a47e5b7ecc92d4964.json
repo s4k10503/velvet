@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "3f1793e483a438cf0387eb62542d0bb73f890e755b4d0877e3f3293a89c7f654",
+ "killers": [],
+ "measured_by": "42444167493",
+ "mutant": {
+  "after": ";",
+  "before": "sheet.hideFlags = HideFlags.NotEditable;",
+  "column": 12,
+  "line": 49,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/VelvetStyleSheetImporter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "f42f4c13e00cef3eed3f85d868681e824e043ae937431643d40360269cc92d76",
+ "verdict": "survived"
+}
