@@ -61,15 +61,17 @@ Shader "Velvet/FilterSaturate"
             {
                 half4 col = tex2D(_MainTex, i.uv);
 
-                // Alpha is a CSS RGB-only op, so it passes through untouched. The lerp is linear in rgb, so it
-                // holds whether the sample is straight or premultiplied alpha.
-                half luma = dot(col.rgb, half3(0.213, 0.715, 0.072));
-                col.rgb = saturate(lerp(luma.xxx, col.rgb, _Saturate));
+                // Alpha passes through untouched. The sample is premultiplied, and the lerp, its clamp and the
+                // conversion apply to the straight colour.
+                half3 rgb = col.a > 0 ? col.rgb / col.a : 0;
+                half luma = dot(rgb, half3(0.213, 0.715, 0.072));
+                rgb = saturate(lerp(luma.xxx, rgb, _Saturate));
 
                 #if _UIE_OUTPUT_LINEAR
-                col.rgb = GammaToLinearSpace(col.rgb);
+                rgb = GammaToLinearSpace(rgb);
                 #endif
 
+                col.rgb = rgb * col.a;
                 return col;
             }
             ENDCG

@@ -54,12 +54,15 @@ Shader "Velvet/FilterHueRotate"
                     0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928,
                     0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283,
                     0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072);
-                col.rgb = saturate(mul(m, col.rgb));
+                // The sample is premultiplied; the matrix, its clamp and the conversion apply to the straight colour.
+                float3 rgb = col.a > 0 ? col.rgb / col.a : 0;
+                rgb = saturate(mul(m, rgb));
 
                 #if _UIE_OUTPUT_LINEAR
-                col.rgb = GammaToLinearSpace(col.rgb);
+                rgb = GammaToLinearSpace(rgb);
                 #endif
 
+                col.rgb = rgb * col.a;
                 return col;
             }
             ENDCG

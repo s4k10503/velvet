@@ -59,14 +59,16 @@ Shader "Velvet/FilterBrightness"
             {
                 half4 col = tex2D(_MainTex, i.uv);
 
-                // Alpha is a CSS RGB-only op, so it passes through untouched. The multiply is linear in rgb,
-                // so it holds whether the sample is straight or premultiplied alpha.
-                col.rgb = saturate(col.rgb * _Brightness);
+                // Alpha passes through untouched. The sample is premultiplied, and the multiply, its clamp and the
+                // conversion apply to the straight colour.
+                half3 rgb = col.a > 0 ? col.rgb / col.a : 0;
+                rgb = saturate(rgb * _Brightness);
 
                 #if _UIE_OUTPUT_LINEAR
-                col.rgb = GammaToLinearSpace(col.rgb);
+                rgb = GammaToLinearSpace(rgb);
                 #endif
 
+                col.rgb = rgb * col.a;
                 return col;
             }
             ENDCG

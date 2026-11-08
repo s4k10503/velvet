@@ -32,12 +32,13 @@ range), Velvet renders each through its own custom-filter shader — `Velvet/Fil
 and `Velvet/FilterSaturate`, registered internally as `FilterFunctionType.Custom` definitions.
 The shaders apply CSS `brightness()`'s uniform multiply and `saturate()`'s lerp-toward-luminance
 directly, unclamped, so the **full CSS range** applies: over-brightening (`brightness-150`) and
-over-saturation (`saturate-150`) work, and both match the browser exactly (the arithmetic runs on
-the encoded pixel before the engine's Linear-colorspace conversion, so a Linear project does not
-over-darken). Only negative amounts are rejected, as CSS disallows them.
+over-saturation (`saturate-150`) work, and both match the browser exactly (the arithmetic and its clamp
+run on the pixel's encoded colour divided by its alpha, as CSS filters a colour that is not premultiplied,
+before the engine's Linear-colorspace conversion, so a Linear project does not over-darken). Only negative
+amounts are rejected, as CSS disallows them.
 
 `hue-rotate` renders through `Velvet/FilterHueRotate` in the same way: the Filter Effects `feColorMatrix`
-`hueRotate` matrix applied to the encoded pixel, as CSS `hue-rotate()` is. UI Toolkit's own hue-rotate filter
+`hueRotate` matrix applied to the same colour, as CSS `hue-rotate()` is. UI Toolkit's own hue-rotate filter
 type is not used. `animate-hue` drives the same shader.
 
 All three shaders are put in front of the build by the step [player-builds.md](player-builds.md) describes,

@@ -148,5 +148,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(new[] { (int)c.r, c.g, c.b }, Is.EqualTo(new[] { r, g, b }).Within(2));
         }
+    
+        // The fill is half-transparent green over black. brightness-150 takes its straight green past 1, which CSS
+        // clamps to 1 before saturate-0 takes the luminance, so the gray is 0.715 times the alpha: 91. Filtering the
+        // premultiplied colour keeps 0.75 for saturate to read instead.
+        [UnityTest]
+        public IEnumerator Given_BrightnessThenSaturateOverAHalfTransparentGreen_When_Rendered_Then_TheGrayIsTheClampedGreensLuminance()
+        {
+            // Arrange & Act
+            _host = new RenderTexturePanelHost("FilterPanel", 100, 100);
+            _mounted = V.Mount(_host.Root, V.Div(className: "w-[100px] h-[100px] bg-[#000000]", children: new VNode[]
+            {
+                V.Div(className: "w-[100px] h-[100px] bg-[#00ff0080] brightness-150 saturate-0"),
+            }));
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
+            var c = SampleCenterAverage(20);
+
+            // Assert
+            Assert.That(new[] { (int)c.r, c.g, c.b }, Is.EqualTo(new[] { 91, 91, 91 }).Within(2));
+        }
     }
 }
