@@ -1330,6 +1330,8 @@
 [Velvet] property Velvet.QueryClient.DefaultRetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]
 [Velvet] property Velvet.QueryClient.DefaultStaleTime: Velvet.QueryStaleTime
 [Velvet] property Velvet.QueryClient.DefaultStaleTimeFn: System.Func`2[Velvet.QueryInfo, Velvet.QueryStaleTime]?
+[Velvet] property Velvet.QueryClient.DefaultThrowOnError: System.Boolean
+[Velvet] property Velvet.QueryClient.DefaultThrowOnErrorFn: System.Func`3[System.Exception, Velvet.QueryInfo, System.Boolean]?
 [Velvet] property Velvet.QueryClientOptions.Clock: System.Func`1[System.TimeSpan]?
 [Velvet] property Velvet.QueryClientOptions.GcTime: System.TimeSpan
 [Velvet] property Velvet.QueryClientOptions.NetworkMode: Velvet.NetworkMode
@@ -1344,6 +1346,8 @@
 [Velvet] property Velvet.QueryClientOptions.RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
 [Velvet] property Velvet.QueryClientOptions.StaleTime: Velvet.QueryStaleTime
 [Velvet] property Velvet.QueryClientOptions.StaleTimeFn: System.Func`2[Velvet.QueryInfo, Velvet.QueryStaleTime]?
+[Velvet] property Velvet.QueryClientOptions.ThrowOnError: System.Boolean
+[Velvet] property Velvet.QueryClientOptions.ThrowOnErrorFn: System.Func`3[System.Exception, Velvet.QueryInfo, System.Boolean]?
 [Velvet] property Velvet.QueryErrorResetBoundary.IsReset: System.Boolean
 [Velvet] property Velvet.QueryFilters.Exact: System.Boolean
 [Velvet] property Velvet.QueryFilters.FetchStatus: System.Nullable`1[Velvet.QueryFetchStatus]
@@ -1358,6 +1362,7 @@
 [Velvet] property Velvet.QueryInfo.QueryKey: Velvet.QueryKey
 [Velvet] property Velvet.QueryInfo.Status: Velvet.QueryStatus
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Enabled: System.Boolean
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].EnabledFn: System.Func`2[Velvet.QueryInfo, System.Boolean]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].GcTime: System.Nullable`1[System.TimeSpan]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].InitialData: System.Func`1[TQueryFnData]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].InitialDataUpdatedAt: System.Nullable`1[System.TimeSpan]
@@ -1379,11 +1384,13 @@
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RefetchOnWindowFocusFn: System.Func`2[Velvet.QueryInfo, Velvet.QueryRefetchMode]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Retry: System.Nullable`1[Velvet.RetryRule]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RetryDelay: System.Func`3[System.Int32, System.Exception, System.TimeSpan]?
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RetryOnMount: System.Boolean
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].RetryOnMountFn: System.Func`2[Velvet.QueryInfo, System.Boolean]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].Select: System.Func`2[TQueryFnData, TData]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].StaleTime: System.Nullable`1[Velvet.QueryStaleTime]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].StaleTimeFn: System.Func`2[Velvet.QueryInfo, Velvet.QueryStaleTime]?
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].StructuralSharing: System.Func`3[System.Object?, System.Object, System.Object]?
-[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].ThrowOnError: System.Boolean
+[Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].ThrowOnError: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.QueryOptions`2[TQueryFnData, TData].ThrowOnErrorFn: System.Func`3[System.Exception, Velvet.QueryInfo, System.Boolean]?
 [Velvet] property Velvet.QueryPlaceholder`1[T].HasValue: System.Boolean
 [Velvet] property Velvet.QueryPlaceholder`1[T].Value: T

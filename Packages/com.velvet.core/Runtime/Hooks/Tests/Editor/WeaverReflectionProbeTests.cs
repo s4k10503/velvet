@@ -1709,6 +1709,8 @@ namespace Velvet.Tests
                 "UseId",
                 "UseDeferredValue",
                 "UseMutation",
+                "UseQuery",
+                "UseSuspenseQuery",
                 "UseService",
                 "UseFallback",
                 "Use",

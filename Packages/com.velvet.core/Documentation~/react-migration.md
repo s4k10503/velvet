@@ -272,9 +272,10 @@ the client, which `Hooks.Use` deliberately is not — `Hooks.Use` stays React's 
 | `staleTime: 'static'` / `staleTime: (query) => ...` | `StaleTime = QueryStaleTime.Static` / `StaleTimeFn = info => ...`, on one query or on `QueryClientOptions` |
 | `initialData` / `initialDataUpdatedAt` | `InitialData = () => ...` / `InitialDataUpdatedAt = ...` or `InitialDataUpdatedAtFn = () => ...`, on the client's `Clock` |
 | `refetchOnMount` as `false` / `true` / `'always'` / `(query) => ...` | `RefetchOnMount = QueryRefetchMode.Never` / `IfStale` / `Always`, or `RefetchOnMountFn = info => ...`, on one query or on `QueryClientOptions` |
-| `throwOnError: true` / `(error, query) => ...` | `ThrowOnError = true` / `ThrowOnErrorFn = (error, info) => ...` |
+| `throwOnError: true` / `(error, query) => ...` | `ThrowOnError = true` / `ThrowOnErrorFn = (error, info) => ...`, on one query or on `QueryClientOptions` |
+| `retryOnMount: false` / `(query) => ...` | `RetryOnMount = false` / `RetryOnMountFn = info => ...` |
 | `<QueryErrorResetBoundary>` / `useQueryErrorResetBoundary()` | `V.Provider(QueryErrorResetBoundaryContext.Ref, boundary, children: ...)` with a `new QueryErrorResetBoundary()` kept across renders / `Hooks.UseQueryErrorResetBoundary()` |
-| `enabled` | `new QueryOptions<T>(...) { Enabled = ... }` |
+| `enabled` / `enabled: (query) => ...` | `new QueryOptions<T>(...) { Enabled = ... }` / `EnabledFn = info => ...` |
 | `select: (data) => ...` | `new QueryOptions<TQueryFnData, TData>(...) { Select = data => ... }` |
 | `placeholderData: keepPreviousData` / `(previousData, previousQuery) => ...` | `new QueryOptions<T>(...) { PlaceholderData = QueryPlaceholder.KeepPreviousData }` / `(previousData, previousQuery) => ...`, `previousQuery` a nullable `QueryInfo` |
 | `refetchInterval` / `refetchIntervalInBackground` as a number and a boolean | `new QueryOptions<T>(...) { RefetchInterval = ..., RefetchIntervalInBackground = ... }` |
@@ -373,9 +374,12 @@ data, and `FetchQuery` returns it without fetching while it is fresh.
 
 **Throwing errors.** `ThrowOnError = true` makes `UseQuery` throw the entry's error from the render, to the
 nearest error boundary, once the result is `Error` and not fetching; `ThrowOnErrorFn` decides instead,
-handed the error and the entry. A `QueryErrorResetBoundary` lets the queries below it try again after such a
-throw, as v5's does: until its `Reset` is called, a query that throws its errors mounting over an entry
-whose request failed and that holds no data neither fetches it nor renders, throwing the error again; once
+handed the error and the entry. Either can be set for every query on `QueryClientOptions`, v5's
+`defaultOptions.queries`. `RetryOnMount = false`, or `RetryOnMountFn`, keeps a query mounting over an entry
+whose request failed and that holds no data from fetching it, as v5's `retryOnMount`. A
+`QueryErrorResetBoundary` lets the queries below it try again after a throw, as v5's does: until its `Reset`
+is called, a query that throws its errors counts `RetryOnMount` as false, so mounting over such an entry it
+neither fetches it nor renders, throwing the error again; once
 reset, the queries below it neither throw nor skip that fetch, and the first of them to commit clears the
 reset. Provide one with `V.Provider(QueryErrorResetBoundaryContext.Ref, boundary, ...)` above the error
 boundary, keeping the instance across renders as v5's component keeps it in state, and call its `Reset`
@@ -384,10 +388,12 @@ as v5's do.
 
 **Suspending.** `Hooks.UseSuspenseQuery` is v5's `useSuspenseQuery`: while the result is `Pending` the
 component suspends to the nearest `V.Suspense`, its render starting the request or joining the one in
-flight, and it renders again once the entry holds data or the request has settled. An error with no data
+flight. The update to the entry that gives it data or settles the request resumes it, as v5's promise
+settles, unless a component is rendering at that moment, in which case it resumes on the main thread's next
+turn. An error with no data
 behind it is thrown to the nearest error boundary, and a request that fails while the component waits on it
 clears the reset of its `QueryErrorResetBoundary`, so the error is thrown rather than fetched again. The
-query is always enabled, ignores `PlaceholderData`, `ThrowOnError` and `ThrowOnErrorFn`, and counts a stale time or a
+query is always enabled, whatever `Enabled` or `EnabledFn` say, ignores `PlaceholderData` and the throw-on-error settings of the query and the client, and counts a stale time or a
 garbage-collection time under a second as a second, so the render after the suspension does not fetch
 again.
 
@@ -490,18 +496,22 @@ measures being online for itself. A reading that throws is no reading
 to the poll, which then reports no change, and counts as visible or online where one is needed: an interval's
 wait and a client's first reading. Only the first failure of each reading is logged.
 
-**Options as functions.** `RefetchIntervalFn`, `StaleTimeFn`, `RefetchOnMountFn`, `RefetchOnWindowFocusFn`,
-`RefetchOnReconnectFn` and `ThrowOnErrorFn` are v5's function forms of those options. Each is handed a
-`QueryInfo` — the entry's `QueryKey`, `Status`, `Data` (the query function's data, not what `Select` makes of
-it), `Error` and `IsFetching` as they stand at the call — and replaces the value set beside it; the stale-time,
-mount, focus and reconnect functions can also be set on `QueryClientOptions`, and a query's own setting, in either form,
-stands ahead of the client's. The interval function returns a `TimeSpan?` and is asked when the entry changes and
-at every commit of the component, not every frame; the stale-time function wherever the stale time is read;
-the mount function when the component first subscribes, and by the render before that; the focus and
-reconnect functions each time their signal comes; the error function over an entry or a result in error; and
-the mount, focus and reconnect functions only for an enabled query whose stale time is not static. One that throws during a render throws
-from the hook, as v5's does. Elsewhere one that throws counts as no interval, as `TimeSpan.MaxValue` or as `Never`; a refetch function's failure is logged each time,
-an interval or stale-time function's once per function instance.
+**Options as functions.** `EnabledFn`, `RetryOnMountFn`, `RefetchIntervalFn`, `StaleTimeFn`,
+`RefetchOnMountFn`, `RefetchOnWindowFocusFn`, `RefetchOnReconnectFn` and `ThrowOnErrorFn` are v5's function
+forms of those options. Each is handed a `QueryInfo` — the entry's `QueryKey`, `Status`, `Data` (the query
+function's data, not what `Select` makes of it), `Error` and `IsFetching` as they stand at the call — and
+replaces the value set beside it; the stale-time, mount, focus, reconnect and error functions can also be set
+on `QueryClientOptions`, and a query's own setting, in either form, stands ahead of the client's. The interval
+function returns a `TimeSpan?` and is asked when the entry changes and at every commit of the component, not
+every frame; the enabled function wherever the query's being enabled is read; the stale-time function
+wherever the stale time is read; the retry-on-mount function when a component mounts over an entry that failed
+with no data, and by the render before that; the mount function when the component first subscribes, and by
+the render before that; the focus and reconnect functions each time their signal comes; the error function
+over an entry or a result in error; and the mount, focus and reconnect functions only for an enabled query
+whose stale time is not static. One that throws during a render throws from the hook, as v5's does, and so
+does a stale-time function from `FetchQuery` and `EnsureQueryData`. Elsewhere one that throws counts as no
+interval, as `TimeSpan.MaxValue`, as `Never` or as false; a refetch function's failure is logged each time, and
+an interval, stale-time, enabled or retry-on-mount function's once per function instance.
 
 **Cancelling a request.** The `CancellationToken` a query function receives is cancelled when a refetch
 starts that request over, by `Clear`, and when the last query reading the entry leaves while the request is
@@ -525,7 +535,7 @@ any query asked for (five minutes by default), as v5's `scheduleGc` timer remove
 to come first. While an entry that can still expire is held, the client reads its clock once a frame, as a
 retry's wait does, so removal lands on the first frame whose reading is at or past the deadline; with only
 `TimeSpan.MaxValue` entries, or none, it reads nothing. A query reading the entry again before then keeps it,
-and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame.
+and the time starts over when its last reader leaves. `TimeSpan.Zero` removes the entry on the next frame. A query's render builds the entry it reads when there is none, as v5's observer does, and nothing collects that entry before the client's next frame poll, so a commit in the same frame finds it whatever its `GcTime`.
 As in v5, an entry with a request in flight is kept, and readable, until a whole `GcTime` has passed since
 the request settled: the removal never cancels a request, so a request of a query function taking no token
 that never settles keeps its entry for as long as the client lives, and the client reads its clock every
@@ -584,9 +594,7 @@ another type, since a filter selects across keys.
 
 - A query function that returns a task that has already completed, or throws before returning one,
   settles the entry a frame later, after every subscription of the commit, so readers mounting together
-  share one request; v5's result arrives a microtask later. A component `UseSuspenseQuery` suspended renders
-  again on the frame after the entry gets its data or its request settles, where v5's thrown promise settles
-  a microtask after.
+  share one request; v5's result arrives a microtask later.
 - Sharing into a class instance works on fields where v5 works on enumerable properties, so a private field,
   and one a base class declares, is shared too.
 - A query function counts as having read v5's `signal` when it takes the `CancellationToken`, whether or not

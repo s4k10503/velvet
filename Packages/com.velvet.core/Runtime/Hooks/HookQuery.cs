@@ -150,7 +150,9 @@ namespace Velvet
     }
 
     /// <summary>
-    /// What a function form of <see cref="QueryOptions{TQueryFnData, TData}.RefetchIntervalFn"/>,
+    /// What a function form of <see cref="QueryOptions{TQueryFnData, TData}.EnabledFn"/>,
+    /// <see cref="QueryOptions{TQueryFnData, TData}.RetryOnMountFn"/>,
+    /// <see cref="QueryOptions{TQueryFnData, TData}.RefetchIntervalFn"/>,
     /// <see cref="QueryOptions{TQueryFnData, TData}.StaleTimeFn"/>,
     /// <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnMountFn"/>,
     /// <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnWindowFocusFn"/>,
@@ -236,7 +238,7 @@ namespace Velvet
     /// <c>{ queryKey, queryFn }</c> with its <c>enabled</c>, <c>select</c>, <c>placeholderData</c>,
     /// <c>initialData</c>, <c>initialDataUpdatedAt</c>, <c>staleTime</c>, <c>gcTime</c>, <c>refetchInterval</c>,
     /// <c>refetchIntervalInBackground</c>, <c>refetchOnMount</c>, <c>refetchOnWindowFocus</c>,
-    /// <c>refetchOnReconnect</c>, <c>retry</c>, <c>retryDelay</c>, <c>throwOnError</c>,
+    /// <c>refetchOnReconnect</c>, <c>retry</c>, <c>retryDelay</c>, <c>retryOnMount</c>, <c>throwOnError</c>,
     /// <c>structuralSharing</c> and <c>notifyOnChangeProps</c>. <see cref="QueryOptions{T}"/> is the form without a <see cref="Select"/> that
     /// changes the data's type.
     /// </summary>
@@ -278,8 +280,9 @@ namespace Velvet
         /// <c>staleTime</c> as a function. It is asked each time the stale time is read: for the result's
         /// <see cref="QueryResult{T}.IsStale"/>, for whether to fetch, and for the wait until the data turns stale.
         /// It replaces <see cref="StaleTime"/> when both are set. One that throws during a render throws from
-        /// the hook; elsewhere it counts as <see cref="TimeSpan.MaxValue"/>, and its failure is logged once for
-        /// each function instance.
+        /// the hook, and one <see cref="QueryClient.FetchQuery{T}"/> or <see cref="QueryClient.EnsureQueryData{T}"/>
+        /// asks from that call, as v5's do; elsewhere it counts as <see cref="TimeSpan.MaxValue"/>, and its failure
+        /// is logged once for each function instance.
         /// </summary>
         public Func<QueryInfo, QueryStaleTime>? StaleTimeFn { get; init; }
 
@@ -347,11 +350,35 @@ namespace Velvet
         public bool Enabled { get; init; } = true;
 
         /// <summary>
+        /// <see cref="Enabled"/> given as a function of the entry the query reads, TanStack Query's <c>enabled</c>
+        /// as a function. It is asked wherever the query's being enabled is read, by its renders, its commits, its
+        /// signals and the client's commands, and replaces <see cref="Enabled"/> when both are set. One that throws
+        /// during a render throws from the hook; elsewhere it counts as false, and its failure is logged once for
+        /// each function instance.
+        /// </summary>
+        public Func<QueryInfo, bool>? EnabledFn { get; init; }
+
+        /// <summary>
+        /// TanStack Query's <c>retryOnMount</c>: false keeps a query mounting over an entry whose request failed
+        /// and that holds no data from fetching it again. A query that throws its errors to an error boundary
+        /// counts it as false until its <see cref="QueryErrorResetBoundary"/> is reset.
+        /// </summary>
+        public bool RetryOnMount { get; init; } = true;
+
+        /// <summary>
+        /// <see cref="RetryOnMount"/> given as a function of the entry, asked when a component mounts over an entry
+        /// that failed with no data, and by the render before that; it replaces <see cref="RetryOnMount"/> when
+        /// both are set, and fails as <see cref="EnabledFn"/> does.
+        /// </summary>
+        public Func<QueryInfo, bool>? RetryOnMountFn { get; init; }
+
+        /// <summary>
         /// TanStack Query's <c>initialData</c> given as a function: the data an entry with none takes when the
         /// query is handed it, as if a request had landed it. The entry is then <see cref="QueryStatus.Success"/>
         /// with data dated by <see cref="InitialDataUpdatedAt"/>, which <see cref="StaleTime"/> judges as it judges
-        /// fetched data, and <see cref="QueryClient.ResetQueries"/> puts it back. It is asked while the entry has no data: when a render finds no entry, and each time
-        /// the query hands the entry its options. A null return is no data.
+        /// fetched data, and <see cref="QueryClient.ResetQueries"/> puts it back. It is asked while the entry has
+        /// no data: when a render builds the entry, and each time the query hands the entry its options. A null
+        /// return is no data.
         /// </summary>
         public Func<TQueryFnData>? InitialData { get; init; }
 
@@ -370,18 +397,20 @@ namespace Velvet
         public Func<TimeSpan?>? InitialDataUpdatedAtFn { get; init; }
 
         /// <summary>
-        /// TanStack Query's <c>throwOnError</c> given as a boolean: true throws the entry's error from the hook,
-        /// to the nearest error boundary, once the result is <see cref="QueryStatus.Error"/> and not fetching,
-        /// unless the nearest <see cref="QueryErrorResetBoundary"/> has been reset since a query below it last
-        /// mounted. While that boundary has not been reset, a query that throws its errors does not fetch again
-        /// on mounting over an entry with an error and no data.
+        /// Overrides <see cref="QueryClient.DefaultThrowOnError"/> for this query, TanStack Query's
+        /// <c>throwOnError</c> given as a boolean: true throws the entry's error from the hook, to the nearest
+        /// error boundary, once the result is <see cref="QueryStatus.Error"/> and not fetching, unless the nearest
+        /// <see cref="QueryErrorResetBoundary"/> has been reset since a query below it last mounted. While that
+        /// boundary has not been reset, a query that throws its errors does not fetch again on mounting over an
+        /// entry with an error and no data, as <see cref="RetryOnMount"/> false does.
         /// </summary>
-        public bool ThrowOnError { get; init; }
+        public bool? ThrowOnError { get; init; }
 
         /// <summary>
         /// <see cref="ThrowOnError"/> given as a function, handed the error and the entry, TanStack Query's
         /// <c>throwOnError</c> as a function: it decides in place of the value, asked during a render over an
-        /// entry or a result in error. It replaces <see cref="ThrowOnError"/> when both are set.
+        /// entry or a result in error. It replaces <see cref="ThrowOnError"/> when both are set, and a query's own
+        /// setting, in either form, stands ahead of the client's.
         /// </summary>
         public Func<Exception, QueryInfo, bool>? ThrowOnErrorFn { get; init; }
 
@@ -652,15 +681,22 @@ namespace Velvet
                 options.GcTime ?? client.DefaultGcTime, nameof(QueryOptions<TQueryFnData, TData>.GcTime));
             GcTime = suspense && gcTime < QueryStaleRule.MinSuspenseTime ? QueryStaleRule.MinSuspenseTime : gcTime;
             Placeholder = suspense ? null : options.PlaceholderData;
-            Rules = new QueryRules(options.Enabled || suspense, suspense,
-                QueryStaleRule.Resolve(options.StaleTime, options.StaleTimeFn, client.DefaultStaleTime,
+            ThrowOnError = QueryThrowRule.Resolve(options.ThrowOnError, options.ThrowOnErrorFn,
+                client.DefaultThrowOnError, client.DefaultThrowOnErrorFn);
+            Rules = new QueryRules
+            {
+                Enabled = suspense ? QueryBooleanRule.True : new QueryBooleanRule(options.Enabled, options.EnabledFn),
+                RetryOnMount = new QueryBooleanRule(options.RetryOnMount, options.RetryOnMountFn),
+                Suspense = suspense,
+                StaleTime = QueryStaleRule.Resolve(options.StaleTime, options.StaleTimeFn, client.DefaultStaleTime,
                     client.DefaultStaleTimeFn, suspense),
-                QueryRefetchRule.Resolve(options.RefetchOnMount, options.RefetchOnMountFn,
+                RefetchOnMount = QueryRefetchRule.Resolve(options.RefetchOnMount, options.RefetchOnMountFn,
                     client.DefaultRefetchOnMount, client.DefaultRefetchOnMountFn),
-                QueryRefetchRule.Resolve(options.RefetchOnWindowFocus, options.RefetchOnWindowFocusFn,
+                RefetchOnWindowFocus = QueryRefetchRule.Resolve(options.RefetchOnWindowFocus, options.RefetchOnWindowFocusFn,
                     client.DefaultRefetchOnWindowFocus, client.DefaultRefetchOnWindowFocusFn),
-                QueryRefetchRule.Resolve(options.RefetchOnReconnect, options.RefetchOnReconnectFn,
-                    client.DefaultRefetchOnReconnect, client.DefaultRefetchOnReconnectFn));
+                RefetchOnReconnect = QueryRefetchRule.Resolve(options.RefetchOnReconnect, options.RefetchOnReconnectFn,
+                    client.DefaultRefetchOnReconnect, client.DefaultRefetchOnReconnectFn),
+            };
             RefetchInterval = QueryClient.ValidInterval(options.RefetchInterval);
             NetworkMode = options.NetworkMode ?? client.DefaultNetworkMode;
             KeyHashFn = options.QueryKeyHashFn ?? client.DefaultQueryKeyHashFn;
@@ -676,8 +712,8 @@ namespace Velvet
         internal QueryOptions<TQueryFnData, TData> Options { get; }
         internal bool Suspense { get; }
         internal QueryRules Rules { get; }
+        internal QueryThrowRule ThrowOnError { get; }
         internal TimeSpan GcTime { get; }
-        internal bool Enabled => Rules.Enabled;
         internal Func<TQueryFnData?, QueryInfo?, QueryPlaceholder<TQueryFnData>>? Placeholder { get; }
         internal TimeSpan? RefetchInterval { get; }
         internal NetworkMode NetworkMode { get; }
@@ -686,46 +722,113 @@ namespace Velvet
         internal QueryKey KeyId { get; }
         internal Func<TQueryFnData, TData>? Select => Options.Select;
 
-        // The entry a render reads. v5's getOptimisticResult builds the entry it reads; here a render builds one
-        // only where it has something to put in it, initial data or a suspending query's request, and otherwise
-        // reads the cache without writing to it.
-        internal QueryEntry<TQueryFnData>? ReadEntry(QueryClient client)
-        {
-            var entry = client.PeekById<TQueryFnData>(KeyId);
-            if (entry != null || (Options.InitialData == null && !Suspense)) return entry;
-            return client.Ensure(Options.QueryKey, KeyHashFn, GcTime, new QueryFetchOptions<TQueryFnData>().Assign(Options, client));
-        }
+        // TanStack's getOptimisticResult, which builds the entry a render reads when there is none, with the
+        // render's options.
+        internal QueryEntry<TQueryFnData> ReadEntry(QueryClient client)
+            => client.PeekById<TQueryFnData>(KeyId)
+                ?? client.Ensure(Options.QueryKey, KeyHashFn, GcTime, new QueryFetchOptions<TQueryFnData>().Assign(Options, client),
+                    heldForRender: true);
 
         // TanStack's ensurePreventErrorBoundaryRetry: a query that throws its errors does not load an entry that
         // failed again when it mounts, until the boundary has been reset.
         internal QuerySettings<TQueryFnData, TData> PreventingErrorBoundaryRetry(
-            QueryEntry<TQueryFnData>? entry, QueryErrorResetBoundary boundary)
+            QueryEntry<TQueryFnData> entry, QueryErrorResetBoundary boundary)
         {
-            var throws = Suspense || ThrowsOnMount(entry);
+            var throws = Suspense || ThrowOnError.ThrowsOnMount(entry);
             return throws && !boundary.IsReset ? new QuerySettings<TQueryFnData, TData>(this, Rules.WithoutRetryOnMount()) : this;
-        }
-
-        // A function is asked only over an entry in error, and counts as true otherwise, as v5 reads the
-        // function itself as truthy.
-        private bool ThrowsOnMount(QueryEntry<TQueryFnData>? entry)
-        {
-            var throwOnError = Options.ThrowOnErrorFn;
-            if (throwOnError == null) return Options.ThrowOnError;
-            return entry is not { Status: QueryStatus.Error } || throwOnError(entry.Error!, entry.Describe());
         }
 
         // TanStack's getHasError. A suspending query's throwOnError is useSuspenseQuery's, which throws when the
         // entry has no data.
-        internal bool HasError(in QuerySnapshot<TData> result, QueryEntry<TQueryFnData>? entry, QueryErrorResetBoundary boundary)
+        internal bool HasError(in QuerySnapshot<TData> result, QueryEntry<TQueryFnData> entry, QueryErrorResetBoundary boundary)
         {
-            if (result.Status != QueryStatus.Error || boundary.IsReset || result.FetchStatus == QueryFetchStatus.Fetching
-                || entry == null)
+            if (result.Status != QueryStatus.Error || boundary.IsReset || result.FetchStatus == QueryFetchStatus.Fetching)
             {
                 return false;
             }
             if (Suspense) return !result.HasData || !entry.HasData;
-            var throwOnError = Options.ThrowOnErrorFn;
-            return throwOnError != null ? throwOnError(result.Error!, entry.Describe()) : Options.ThrowOnError;
+            return ThrowOnError.Throws(result.Error!, entry);
+        }
+    }
+
+    // A query's throwOnError: the query's function, else its value, else the client's function, else the
+    // client's value, the order QueryRefetchRule gives the refetch modes. Asked only during a render, so a throw
+    // from the function throws from the render, as v5's does.
+    internal readonly struct QueryThrowRule
+    {
+        private readonly bool _value;
+        private readonly Func<Exception, QueryInfo, bool>? _fn;
+
+        private QueryThrowRule(bool value, Func<Exception, QueryInfo, bool>? fn)
+        {
+            _value = value;
+            _fn = fn;
+        }
+
+        internal static QueryThrowRule Resolve(
+            bool? queryValue, Func<Exception, QueryInfo, bool>? queryFn,
+            bool clientValue, Func<Exception, QueryInfo, bool>? clientFn)
+        {
+            if (queryFn != null) return new QueryThrowRule(default, queryFn);
+            if (queryValue != null) return new QueryThrowRule(queryValue.Value, null);
+            if (clientFn != null) return new QueryThrowRule(default, clientFn);
+            return new QueryThrowRule(clientValue, null);
+        }
+
+        internal bool Throws<T>(Exception error, QueryEntry<T> entry)
+            => _fn != null ? _fn(error, entry.Describe()) : _value;
+
+        // ensurePreventErrorBoundaryRetry asks a function only over an entry in error, and otherwise counts it as
+        // true, as v5 reads the function itself as truthy.
+        internal bool ThrowsOnMount<T>(QueryEntry<T> entry)
+        {
+            if (_fn == null) return _value;
+            return entry.Status != QueryStatus.Error || _fn(entry.Error!, entry.Describe());
+        }
+    }
+
+    // v5's QueryBooleanOption, enabled and retryOnMount: a value, or a function of the entry in its place.
+    internal readonly struct QueryBooleanRule
+    {
+        internal static readonly QueryBooleanRule True = new(true, null);
+
+        private readonly bool _value;
+        private readonly Func<QueryInfo, bool>? _fn;
+
+        internal QueryBooleanRule(bool value, Func<QueryInfo, bool>? fn)
+        {
+            _value = value;
+            _fn = fn;
+        }
+
+        // A function that throws outside a render counts as false, the answer that starts nothing.
+        internal bool Read(QueryEntry entry, bool rethrow)
+        {
+            var fn = _fn;
+            if (fn == null) return _value;
+            try
+            {
+                return fn(entry.Describe());
+            }
+            catch (Exception failure) when (!rethrow)
+            {
+                QueryFunctionFailures.LogOnce(fn, failure);
+                return false;
+            }
+        }
+    }
+
+    // Read at commits, at updates of the result and at signals, so a function that always throws would log over
+    // and over: its failure is logged once for each function instance.
+    internal static class QueryFunctionFailures
+    {
+        private static readonly ConditionalWeakTable<Delegate, Delegate> s_logged = new();
+
+        internal static void LogOnce(Delegate fn, Exception failure)
+        {
+            if (s_logged.TryGetValue(fn, out _)) return;
+            s_logged.Add(fn, fn);
+            FiberLogger.LogException(nameof(QueryClient), failure);
         }
     }
 
@@ -733,43 +836,35 @@ namespace Velvet
     // refetchOnReconnect, retryOnMount and suspense, read by a render and by the observer its commit updates.
     internal readonly struct QueryRules
     {
-        internal QueryRules(bool enabled, bool suspense, QueryStaleRule staleTime, QueryRefetchRule refetchOnMount,
-            QueryRefetchRule refetchOnWindowFocus, QueryRefetchRule refetchOnReconnect)
-        {
-            Enabled = enabled;
-            Suspense = suspense;
-            RetryOnMount = true;
-            StaleTime = staleTime;
-            RefetchOnMount = refetchOnMount;
-            RefetchOnWindowFocus = refetchOnWindowFocus;
-            RefetchOnReconnect = refetchOnReconnect;
-        }
-
-        private QueryRules(in QueryRules source, bool retryOnMount)
+        private QueryRules(in QueryRules source, QueryBooleanRule retryOnMount)
         {
             this = source;
             RetryOnMount = retryOnMount;
         }
 
-        internal bool Enabled { get; }
-        internal bool Suspense { get; }
-        internal bool RetryOnMount { get; }
-        internal QueryStaleRule StaleTime { get; }
-        internal QueryRefetchRule RefetchOnMount { get; }
-        internal QueryRefetchRule RefetchOnWindowFocus { get; }
-        internal QueryRefetchRule RefetchOnReconnect { get; }
+        internal QueryBooleanRule Enabled { get; init; }
+        internal QueryBooleanRule RetryOnMount { get; init; }
+        internal bool Suspense { get; init; }
+        internal QueryStaleRule StaleTime { get; init; }
+        internal QueryRefetchRule RefetchOnMount { get; init; }
+        internal QueryRefetchRule RefetchOnWindowFocus { get; init; }
+        internal QueryRefetchRule RefetchOnReconnect { get; init; }
 
-        internal QueryRules WithoutRetryOnMount() => new(this, retryOnMount: false);
+        // ensurePreventErrorBoundaryRetry writes retryOnMount: false over whatever the options gave.
+        internal QueryRules WithoutRetryOnMount() => new(this, new QueryBooleanRule(false, null));
+
+        // TanStack's resolveEnabled(options.enabled, query) !== false.
+        internal bool IsEnabled(QueryEntry entry, bool rethrow) => Enabled.Read(entry, rethrow);
 
         // TanStack's isStale(query, options).
         internal bool IsStale<T>(QueryEntry<T> entry, bool rethrow)
-            => Enabled && entry.IsStaleFor(StaleTime.Read(entry, rethrow));
+            => IsEnabled(entry, rethrow) && entry.IsStaleFor(StaleTime.Read(entry, rethrow));
 
         // TanStack's shouldFetchOn: an enabled query whose stale time is not static fetches under Always, and under
         // IfStale over stale data. The function forms are asked only of such a query.
         internal bool ShouldFetchOn<T>(QueryRefetchRule rule, QueryEntry<T> entry, bool rethrow)
         {
-            if (!Enabled) return false;
+            if (!IsEnabled(entry, rethrow)) return false;
             var staleTime = StaleTime.Read(entry, rethrow);
             if (staleTime.IsStatic) return false;
             var mode = rule.Read(entry, rethrow);
@@ -781,7 +876,7 @@ namespace Velvet
         internal bool ShouldFetchOnMount<T>(QueryEntry<T> entry, bool rethrow)
         {
             if (entry.HasData) return ShouldFetchOn(RefetchOnMount, entry, rethrow);
-            return Enabled && (RetryOnMount || entry.Status != QueryStatus.Error);
+            return IsEnabled(entry, rethrow) && (entry.Status != QueryStatus.Error || RetryOnMount.Read(entry, rethrow));
         }
 
         // TanStack's shouldFetchOptionally, for a query whose entry changed or that was turned on.
@@ -794,7 +889,6 @@ namespace Velvet
     internal readonly struct QueryStaleRule
     {
         internal static readonly TimeSpan MinSuspenseTime = TimeSpan.FromSeconds(1);
-        private static readonly ConditionalWeakTable<Delegate, Delegate> s_loggedFailures = new();
         private readonly QueryStaleTime _value;
         private readonly Func<QueryInfo, QueryStaleTime>? _fn;
         private readonly bool _suspense;
@@ -816,8 +910,9 @@ namespace Velvet
             return new QueryStaleRule(clientValue, null, suspense);
         }
 
-        // A render rethrows, as v5's render throws; everywhere else a throw is contained, so that one function
-        // cannot cut short a commit's effects, a signal, a frame's wait or a client command.
+        // A render and the client commands that return data, FetchQuery and EnsureQueryData, rethrow, as v5 throws
+        // from each; anywhere else a throw is contained, so that one function cannot cut short a commit's effects,
+        // a signal, a frame's wait or a command that only starts fetches.
         internal QueryStaleTime Read(QueryEntry entry, bool rethrow)
         {
             var value = _fn == null ? _value : Call(entry, rethrow);
@@ -833,12 +928,7 @@ namespace Velvet
             }
             catch (Exception failure) when (!rethrow)
             {
-                // Read at commits and at updates of the result, so one that always throws would log over and over.
-                if (!s_loggedFailures.TryGetValue(fn, out _))
-                {
-                    s_loggedFailures.Add(fn, fn);
-                    FiberLogger.LogException(nameof(QueryClient), failure);
-                }
+                QueryFunctionFailures.LogOnce(fn, failure);
                 return TimeSpan.MaxValue;
             }
         }
@@ -927,7 +1017,7 @@ namespace Velvet
     {
         internal QueryFetchOptions<T> FetchOptions { get; } = new();
         internal QueryRules Rules { get; private protected set; }
-        internal bool Enabled => Rules.Enabled;
+        internal bool IsEnabled(QueryEntry entry) => Rules.IsEnabled(entry, rethrow: false);
 
         // TanStack's onQueryUpdate: the entry's state changed.
         internal abstract void OnQueryUpdate();
@@ -994,7 +1084,7 @@ namespace Velvet
         // to run the old entry's query function.
         internal void Sync(QueryClient client, in QuerySettings<TQueryFnData, TData> settings)
         {
-            var wasEnabled = Enabled;
+            var previousRules = Rules;
             var options = settings.Options;
             var key = options.QueryKey;
             var current = Entry;
@@ -1012,6 +1102,8 @@ namespace Velvet
 #endif
                 // v5's setOptions hands the entry this commit's options at every commit.
                 current!.SetOptions(FetchOptions);
+                // v5 resolves the previous options' enabled against the entry as it stands now.
+                var wasEnabled = previousRules.IsEnabled(current!, rethrow: false);
                 // TanStack's shouldFetchOptionally: a query turned on over stale data fetches it.
                 if (!wasEnabled && Rules.ShouldFetchOptionally(current!, rethrow: false))
                 {
@@ -1020,7 +1112,7 @@ namespace Velvet
                 // Over the same entry, v5's setOptions restarts the interval only when the query was turned on or
                 // off or the interval changed, so a re-render does not push the next refetch back.
                 var nextInterval = ComputeInterval(current!);
-                if (wasEnabled != Enabled || nextInterval != _currentInterval) RestartInterval(nextInterval);
+                if (wasEnabled != IsEnabled(current!) || nextInterval != _currentInterval) RestartInterval(nextInterval);
                 ScheduleStale();
                 return;
             }
@@ -1128,7 +1220,7 @@ namespace Velvet
             _currentInterval = every;
             var entry = Entry;
             // MUTANT_SURVIVES(equivalent, clause removed): every caller has subscribed, and an entry notifies only its own observers, whose leaving runs from effects a hook setter queues rather than runs.
-            if (entry == null || !Enabled || every == null) return;
+            if (entry == null || !IsEnabled(entry) || every == null) return;
             var wait = new CancellationTokenSource();
             _intervalWait = wait;
             RunInterval(entry, wait, every.Value).Forget();
@@ -1168,11 +1260,13 @@ namespace Velvet
 
         // TanStack's updateResult: the entry changed, and the component re-renders if a property it has read
         // is among what differs from the reading its latest render took, or if it has read none.
+        // Runs only while subscribed: Sync subscribes before it calls it, an entry tells only the observers it
+        // holds, and Unsubscribe cancels the stale wait as it clears Entry.
         private void Update()
         {
-            var entry = Entry;
+            var entry = Entry!;
             var next = CreateResult(entry, _settings, inRender: false);
-            if (entry is { HasData: true }) _lastWithData = entry;
+            if (entry.HasData) _lastWithData = entry;
             var changed = _hasCurrent ? _current.DifferencesFrom(next) : QueryProperties.All;
             if (changed != QueryProperties.None)
             {
@@ -1192,7 +1286,7 @@ namespace Velvet
         private void ScheduleStale()
         {
             var entry = Entry;
-            var staleTime = entry == null || !Enabled ? QueryStaleTime.Static : Rules.StaleTime.Read(entry, rethrow: false);
+            var staleTime = entry == null || !IsEnabled(entry) ? QueryStaleTime.Static : Rules.StaleTime.Read(entry, rethrow: false);
             // A static stale time is TimeSpan.MaxValue, so neither has a moment to wait for, as v5's isValidTimeout
             // turns both away.
             if (entry == null || staleTime.Time == TimeSpan.MaxValue || entry.IsStaleFor(staleTime)
@@ -1238,7 +1332,7 @@ namespace Velvet
             return (changed & (listed ?? _tracked)) != QueryProperties.None;
         }
 
-        internal QueryResult<TData> Read(QueryEntry<TQueryFnData>? entry, in QuerySettings<TQueryFnData, TData> settings)
+        internal QueryResult<TData> Read(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings)
         {
             _current = CreateResult(entry, settings, inRender: true);
             _hasCurrent = true;
@@ -1254,27 +1348,16 @@ namespace Velvet
         // A function form a render asks throws from the render, as v5's does; one asked by an update outside a
         // render is contained.
         private QuerySnapshot<TData> CreateResult(
-            QueryEntry<TQueryFnData>? entry, in QuerySettings<TQueryFnData, TData> settings, bool inRender)
+            QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, bool inRender)
         {
-            var status = QueryStatus.Pending;
-            var hasSource = false;
-            TQueryFnData source = default!;
-            Exception? error = null;
-            var fetchStatus = QueryFetchStatus.Idle;
-            var failureCount = 0;
-            Exception? failureReason = null;
-            var isStale = settings.Enabled;
-            if (entry != null)
-            {
-                status = entry.Status;
-                hasSource = entry.HasData;
-                source = entry.HasData ? entry.Data : default!;
-                error = entry.Error;
-                fetchStatus = entry.FetchStatus;
-                failureCount = entry.FailureCount;
-                failureReason = entry.FailureReason;
-                isStale = settings.Rules.IsStale(entry, inRender);
-            }
+            var status = entry.Status;
+            var hasSource = entry.HasData;
+            var source = hasSource ? entry.Data : default!;
+            var error = entry.Error;
+            var fetchStatus = entry.FetchStatus;
+            var failureCount = entry.FailureCount;
+            var failureReason = entry.FailureReason;
+            var isStale = settings.Rules.IsStale(entry, inRender);
 
             // TanStack's getOptimisticResult: a render whose subscription will fetch — a mount, a key change, or
             // the query turned on — already reports that fetch, rather than the render before the subscription's
@@ -1336,13 +1419,13 @@ namespace Velvet
         }
 
         // TanStack's fetchOnMount for an observer not yet subscribed, and fetchOptionally for one that is: Sync
-        // makes the same choice when it subscribes. A render with no entry stands for v5's, which builds one with no
-        // data.
-        private bool WillFetch(QueryEntry<TQueryFnData>? entry, in QuerySettings<TQueryFnData, TData> settings, bool inRender)
+        // makes the same choice when it subscribes. The rules last committed are the previous options, whose
+        // enabled v5 resolves against the entry the render reads.
+        private bool WillFetch(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, bool inRender)
         {
-            if (entry == null) return settings.Enabled;
             if (Entry == null) return settings.Rules.ShouldFetchOnMount(entry, inRender);
-            return (!ReferenceEquals(entry, Entry) || !Enabled) && settings.Rules.ShouldFetchOptionally(entry, inRender);
+            return (!ReferenceEquals(entry, Entry) || !Rules.IsEnabled(entry, inRender))
+                && settings.Rules.ShouldFetchOptionally(entry, inRender);
         }
 
         // The select runs again only when the entry's data or the select's instance changed since it last ran,

@@ -19,7 +19,8 @@ namespace Velvet.Tests
     /// entry without data, does.</item>
     /// <item>A function is asked with the entry and its answer is the stale time; the client's function applies to a
     /// query that sets neither form, and a query's own value stands ahead of it.</item>
-    /// <item>A function that throws outside a render is logged once, and one that throws during a render reaches
+    /// <item>A function that throws while an entry changes is logged once, one that throws inside
+    /// <c>FetchQuery</c> throws from it, and one that throws during a render reaches
     /// the error boundary.</item>
     /// </list>
     /// </summary>
@@ -229,6 +230,19 @@ namespace Velvet.Tests
 
             // Assert
             LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_AStaleTimeFunctionThatThrows_When_FetchQueryRuns_Then_TheCallThrowsIt()
+        {
+            // Arrange
+            var options = new QueryOptions<int>(Todos, Fetch) { StaleTimeFn = _ => throw new InvalidOperationException("stale-failed") };
+
+            // Act
+            TestDelegate fetch = () => s_client.FetchQuery(options).Forget();
+
+            // Assert
+            Assert.That(fetch, Throws.InvalidOperationException, "v5's fetchQuery throws what its staleTime function throws");
         }
 
         [TearDown]

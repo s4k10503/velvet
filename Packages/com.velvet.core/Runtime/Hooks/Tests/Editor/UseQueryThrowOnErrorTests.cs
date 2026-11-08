@@ -15,7 +15,8 @@ namespace Velvet.Tests
     /// <c>QueryErrorResetBoundary</c>.
     /// <list type="bullet">
     /// <item><c>true</c> throws a failed query's error to the nearest error boundary; by default the result
-    /// carries it. The function decides in place of the value and is handed the error.</item>
+    /// carries it. The function decides in place of the value and is handed the error. The client's setting
+    /// applies to a query that sets none, and a query's own stands ahead of it.</item>
     /// <item>Until the reset boundary is reset, a reader remounting over the failed entry neither fetches it nor
     /// renders, throwing the error again; once it is reset the reader renders pending and fetches, and the
     /// commit clears the reset.</item>
@@ -38,7 +39,7 @@ namespace Velvet.Tests
         private static QueryErrorResetBoundary? s_readBoundary;
         private static ErrorBoundaryReset? s_reset;
         private static bool s_resetsQueries;
-        private static bool s_throwOnError;
+        private static bool? s_throwOnError;
         private static Func<Exception, QueryInfo, bool>? s_throwOnErrorFn;
         private static string? s_seenError;
         private static bool s_enabled;
@@ -54,7 +55,7 @@ namespace Velvet.Tests
             s_readBoundary = null;
             s_reset = null;
             s_resetsQueries = false;
-            s_throwOnError = false;
+            s_throwOnError = null;
             s_throwOnErrorFn = null;
             s_seenError = null;
             s_enabled = true;
@@ -99,6 +100,33 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Texts(), Is.EqualTo("reader:Error"), "ThrowOnErrorFn replaces ThrowOnError");
+        }
+
+        [Test]
+        public void Given_AClientThrowOnErrorAndAQuerySettingNone_When_TheRequestFails_Then_TheBoundaryShowsItsError()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, ThrowOnError = true });
+
+            // Act
+            using var mounted = MountFailed();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("failed:offline"), "A query that sets no throwOnError takes the client's");
+        }
+
+        [Test]
+        public void Given_AClientThrowOnErrorAndAQuerySettingFalse_When_TheRequestFails_Then_TheReaderRendersTheError()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, ThrowOnError = true });
+            s_throwOnError = false;
+
+            // Act
+            using var mounted = MountFailed();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("reader:Error"), "A query's own throwOnError stands ahead of the client's");
         }
 
         [Test]

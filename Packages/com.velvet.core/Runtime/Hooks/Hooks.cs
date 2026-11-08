@@ -2923,7 +2923,7 @@ namespace Velvet
         // What a query hook's render read, and what its suspense and error rules read beside the result.
         private readonly struct QueryRead<TQueryFnData, TData>
         {
-            internal QueryRead(QueryObserver<TQueryFnData, TData> observer, QueryEntry<TQueryFnData>? entry,
+            internal QueryRead(QueryObserver<TQueryFnData, TData> observer, QueryEntry<TQueryFnData> entry,
                 in QuerySettings<TQueryFnData, TData> settings, QueryClient client, QueryErrorResetBoundary boundary)
             {
                 Observer = observer;
@@ -2936,7 +2936,7 @@ namespace Velvet
 
             internal QueryResult<TData> Result { get; }
             internal QueryObserver<TQueryFnData, TData> Observer { get; }
-            internal QueryEntry<TQueryFnData>? Entry { get; }
+            internal QueryEntry<TQueryFnData> Entry { get; }
             internal QuerySettings<TQueryFnData, TData> Settings { get; }
             internal QueryClient Client { get; }
             internal QueryErrorResetBoundary Boundary { get; }
@@ -3016,11 +3016,8 @@ namespace Velvet
         private static async VelvetTask<Unit> WaitForSuspendedQuery<T>(
             QueryEntry<T> entry, QueryErrorResetBoundary boundary, CancellationToken token)
         {
-            while (!token.IsCancellationRequested && !entry.HasData && entry.FetchStatus != QueryFetchStatus.Idle)
-            {
-                await VelvetTask.Yield();
-            }
-            if (!token.IsCancellationRequested && !entry.HasData) boundary.ClearReset();
+            await entry.WhenSuspendedCanResume(token);
+            if (!entry.HasData) boundary.ClearReset();
             return Unit.Default;
         }
 

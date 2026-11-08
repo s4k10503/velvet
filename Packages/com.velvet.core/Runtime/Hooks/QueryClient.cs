@@ -51,6 +51,20 @@ namespace Velvet
         public Func<int, Exception, TimeSpan>? RetryDelay { get; init; }
 
         /// <summary>
+        /// Whether a query that sets neither form of its own throws its error to the nearest error boundary:
+        /// TanStack Query's <c>throwOnError</c> in <c>defaultOptions.queries</c>, whose default is false; see
+        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/>.
+        /// </summary>
+        public bool ThrowOnError { get; init; }
+
+        /// <summary>
+        /// <see cref="ThrowOnError"/> given as a function of the error and the entry, with the terms of
+        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnErrorFn"/>. It replaces <see cref="ThrowOnError"/>
+        /// when both are set.
+        /// </summary>
+        public Func<Exception, QueryInfo, bool>? ThrowOnErrorFn { get; init; }
+
+        /// <summary>
         /// Whether a query mounting over an entry that holds data fetches it again: TanStack Query's
         /// <c>refetchOnMount</c>, whose default refetches stale data.
         /// </summary>
@@ -169,6 +183,8 @@ namespace Velvet
             DefaultRetry = options.Retry;
             DefaultRefetchOnMount = options.RefetchOnMount;
             DefaultRefetchOnMountFn = options.RefetchOnMountFn;
+            DefaultThrowOnError = options.ThrowOnError;
+            DefaultThrowOnErrorFn = options.ThrowOnErrorFn;
             DefaultRetryDelay = options.RetryDelay ?? s_exponentialBackoff;
             DefaultNetworkMode = options.NetworkMode;
             DefaultQueryKeyHashFn = options.QueryKeyHashFn;
@@ -200,6 +216,14 @@ namespace Velvet
         /// <summary>The retry rule a query that sets none of its own uses; null when none was set, which
         /// <see cref="QueryClientOptions.Retry"/> describes.</summary>
         public RetryRule? DefaultRetry { get; }
+
+        /// <summary>Whether a query that sets neither form of its own throws its error to the nearest error
+        /// boundary.</summary>
+        public bool DefaultThrowOnError { get; }
+
+        /// <summary>The function a query that sets neither form of its own decides whether to throw its error
+        /// with; it replaces <see cref="DefaultThrowOnError"/>.</summary>
+        public Func<Exception, QueryInfo, bool>? DefaultThrowOnErrorFn { get; }
 
         /// <summary>Whether a query that sets none of its own fetches again when it mounts over data.</summary>
         public QueryRefetchMode DefaultRefetchOnMount { get; }
@@ -356,14 +380,15 @@ namespace Velvet
         /// time, retries, retry delay, initial data and structural sharing. Unlike a mounted query, a request
         /// retries nothing unless <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> or
         /// <see cref="QueryClientOptions.Retry"/> says so, as v5's <c>fetchQuery</c> sets <c>retry: false</c>
-        /// where neither is set.</param>
+        /// where neither is set. A <see cref="QueryOptions{TQueryFnData, TData}.StaleTimeFn"/> that throws throws
+        /// from this call, as v5's <c>fetchQuery</c> does.</param>
         /// <returns>A task of the entry's data; it faults with the request's failure, and is cancelled when
         /// something cancels the request.</returns>
         /// <exception cref="InvalidOperationException">The entry holds data of another type.</exception>
         public VelvetTask<T> FetchQuery<T>(QueryOptions<T, T> options)
         {
             var entry = EntryFor(options, out var fetchOptions, out var staleTime);
-            if (!entry.IsStaleFor(staleTime.Read(entry, rethrow: false))) return VelvetTask.FromResult(entry.Data);
+            if (!entry.IsStaleFor(staleTime.Read(entry, rethrow: true))) return VelvetTask.FromResult(entry.Data);
             return entry.FetchAndWait(fetchOptions, cancelRefetch: false);
         }
 
@@ -389,7 +414,7 @@ namespace Velvet
         {
             var entry = EntryFor(options, out _, out var staleTime);
             if (!entry.HasData) return FetchQuery(options);
-            if (revalidateIfStale && entry.IsStaleFor(staleTime.Read(entry, rethrow: false))) PrefetchQuery(options).Forget();
+            if (revalidateIfStale && entry.IsStaleFor(staleTime.Read(entry, rethrow: true))) PrefetchQuery(options).Forget();
             return VelvetTask.FromResult(entry.Data);
         }
 
@@ -662,7 +687,9 @@ namespace Velvet
         // collected after its gcTime unless one subscribes, as v5 schedules a new query's removal at once.
         internal QueryEntry<T> Ensure<T>(QueryKey key, TimeSpan gcTime) => Ensure<T>(key, DefaultQueryKeyHashFn, gcTime);
 
-        internal QueryEntry<T> Ensure<T>(QueryKey key, Func<QueryKey, string>? hashFn, TimeSpan gcTime, QueryFetchOptions<T>? options = null)
+        internal QueryEntry<T> Ensure<T>(
+            QueryKey key, Func<QueryKey, string>? hashFn, TimeSpan gcTime, QueryFetchOptions<T>? options = null,
+            bool heldForRender = false)
         {
             var id = Identify(key, hashFn);
             CollectGarbage();
@@ -673,6 +700,7 @@ namespace Velvet
             var entry = new QueryEntry<T>(this, key, id, hashFn, gcTime);
             _entries.Add(id, entry);
             MarkInactive(entry);
+            entry.HeldForRender = heldForRender;
             if (options != null) entry.SetOptions(options);
             return entry;
         }
@@ -693,6 +721,7 @@ namespace Velvet
         internal void MarkActive(QueryEntry entry)
         {
             entry.InactiveSince = null;
+            entry.HeldForRender = false;
             // The deadline the last walk found may belong to this entry, so the next poll walks again.
             _canExpire = false;
             _inactive.Remove(entry);
@@ -759,8 +788,15 @@ namespace Velvet
             try
             {
                 var now = Now;
-                if (_canExpire && now < _nextWalk) keep = true;
-                else keep = Sweep(now);
+                if (_canExpire && now < _nextWalk)
+                {
+                    keep = true;
+                }
+                else
+                {
+                    ReleaseRenderHolds();
+                    keep = Sweep(now);
+                }
             }
             finally
             {
@@ -792,7 +828,18 @@ namespace Velvet
         private static bool IsExpired(QueryEntry entry, TimeSpan now)
         {
             var since = entry.InactiveSince;
-            return since != null && entry.FetchStatus == QueryFetchStatus.Idle && now - since.Value >= entry.GcTime;
+            return since != null && !entry.HeldForRender && entry.FetchStatus == QueryFetchStatus.Idle
+                && now - since.Value >= entry.GcTime;
+        }
+
+        // An entry a render built is held from collection until a frame's poll, so the renders and commit of the
+        // pass that built it find it however short its gcTime; one whose render never commits expires after that.
+        private void ReleaseRenderHolds()
+        {
+            foreach (var entry in _inactive)
+            {
+                entry.HeldForRender = false;
+            }
         }
 
         // v5's isValidTimeout and its zero check: anything else sets no interval.
@@ -843,6 +890,8 @@ namespace Velvet
         internal TimeSpan GcTime { get; private set; }
         internal TimeSpan? InactiveSince { get; set; }
         internal int InactiveEpoch { get; set; }
+        // Built by a render, and neither subscribed to nor polled past since: see QueryClient.ReleaseRenderHolds.
+        internal bool HeldForRender { get; set; }
         internal abstract Type DataType { get; }
         internal abstract QueryFetchStatus FetchStatus { get; }
         internal bool IsFetching => FetchStatus == QueryFetchStatus.Fetching;
@@ -893,6 +942,7 @@ namespace Velvet
         private bool _requestTakesToken;
         // The callers waiting on the request in flight, each settled when the request lands, fails or is cancelled.
         private List<VelvetTaskCompletionSource<T>>? _waiters;
+        private List<VelvetTaskCompletionSource<Unit>>? _suspended;
         // TanStack's #initialState, which a reset returns to: no data, or the initial data the entry took.
         private EntryState _initialState;
         // TanStack's isFetched: whether data has landed or been written, or a request has failed, since the entry
@@ -983,8 +1033,46 @@ namespace Velvet
         // The request in flight, which a suspending query waits on; null while there is none.
         internal object? Request => _inFlight;
 
-        // TanStack's query.setOptions: an entry with no data takes the initial data of the options it is handed.
         internal void SetOptions(QueryFetchOptions<T> options)
+        {
+            TakeOptions(options);
+            ReleaseSuspended();
+        }
+
+        // The suspended reads waiting on the entry, as v5's fetchOptimistic waits on its query.
+        internal VelvetTask<Unit> WhenSuspendedCanResume(CancellationToken token)
+        {
+            if (CanResumeSuspended) return VelvetTask.FromResult(Unit.Default);
+            var source = new VelvetTaskCompletionSource<Unit>();
+            (_suspended ??= new List<VelvetTaskCompletionSource<Unit>>()).Add(source);
+            token.Register(static state => ((VelvetTaskCompletionSource<Unit>)state!).TrySetCanceled(), source);
+            return source.Task;
+        }
+
+        // v5's fetchOptimistic settles once the query holds data or its fetch has settled.
+        private bool CanResumeSuspended => HasData || _inFlight == null;
+
+        // Called once an update to the entry is complete, never from inside one, since releasing a suspended read
+        // renders its component at once. A release reached while some component renders is posted to the main
+        // thread instead, so that one render never runs inside another.
+        private void ReleaseSuspended()
+        {
+            var suspended = _suspended;
+            if (suspended == null || !CanResumeSuspended) return;
+            if (FiberAmbientStack.Current != null)
+            {
+                VelvetMainThread.Post(static state => ((QueryEntry<T>)state!).ReleaseSuspended(), this);
+                return;
+            }
+            _suspended = null;
+            foreach (var source in suspended)
+            {
+                source.TrySetResult(Unit.Default);
+            }
+        }
+
+        // TanStack's query.setOptions: an entry with no data takes the initial data of the options it is handed.
+        private void TakeOptions(QueryFetchOptions<T> options)
         {
             _options = options;
             var initialData = options.InitialData;
@@ -1032,6 +1120,7 @@ namespace Velvet
                 _retriesStopped = true;
             }
             Client.MarkInactive(this);
+            ReleaseSuspended();
         }
 
         // Fetch, handing back a task of the request now in flight: the one this started, or the one it joined.
@@ -1093,7 +1182,7 @@ namespace Velvet
                 CancelInFlight();
             }
             // v5's fetch takes the options it is handed only once it is not joining a request in flight.
-            SetOptions(options);
+            TakeOptions(options);
 
             // Taken after a request started over is cancelled, as v5 stores the state at that point.
             _revertState = new EntryState(this);
@@ -1121,6 +1210,8 @@ namespace Velvet
             {
                 RunAsync(options, request).Forget();
             }
+            // Initial data the options gave lets a suspended read resume.
+            ReleaseSuspended();
         }
 
         private async VelvetTask RunAsync(QueryFetchOptions<T> options, CancellationTokenSource request)
@@ -1289,6 +1380,7 @@ namespace Velvet
             finally
             {
                 ResolveWaiters(shared);
+                ReleaseSuspended();
             }
         }
 
@@ -1306,6 +1398,7 @@ namespace Velvet
             IsInvalidated = false;
             _dataUpdatedAt = Client.Now;
             Notify();
+            ReleaseSuspended();
             return shared;
         }
 
@@ -1334,6 +1427,7 @@ namespace Velvet
             finally
             {
                 RejectWaiters(error);
+                ReleaseSuspended();
             }
         }
 
@@ -1362,7 +1456,7 @@ namespace Velvet
             if (IsStatic) return VelvetTask.CompletedTask;
             foreach (var observer in _observers)
             {
-                if (!observer.Enabled) continue;
+                if (!observer.IsEnabled(this)) continue;
                 // An observer hands the entry its options when it subscribes, so an entry with one holds some.
                 return FetchAndWait(_options!, cancelRefetch);
             }
@@ -1375,7 +1469,7 @@ namespace Velvet
             {
                 foreach (var observer in _observers)
                 {
-                    if (observer.Enabled) return true;
+                    if (observer.IsEnabled(this)) return true;
                 }
                 return false;
             }
@@ -1427,6 +1521,7 @@ namespace Velvet
             }
             RescheduleCollection(Client.Now);
             Notify();
+            ReleaseSuspended();
         }
 
         // TanStack's query.reset(): the state the entry was made in, its initial data included, its request
@@ -1436,6 +1531,7 @@ namespace Velvet
             CancelInFlight();
             Restore(_initialState);
             Notify();
+            ReleaseSuspended();
         }
 
         // TanStack's query.onFocus and onOnline: the first observer that asks for it refetches, joining a request
@@ -1460,6 +1556,7 @@ namespace Velvet
             {
                 observer.OnRemoved();
             }
+            ReleaseSuspended();
         }
 
         internal override QueryInfo Describe()
