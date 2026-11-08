@@ -1,8 +1,10 @@
 #nullable enable
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using NUnit.Framework;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -597,8 +599,10 @@ namespace Velvet.Tests
             Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(2));
         }
 
-        [Test]
-        public void Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_ItFaultsForTheMissingFunction()
+        // The missing function's task has completed already, which the entry holds back a frame before it settles.
+        [UnityTest]
+        public IEnumerator Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_ItFaultsForTheMissingFunction()
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_client = new QueryClient(new QueryClientOptions { QueryCache = s_client.GetQueryCache(), Retry = 0, Clock = () => s_now });
@@ -606,13 +610,15 @@ namespace Velvet.Tests
 
             // Act
             var task = Find().Fetch();
+            await Frames();
 
             // Assert
             Assert.That(ExceptionOf(task)?.Message, Does.StartWith("Missing queryFn"));
-        }
+        });
 
-        [Test]
-        public void Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_TheEntryTakesTheMissingFunctionsError()
+        [UnityTest]
+        public IEnumerator Given_AnEntryOnlyWrittenByHand_When_FetchRuns_Then_TheEntryTakesTheMissingFunctionsError()
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_client = new QueryClient(new QueryClientOptions { QueryCache = s_client.GetQueryCache(), Retry = 0, Clock = () => s_now });
@@ -620,10 +626,65 @@ namespace Velvet.Tests
 
             // Act
             _ = Find().Fetch();
+            await Frames();
 
             // Assert
             Assert.That(Find().State.Status, Is.EqualTo(QueryStatus.Error),
                 "v5 runs the fetch with a function that rejects as missing, which settles as an error");
+        });
+
+        private static async VelvetTask Frames()
+        {
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
+        }
+
+        [Test]
+        public void Given_ARequestCancelledSilently_When_TwoFetchesJoinIt_Then_TheSecondIsHandedTheCancellationToo()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options());
+            _ = Find().Cancel(silent: true);
+            _ = ExceptionOf(Find().Fetch());
+
+            // Act
+            var second = Find().Fetch();
+
+            // Assert
+            Assert.That(ExceptionOf(second), Is.InstanceOf<OperationCanceledException>(),
+                "v5 hands every joiner the cancelled retryer's rejection");
+        }
+
+        [Test]
+        public void Given_AStatusWrittenFetchingOverARequestThatReadsTheToken_When_ItsLastReaderLeaves_Then_TheEntryReadsIdle()
+        {
+            // Arrange
+            s_readsToken = true;
+            var mounted = V.Mount(_root, V.Component(ContextReader, key: "reader"));
+            mounted.FlushEffectsForTest();
+            var query = Find();
+            query.SetState(query.State with { IsInvalidated = true });
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(Find().State.FetchStatus, Is.EqualTo(QueryFetchStatus.Idle),
+                "v5's revert writes the state the request found with the status idle");
+        }
+
+        [Test]
+        public void Given_ADictionaryWithAKeyThatLeadsAnother_When_ItsHashIsRead_Then_ItsKeysAreSortedAlone()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("k", new Dictionary<string, int> { ["a!"] = 2, ["a"] = 1 }), 1);
+
+            // Act
+            var hash = s_client.GetQueryCache().GetAll()[0].QueryHash;
+
+            // Assert
+            Assert.That(hash, Is.EqualTo("[\"k\",{\"a\":1,\"a!\":2}]"), "v5's hashKey sorts the keys alone");
         }
 
         [Test]

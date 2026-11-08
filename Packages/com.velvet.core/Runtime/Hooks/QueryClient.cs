@@ -1262,7 +1262,21 @@ namespace Velvet
         private QueryFetchStatus? _writtenFetchStatus;
         // TanStack's #retryer.promise once its request has settled or been cancelled: what a fetch over a fetch
         // status that is not idle joins when no request is in flight.
-        private VelvetTask<T>? _settled;
+        private Settled? _settled;
+
+        // A settled request's outcome, of which each joiner is handed a task of its own, as v5 hands each the
+        // promise's value or rejection however often it is awaited.
+        private sealed class Settled
+        {
+            private readonly T _value = default!;
+            private readonly Exception? _error;
+
+            internal Settled(T value) => _value = value;
+
+            internal Settled(Exception error) => _error = error;
+
+            internal VelvetTask<T> Join() => _error == null ? VelvetTask.FromResult(_value) : VelvetTask.FromException<T>(_error);
+        }
         // Requests a fetch over a status written idle stopped tracking without aborting, as v5's fetch replaces
         // #retryer and leaves the old retryer running: each settles into the entry as it would have, with the
         // callers that waited on it.
@@ -1385,6 +1399,8 @@ namespace Velvet
             if (_inFlight != null && (_tokenRead || (_paused && Status == QueryStatus.Pending)))
             {
                 CancelInFlight();
+                // v5's revert writes the state the request found with the status idle, whatever was written since.
+                _writtenFetchStatus = null;
                 Revert();
                 Notify(QueryActionType.SetState);
             }
@@ -1400,7 +1416,7 @@ namespace Velvet
         internal VelvetTask<T> FetchAndWait(QueryFetchOptions<T> options, bool cancelRefetch, FetchDirection? direction = null)
         {
             Fetch(options, cancelRefetch, direction);
-            if (_inFlight == null) return !IsRemoved && _settled.HasValue ? _settled.Value : VelvetTask.FromException<T>(new OperationCanceledException());
+            if (_inFlight == null) return !IsRemoved && _settled != null ? _settled.Join() : VelvetTask.FromException<T>(new OperationCanceledException());
             var waiter = new VelvetTaskCompletionSource<T>();
             (_waiters ??= new List<VelvetTaskCompletionSource<T>>()).Add(waiter);
             return waiter.Task;
@@ -1722,7 +1738,7 @@ namespace Velvet
                 ReleaseSuspended();
             }
             if (callbackFailure != null) FailLanded(callbackFailure, waiters, current);
-            else if (current) _settled = VelvetTask.FromResult(shared);
+            else if (current) _settled = new Settled(shared);
         }
 
         private Exception? RunSuccessCallbacks(T data)
@@ -1757,7 +1773,7 @@ namespace Velvet
             }
             finally
             {
-                if (current) _settled = VelvetTask.FromException<T>(error);
+                if (current) _settled = new Settled(error);
                 RejectWaiters(waiters, error);
                 ReleaseSuspended();
             }
@@ -1827,7 +1843,7 @@ namespace Velvet
             }
             finally
             {
-                if (current) _settled = VelvetTask.FromException<T>(error);
+                if (current) _settled = new Settled(error);
                 RejectWaiters(waiters, error);
                 ReleaseSuspended();
             }
@@ -2096,7 +2112,7 @@ namespace Velvet
             if (cts == null) return;
             _inFlight = null;
             _paused = false;
-            _settled = VelvetTask.FromException<T>(new OperationCanceledException());
+            _settled = new Settled(new OperationCanceledException());
             // Contained on FiberAsyncResource.Dispose's terms: the token went to the query function, so a
             // callback firing here can be the application's.
             try

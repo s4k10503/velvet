@@ -272,9 +272,9 @@ namespace Velvet
         }
 
         // A string, a number, a bool and an enum are written as text no part unequal to them writes; a sequence, a
-        // record or tuple, a dictionary and a set by what they hold, a dictionary's entries and a set's elements in
-        // ordinal order of their text, so the order they were added in does not show, as v5's hashKey sorts an
-        // object's keys. Only a part compared by its own Equals is the number opaque gives it, one number for each
+        // record or tuple, a dictionary and a set by what they hold, a dictionary's entries in ordinal order of their
+        // keys alone, as v5's hashKey sorts an object's keys, and a set's elements in ordinal order of their text, so
+        // the order either was filled in does not show. Only a part compared by its own Equals is the number opaque gives it, one number for each
         // set of parts Matches holds equal.
         internal static void AppendHash(StringBuilder builder, object? part, Func<object, int> opaque)
         {
@@ -301,7 +301,7 @@ namespace Velvet
                     AppendHashedItems(builder, '[', (IEnumerable)part, ']', opaque);
                     return;
                 case QueryKeyPartKind.Dictionary:
-                    AppendSortedEntries(builder, (IDictionary)part, opaque);
+                    AppendEntriesByKey(builder, (IDictionary)part, opaque);
                     return;
                 default:
                     builder.Append("Set");
@@ -322,19 +322,33 @@ namespace Velvet
             return texts;
         }
 
-        private static void AppendSortedEntries(StringBuilder builder, IDictionary dictionary, Func<object, int> opaque)
+        // TanStack's hashKey sorts an object's keys alone, in UTF-16 order, and JSON writes each as a string: a string
+        // key is itself, and any other key is the text its part writes.
+        private static void AppendEntriesByKey(StringBuilder builder, IDictionary dictionary, Func<object, int> opaque)
         {
-            var entries = new List<string>();
+            var entries = new List<KeyValuePair<string, object?>>();
             var enumerator = dictionary.GetEnumerator();
             while (enumerator.MoveNext())
             {
-                var entry = new StringBuilder();
-                AppendHash(entry, enumerator.Key, opaque);
-                entry.Append(':');
-                AppendHash(entry, enumerator.Value, opaque);
-                entries.Add(entry.ToString());
+                var key = enumerator.Key as string;
+                if (key == null)
+                {
+                    var text = new StringBuilder();
+                    AppendHash(text, enumerator.Key, opaque);
+                    key = text.ToString();
+                }
+                entries.Add(new KeyValuePair<string, object?>(key, enumerator.Value));
             }
-            AppendSorted(builder, '{', entries, '}');
+            entries.Sort((left, right) => string.CompareOrdinal(left.Key, right.Key));
+            builder.Append('{');
+            for (var i = 0; i < entries.Count; i++)
+            {
+                if (i > 0) builder.Append(',');
+                AppendJsonString(builder, entries[i].Key);
+                builder.Append(':');
+                AppendHash(builder, entries[i].Value, opaque);
+            }
+            builder.Append('}');
         }
 
         private static void AppendSorted(StringBuilder builder, char open, List<string> texts, char close)

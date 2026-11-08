@@ -331,6 +331,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheListCommitsTwice_Then_NothingIsFetchedAgain()
+        {
+            // Arrange
+            using var mounted = Mount(MixedReader);
+            Settle(mounted, () => Source("a").TrySetResult(1));
+
+            // Act
+            Rerender(mounted);
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_sources["a"].Count, Is.EqualTo(1),
+                "Each data type keeps its observer over the entry, so no commit subscribes a new one that fetches");
+        }
+
+        [Test]
         public void Given_AReadFromAQueryListingItsProps_When_AnotherQuerysDataChanges_Then_TheComponentDoesNotRenderAgain()
         {
             // Arrange
@@ -508,6 +524,20 @@ namespace Velvet.Tests
 
         private static readonly Func<QueryResult<int>, QueryResult<string>, string> s_typedCombine
             = (number, text) => number.Data + "+" + text.Data;
+
+        [Component]
+        private static VNode MixedReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var number = Options("a");
+            var (count, raw) = Hooks.UseQueries(
+                new QueryOptions<int, string>(number.QueryKey, number.QueryFn) { Select = data => "n" + data, StaleTime = TimeSpan.Zero },
+                number with { StaleTime = TimeSpan.Zero },
+                s_client);
+            s_typed = count.Data + ":" + raw.Data;
+            return V.Label(text: "mixed");
+        }
 
         [Component]
         private static VNode ListedReader()

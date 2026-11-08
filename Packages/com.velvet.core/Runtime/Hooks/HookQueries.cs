@@ -14,6 +14,7 @@ namespace Velvet
         internal abstract QueryObserver Observer { get; }
         // TanStack's trackResult hands back a result whose query lists notifyOnChangeProps untracked.
         internal abstract bool ListsNotifyProps { get; }
+        internal abstract Type ObserverType { get; }
         internal abstract void Settle(QueryClient client, bool suspense);
         internal abstract void Match(QueryObserver? held, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
@@ -36,6 +37,7 @@ namespace Velvet
         internal override QueryKey KeyId => _settings.KeyId;
         internal override QueryObserver Observer => _observer;
         internal override bool ListsNotifyProps => _options.NotifyOnChangeProps != null;
+        internal override Type ObserverType => typeof(QueryObserver<TQueryFnData, TData>);
 
         internal override void Settle(QueryClient client, bool suspense)
             => _settings = new QuerySettings<TQueryFnData, TData>(_options, client, suspense);
@@ -189,19 +191,20 @@ namespace Velvet
         }
 
         // TanStack's #findMatchingObservers: a query takes the observer the last commit held over the same entry, the
-        // last of them where several did, as v5's Map keeps the last; queries over one entry share it, and a query
-        // over an entry no observer held takes a new one.
+        // last of them where several did, as v5's Map keeps the last, and queries over one entry share it. An
+        // observer is typed by the data it reads, so the map is kept for each type as well: a query of another data
+        // type over the entry keeps one of its own, commit after commit.
         private void Match(QueriesRead read)
         {
-            var byKey = new Dictionary<QueryKey, QueryObserver>();
+            var byKey = new Dictionary<(QueryKey, Type), QueryObserver>();
             foreach (var observer in _observers)
             {
-                if (observer.CommittedKeyId is { } id) byKey[id] = observer;
+                if (observer.CommittedKeyId is { } id) byKey[(id, observer.GetType())] = observer;
             }
             for (var i = 0; i < read.Items.Length; i++)
             {
                 var item = read.Items[i];
-                item.Match(byKey.TryGetValue(item.KeyId, out var held) ? held : null, OnObserverChanged);
+                item.Match(byKey.TryGetValue((item.KeyId, item.ObserverType), out var held) ? held : null, OnObserverChanged);
                 read.Observers[i] = item.Observer;
             }
         }

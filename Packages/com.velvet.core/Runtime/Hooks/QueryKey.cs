@@ -85,8 +85,8 @@ namespace Velvet
         public override int GetHashCode() => _hashCode;
 
         /// <inheritdoc/>
-        // TanStack's hashKey: a string equal for equal keys, the parts written as JSON is, a dictionary's entries and a
-        // set's elements in ordinal order of their own text. A part compared by its own Equals is written as the
+        // TanStack's hashKey: a string equal for equal keys, the parts written as JSON is, a dictionary's entries in
+        // ordinal order of their keys and a set's elements in ordinal order of their own text. A part compared by its own Equals is written as the
         // number opaque gives it, which is one number for each set of equal parts.
         internal string Hash(Func<object, int> opaque)
         {

@@ -696,8 +696,9 @@ data the entry holds, and when `CancelQueries(revert: false)` cancels one; a thr
 `OnSettled` and is what a `FetchQuery` caller is handed. `SetQueryData` runs none of them. `Find` matches
 exactly unless the filters set `Exact = false`, as v5's defaults `exact` to true. `Get` finds an entry by its
 `QueryHash`: the string its `QueryKeyHashFn` made, or the key written as JSON is — `["todos",1]` — with each
-number other than an `int` suffixed by its type, a dictionary's entries and a set's elements sorted by their
-text as v5 sorts an object's keys, and a part compared by its own `Equals` written `#` and a number the cache
+number other than an `int` suffixed by its type, a dictionary's entries sorted by key as v5 sorts an object's
+keys — each key written as a JSON string, one that is not a string as the text its part writes — a set's
+elements sorted by their text, and a part compared by its own `Equals` written `#` and a number the cache
 gives every part equal to it while an entry holds one, so equal keys hash alike. An invalidation tells the entry's mounted queries before the cache, as v5's dispatch does, so a
 result reading `IsStale` turns stale with it. `IsFetching` and `Hooks.UseIsFetching` count the entries selected
 that are `Fetching`, a paused one left out.
@@ -705,7 +706,8 @@ that are `Fetching`, a paused one left out.
 **Several queries in one hook.** `UseQueries` reads each query of its list as `UseQuery` would and returns the
 results in the list's order, so the number of queries can change between renders. A query keeps its observer
 while some query of the list reads the same entry, whatever its position, as v5 matches observers by
-`queryHash`, and queries of one list over one entry share one observer, as v5's map of them keeps one; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
+`queryHash`, and queries of one list over one entry and of one data type share one observer, as v5's map of
+them keeps one, where queries over one entry of two data types keep one each; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
 entry logs a warning, in the Editor and a development build, as v5 warns outside production. Two to four
 queries passed as their own arguments keep their own data types, and the hook returns a tuple of their results
 or hands `combine` each result as its own argument; a list built at run time holds queries of one type. A
