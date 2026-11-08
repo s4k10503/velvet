@@ -300,7 +300,7 @@ namespace Velvet
         // Keyed by QueryEntry.Id, and in insertion order beside it, as TanStack's Map iterates.
         private readonly Dictionary<QueryKey, QueryEntry> _entries = new();
         private readonly List<QueryEntry> _ordered = new();
-        private readonly List<Action<QueryCacheEvent>> _listeners = new();
+        private readonly CacheListeners<QueryCacheEvent> _listeners = new();
         // TanStack's map by queryHash, beside the one by identity; the first entry added under a hash holds it.
         private readonly Dictionary<string, QueryEntry> _byHash = new(StringComparer.Ordinal);
         // The numbers a hash writes parts as, and how many entries hold each, under the equality a key compares
@@ -333,12 +333,7 @@ namespace Velvet
         /// listener already subscribed is not added twice.
         /// </summary>
         /// <returns>The action that unsubscribes the listener.</returns>
-        public Action Subscribe(Action<QueryCacheEvent> listener)
-        {
-            if (listener == null) throw new ArgumentNullException(nameof(listener));
-            if (!_listeners.Contains(listener)) _listeners.Add(listener);
-            return () => _listeners.Remove(listener);
-        }
+        public Action Subscribe(Action<QueryCacheEvent> listener) => _listeners.Subscribe(listener);
 
         /// <summary>Every entry in the cache, in the order they were added, those gone unread past their
         /// garbage-collection time left out.</summary>
@@ -469,13 +464,7 @@ namespace Velvet
             entry.NumberedParts = null;
         }
 
-        internal void Notify(QueryCacheEvent cacheEvent)
-        {
-            foreach (var listener in _listeners.ToArray())
-            {
-                listener(cacheEvent);
-            }
-        }
+        internal void Notify(QueryCacheEvent cacheEvent) => _listeners.Notify(cacheEvent);
 
         // An entry whose time has run out reads as absent before a sweep removes it, as QueryClient's reads do.
         private IEnumerable<QueryEntry> Live()

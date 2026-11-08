@@ -323,7 +323,7 @@ namespace Velvet
         // Insertion-ordered, as TanStack's Set iterates.
         private readonly List<Mutation> _mutations = new();
         private readonly Dictionary<string, List<Mutation>> _scopes = new(StringComparer.Ordinal);
-        private readonly List<Action<MutationCacheEvent>> _listeners = new();
+        private readonly CacheListeners<MutationCacheEvent> _listeners = new();
         private readonly List<Mutation> _collectable = new();
         private int _mutationId;
         private bool _collecting;
@@ -360,12 +360,7 @@ namespace Velvet
         /// listener already subscribed is not added twice.
         /// </summary>
         /// <returns>The action that unsubscribes the listener.</returns>
-        public Action Subscribe(Action<MutationCacheEvent> listener)
-        {
-            if (listener == null) throw new ArgumentNullException(nameof(listener));
-            if (!_listeners.Contains(listener)) _listeners.Add(listener);
-            return () => _listeners.Remove(listener);
-        }
+        public Action Subscribe(Action<MutationCacheEvent> listener) => _listeners.Subscribe(listener);
 
         /// <summary>Every mutation in the cache, in the order they were added.</summary>
         public IReadOnlyList<Mutation> GetAll() => _mutations.ToArray();
@@ -492,13 +487,7 @@ namespace Velvet
             }
         }
 
-        internal void Notify(MutationCacheEvent cacheEvent)
-        {
-            foreach (var listener in _listeners.ToArray())
-            {
-                listener(cacheEvent);
-            }
-        }
+        internal void Notify(MutationCacheEvent cacheEvent) => _listeners.Notify(cacheEvent);
 
         // TanStack's scheduleGc, read once a frame on the mutation's clock as QueryClient's entries are: the removal
         // lands on the first frame whose reading is at or past the deadline. An infinite gcTime sets none.
