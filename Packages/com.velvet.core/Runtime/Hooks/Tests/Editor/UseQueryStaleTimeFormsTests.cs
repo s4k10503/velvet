@@ -11,7 +11,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryStaleTime.Static"/> and <see cref="QueryOptions{TQueryFnData, TData}.StaleTimeFn"/>,
+    /// Specifies <see cref="QueryStaleTime.Static"/> and <see cref="QueryOptionsBase{TQueryFnData, TData}.StaleTimeFn"/>,
     /// TanStack Query's <c>staleTime: 'static'</c> and <c>staleTime</c> as a function.
     /// <list type="bullet">
     /// <item>Static data stays fresh through an invalidation, and neither <c>InvalidateQueries</c>,
@@ -39,8 +39,8 @@ namespace Velvet.Tests
         private static TimeSpan s_now;
         private static int s_calls;
         private static QueryStaleTime? s_staleTime;
-        private static Func<QueryInfo, QueryStaleTime>? s_staleTimeFn;
-        private static Func<QueryInfo, QueryStaleTime>? s_secondStaleTimeFn;
+        private static Func<Query, QueryStaleTime>? s_staleTimeFn;
+        private static Func<Query, QueryStaleTime>? s_secondStaleTimeFn;
         private static QueryRefetchMode? s_refetchOnMount;
         private static object? s_seenData;
         private static StateUpdater<bool> s_setShowSecond;
@@ -235,7 +235,7 @@ namespace Velvet.Tests
         public void Given_AStaleTimeFunctionThatThrows_When_FetchQueryRuns_Then_TheCallThrowsIt()
         {
             // Arrange
-            var options = new QueryOptions<int>(Todos, Fetch) { StaleTimeFn = _ => throw new InvalidOperationException("stale-failed") };
+            var options = new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTimeFn = _ => throw new InvalidOperationException("stale-failed") };
 
             // Act
             TestDelegate fetch = () => s_client.FetchQuery(options).Forget();
@@ -249,7 +249,7 @@ namespace Velvet.Tests
 
         private string Texts() => string.Join(",", _root.Query<Label>().ToList().Select(label => label.text));
 
-        private static QueryClient NewClient(Func<QueryInfo, QueryStaleTime>? staleTimeFn)
+        private static QueryClient NewClient(Func<Query, QueryStaleTime>? staleTimeFn)
             => new(new QueryClientOptions
             {
                 StaleTimeFn = staleTimeFn,
@@ -289,7 +289,7 @@ namespace Velvet.Tests
         private static VNode Reader(bool second)
         {
             var result = Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     StaleTimeFn = second && s_secondStaleTimeFn != null ? s_secondStaleTimeFn : s_staleTimeFn,

@@ -9,8 +9,8 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.EnabledFn"/>,
-    /// <see cref="QueryOptions{TQueryFnData, TData}.RetryOnMount"/> and its function form, TanStack Query's
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.EnabledFn"/>,
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}.RetryOnMount"/> and its function form, TanStack Query's
     /// <c>enabled</c> as a function and <c>retryOnMount</c>.
     /// <list type="bullet">
     /// <item>An enabled function answering false keeps the mounting query from fetching, in place of
@@ -30,9 +30,9 @@ namespace Velvet.Tests
 
         private VisualElement _root = null!;
         private static QueryClient s_client = null!;
-        private static Func<QueryInfo, bool>? s_enabledFn;
+        private static Func<Query, bool>? s_enabledFn;
         private static bool s_retryOnMount;
-        private static Func<QueryInfo, bool>? s_retryOnMountFn;
+        private static Func<Query, bool>? s_retryOnMountFn;
         private static QueryKey? s_seenKey;
         private static int s_calls;
         private static readonly List<VelvetTaskCompletionSource<int>> s_sources = new();
@@ -123,7 +123,7 @@ namespace Velvet.Tests
 
         private static void FailedEntry()
         {
-            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
             s_sources[0].TrySetException(new InvalidOperationException("offline"));
         }
 
@@ -145,7 +145,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     EnabledFn = s_enabledFn,
                     RetryOnMount = s_retryOnMount,

@@ -3133,15 +3133,15 @@ namespace Velvet
         /// starts begins there. A change of key moves the subscription to the new key's entry: the result
         /// shows that entry's data, or none, and nothing the old key's request delivers afterwards.
         /// <para/>
-        /// A failed request runs again as <see cref="QueryOptions{TQueryFnData, TData}.Retry"/> says before the
+        /// A failed request runs again as <see cref="QueryOptionsBase{TQueryFnData, TData}.Retry"/> says before the
         /// failure is the entry's error, and a request that lands is shared structurally with the data the entry
-        /// held (<see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does. Under
-        /// <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> the error is thrown from this call.
+        /// held (<see cref="QueryOptionsBase{TQueryFnData, TData}.StructuralSharing"/>), as <c>useQuery</c> does. Under
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> the error is thrown from this call.
         /// </remarks>
         /// <typeparam name="TQueryFnData">The entry's data type. Every query sharing a key must use the same
         /// one.</typeparam>
         /// <typeparam name="TData">The result's data type, which
-        /// <see cref="QueryOptions{TQueryFnData, TData}.Select"/> makes.</typeparam>
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.Select"/> makes.</typeparam>
         /// <param name="options">The key, the query function, and the options
         /// <see cref="QueryOptions{TQueryFnData, TData}"/> lists.</param>
         /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
@@ -3150,7 +3150,7 @@ namespace Velvet
         public static QueryResult<TData> UseQuery<TQueryFnData, TData>(
             QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
-            var query = UseQueryObserver(options, client, suspense: false);
+            var query = UseQueryObserver(options, client, suspense: false, nameof(UseQuery));
             query.ThrowIfError();
             return query.Result;
         }
@@ -3176,8 +3176,8 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The options are <see cref="UseQuery{TQueryFnData, TData}"/>'s, but that the query is always enabled,
-        /// <see cref="QueryOptions{TQueryFnData, TData}.PlaceholderData"/> is ignored, and the error rule above
-        /// replaces <see cref="QueryOptions{TQueryFnData, TData}.ThrowOnError"/> and its function. The stale time, and a garbage-collection
+        /// <see cref="QueryOptionsBase{TQueryFnData, TData}.PlaceholderData"/> is ignored, and the error rule above
+        /// replaces <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> and its function. The stale time, and a garbage-collection
         /// time, of less than a second count as a second, so the render that follows the suspension does not fetch
         /// again. A suspending render starts the entry's request, or joins the one in flight, and the component
         /// renders again once the entry holds data or the request has settled. Until the nearest
@@ -3193,10 +3193,588 @@ namespace Velvet
         public static QueryResult<TData> UseSuspenseQuery<TQueryFnData, TData>(
             QueryOptions<TQueryFnData, TData> options, QueryClient? client = null)
         {
-            var query = UseQueryObserver(options, client, suspense: true);
+            var query = UseQueryObserver(options, client, suspense: true, nameof(UseSuspenseQuery));
             UseSuspendWhilePending(query);
             query.ThrowIfError();
             return query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/> for a query whose result holds the pages
+        /// the entry holds.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <param name="options">The key, the page function, the first page's parameter and the paging.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static InfiniteQueryResult<InfiniteData<TQueryFnData, TPageParam>> UseInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, QueryClient? client = null)
+            => UseInfiniteQuery<TQueryFnData, TPageParam, InfiniteData<TQueryFnData, TPageParam>>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useInfiniteQuery</c>: <see cref="UseQuery{TQueryFnData, TData}"/> over an entry holding
+        /// pages. Its first request fetches the page
+        /// <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.InitialPageParam"/> names;
+        /// <see cref="InfiniteQueryResult{TData}.FetchNextPage"/> and
+        /// <see cref="InfiniteQueryResult{TData}.FetchPreviousPage"/> add a page at either end, and every other
+        /// request — a refetch, an invalidation, a mount over stale pages — fetches again from the first page, with
+        /// the parameter it was fetched with, as many pages as the entry holds, each named by
+        /// <see cref="InfiniteQueryOptions{TQueryFnData, TPageParam, TData}.GetNextPageParam"/> from the page before,
+        /// stopping early where it names none. A retry of such a request carries on from the page that failed.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <typeparam name="TData">What the select makes of the pages.</typeparam>
+        /// <param name="options">The key, the page function, the first page's parameter, the paging and the options
+        /// of <see cref="QueryOptions{TQueryFnData, TData}"/>.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state as this render reads it.</returns>
+        public static InfiniteQueryResult<TData> UseInfiniteQuery<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
+        {
+            ValidateInfiniteQueryOptions(options);
+            var query = UseQueryObserver(options, client, suspense: false, nameof(UseInfiniteQuery));
+            query.ThrowIfError();
+            return (InfiniteQueryResult<TData>)query.Result;
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseInfiniteQuery{TQueryFnData, TPageParam, TData}"/> for a query whose result holds the
+        /// pages the entry holds.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <param name="options">As <see cref="UseInfiniteQuery{TQueryFnData, TPageParam}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds pages or an error.</returns>
+        public static InfiniteQueryResult<InfiniteData<TQueryFnData, TPageParam>> UseSuspenseInfiniteQuery<TQueryFnData, TPageParam>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam> options, QueryClient? client = null)
+            => UseSuspenseInfiniteQuery<TQueryFnData, TPageParam, InfiniteData<TQueryFnData, TPageParam>>(options, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseInfiniteQuery</c>: <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/>
+        /// that suspends and throws as <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> does.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">What the query function returns for one page.</typeparam>
+        /// <typeparam name="TPageParam">What names a page.</typeparam>
+        /// <typeparam name="TData">What the select makes of the pages.</typeparam>
+        /// <param name="options">As <see cref="UseInfiniteQuery{TQueryFnData, TPageParam, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>The entry's state once it holds pages or an error.</returns>
+        public static InfiniteQueryResult<TData> UseSuspenseInfiniteQuery<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options, QueryClient? client = null)
+        {
+            ValidateInfiniteQueryOptions(options);
+            var query = UseQueryObserver(options, client, suspense: true, nameof(UseSuspenseInfiniteQuery));
+            UseSuspendWhilePending(query);
+            query.ThrowIfError();
+            return (InfiniteQueryResult<TData>)query.Result;
+        }
+
+        private static void ValidateInfiniteQueryOptions<TQueryFnData, TPageParam, TData>(
+            InfiniteQueryOptions<TQueryFnData, TPageParam, TData> options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (options.QueryFn == null) throw new ArgumentException("InfiniteQueryOptions.QueryFn must not be null.", nameof(options));
+            if (options.GetNextPageParam == null)
+            {
+                throw new ArgumentException("InfiniteQueryOptions.GetNextPageParam must not be null.", nameof(options));
+            }
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useQueries({ queries })</c> over a list of queries of one data type, so the number of
+        /// queries can change from render to render: <see cref="UseQuery{TQueryFnData, TData}"/> over each of
+        /// <paramref name="queries"/> in one hook. Each query keeps its observer across renders while some query of the
+        /// list reads the same entry, whatever its position, and the component re-renders when a property of a result
+        /// it has read changes in any of them: a property read from one result is tracked for all of them. The first
+        /// query whose error <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from
+        /// this call. The overloads taking each query as its own argument keep each query's data types.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="queries">The queries, each as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of <paramref name="queries"/>.</returns>
+        public static IReadOnlyList<QueryResult<TData>> UseQueries<TQueryFnData, TData>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries, QueryClient? client = null)
+            => UseQueriesCore(ItemsOf(queries), null, ListOf<TData>, client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// TanStack Query's <c>useQueries({ queries, combine })</c>: <see cref="UseQueries{TQueryFnData, TData}"/>
+        /// returning what <paramref name="combine"/> makes of the results. It runs again only when a result changed,
+        /// the queries' keys changed or it is another instance, so pass a stable one, and what it returns keeps the
+        /// instance it returned before where the two are deeply equal. The component re-renders when what it returns
+        /// changes, the properties it reads from the results tracked as <see cref="UseQueries{TQueryFnData, TData}"/>
+        /// tracks them; while a suspending query has no data yet, combine is not run and the component re-renders.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="combine">Turns the results, in the order of <paramref name="queries"/>, into one value.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(ItemsOf(queries), combine, results => combine(ListOf<TData>(results)), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQueries({ queries })</c>: <see cref="UseQueries{TQueryFnData, TData}"/> with
+        /// each query as <see cref="UseSuspenseQuery{TQueryFnData, TData}"/> takes it. While any result is
+        /// <see cref="QueryStatus.Pending"/> the component suspends to the nearest <c>V.Suspense</c>, its render
+        /// starting the request of each pending query, and renders again once every one of them holds data or has
+        /// settled; the first query whose request failed with no data throws its error.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result once all hold data or an error.</returns>
+        public static IReadOnlyList<QueryResult<TData>> UseSuspenseQueries<TQueryFnData, TData>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries, QueryClient? client = null)
+            => UseQueriesCore(ItemsOf(queries), null, ListOf<TData>, client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// TanStack Query's <c>useSuspenseQueries({ queries, combine })</c>: <see cref="UseSuspenseQueries{TQueryFnData, TData}"/>
+        /// returning what <paramref name="combine"/> makes of the results, on the terms of
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>.
+        /// </summary>
+        /// <typeparam name="TQueryFnData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TData">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="queries">As <see cref="UseQueries{TQueryFnData, TData}"/>'s.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData, TData, TCombined>(
+            IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries,
+            Func<IReadOnlyList<QueryResult<TData>>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(ItemsOf(queries), combine, results => combine(ListOf<TData>(results)), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData}"/> over 2 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>) UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/> over 2 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            Func<QueryResult<TData1>, QueryResult<TData2>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData}"/> over 3 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>) UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/> over 3 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData}"/> over 4 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>) UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: false, nameof(UseQueries));
+
+        /// <summary>
+        /// <see cref="UseQueries{TQueryFnData, TData, TCombined}"/> over 4 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: false, nameof(UseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData}"/> over 2 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useSuspenseQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>) UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData, TCombined}"/> over 2 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            Func<QueryResult<TData1>, QueryResult<TData2>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1]), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData}"/> over 3 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useSuspenseQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>) UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData, TCombined}"/> over 3 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2]), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData}"/> over 4 queries, each keeping its own data types, as TanStack
+        /// Query's <c>useSuspenseQueries</c> types each query of its array.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>Each query's result, in the order of the arguments.</returns>
+        public static (QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>) UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            QueryClient? client = null)
+            => UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, null, results => ((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: true, nameof(UseSuspenseQueries));
+
+        /// <summary>
+        /// <see cref="UseSuspenseQueries{TQueryFnData, TData, TCombined}"/> over 4 queries, each keeping its own data types,
+        /// combine handed each result as its own argument.
+        /// </summary>
+        /// <typeparam name="TQueryFnData1">The entry data type of query 1.</typeparam>
+        /// <typeparam name="TData1">The result data type of query 1.</typeparam>
+        /// <typeparam name="TQueryFnData2">The entry data type of query 2.</typeparam>
+        /// <typeparam name="TData2">The result data type of query 2.</typeparam>
+        /// <typeparam name="TQueryFnData3">The entry data type of query 3.</typeparam>
+        /// <typeparam name="TData3">The result data type of query 3.</typeparam>
+        /// <typeparam name="TQueryFnData4">The entry data type of query 4.</typeparam>
+        /// <typeparam name="TData4">The result data type of query 4.</typeparam>
+        /// <typeparam name="TCombined">What the results combine to.</typeparam>
+        /// <param name="query1">Query 1, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query2">Query 2, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query3">Query 3, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="query4">Query 4, as <see cref="UseQuery{TQueryFnData, TData}"/> takes it.</param>
+        /// <param name="combine">As <see cref="UseQueries{TQueryFnData, TData, TCombined}"/>'s, handed each result.</param>
+        /// <param name="client">As <see cref="UseQuery{TQueryFnData, TData}"/>'s.</param>
+        /// <returns>What <paramref name="combine"/> made of the results.</returns>
+        public static TCombined UseSuspenseQueries<TQueryFnData1, TData1, TQueryFnData2, TData2, TQueryFnData3, TData3, TQueryFnData4, TData4, TCombined>(
+            QueryOptions<TQueryFnData1, TData1> query1,
+            QueryOptions<TQueryFnData2, TData2> query2,
+            QueryOptions<TQueryFnData3, TData3> query3,
+            QueryOptions<TQueryFnData4, TData4> query4,
+            Func<QueryResult<TData1>, QueryResult<TData2>, QueryResult<TData3>, QueryResult<TData4>, TCombined> combine,
+            QueryClient? client = null)
+        {
+            if (combine == null) throw new ArgumentNullException(nameof(combine));
+            return UseQueriesCore(new QueriesItem[] { Item(query1), Item(query2), Item(query3), Item(query4) }, combine, results => combine((QueryResult<TData1>)results[0], (QueryResult<TData2>)results[1], (QueryResult<TData3>)results[2], (QueryResult<TData4>)results[3]), client, suspense: true, nameof(UseSuspenseQueries));
+        }
+
+        private static QueriesItem Item<TQueryFnData, TData>(QueryOptions<TQueryFnData, TData> options)
+        {
+            ValidateQueryOptions(options);
+            return new QueriesItem<TQueryFnData, TData>(options);
+        }
+
+        private static QueriesItem[] ItemsOf<TQueryFnData, TData>(IReadOnlyList<QueryOptions<TQueryFnData, TData>> queries)
+        {
+            if (queries == null) throw new ArgumentNullException(nameof(queries));
+            var items = new QueriesItem[queries.Count];
+            for (var i = 0; i < items.Length; i++)
+            {
+                items[i] = Item(queries[i]);
+            }
+            return items;
+        }
+
+        private static IReadOnlyList<QueryResult<TData>> ListOf<TData>(object[] results)
+        {
+            var list = new QueryResult<TData>[results.Length];
+            for (var i = 0; i < list.Length; i++)
+            {
+                list[i] = (QueryResult<TData>)results[i];
+            }
+            return list;
+        }
+
+        // project turns the results into what the hook returns without a combine, and into what combine is handed
+        // with one; combine is the caller's function, which the memo compares by instance.
+        private static TCombined UseQueriesCore<TCombined>(
+            QueriesItem[] items, Delegate? combine, Func<object[], TCombined> project, QueryClient? client, bool suspense, string hookName)
+        {
+            // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(hookName);
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                $"{hookName} found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                $"above the caller, or pass the client to {hookName}.");
+            var boundary = UseContext(QueryErrorResetBoundaryContext.Ref)!;
+            var (_, setVersion) = UseState(0);
+            // MUTANT_SURVIVES(equivalent, arithmetic): a step of one either way gives a value unequal to the one the slot holds, which is all the re-render asks.
+            var observer = UseMutableRef(() => new QueriesObserver<TCombined>(() => setVersion.Invoke(v => v + 1))).Current;
+            var read = observer.Read(queryClient, items, suspense, boundary);
+
+            // TanStack's useClearResetErrorBoundary.
+            UseEffect((Func<Action?>)(() =>
+            {
+                boundary.ClearReset();
+                return null;
+            }), new object?[] { boundary });
+            UseEffect(observer.UnmountEffect, Array.Empty<object?>());
+            UseEffect((Func<Action?>)(() =>
+            {
+                observer.Sync(queryClient, read, combine, combine == null ? null : project);
+                return null;
+            }));
+
+            // Called by both forms rather than under the suspense flag, so no hook sits in a branch; only a
+            // suspending query waits.
+            UseSuspendWhileAnyPending(read, queryClient, boundary);
+            read.ThrowFirstError(boundary);
+            return combine == null ? project(read.Results) : observer.Combine(read.Results, read.Keys, combine, project);
+        }
+
+        // UseSuspendWhilePending over every query whose result is pending: the render starts each one's request and
+        // waits for all of them, as v5's useQueries throws Promise.all of their fetchOptimistic.
+        private static void UseSuspendWhileAnyPending(QueriesRead read, QueryClient client, QueryErrorResetBoundary boundary)
+        {
+            List<Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>>? waits = null;
+            var requests = new List<object?>();
+            foreach (var item in read.Items)
+            {
+                var wait = item.Suspend(client, out var request);
+                if (wait == null) continue;
+                (waits ??= new List<Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>>()).Add(wait);
+                requests.Add(request);
+            }
+            UseCore(
+                waits == null ? s_settledSuspendedQuery : token => WaitForSuspendedQueries(waits, boundary, token),
+                waits == null ? s_settledSuspendedQueryKey : new QueryKey(requests.ToArray()),
+                resourceKeyExplicit: true,
+                nameof(UseSuspenseQueries));
+        }
+
+        private static async VelvetTask<Unit> WaitForSuspendedQueries(
+            List<Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>> waits, QueryErrorResetBoundary boundary,
+            CancellationToken token)
+        {
+            foreach (var wait in waits)
+            {
+                await wait(boundary, token);
+            }
+            return Unit.Default;
+        }
+
+        /// <summary>
+        /// TanStack Query's <c>useIsFetching(filters)</c>: how many of the entries <paramref name="filters"/> selects
+        /// have a request in flight and running, as <see cref="QueryClient.IsFetching"/> counts them, re-rendering the
+        /// component when the number changes. The filters' own <see cref="QueryFilters.FetchStatus"/> is replaced.
+        /// </summary>
+        /// <param name="filters">The entries to count; null counts every entry.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The number of entries fetching.</returns>
+        public static int UseIsFetching(QueryFilters? filters = null, QueryClient? client = null)
+        {
+            // Surface "UseIsFetching" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve(nameof(UseIsFetching));
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseIsFetching found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseIsFetching.");
+            return UseSyncExternalStore(queryClient.GetQueryCache().StoreSubscribe, () => queryClient.IsFetching(filters));
         }
 
         /// <summary>
@@ -3242,9 +3820,8 @@ namespace Velvet
         }
 
         private static QueryRead<TQueryFnData, TData> UseQueryObserver<TQueryFnData, TData>(
-            QueryOptions<TQueryFnData, TData> options, QueryClient? client, bool suspense)
+            QueryOptionsBase<TQueryFnData, TData> options, QueryClient? client, bool suspense, string hookName)
         {
-            var hookName = suspense ? nameof(UseSuspenseQuery) : nameof(UseQuery);
             ValidateQueryOptions(options);
             // Surface the hook's name in HookGuard's outside-of-render message instead of "UseContext".
             _ = Resolve(hookName);
@@ -3276,11 +3853,14 @@ namespace Velvet
             return new QueryRead<TQueryFnData, TData>(observer, entry, settings, queryClient, boundary);
         }
 
-        private static void ValidateQueryOptions<TQueryFnData, TData>(QueryOptions<TQueryFnData, TData> options)
+        private static void ValidateQueryOptions<TQueryFnData, TData>(QueryOptionsBase<TQueryFnData, TData> options)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             if (options.QueryKey == null) throw new ArgumentException("QueryOptions.QueryKey must not be null.", nameof(options));
-            if (options.QueryFn == null) throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            if (options is QueryOptions<TQueryFnData, TData> { QueryFn.HasValue: false })
+            {
+                throw new ArgumentException("QueryOptions.QueryFn must not be null.", nameof(options));
+            }
             if (options.Select == null && typeof(TQueryFnData) != typeof(TData))
             {
                 throw new ArgumentException(

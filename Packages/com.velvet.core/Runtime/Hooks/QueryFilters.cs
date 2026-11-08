@@ -46,8 +46,9 @@ namespace Velvet
         /// </summary>
         public QueryKey? QueryKey { get; init; }
 
-        /// <summary>True selects only the entry whose key equals <see cref="QueryKey"/>.</summary>
-        public bool Exact { get; init; }
+        /// <summary>True selects only the entry whose key equals <see cref="QueryKey"/>. Null is false, except for
+        /// <see cref="QueryCache.Find"/>, where it is true.</summary>
+        public bool? Exact { get; init; }
 
         /// <summary>Selects by whether an enabled query reads the entry; null is
         /// <see cref="QueryTypeFilter.All"/>, except where a method documents another default.</summary>
@@ -61,9 +62,26 @@ namespace Velvet
         /// <summary>Selects by the entry's <see cref="QueryFetchStatus"/>; null selects every entry.</summary>
         public QueryFetchStatus? FetchStatus { get; init; }
 
-        /// <summary>Accepts or declines each entry the other properties select, handed its
-        /// <see cref="QueryInfo"/>.</summary>
-        public Func<QueryInfo, bool>? Predicate { get; init; }
+        /// <summary>Accepts or declines each entry the other properties select.</summary>
+        public Func<Query, bool>? Predicate { get; init; }
+
+        // TanStack's matchQuery.
+        internal static bool Match(QueryFilters? filters, QueryEntry entry)
+        {
+            if (filters == null) return true;
+            if (filters.QueryKey != null
+                && !(filters.Exact == true
+                    ? entry.Id.Equals(QueryClient.Identify(filters.QueryKey, entry.KeyHashFn))
+                    : entry.Key.Matches(filters.QueryKey)))
+            {
+                return false;
+            }
+            if (filters.Type == QueryTypeFilter.Active && !entry.IsActive) return false;
+            if (filters.Type == QueryTypeFilter.Inactive && entry.IsActive) return false;
+            if (filters.Stale.HasValue && entry.IsStaleForFilter != filters.Stale.Value) return false;
+            if (filters.FetchStatus.HasValue && filters.FetchStatus.Value != entry.FetchStatus) return false;
+            return filters.Predicate == null || filters.Predicate(entry.Query);
+        }
     }
 
     /// <summary>
@@ -117,11 +135,84 @@ namespace Velvet
         /// <summary>When the entry's data landed, on the client's clock; zero while it holds none.</summary>
         public TimeSpan DataUpdatedAt { get; internal init; }
 
-        /// <summary>How many times the request in flight or the last one has failed.</summary>
-        public int FailureCount { get; internal init; }
+        /// <summary>How many times data has landed in the entry or been written to it, TanStack Query's
+        /// <c>dataUpdateCount</c>.</summary>
+        public int DataUpdateCount { get; internal init; }
+
+        /// <summary>When a request for the entry last failed for good, on the client's clock; zero before one has,
+        /// TanStack Query's <c>errorUpdatedAt</c>.</summary>
+        public TimeSpan ErrorUpdatedAt { get; internal init; }
+
+        /// <summary>How many times a request for the entry has failed for good, TanStack Query's
+        /// <c>errorUpdateCount</c>.</summary>
+        public int ErrorUpdateCount { get; internal init; }
+
+        /// <summary>How many times the request in flight or the last one has failed, TanStack Query's
+        /// <c>fetchFailureCount</c>.</summary>
+        public int FetchFailureCount { get; internal init; }
 
         /// <summary>The exception of the latest failure of the request in flight or the last one; null once a
-        /// request lands.</summary>
-        public Exception? FailureReason { get; internal init; }
+        /// request lands, TanStack Query's <c>fetchFailureReason</c>.</summary>
+        public Exception? FetchFailureReason { get; internal init; }
+
+        /// <summary>TanStack Query's <c>fetchMeta.fetchMore.direction</c>: the end of an infinite query's pages the
+        /// latest request was asked for; null for any other request.</summary>
+        public FetchDirection? FetchDirection { get; internal init; }
+    }
+
+    /// <summary>
+    /// An entry's state, TanStack Query's <c>QueryState</c>, as <see cref="Query.State"/> reads it: a snapshot that
+    /// does not follow the entry, and what <see cref="Query.SetState"/> writes back, so that
+    /// <c>query.SetState(query.State with { ... })</c> changes the fields named.
+    /// </summary>
+    public sealed record QueryState
+    {
+        /// <summary>Whether the entry has data; see <see cref="QueryStatus"/>.</summary>
+        public QueryStatus Status { get; init; }
+
+        /// <summary>Whether the entry holds data.</summary>
+        public bool HasData { get; init; }
+
+        /// <summary>The entry's data, the query function's and not a select's; null while it holds none.</summary>
+        public object? Data { get; init; }
+
+        /// <summary>The failure of the entry's last request, under <see cref="QueryStatus.Error"/>.</summary>
+        public Exception? Error { get; init; }
+
+        /// <summary>Whether the entry was invalidated, or its last request failed, since its data landed.</summary>
+        public bool IsInvalidated { get; init; }
+
+        /// <summary>Whether a request for the entry is in flight and running; false while it is paused.</summary>
+        public bool IsFetching => FetchStatus == QueryFetchStatus.Fetching;
+
+        /// <summary>Whether a request is in flight, and whether it is paused.</summary>
+        public QueryFetchStatus FetchStatus { get; init; }
+
+        /// <summary>When the entry's data landed, on the client's clock; zero while it holds none.</summary>
+        public TimeSpan DataUpdatedAt { get; init; }
+
+        /// <summary>How many times data has landed in the entry or been written to it, TanStack Query's
+        /// <c>dataUpdateCount</c>.</summary>
+        public int DataUpdateCount { get; init; }
+
+        /// <summary>When a request for the entry last failed for good, on the client's clock; zero before one has,
+        /// TanStack Query's <c>errorUpdatedAt</c>.</summary>
+        public TimeSpan ErrorUpdatedAt { get; init; }
+
+        /// <summary>How many times a request for the entry has failed for good, TanStack Query's
+        /// <c>errorUpdateCount</c>.</summary>
+        public int ErrorUpdateCount { get; init; }
+
+        /// <summary>How many times the request in flight or the last one has failed, TanStack Query's
+        /// <c>fetchFailureCount</c>.</summary>
+        public int FetchFailureCount { get; init; }
+
+        /// <summary>The exception of the latest failure of the request in flight or the last one; null once a
+        /// request lands, TanStack Query's <c>fetchFailureReason</c>.</summary>
+        public Exception? FetchFailureReason { get; init; }
+
+        /// <summary>TanStack Query's <c>fetchMeta.fetchMore.direction</c>: the end of an infinite query's pages the
+        /// latest request was asked for; null for any other request.</summary>
+        public FetchDirection? FetchDirection { get; init; }
     }
 }

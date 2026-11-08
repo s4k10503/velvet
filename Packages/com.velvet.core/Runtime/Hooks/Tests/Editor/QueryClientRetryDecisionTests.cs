@@ -44,7 +44,7 @@ namespace Velvet.Tests
                 RetryDelay = (_, _) => TimeSpan.Zero,
                 GcTime = TimeSpan.MaxValue,
             });
-            client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
 
             // Act
             s_sources[0].TrySetException(new InvalidOperationException("offline"));
@@ -62,7 +62,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue });
-            client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)
+            client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
             {
                 Retry = 0,
                 RetryDelay = (_, _) =>

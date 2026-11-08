@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.InitialData"/> and its updated-at forms, TanStack
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.InitialData"/> and its updated-at forms, TanStack
     /// Query's <c>initialData</c> and <c>initialDataUpdatedAt</c>.
     /// <list type="bullet">
     /// <item>A render that finds no entry shows the initial data as a success, and the function is asked once.</item>
@@ -146,7 +146,7 @@ namespace Velvet.Tests
         public void Given_AnEntryThatFailedWithNoData_When_AQueryWithInitialDataMounts_Then_TheEntryTakesIt()
         {
             // Arrange
-            s_client.PrefetchQuery(new QueryOptions<int>(Todos, Fetch)).Forget();
+            s_client.PrefetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))).Forget();
             s_sources[0].TrySetException(new InvalidOperationException("offline"));
             using var mounted = V.Mount(_root, V.Component(Reader, key: "reader"));
 
@@ -201,7 +201,7 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options()
-            => new(Todos, Fetch)
+            => new(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
             {
                 InitialData = InitialData,
                 InitialDataUpdatedAt = s_updatedAt,

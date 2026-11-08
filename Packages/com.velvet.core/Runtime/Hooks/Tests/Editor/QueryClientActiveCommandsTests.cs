@@ -188,7 +188,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain()
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain_Calls()
         {
             // Arrange
             using var mounted = MountResolved(1);
@@ -198,11 +198,39 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Status, Last().IsFetching), Is.EqualTo((2, QueryStatus.Pending, true)));
+            Assert.That(s_calls, Is.EqualTo(2));
         }
 
         [Test]
-        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_TheTaskCompletesOnceTheNewRequestLands()
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain_Status()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+
+            // Act
+            _ = s_client.ResetQueries(new QueryFilters { QueryKey = Todos });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Pending));
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_ItEmptiesTheEntryAndFetchesAgain_IsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+
+            // Act
+            _ = s_client.ResetQueries(new QueryFilters { QueryKey = Todos });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_TheTaskCompletesOnceTheNewRequestLands_TaskStatus()
         {
             // Arrange
             using var mounted = MountResolved(1);
@@ -212,7 +240,21 @@ namespace Velvet.Tests
             s_sources[1].TrySetResult(9);
 
             // Assert
-            Assert.That((task.Status, s_client.GetQueryData<int>(Todos)), Is.EqualTo((VelvetTaskStatus.Succeeded, 9)));
+            Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        [Test]
+        public void Given_AMountedQuery_When_ResetQueriesRuns_Then_TheTaskCompletesOnceTheNewRequestLands_QueryDataIntTodos()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+            var task = s_client.ResetQueries();
+
+            // Act
+            s_sources[1].TrySetResult(9);
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(9));
         }
 
         [Test]
@@ -244,7 +286,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_CancelQueriesRuns_Then_ItIsPendingAndNotFetching()
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_CancelQueriesRuns_Then_ItIsPendingAndNotFetching_Status()
         {
             // Arrange
             using var mounted = Mount();
@@ -254,11 +296,25 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().IsFetching), Is.EqualTo((QueryStatus.Pending, false)));
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Pending));
         }
 
         [Test]
-        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching()
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_CancelQueriesRuns_Then_ItIsPendingAndNotFetching_IsFetching()
+        {
+            // Arrange
+            using var mounted = Mount();
+
+            // Act
+            s_client.CancelQueries(new QueryFilters { QueryKey = Todos });
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching_Status()
         {
             // Arrange
             using var mounted = MountResolved(1);
@@ -270,7 +326,39 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().Data, Last().IsFetching), Is.EqualTo((QueryStatus.Success, 1, false)));
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Success));
+        }
+
+        [Test]
+        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching_Data()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+            Last().Refetch();
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.CancelQueries();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Data, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AMountedQueryRefetching_When_CancelQueriesRuns_Then_ItKeepsItsDataAndStopsFetching_IsFetching()
+        {
+            // Arrange
+            using var mounted = MountResolved(1);
+            Last().Refetch();
+            mounted.FlushStateForTest();
+
+            // Act
+            s_client.CancelQueries();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(false));
         }
 
         [Test]
@@ -300,17 +388,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_FetchQueryRuns_Then_ItJoinsTheRequestAndTheTaskHoldsItsData()
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_FetchQueryRuns_Then_ItJoinsTheRequestAndTheTaskHoldsItsData_Calls()
         {
             // Arrange
             using var mounted = Mount();
-            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, Fetch));
+            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)));
 
             // Act
             s_sources[0].TrySetResult(4);
 
             // Assert
-            Assert.That((s_calls, task.GetAwaiter().GetResult()), Is.EqualTo((1, 4)));
+            Assert.That(s_calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AMountedQueryWaitingOnItsFirstRequest_When_FetchQueryRuns_Then_ItJoinsTheRequestAndTheTaskHoldsItsData_TaskResult()
+        {
+            // Arrange
+            using var mounted = Mount();
+            var task = s_client.FetchQuery(new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)));
+
+            // Act
+            s_sources[0].TrySetResult(4);
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(4));
         }
 
         private MountedTree Mount()
@@ -343,7 +445,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             s_renders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     Retry = 0,

@@ -72,8 +72,9 @@ namespace Velvet.Tests
             DrainEditorUpdateForTest();
         }
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AnUnreadEntry_When_FramesPassAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt()
+        public IEnumerator Given_AnUnreadEntry_When_FramesPassAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_KeptJustBefore()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -85,7 +86,25 @@ namespace Velvet.Tests
             await Pass(Tick);
 
             // Assert
-            Assert.That((keptJustBefore, EntryCount()), Is.EqualTo((1, 0)),
+            Assert.That(keptJustBefore, Is.EqualTo(1),
+                "No client call follows the write, so the removal is the client's own, and lands once the time has passed, not before");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AnUnreadEntry_When_FramesPassAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_EntryCount()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+
+            // Act
+            await Pass(GcTime - Tick);
+            var keptJustBefore = EntryCount();
+            await Pass(Tick);
+
+            // Assert
+            Assert.That(EntryCount(), Is.EqualTo(0),
                 "No client call follows the write, so the removal is the client's own, and lands once the time has passed, not before");
         });
 
@@ -121,8 +140,9 @@ namespace Velvet.Tests
                 "An infinite time sets no timer, so only the entry with a finite one goes");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AReaderThatLeftAndCameBackBeforeTheDeadline_When_ItLeavesAgain_Then_TheTimeRunsFromThen()
+        public IEnumerator Given_AReaderThatLeftAndCameBackBeforeTheDeadline_When_ItLeavesAgain_Then_TheTimeRunsFromThen_KeptJustBefore()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -138,12 +158,35 @@ namespace Velvet.Tests
             await Pass(Tick);
 
             // Assert
-            Assert.That((keptJustBefore, EntryCount()), Is.EqualTo((1, 0)),
+            Assert.That(keptJustBefore, Is.EqualTo(1),
                 "The entry outlived the deadline of its first leaving, and went a whole time after the second");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AnUnreadEntryWithARequestInFlight_When_ItLandsAfterTheGcTime_Then_ItIsRemovedAWholeGcTimeLater()
+        public IEnumerator Given_AReaderThatLeftAndCameBackBeforeTheDeadline_When_ItLeavesAgain_Then_TheTimeRunsFromThen_EntryCount()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = await MountResolved();
+            Hide(mounted);
+            await Pass(GcTime - Tick);
+            Show(mounted);
+            Hide(mounted);
+
+            // Act
+            await Pass(GcTime - Tick);
+            var keptJustBefore = EntryCount();
+            await Pass(Tick);
+
+            // Assert
+            Assert.That(EntryCount(), Is.EqualTo(0),
+                "The entry outlived the deadline of its first leaving, and went a whole time after the second");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AnUnreadEntryWithARequestInFlight_When_ItLandsAfterTheGcTime_Then_ItIsRemovedAWholeGcTimeLater_KeptWhileFetching()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -160,7 +203,53 @@ namespace Velvet.Tests
             await Pass(Tick);
 
             // Assert
-            Assert.That((keptWhileFetching, keptJustBefore, EntryCount()), Is.EqualTo((1, 1, 0)),
+            Assert.That(keptWhileFetching, Is.EqualTo(1),
+                "A fetching query is not removed, and its time starts over when the request settles");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AnUnreadEntryWithARequestInFlight_When_ItLandsAfterTheGcTime_Then_ItIsRemovedAWholeGcTimeLater_KeptJustBefore()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount();
+            Hide(mounted);
+            await Pass(GcTime);
+            var keptWhileFetching = EntryCount();
+            s_sources[0].TrySetResult(7);
+            await Pass(TimeSpan.Zero);
+            await Pass(GcTime - Tick);
+            var keptJustBefore = EntryCount();
+
+            // Act
+            await Pass(Tick);
+
+            // Assert
+            Assert.That(keptJustBefore, Is.EqualTo(1),
+                "A fetching query is not removed, and its time starts over when the request settles");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AnUnreadEntryWithARequestInFlight_When_ItLandsAfterTheGcTime_Then_ItIsRemovedAWholeGcTimeLater_EntryCount()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = Mount();
+            Hide(mounted);
+            await Pass(GcTime);
+            var keptWhileFetching = EntryCount();
+            s_sources[0].TrySetResult(7);
+            await Pass(TimeSpan.Zero);
+            await Pass(GcTime - Tick);
+            var keptJustBefore = EntryCount();
+
+            // Act
+            await Pass(Tick);
+
+            // Assert
+            Assert.That(EntryCount(), Is.EqualTo(0),
                 "A fetching query is not removed, and its time starts over when the request settles");
         });
 
@@ -216,8 +305,9 @@ namespace Velvet.Tests
             Assert.That(EntryCount(), Is.EqualTo(0), "A loop that failed leaves the client able to start another");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_ALazySweepThatRemovedTheLastExpirableEntry_When_FramesPass_Then_TheClientStopsReadingTheClock()
+        public IEnumerator Given_ALazySweepThatRemovedTheLastExpirableEntry_When_FramesPass_Then_TheClientStopsReadingTheClock_PolledWhileWaiting()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — the sweep comes after the finite deadline and before the loop's next frame, with an infinite
@@ -236,12 +326,38 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+            Assert.That(polledWhileWaiting, Is.EqualTo(true),
                 "Only an entry that never expires is left, so nothing is waited for, whoever removed the other");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AReaderThatCameBackWhileTheLoopWaited_When_FramesPass_Then_TheClientStopsReadingTheClock()
+        public IEnumerator Given_ALazySweepThatRemovedTheLastExpirableEntry_When_FramesPass_Then_TheClientStopsReadingTheClock_ReadsBefore()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the sweep comes after the finite deadline and before the loop's next frame, with an infinite
+            // entry left. The first half of the assertion is what the base cannot do: read the clock while waiting.
+            s_client.Ensure<int>(Forever, TimeSpan.MaxValue);
+            s_client.SetQueryData(Todos, "held");
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            s_now = GcTime;
+            s_client.InvalidateQueries(Other);
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_reads - before, Is.EqualTo(0),
+                "Only an entry that never expires is left, so nothing is waited for, whoever removed the other");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AReaderThatCameBackWhileTheLoopWaited_When_FramesPass_Then_TheClientStopsReadingTheClock_PolledWhileWaiting()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -258,12 +374,36 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+            Assert.That(polledWhileWaiting, Is.EqualTo(true),
                 "A read entry has no deadline to wait for, whatever the one the loop last found");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AReaderThatCameBackOverARequestInFlight_When_FramesPass_Then_TheClientStopsReadingTheClock()
+        public IEnumerator Given_AReaderThatCameBackWhileTheLoopWaited_When_FramesPass_Then_TheClientStopsReadingTheClock_ReadsBefore()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = await MountResolved();
+            Hide(mounted);
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            Show(mounted);
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_reads - before, Is.EqualTo(0),
+                "A read entry has no deadline to wait for, whatever the one the loop last found");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AReaderThatCameBackOverARequestInFlight_When_FramesPass_Then_TheClientStopsReadingTheClock_PolledWhileWaiting()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — the request is still pending when the reader leaves, so the loop's walk finds no deadline.
@@ -280,7 +420,30 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+            Assert.That(polledWhileWaiting, Is.EqualTo(true),
+                "A request in flight is waited for only while nothing reads the entry");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AReaderThatCameBackOverARequestInFlight_When_FramesPass_Then_TheClientStopsReadingTheClock_ReadsBefore()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the request is still pending when the reader leaves, so the loop's walk finds no deadline.
+            using var mounted = Mount();
+            Hide(mounted);
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            Show(mounted);
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_reads - before, Is.EqualTo(0),
                 "A request in flight is waited for only while nothing reads the entry");
         });
 
@@ -302,8 +465,9 @@ namespace Velvet.Tests
                 "A deadline earlier than the one waited for is waited for instead");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AnEntryRemovedByTheLoop_When_ItsKeyIsWrittenAgain_Then_TheNewEntryStays()
+        public IEnumerator Given_AnEntryRemovedByTheLoop_When_ItsKeyIsWrittenAgain_Then_TheNewEntryStays_AfterTheFirst()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -316,7 +480,26 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((afterTheFirst, EntryCount()), Is.EqualTo((0, 1)),
+            Assert.That(afterTheFirst, Is.EqualTo(0),
+                "A removed entry leaves the list, so a later sweep cannot take the entry that now holds its key");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AnEntryRemovedByTheLoop_When_ItsKeyIsWrittenAgain_Then_TheNewEntryStays_EntryCount()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+            await Pass(GcTime);
+            var afterTheFirst = EntryCount();
+            s_client.SetQueryData(Todos, "again");
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(EntryCount(), Is.EqualTo(1),
                 "A removed entry leaves the list, so a later sweep cannot take the entry that now holds its key");
         });
 
@@ -335,8 +518,9 @@ namespace Velvet.Tests
             Assert.That(entry.IsRemoved, Is.True, "A removed entry is told so, as a collected one is by the lazy sweep");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_AClearedClientWhoseLoopIsRunning_When_FramesPass_Then_TheClientStopsReadingTheClock()
+        public IEnumerator Given_AClearedClientWhoseLoopIsRunning_When_FramesPass_Then_TheClientStopsReadingTheClock_PolledWhileWaiting()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -352,7 +536,29 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((polledWhileWaiting, s_reads - before), Is.EqualTo((true, 0)),
+            Assert.That(polledWhileWaiting, Is.EqualTo(true),
+                "Clear leaves nothing to wait for, well before the deadline the removed entry had");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_AClearedClientWhoseLoopIsRunning_When_FramesPass_Then_TheClientStopsReadingTheClock_ReadsBefore()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+            var beforeWaiting = s_reads;
+            await Pass(TimeSpan.Zero);
+            var polledWhileWaiting = s_reads > beforeWaiting;
+            s_client.Clear();
+            await Pass(TimeSpan.Zero);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_reads - before, Is.EqualTo(0),
                 "Clear leaves nothing to wait for, well before the deadline the removed entry had");
         });
 
@@ -408,8 +614,9 @@ namespace Velvet.Tests
             Assert.That(s_reads - before, Is.EqualTo(0), "An entry that never expires is no reason to keep reading the clock");
         });
 
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
         [UnityTest]
-        public IEnumerator Given_TheOnlyUnreadEntryRemoved_When_FramesPassAfter_Then_TheClientReadsNoClock()
+        public IEnumerator Given_TheOnlyUnreadEntryRemoved_When_FramesPassAfter_Then_TheClientReadsNoClock_EntryCount()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -421,7 +628,25 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((EntryCount(), s_reads - before), Is.EqualTo((0, 0)),
+            Assert.That(EntryCount(), Is.EqualTo(0),
+                "With nothing left to expire, the loop ends rather than reading the clock on every frame");
+        });
+
+        // GREEN_ON_BASE(refactor): one fact of a case that asserted them together; the base runs the same arrangement.
+        [UnityTest]
+        public IEnumerator Given_TheOnlyUnreadEntryRemoved_When_FramesPassAfter_Then_TheClientReadsNoClock_ReadsBefore()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, "held");
+            await Pass(GcTime);
+            var before = s_reads;
+
+            // Act
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_reads - before, Is.EqualTo(0),
                 "With nothing left to expire, the loop ends rather than reading the clock on every frame");
         });
 
@@ -476,9 +701,9 @@ namespace Velvet.Tests
         }
 
         private static IDictionary<QueryKey, QueryEntry> Entries()
-            => (IDictionary<QueryKey, QueryEntry>)typeof(QueryClient)
+            => (IDictionary<QueryKey, QueryEntry>)typeof(QueryCache)
                 .GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .GetValue(s_client)!;
+                .GetValue(s_client.GetQueryCache())!;
 
         private static int EntryCount() => Entries().Count;
 

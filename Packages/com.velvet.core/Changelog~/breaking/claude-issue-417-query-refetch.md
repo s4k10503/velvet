@@ -13,7 +13,7 @@
   `NetworkSignals.IsVisible = () => true` to make the application always count as visible.
 - When the last query reading an entry leaves while its request is in flight, the request is cancelled and
   the entry put back as it stood before it, as TanStack Query v5 does for a query function that read its
-  `signal`. A query function taking the `CancellationToken` counts as having read it: its token is now
-  cancelled when its last reader unmounts, where the request used to run on and land in the entry. Build the
-  options with a function that takes no token (`new QueryOptions<T>(key, () => ...)`) to keep a request
-  running after its readers leave.
+  `signal`. A query function that reads its token has read it: its token is now cancelled when its last
+  reader unmounts, where the request used to run on and land in the entry. Build the options with a function
+  that takes no context (`new QueryOptions<T>(key, () => ...)`) to keep a request running after its readers
+  leave.

@@ -71,9 +71,8 @@ namespace Velvet.Tests
             s_setShow = default;
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError()
+        public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError_Calls()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -91,13 +90,58 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Status, Last().FailureCount), Is.EqualTo((4, QueryStatus.Error, 4)),
+            Assert.That(s_calls, Is.EqualTo(4),
                 "Three retries follow the first request, each after twice the wait before it");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_AFailedRequest_When_TheFirstDelayIsOneMillisecondShort_Then_ItIsRetriedOnlyOnceItHasPassed()
+        public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError_Status()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            await Pass(Second);
+            Fail(1);
+            await Pass(Seconds(2));
+            Fail(2);
+            await Pass(Seconds(4));
+            Fail(3);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "Three retries follow the first request, each after twice the wait before it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingQuery_When_EachDefaultDelayPasses_Then_ItRunsFourTimesAndThenReportsTheError_FailureCount()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            await Pass(Second);
+            Fail(1);
+            await Pass(Seconds(2));
+            Fail(2);
+            await Pass(Seconds(4));
+            Fail(3);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().FailureCount, Is.EqualTo(4),
+                "Three retries follow the first request, each after twice the wait before it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequest_When_TheFirstDelayIsOneMillisecondShort_Then_ItIsRetriedOnlyOnceItHasPassed_BeforeTheDelay()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -111,13 +155,31 @@ namespace Velvet.Tests
             await Pass(Seconds(0.001));
 
             // Assert
-            Assert.That((beforeTheDelay, s_calls), Is.EqualTo((1, 2)),
+            Assert.That(beforeTheDelay, Is.EqualTo(1),
                 "A wait of one second ends when one second has passed, not before");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_ASecondFailure_When_OnlyTheFirstDelayPassesAgain_Then_ItIsRetriedAfterTwiceThat()
+        public IEnumerator Given_AFailedRequest_When_TheFirstDelayIsOneMillisecondShort_Then_ItIsRetriedOnlyOnceItHasPassed_Calls()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+
+            // Act
+            await Pass(Seconds(0.999));
+            var beforeTheDelay = s_calls;
+            await Pass(Seconds(0.001));
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2),
+                "A wait of one second ends when one second has passed, not before");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASecondFailure_When_OnlyTheFirstDelayPassesAgain_Then_ItIsRetriedAfterTwiceThat_AfterOneSecond()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -133,12 +195,31 @@ namespace Velvet.Tests
             await Pass(Second);
 
             // Assert
-            Assert.That((afterOneSecond, s_calls), Is.EqualTo((2, 3)), "The wait doubles at each failure");
+            Assert.That(afterOneSecond, Is.EqualTo(2), "The wait doubles at each failure");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_ASixthFailure_When_TwentyNineSecondsPass_Then_ItWaitsOneMoreSecondBeforeTheRetry()
+        public IEnumerator Given_ASecondFailure_When_OnlyTheFirstDelayPassesAgain_Then_ItIsRetriedAfterTwiceThat_Calls()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+            await Pass(Second);
+            Fail(1);
+
+            // Act
+            await Pass(Second);
+            var afterOneSecond = s_calls;
+            await Pass(Second);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(3), "The wait doubles at each failure");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASixthFailure_When_TwentyNineSecondsPass_Then_ItWaitsOneMoreSecondBeforeTheRetry_AfterTwentyNineSeconds()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — the delays before it add up to 31 s, and a sixth wait of 32 s is capped at 30 s.
@@ -158,12 +239,35 @@ namespace Velvet.Tests
             await Pass(Second);
 
             // Assert
-            Assert.That((afterTwentyNineSeconds, s_calls), Is.EqualTo((6, 7)), "A wait never exceeds thirty seconds");
+            Assert.That(afterTwentyNineSeconds, Is.EqualTo(6), "A wait never exceeds thirty seconds");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_ARetryOfOne_When_BothRequestsFail_Then_TheQueryReportsTheErrorAfterTwoRuns()
+        public IEnumerator Given_ASixthFailure_When_TwentyNineSecondsPass_Then_ItWaitsOneMoreSecondBeforeTheRetry_Calls()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the delays before it add up to 31 s, and a sixth wait of 32 s is capped at 30 s.
+            s_retry = 10;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            for (var failure = 0; failure < 5; failure++)
+            {
+                Fail(failure);
+                await Pass(Seconds(1 << failure));
+            }
+            Fail(5);
+
+            // Act
+            await Pass(Seconds(29));
+            var afterTwentyNineSeconds = s_calls;
+            await Pass(Second);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(7), "A wait never exceeds thirty seconds");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARetryOfOne_When_BothRequestsFail_Then_TheQueryReportsTheErrorAfterTwoRuns_Calls()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -178,13 +282,32 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Status), Is.EqualTo((2, QueryStatus.Error)),
+            Assert.That(s_calls, Is.EqualTo(2),
                 "A query's own retry count replaces the client's");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_AClientRetryOfOne_When_ABareQueryFailsTwice_Then_TheQueryReportsTheErrorAfterTwoRuns()
+        public IEnumerator Given_ARetryOfOne_When_BothRequestsFail_Then_TheQueryReportsTheErrorAfterTwoRuns_Status()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_retry = 1;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            await Pass(Second);
+            Fail(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "A query's own retry count replaces the client's");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AClientRetryOfOne_When_ABareQueryFailsTwice_Then_TheQueryReportsTheErrorAfterTwoRuns_Calls()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -199,13 +322,32 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Status), Is.EqualTo((2, QueryStatus.Error)),
+            Assert.That(s_calls, Is.EqualTo(2),
                 "A query that sets no retry count takes the client's");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
+        [UnityTest]
+        public IEnumerator Given_AClientRetryOfOne_When_ABareQueryFailsTwice_Then_TheQueryReportsTheErrorAfterTwoRuns_Status()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_client = NewClient(retry: 1);
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            await Pass(Second);
+            Fail(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "A query that sets no retry count takes the client's");
+        });
+
         [Test]
-        public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce()
+        public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce_Calls()
         {
             // Arrange
             s_retry = 0;
@@ -217,13 +359,46 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_calls, Last().Status, Last().FailureCount), Is.EqualTo((1, QueryStatus.Error, 1)),
+            Assert.That(s_calls, Is.EqualTo(1),
                 "Zero retries make the first failure the entry's error, whatever the client retries by default");
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
+        [Test]
+        public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce_Status()
+        {
+            // Arrange
+            s_retry = 0;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "Zero retries make the first failure the entry's error, whatever the client retries by default");
+        }
+
+        [Test]
+        public void Given_AQueryRetryOfZeroOverAClientRetryOfThree_When_TheRequestFails_Then_TheQueryReportsTheErrorAtOnce_FailureCount()
+        {
+            // Arrange
+            s_retry = 0;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().FailureCount, Is.EqualTo(1),
+                "Zero retries make the first failure the entry's error, whatever the client retries by default");
+        }
+
         [UnityTest]
-        public IEnumerator Given_ACustomRetryDelay_When_TheFailureIsRetried_Then_ItWaitsThatLong()
+        public IEnumerator Given_ACustomRetryDelay_When_TheFailureIsRetried_Then_ItWaitsThatLong_AfterNineSeconds()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -238,12 +413,30 @@ namespace Velvet.Tests
             await Pass(Second);
 
             // Assert
-            Assert.That((afterNineSeconds, s_calls), Is.EqualTo((1, 2)), "The delay function replaces the doubling");
+            Assert.That(afterNineSeconds, Is.EqualTo(1), "The delay function replaces the doubling");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [UnityTest]
-        public IEnumerator Given_ARetryDelayOfZero_When_TheRequestFails_Then_TheRetryRunsOnlyAFrameLater()
+        public IEnumerator Given_ACustomRetryDelay_When_TheFailureIsRetried_Then_ItWaitsThatLong_Calls()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_retryDelay = (_, _) => Seconds(10);
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+
+            // Act
+            await Pass(Seconds(9));
+            var afterNineSeconds = s_calls;
+            await Pass(Second);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2), "The delay function replaces the doubling");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARetryDelayOfZero_When_TheRequestFails_Then_TheRetryRunsOnlyAFrameLater_OnTheFailingStack()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -257,7 +450,26 @@ namespace Velvet.Tests
             await Pass(TimeSpan.Zero);
 
             // Assert
-            Assert.That((onTheFailingStack, s_calls), Is.EqualTo((1, 2)),
+            Assert.That(onTheFailingStack, Is.EqualTo(1),
+                "A retry never starts inside the completion of the request that failed");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARetryDelayOfZero_When_TheRequestFails_Then_TheRetryRunsOnlyAFrameLater_Calls()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_retryDelay = (_, _) => TimeSpan.Zero;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            var onTheFailingStack = s_calls;
+            await Pass(TimeSpan.Zero);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(2),
                 "A retry never starts inside the completion of the request that failed");
         });
 
@@ -286,9 +498,8 @@ namespace Velvet.Tests
                 "The count is the failures before this one, as v5 passes it");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [Test]
-        public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure()
+        public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultStatus()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
@@ -300,14 +511,80 @@ namespace Velvet.Tests
             var result = Last();
 
             // Assert
-            Assert.That((result.Status, result.IsFetching, result.Error?.Message, result.FailureCount, result.FailureReason?.Message),
-                Is.EqualTo((QueryStatus.Pending, true, (string?)null, 1, "fail-1")),
+            Assert.That(result.Status, Is.EqualTo(QueryStatus.Pending),
                 "A failure that is going to be retried is not yet the entry's error");
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
+        [Test]
+        public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultIsFetching()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.IsFetching, Is.EqualTo(true),
+                "A failure that is going to be retried is not yet the entry's error");
+        }
+
+        [Test]
+        public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultErrorMessage()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.Error?.Message, Is.EqualTo((string?)null),
+                "A failure that is going to be retried is not yet the entry's error");
+        }
+
+        [Test]
+        public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultFailureCount()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.FailureCount, Is.EqualTo(1),
+                "A failure that is going to be retried is not yet the entry's error");
+        }
+
+        [Test]
+        public void Given_AFailedRequestWaitingToRetry_When_TheQueryRenders_Then_ItIsStillPendingAndFetchingBesideTheFailure_ResultFailureReasonMessage()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.FailureReason?.Message, Is.EqualTo("fail-1"),
+                "A failure that is going to be retried is not yet the entry's error");
+        }
+
         [UnityTest]
-        public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure()
+        public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultStatus()
             => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -322,8 +599,87 @@ namespace Velvet.Tests
             var result = Last();
 
             // Assert
-            Assert.That((result.Status, result.Data, result.IsFetching, result.FailureCount, result.FailureReason),
-                Is.EqualTo((QueryStatus.Success, 7, false, 0, (Exception?)null)),
+            Assert.That(result.Status, Is.EqualTo(QueryStatus.Success),
+                "A request that lands clears the failures that preceded it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultData()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+
+            // Act
+            await Pass(Second);
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.Data, Is.EqualTo(7),
+                "A request that lands clears the failures that preceded it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultIsFetching()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+
+            // Act
+            await Pass(Second);
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.IsFetching, Is.EqualTo(false),
+                "A request that lands clears the failures that preceded it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultFailureCount()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+
+            // Act
+            await Pass(Second);
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.FailureCount, Is.EqualTo(0),
+                "A request that lands clears the failures that preceded it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailedRequest_When_TheRetrySucceeds_Then_TheQueryRendersTheDataBesideNoFailure_ResultFailureReason()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+            Fail(0);
+
+            // Act
+            await Pass(Second);
+            s_sources[1].TrySetResult(7);
+            mounted.FlushStateForTest();
+            var result = Last();
+
+            // Assert
+            Assert.That(result.FailureReason, Is.EqualTo((Exception?)null),
                 "A request that lands clears the failures that preceded it");
         });
 
@@ -424,9 +780,8 @@ namespace Velvet.Tests
                 "Cancelling during the wait puts back the reason the request started from");
         });
 
-        // GREEN_ON_BASE(characterization): the base runs the same wait; this change only gives the fixture's client a gcTime that never expires.
         [Test]
-        public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching()
+        public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching_Status()
         {
             // Arrange
             s_retryDelay = (_, _) => throw new InvalidOperationException("delay-failed");
@@ -438,8 +793,41 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Last().Status, Last().Error?.Message, Last().IsFetching),
-                Is.EqualTo((QueryStatus.Error, "delay-failed", false)),
+            Assert.That(Last().Status, Is.EqualTo(QueryStatus.Error),
+                "A delay function that fails ends the request rather than leaving it in flight");
+        }
+
+        [Test]
+        public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching_ErrorMessage()
+        {
+            // Arrange
+            s_retryDelay = (_, _) => throw new InvalidOperationException("delay-failed");
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().Error?.Message, Is.EqualTo("delay-failed"),
+                "A delay function that fails ends the request rather than leaving it in flight");
+        }
+
+        [Test]
+        public void Given_ARetryDelayThatThrows_When_TheRequestFails_Then_TheQueryReportsThatErrorAndStopsFetching_IsFetching()
+        {
+            // Arrange
+            s_retryDelay = (_, _) => throw new InvalidOperationException("delay-failed");
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Fail(0);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(false),
                 "A delay function that fails ends the request rather than leaving it in flight");
         }
 
@@ -517,7 +905,7 @@ namespace Velvet.Tests
         {
             var key = new QueryKey("todos");
             var options = s_takesToken
-                ? new QueryOptions<int>(key, Fetch)
+                ? new QueryOptions<int>(key, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 : new QueryOptions<int>(key, () => Fetch(default));
             s_renders.Add(Hooks.UseQuery(
                 options with

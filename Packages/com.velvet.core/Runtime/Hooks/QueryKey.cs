@@ -33,7 +33,7 @@ namespace Velvet
     /// value matched the same way, and one that is a record or a tuple of the key part's type matches it member by
     /// member, each matched the same way.
     /// <para/>
-    /// <see cref="QueryOptions{TQueryFnData, TData}.QueryKeyHashFn"/> replaces how a query that sets it names its
+    /// <see cref="QueryOptionsBase{TQueryFnData, TData}.QueryKeyHashFn"/> replaces how a query that sets it names its
     /// entry: the string the function returns names it, and a filter without <see cref="QueryFilters.Exact"/>
     /// still matches the entry's key as above.
     /// </remarks>
@@ -85,6 +85,23 @@ namespace Velvet
         public override int GetHashCode() => _hashCode;
 
         /// <inheritdoc/>
+        // TanStack's hashKey: a string equal for equal keys, the parts written as JSON is, a dictionary's entries in
+        // ordinal order of their keys and a set's elements in ordinal order of their own text. A part compared by its own Equals is written as the
+        // number opaque gives it, which is one number for each set of equal parts.
+        internal string Hash(Func<object, int> opaque)
+        {
+            var builder = new StringBuilder("[");
+            for (var i = 0; i < _parts.Length; i++)
+            {
+                if (i > 0) builder.Append(',');
+                QueryKeyParts.AppendHash(builder, _parts[i], opaque);
+            }
+            return builder.Append(']').ToString();
+        }
+
+        // The single part a QueryKeyHashFn's identity key holds; see QueryClient.Identify.
+        internal object? OnlyPart => _parts.Length == 1 ? _parts[0] : null;
+
         public override string ToString()
         {
             var builder = new StringBuilder("[");

@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.Enabled"/>, TanStack Query's <c>enabled</c>.
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.Enabled"/>, TanStack Query's <c>enabled</c>.
     /// <list type="bullet">
     /// <item>A disabled query fetches nothing when it mounts and reports itself pending and idle with nothing
     /// cached, and not stale over stale data.</item>
@@ -70,18 +70,29 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADisabledQueryWithNothingCached_When_ItFirstRenders_Then_ItIsPendingAndNotFetching()
+        public void Given_ADisabledQueryWithNothingCached_When_ItFirstRenders_Then_ItIsPendingAndNotFetching_Renders0Status()
         {
             // Act
             using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
 
             // Assert
-            Assert.That((s_renders[0].Status, s_renders[0].IsFetching), Is.EqualTo((QueryStatus.Pending, false)),
+            Assert.That(s_renders[0].Status, Is.EqualTo(QueryStatus.Pending),
                 "A render whose subscription will not fetch does not report a fetch");
         }
 
         [Test]
-        public void Given_ADisabledQueryOverStaleData_When_ItRenders_Then_ItIsNotStale()
+        public void Given_ADisabledQueryWithNothingCached_When_ItFirstRenders_Then_ItIsPendingAndNotFetching_Renders0IsFetching()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
+
+            // Assert
+            Assert.That(s_renders[0].IsFetching, Is.EqualTo(false),
+                "A render whose subscription will not fetch does not report a fetch");
+        }
+
+        [Test]
+        public void Given_ADisabledQueryOverStaleData_When_ItRenders_Then_ItIsNotStale_Data()
         {
             // Arrange
             s_client.SetQueryData(Todos, 3);
@@ -92,7 +103,23 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That((Last().Data, Last().IsStale), Is.EqualTo((3, false)),
+            Assert.That(Last().Data, Is.EqualTo(3),
+                "v5's isStale is false for a disabled query, whatever the age of its data");
+        }
+
+        [Test]
+        public void Given_ADisabledQueryOverStaleData_When_ItRenders_Then_ItIsNotStale_IsStale()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 3);
+            s_now = TimeSpan.FromMinutes(1);
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(Last().IsStale, Is.EqualTo(false),
                 "v5's isStale is false for a disabled query, whatever the age of its data");
         }
 
@@ -209,7 +236,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADisabledQuery_When_TheRenderTurningItOnReads_Then_ItReportsTheFetch()
+        public void Given_ADisabledQuery_When_TheRenderTurningItOnReads_Then_ItReportsTheFetch_FetchedCount()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
@@ -220,7 +247,23 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fetched.Count, Last().IsFetching), Is.EqualTo((0, true)),
+            Assert.That(s_fetched.Count, Is.EqualTo(0),
+                "The render before the commit's effect already reports the fetch that effect will start");
+        }
+
+        [Test]
+        public void Given_ADisabledQuery_When_TheRenderTurningItOnReads_Then_ItReportsTheFetch_IsFetching()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setEnabled.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Last().IsFetching, Is.EqualTo(true),
                 "The render before the commit's effect already reports the fetch that effect will start");
         }
 
@@ -241,7 +284,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARefetchInFlightOverData_When_ADisabledQueryIsTurnedOn_Then_ItJoinsTheRefetch()
+        public void Given_ARefetchInFlightOverData_When_ADisabledQueryIsTurnedOn_Then_ItJoinsTheRefetch_FetchedCount()
         {
             // Arrange
             s_client.SetQueryData(Todos, 3);
@@ -253,7 +296,24 @@ namespace Velvet.Tests
             TurnOn(mounted);
 
             // Assert
-            Assert.That((s_fetched.Count, s_tokens[0].IsCancellationRequested), Is.EqualTo((1, false)),
+            Assert.That(s_fetched.Count, Is.EqualTo(1),
+                "Turning a query on joins a request in flight, as v5's executeFetch passes no cancelRefetch");
+        }
+
+        [Test]
+        public void Given_ARefetchInFlightOverData_When_ADisabledQueryIsTurnedOn_Then_ItJoinsTheRefetch_Tokens0IsCancellationRequested()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 3);
+            using var mounted = V.Mount(_root, V.Component(Toggled, key: "toggled"));
+            mounted.FlushEffectsForTest();
+            Last().Refetch();
+
+            // Act
+            TurnOn(mounted);
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(false),
                 "Turning a query on joins a request in flight, as v5's executeFetch passes no cancelRefetch");
         }
 
@@ -276,10 +336,10 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options(string reader, bool enabled)
-            => new(Todos, token =>
+            => new(Todos, (QueryFunctionContext context) =>
             {
                 s_fetched.Add(reader);
-                s_tokens.Add(token);
+                s_tokens.Add(context.CancellationToken);
                 var source = new VelvetTaskCompletionSource<int>();
                 s_sources.Add(source);
                 return source.Task;

@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies which query's <see cref="QueryOptions{TQueryFnData, TData}.StructuralSharing"/> shares the data a
+    /// Specifies which query's <see cref="QueryOptionsBase{TQueryFnData, TData}.StructuralSharing"/> shares the data a
     /// write or a landing leaves in an entry two readers share: the options the entry was last handed, as v5's
     /// <c>setData</c> and its fetch read them.
     /// </summary>
@@ -83,7 +83,7 @@ namespace Velvet.Tests
         private static VNode AddingTen()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)arrived + 10 },
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)arrived + 10 },
                 s_client);
             return V.Label(text: "ten");
         }
@@ -92,7 +92,7 @@ namespace Velvet.Tests
         private static VNode AddingHundred()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)(int)arrived + 100 },
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = s_staleTime, StructuralSharing = (_, arrived) => (int)(int)arrived + 100 },
                 s_client);
             return V.Label(text: "hundred");
         }

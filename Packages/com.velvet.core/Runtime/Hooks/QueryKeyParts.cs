@@ -271,6 +271,203 @@ namespace Velvet
             return unmatched.Count == 0;
         }
 
+        // A string, a number, a bool and an enum are written as text no part unequal to them writes; a sequence, a
+        // record or tuple, a dictionary and a set by what they hold, a dictionary's entries in ordinal order of their
+        // keys alone, as v5's hashKey sorts an object's keys, and a set's elements in ordinal order of their text, so
+        // the order either was filled in does not show. Only a part compared by its own Equals is the number opaque gives it, one number for each
+        // set of parts Matches holds equal.
+        internal static void AppendHash(StringBuilder builder, object? part, Func<object, int> opaque)
+        {
+            if (part == null)
+            {
+                builder.Append("null");
+                return;
+            }
+            var kind = KindOf(part);
+            if (kind == QueryKeyPartKind.Value)
+            {
+                if (TryAppendScalar(builder, part)) return;
+                builder.Append('#').Append(opaque(part).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                return;
+            }
+            using var guard = new DepthGuard(true);
+            switch (kind)
+            {
+                case QueryKeyPartKind.Members:
+                    builder.Append(part.GetType().FullName);
+                    AppendHashedItems(builder, '(', MembersOf(part), ')', opaque);
+                    return;
+                case QueryKeyPartKind.Sequence:
+                    AppendHashedItems(builder, '[', (IEnumerable)part, ']', opaque);
+                    return;
+                case QueryKeyPartKind.Dictionary:
+                    AppendEntriesByKey(builder, (IDictionary)part, opaque);
+                    return;
+                default:
+                    builder.Append("Set");
+                    AppendSorted(builder, '[', HashedTexts((IEnumerable)part, opaque), ']');
+                    return;
+            }
+        }
+
+        private static List<string> HashedTexts(IEnumerable items, Func<object, int> opaque)
+        {
+            var texts = new List<string>();
+            foreach (var item in items)
+            {
+                var text = new StringBuilder();
+                AppendHash(text, item, opaque);
+                texts.Add(text.ToString());
+            }
+            return texts;
+        }
+
+        // TanStack's hashKey sorts an object's keys alone, in UTF-16 order: a string key by itself, and any other by the
+        // text its part writes. A string key is written as a JSON string and any other as that text, unquoted, so a
+        // key 1 and a key "1", which are unequal, write differently.
+        private static void AppendEntriesByKey(StringBuilder builder, IDictionary dictionary, Func<object, int> opaque)
+        {
+            var entries = new List<(string Order, string Written, object? Value)>();
+            var enumerator = dictionary.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                var text = new StringBuilder();
+                AppendHash(text, enumerator.Key, opaque);
+                var written = text.ToString();
+                entries.Add((enumerator.Key as string ?? written, written, enumerator.Value));
+            }
+            entries.Sort((left, right) =>
+            {
+                var byKey = string.CompareOrdinal(left.Order, right.Order);
+                return byKey != 0 ? byKey : string.CompareOrdinal(left.Written, right.Written);
+            });
+            builder.Append('{');
+            for (var i = 0; i < entries.Count; i++)
+            {
+                if (i > 0) builder.Append(',');
+                builder.Append(entries[i].Written).Append(':');
+                AppendHash(builder, entries[i].Value, opaque);
+            }
+            builder.Append('}');
+        }
+
+        private static void AppendSorted(StringBuilder builder, char open, List<string> texts, char close)
+        {
+            texts.Sort(StringComparer.Ordinal);
+            builder.Append(open).Append(string.Join(",", texts)).Append(close);
+        }
+
+
+        private static IEnumerable MembersOf(object part)
+        {
+            var count = MemberCount(part);
+            for (var i = 0; i < count; i++)
+            {
+                yield return MemberAt(part, i);
+            }
+        }
+
+        private static void AppendHashedItems(StringBuilder builder, char open, IEnumerable items, char close, Func<object, int> opaque)
+        {
+            builder.Append(open);
+            var first = true;
+            foreach (var item in items)
+            {
+                if (!first) builder.Append(',');
+                first = false;
+                AppendHash(builder, item, opaque);
+            }
+            builder.Append(close);
+        }
+
+        // Each type writes a form no other does: an int bare as JSON writes a number, a string quoted as JSON does,
+        // and every other number with a suffix naming its type, since a long equals no int.
+        private static bool TryAppendScalar(StringBuilder builder, object part)
+        {
+            var invariant = System.Globalization.CultureInfo.InvariantCulture;
+            switch (part)
+            {
+                case string text:
+                    AppendJsonString(builder, text);
+                    return true;
+                case bool flag:
+                    builder.Append(flag ? "true" : "false");
+                    return true;
+                case int number:
+                    builder.Append(number.ToString(invariant));
+                    return true;
+                case Enum value:
+                    builder.Append(value.GetType().FullName).Append('.').Append(value.ToString("D"));
+                    return true;
+                case char character:
+                    builder.Append('c');
+                    AppendJsonString(builder, character.ToString());
+                    return true;
+                case double real:
+                    // Zero and negative zero are equal, and print differently.
+                    builder.Append(real == 0d ? "0" : real.ToString("R", invariant)).Append('D');
+                    return true;
+                case float real:
+                    builder.Append(real == 0f ? "0" : real.ToString("R", invariant)).Append('F');
+                    return true;
+                case long number:
+                    builder.Append(number.ToString(invariant)).Append('L');
+                    return true;
+                case uint number:
+                    builder.Append(number.ToString(invariant)).Append('U');
+                    return true;
+                case ulong number:
+                    builder.Append(number.ToString(invariant)).Append("UL");
+                    return true;
+                case short number:
+                    builder.Append(number.ToString(invariant)).Append('S');
+                    return true;
+                case ushort number:
+                    builder.Append(number.ToString(invariant)).Append("US");
+                    return true;
+                case byte number:
+                    builder.Append(number.ToString(invariant)).Append('B');
+                    return true;
+                case sbyte number:
+                    builder.Append(number.ToString(invariant)).Append("SB");
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static void AppendJsonString(StringBuilder builder, string text)
+        {
+            builder.Append('"');
+            foreach (var character in text)
+            {
+                switch (character)
+                {
+                    case '"':
+                        builder.Append("\\\"");
+                        break;
+                    case '\\':
+                        builder.Append("\\\\");
+                        break;
+                    default:
+                        if (character < ' ') builder.Append("\\u").Append(((int)character).ToString("x4"));
+                        else builder.Append(character);
+                        break;
+                }
+            }
+            builder.Append('"');
+        }
+
+        // The equality a QueryKey compares its parts with, for the numbers AppendHash hands out.
+        internal sealed class PartComparer : IEqualityComparer<object>
+        {
+            internal static readonly PartComparer Instance = new();
+
+            public new bool Equals(object? x, object? y) => Matches(x, y, partial: false);
+
+            public int GetHashCode(object obj) => HashOf(obj);
+        }
+
         // A part compared by its elements prints them rather than its type name, so keys differing in such a
         // part's elements print differently wherever those elements do.
         internal static void Append(StringBuilder builder, object? part)

@@ -109,7 +109,7 @@ namespace Velvet.Tests
         }
 
         private static QueryOptions<int> Options()
-            => new(Todos, Fetch) { Retry = 0 };
+            => new(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { Retry = 0 };
 
         private static VelvetTask<int> Fetch(CancellationToken token)
         {

@@ -65,7 +65,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt()
+        public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateStatus()
         {
             // Arrange
             s_client.SetQueryData(Todos, 7);
@@ -74,11 +74,50 @@ namespace Velvet.Tests
             var state = s_client.GetQueryState<int>(Todos)!;
 
             // Assert
-            Assert.That((state.Status, state.HasData, state.Data, state.IsFetching), Is.EqualTo((QueryStatus.Success, true, 7, false)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Success));
         }
 
         [Test]
-        public void Given_ARequestInFlight_When_GetQueryStateReads_Then_ItIsFetching()
+        public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateHasData()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 7);
+
+            // Act
+            var state = s_client.GetQueryState<int>(Todos)!;
+
+            // Assert
+            Assert.That(state.HasData, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateData()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 7);
+
+            // Act
+            var state = s_client.GetQueryState<int>(Todos)!;
+
+            // Assert
+            Assert.That(state.Data, Is.EqualTo(7));
+        }
+
+        [Test]
+        public void Given_DataWrittenByHand_When_GetQueryStateReads_Then_ItIsASuccessHoldingIt_StateIsFetching()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 7);
+
+            // Act
+            var state = s_client.GetQueryState<int>(Todos)!;
+
+            // Assert
+            Assert.That(state.IsFetching, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_ARequestInFlight_When_GetQueryStateReads_Then_ItIsFetching_StateStatus()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -87,11 +126,24 @@ namespace Velvet.Tests
             var state = s_client.GetQueryState<int>(Todos)!;
 
             // Assert
-            Assert.That((state.Status, state.IsFetching), Is.EqualTo((QueryStatus.Pending, true)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
         [Test]
-        public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount()
+        public void Given_ARequestInFlight_When_GetQueryStateReads_Then_ItIsFetching_StateIsFetching()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            var state = s_client.GetQueryState<int>(Todos)!;
+
+            // Assert
+            Assert.That(state.IsFetching, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount_StateStatus()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -101,7 +153,35 @@ namespace Velvet.Tests
             var state = s_client.GetQueryState<int>(Todos)!;
 
             // Assert
-            Assert.That((state.Status, state.Error?.Message, state.FailureCount), Is.EqualTo((QueryStatus.Error, "boom", 1)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Error));
+        }
+
+        [Test]
+        public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount_StateErrorMessage()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+
+            // Act
+            var state = s_client.GetQueryState<int>(Todos)!;
+
+            // Assert
+            Assert.That(state.Error?.Message, Is.EqualTo("boom"));
+        }
+
+        [Test]
+        public void Given_AFailedRequest_When_GetQueryStateReads_Then_ItCarriesTheErrorAndTheFailureCount_StateFailureCount()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+
+            // Act
+            var state = s_client.GetQueryState<int>(Todos)!;
+
+            // Assert
+            Assert.That(state.FetchFailureCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -185,7 +265,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARequestFromFetchQuery_When_ItLands_Then_TheTaskHoldsTheData()
+        public void Given_ARequestFromFetchQuery_When_ItLands_Then_TheTaskHoldsTheData_TaskStatus()
         {
             // Arrange
             var task = s_client.FetchQuery(Options(Todos));
@@ -194,7 +274,20 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(5);
 
             // Assert
-            Assert.That((task.Status, task.GetAwaiter().GetResult()), Is.EqualTo((VelvetTaskStatus.Succeeded, 5)));
+            Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        [Test]
+        public void Given_ARequestFromFetchQuery_When_ItLands_Then_TheTaskHoldsTheData_TaskResult()
+        {
+            // Arrange
+            var task = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_sources[0].TrySetResult(5);
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(5));
         }
 
         [Test]
@@ -211,7 +304,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FreshData_When_FetchQueryRuns_Then_ItReturnsItWithoutARequest()
+        public void Given_FreshData_When_FetchQueryRuns_Then_ItReturnsItWithoutARequest_Calls()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -220,7 +313,20 @@ namespace Velvet.Tests
             var task = s_client.FetchQuery(Options(Todos, staleTime: TimeSpan.FromMinutes(1)));
 
             // Assert
-            Assert.That((s_calls, task.GetAwaiter().GetResult()), Is.EqualTo((0, 5)));
+            Assert.That(s_calls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_FreshData_When_FetchQueryRuns_Then_ItReturnsItWithoutARequest_TaskResult()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+
+            // Act
+            var task = s_client.FetchQuery(Options(Todos, staleTime: TimeSpan.FromMinutes(1)));
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(5));
         }
 
         [Test]
@@ -264,7 +370,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARequestInFlightOverData_When_FetchQueryRunsAgain_Then_ItJoinsIt()
+        public void Given_ARequestInFlightOverData_When_FetchQueryRunsAgain_Then_ItJoinsIt_Calls()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -274,12 +380,27 @@ namespace Velvet.Tests
             _ = s_client.FetchQuery(Options(Todos));
 
             // Assert
-            Assert.That((s_calls, s_tokens[0].IsCancellationRequested), Is.EqualTo((1, false)),
+            Assert.That(s_calls, Is.EqualTo(1),
                 "fetchQuery never cancels a request to start over, which only an explicit refetch does");
         }
 
         [Test]
-        public void Given_TwoCallsJoiningOneRequest_When_ItLands_Then_BothTasksHoldTheData()
+        public void Given_ARequestInFlightOverData_When_FetchQueryRunsAgain_Then_ItJoinsIt_Tokens0IsCancellationRequested()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(false),
+                "fetchQuery never cancels a request to start over, which only an explicit refetch does");
+        }
+
+        [Test]
+        public void Given_TwoCallsJoiningOneRequest_When_ItLands_Then_BothTasksHoldTheData_FirstResult()
         {
             // Arrange
             var first = s_client.FetchQuery(Options(Todos));
@@ -289,7 +410,21 @@ namespace Velvet.Tests
             s_sources[0].TrySetResult(5);
 
             // Assert
-            Assert.That((first.GetAwaiter().GetResult(), second.GetAwaiter().GetResult()), Is.EqualTo((5, 5)));
+            Assert.That(first.GetAwaiter().GetResult(), Is.EqualTo(5));
+        }
+
+        [Test]
+        public void Given_TwoCallsJoiningOneRequest_When_ItLands_Then_BothTasksHoldTheData_SecondResult()
+        {
+            // Arrange
+            var first = s_client.FetchQuery(Options(Todos));
+            var second = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_sources[0].TrySetResult(5);
+
+            // Assert
+            Assert.That(second.GetAwaiter().GetResult(), Is.EqualTo(5));
         }
 
         [Test]
@@ -306,7 +441,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFailingRequest_When_FetchQueryRuns_Then_ItIsNotRetriedByDefault()
+        public void Given_AFailingRequest_When_FetchQueryRuns_Then_ItIsNotRetriedByDefault_Calls()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -315,7 +450,21 @@ namespace Velvet.Tests
             s_sources[0].TrySetException(new InvalidOperationException("boom"));
 
             // Assert
-            Assert.That((s_calls, s_client.GetQueryState<int>(Todos)!.Status), Is.EqualTo((1, QueryStatus.Error)),
+            Assert.That(s_calls, Is.EqualTo(1),
+                "v5's fetchQuery sets retry to false, where a mounted query takes the client's default of three");
+        }
+
+        [Test]
+        public void Given_AFailingRequest_When_FetchQueryRuns_Then_ItIsNotRetriedByDefault_IntTodosStatus()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+
+            // Assert
+            Assert.That(s_client.GetQueryState<int>(Todos)!.Status, Is.EqualTo(QueryStatus.Error),
                 "v5's fetchQuery sets retry to false, where a mounted query takes the client's default of three");
         }
 
@@ -397,7 +546,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_DataInTheEntry_When_EnsureQueryDataRuns_Then_ItReturnsItWithoutARequest()
+        public void Given_DataInTheEntry_When_EnsureQueryDataRuns_Then_ItReturnsItWithoutARequest_Calls()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -406,7 +555,20 @@ namespace Velvet.Tests
             var task = s_client.EnsureQueryData(Options(Todos));
 
             // Assert
-            Assert.That((s_calls, task.GetAwaiter().GetResult()), Is.EqualTo((0, 5)));
+            Assert.That(s_calls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_DataInTheEntry_When_EnsureQueryDataRuns_Then_ItReturnsItWithoutARequest_TaskResult()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+
+            // Act
+            var task = s_client.EnsureQueryData(Options(Todos));
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(5));
         }
 
         [Test]
@@ -434,7 +596,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StaleDataInTheEntry_When_EnsureQueryDataRunsWithRevalidate_Then_ItFetchesAndReturnsTheDataHeld()
+        public void Given_StaleDataInTheEntry_When_EnsureQueryDataRunsWithRevalidate_Then_ItFetchesAndReturnsTheDataHeld_Calls()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -444,7 +606,21 @@ namespace Velvet.Tests
             var task = s_client.EnsureQueryData(Options(Todos, staleTime: TimeSpan.FromMinutes(1)), revalidateIfStale: true);
 
             // Assert
-            Assert.That((s_calls, task.GetAwaiter().GetResult()), Is.EqualTo((1, 5)));
+            Assert.That(s_calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_StaleDataInTheEntry_When_EnsureQueryDataRunsWithRevalidate_Then_ItFetchesAndReturnsTheDataHeld_TaskResult()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            s_now = TimeSpan.FromMinutes(2);
+
+            // Act
+            var task = s_client.EnsureQueryData(Options(Todos, staleTime: TimeSpan.FromMinutes(1)), revalidateIfStale: true);
+
+            // Assert
+            Assert.That(task.GetAwaiter().GetResult(), Is.EqualTo(5));
         }
 
         [Test]
@@ -491,7 +667,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle()
+        public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle_StateStatus()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -501,11 +677,39 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.Status, state.HasData, state.IsFetching), Is.EqualTo((QueryStatus.Pending, false, false)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
         [Test]
-        public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData()
+        public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle_StateHasData()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.HasData, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_ARequestFirstFetchingAnEntry_When_CancelQueriesReverts_Then_TheEntryIsPendingAndIdle_StateIsFetching()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.IsFetching, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData_StateStatus()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -516,11 +720,41 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.Status, state.Data, state.IsFetching), Is.EqualTo((QueryStatus.Success, 5, false)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Success));
         }
 
         [Test]
-        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError()
+        public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData_StateData()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.Data, Is.EqualTo(5));
+        }
+
+        [Test]
+        public void Given_ARefetchOverData_When_CancelQueriesReverts_Then_TheEntryKeepsItsData_StateIsFetching()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.IsFetching, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError_StateStatus()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -531,11 +765,41 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.Status, state.Data, state.Error is OperationCanceledException), Is.EqualTo((QueryStatus.Error, 5, true)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Error));
         }
 
         [Test]
-        public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain()
+        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError_StateData()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries(revert: false);
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.Data, Is.EqualTo(5));
+        }
+
+        [Test]
+        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheEntrysError_StateErrorOperationCanceledException()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries(revert: false);
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.Error is OperationCanceledException, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain_StateStatus()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -547,7 +811,41 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.Status, state.Error?.Message, state.FailureCount), Is.EqualTo((QueryStatus.Error, "boom", 1)),
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Error),
+                "The state the request found is what comes back, not the one it set when it started");
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain_StateErrorMessage()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.Error?.Message, Is.EqualTo("boom"),
+                "The state the request found is what comes back, not the one it set when it started");
+        }
+
+        [Test]
+        public void Given_AFailedEntryRefetchedAndCancelled_When_CancelQueriesReverts_Then_ItIsTheFailedEntryAgain_StateFailureCount()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.FetchFailureCount, Is.EqualTo(1),
                 "The state the request found is what comes back, not the one it set when it started");
         }
 
@@ -566,7 +864,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheFailureReasonAndCounts()
+        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheFailureReasonAndCounts_StateFailureReasonOperationCanceledException()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -577,7 +875,22 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.FailureReason is OperationCanceledException, state.FailureCount), Is.EqualTo((true, 1)));
+            Assert.That(state.FetchFailureReason is OperationCanceledException, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_ARefetchOverData_When_CancelQueriesRevertsNothing_Then_TheCancellationIsTheFailureReasonAndCounts_StateFailureCount()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            s_client.CancelQueries(revert: false);
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.FetchFailureCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -597,7 +910,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoRequests_When_CancelQueriesNamesOneKey_Then_TheOtherKeepsRunning()
+        public void Given_TwoRequests_When_CancelQueriesNamesOneKey_Then_TheOtherKeepsRunning_Tokens0IsCancellationRequested()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -607,7 +920,21 @@ namespace Velvet.Tests
             s_client.CancelQueries(new QueryFilters { QueryKey = Todos });
 
             // Assert
-            Assert.That((s_tokens[0].IsCancellationRequested, s_tokens[1].IsCancellationRequested), Is.EqualTo((true, false)));
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_TwoRequests_When_CancelQueriesNamesOneKey_Then_TheOtherKeepsRunning_Tokens1IsCancellationRequested()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            _ = s_client.FetchQuery(Options(Users));
+
+            // Act
+            s_client.CancelQueries(new QueryFilters { QueryKey = Todos });
+
+            // Assert
+            Assert.That(s_tokens[1].IsCancellationRequested, Is.EqualTo(false));
         }
 
         [Test]
@@ -625,7 +952,7 @@ namespace Velvet.Tests
         #region removeQueries and resetQueries
 
         [Test]
-        public void Given_TwoEntries_When_RemoveQueriesNamesOne_Then_OnlyItIsGone()
+        public void Given_TwoEntries_When_RemoveQueriesNamesOne_Then_OnlyItIsGone_QueryStateIntTodos()
         {
             // Arrange
             s_client.SetQueryData(Todos, 1);
@@ -635,11 +962,25 @@ namespace Velvet.Tests
             s_client.RemoveQueries(new QueryFilters { QueryKey = Todos });
 
             // Assert
-            Assert.That((s_client.GetQueryState<int>(Todos), s_client.GetQueryData<int>(Users)), Is.EqualTo(((QueryState<int>?)null, 2)));
+            Assert.That(s_client.GetQueryState<int>(Todos), Is.EqualTo((QueryState<int>?)null));
         }
 
         [Test]
-        public void Given_AKeyAndOneBelowIt_When_RemoveQueriesIsExact_Then_TheOneBelowStays()
+        public void Given_TwoEntries_When_RemoveQueriesNamesOne_Then_OnlyItIsGone_QueryDataIntUsers()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            s_client.SetQueryData(Users, 2);
+
+            // Act
+            s_client.RemoveQueries(new QueryFilters { QueryKey = Todos });
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(Users), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_AKeyAndOneBelowIt_When_RemoveQueriesIsExact_Then_TheOneBelowStays_QueryStateIntTodos()
         {
             // Arrange
             s_client.SetQueryData(Todos, 1);
@@ -649,7 +990,21 @@ namespace Velvet.Tests
             s_client.RemoveQueries(new QueryFilters { QueryKey = Todos, Exact = true });
 
             // Assert
-            Assert.That((s_client.GetQueryState<int>(Todos), s_client.GetQueryData<int>(TodoOne)), Is.EqualTo(((QueryState<int>?)null, 2)));
+            Assert.That(s_client.GetQueryState<int>(Todos), Is.EqualTo((QueryState<int>?)null));
+        }
+
+        [Test]
+        public void Given_AKeyAndOneBelowIt_When_RemoveQueriesIsExact_Then_TheOneBelowStays_QueryDataIntTodoOne()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            s_client.SetQueryData(TodoOne, 2);
+
+            // Act
+            s_client.RemoveQueries(new QueryFilters { QueryKey = Todos, Exact = true });
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(TodoOne), Is.EqualTo(2));
         }
 
         [Test]
@@ -712,7 +1067,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData()
+        public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData_StateStatus()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -723,11 +1078,41 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.Status, state.HasData, state.IsInvalidated), Is.EqualTo((QueryStatus.Pending, false, false)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
         }
 
         [Test]
-        public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures()
+        public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData_StateHasData()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            s_client.InvalidateQueries(Todos);
+
+            // Act
+            s_client.ResetQueries(new QueryFilters { QueryKey = Todos });
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.HasData, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_AnEntryWithData_When_ResetQueriesRuns_Then_ItIsPendingWithNoData_StateIsInvalidated()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            s_client.InvalidateQueries(Todos);
+
+            // Act
+            s_client.ResetQueries(new QueryFilters { QueryKey = Todos });
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.IsInvalidated, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateStatus()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -738,8 +1123,52 @@ namespace Velvet.Tests
 
             // Assert
             var state = s_client.GetQueryState<int>(Todos)!;
-            Assert.That((state.Status, state.Error == null, state.FailureCount, state.FailureReason == null),
-                Is.EqualTo((QueryStatus.Pending, true, 0, true)));
+            Assert.That(state.Status, Is.EqualTo(QueryStatus.Pending));
+        }
+
+        [Test]
+        public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateError()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+
+            // Act
+            s_client.ResetQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.Error == null, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateFailureCount()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+
+            // Act
+            s_client.ResetQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.FetchFailureCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AFailedEntry_When_ResetQueriesRuns_Then_ItHoldsNoErrorAndNoFailures_StateFailureReason()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetException(new InvalidOperationException("boom"));
+
+            // Act
+            s_client.ResetQueries();
+
+            // Assert
+            var state = s_client.GetQueryState<int>(Todos)!;
+            Assert.That(state.FetchFailureReason == null, Is.EqualTo(true));
         }
 
         [Test]
@@ -815,7 +1244,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARefetch_When_ItLands_Then_TheTaskOfRefetchQueriesCompletesAndTheEntryHoldsTheData()
+        public void Given_ARefetch_When_ItLands_Then_TheTaskOfRefetchQueriesCompletesAndTheEntryHoldsTheData_TaskStatus()
         {
             // Arrange
             _ = s_client.FetchQuery(Options(Todos));
@@ -826,7 +1255,22 @@ namespace Velvet.Tests
             s_sources[1].TrySetResult(6);
 
             // Assert
-            Assert.That((task.Status, s_client.GetQueryData<int>(Todos)), Is.EqualTo((VelvetTaskStatus.Succeeded, 6)));
+            Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        [Test]
+        public void Given_ARefetch_When_ItLands_Then_TheTaskOfRefetchQueriesCompletesAndTheEntryHoldsTheData_QueryDataIntTodos()
+        {
+            // Arrange
+            _ = s_client.FetchQuery(Options(Todos));
+            s_sources[0].TrySetResult(5);
+            var task = s_client.RefetchQueries();
+
+            // Act
+            s_sources[1].TrySetResult(6);
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(6));
         }
 
         [Test]
@@ -860,7 +1304,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARefetchOverDataInFlight_When_RefetchQueriesRuns_Then_ItCancelsAndStartsOver()
+        public void Given_ARefetchOverDataInFlight_When_RefetchQueriesRuns_Then_ItCancelsAndStartsOver_Calls()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -870,11 +1314,25 @@ namespace Velvet.Tests
             _ = s_client.RefetchQueries();
 
             // Assert
-            Assert.That((s_calls, s_tokens[0].IsCancellationRequested), Is.EqualTo((2, true)));
+            Assert.That(s_calls, Is.EqualTo(2));
         }
 
         [Test]
-        public void Given_ARefetchOverDataInFlight_When_RefetchQueriesDoesNotCancel_Then_ItJoinsTheRequest()
+        public void Given_ARefetchOverDataInFlight_When_RefetchQueriesRuns_Then_ItCancelsAndStartsOver_Tokens0IsCancellationRequested()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            _ = s_client.RefetchQueries();
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_ARefetchOverDataInFlight_When_RefetchQueriesDoesNotCancel_Then_ItJoinsTheRequest_Calls()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -884,7 +1342,21 @@ namespace Velvet.Tests
             _ = s_client.RefetchQueries(options: new RefetchOptions { CancelRefetch = false });
 
             // Assert
-            Assert.That((s_calls, s_tokens[0].IsCancellationRequested), Is.EqualTo((1, false)));
+            Assert.That(s_calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARefetchOverDataInFlight_When_RefetchQueriesDoesNotCancel_Then_ItJoinsTheRequest_Tokens0IsCancellationRequested()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+            _ = s_client.FetchQuery(Options(Todos));
+
+            // Act
+            _ = s_client.RefetchQueries(options: new RefetchOptions { CancelRefetch = false });
+
+            // Assert
+            Assert.That(s_tokens[0].IsCancellationRequested, Is.EqualTo(false));
         }
 
         [Test]
@@ -904,7 +1376,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched()
+        public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched_IntTodosIsInvalidated()
         {
             // Arrange
             s_client.SetQueryData(Todos, 5);
@@ -913,12 +1385,37 @@ namespace Velvet.Tests
             var task = s_client.InvalidateQueries(Todos);
 
             // Assert
-            Assert.That((s_client.GetQueryState<int>(Todos)!.IsInvalidated, s_calls, task.Status),
-                Is.EqualTo((true, 0, VelvetTaskStatus.Succeeded)));
+            Assert.That(s_client.GetQueryState<int>(Todos)!.IsInvalidated, Is.EqualTo(true));
         }
 
         [Test]
-        public void Given_FiltersNamingAnExactKey_When_InvalidateQueriesRuns_Then_OnlyThatEntryIsInvalidated()
+        public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched_Calls()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+
+            // Act
+            var task = s_client.InvalidateQueries(Todos);
+
+            // Assert
+            Assert.That(s_calls, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AnEntryNothingReads_When_InvalidateQueriesRuns_Then_ItIsMarkedStaleAndNotFetched_TaskStatus()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 5);
+
+            // Act
+            var task = s_client.InvalidateQueries(Todos);
+
+            // Assert
+            Assert.That(task.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        [Test]
+        public void Given_FiltersNamingAnExactKey_When_InvalidateQueriesRuns_Then_OnlyThatEntryIsInvalidated_IntTodosIsInvalidated()
         {
             // Arrange
             s_client.SetQueryData(Todos, 1);
@@ -928,8 +1425,21 @@ namespace Velvet.Tests
             s_client.InvalidateQueries(new QueryFilters { QueryKey = Todos, Exact = true });
 
             // Assert
-            Assert.That((s_client.GetQueryState<int>(Todos)!.IsInvalidated, s_client.GetQueryState<int>(TodoOne)!.IsInvalidated),
-                Is.EqualTo((true, false)));
+            Assert.That(s_client.GetQueryState<int>(Todos)!.IsInvalidated, Is.EqualTo(true));
+        }
+
+        [Test]
+        public void Given_FiltersNamingAnExactKey_When_InvalidateQueriesRuns_Then_OnlyThatEntryIsInvalidated_IntTodoOneIsInvalidated()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            s_client.SetQueryData(TodoOne, 2);
+
+            // Act
+            s_client.InvalidateQueries(new QueryFilters { QueryKey = Todos, Exact = true });
+
+            // Assert
+            Assert.That(s_client.GetQueryState<int>(TodoOne)!.IsInvalidated, Is.EqualTo(false));
         }
 
         #endregion
@@ -1109,7 +1619,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoEntries_When_SetQueriesDataRuns_Then_EachIsHandedItsDataAndWritten()
+        public void Given_TwoEntries_When_SetQueriesDataRuns_Then_EachIsHandedItsDataAndWritten_QueryDataIntTodos()
         {
             // Arrange
             s_client.SetQueryData(Todos, 1);
@@ -1119,7 +1629,21 @@ namespace Velvet.Tests
             s_client.SetQueriesData<int>(new QueryFilters { QueryKey = Todos }, old => old + 10);
 
             // Assert
-            Assert.That((s_client.GetQueryData<int>(Todos), s_client.GetQueryData<int>(TodoOne)), Is.EqualTo((11, 12)));
+            Assert.That(s_client.GetQueryData<int>(Todos), Is.EqualTo(11));
+        }
+
+        [Test]
+        public void Given_TwoEntries_When_SetQueriesDataRuns_Then_EachIsHandedItsDataAndWritten_QueryDataIntTodoOne()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            s_client.SetQueryData(TodoOne, 2);
+
+            // Act
+            s_client.SetQueriesData<int>(new QueryFilters { QueryKey = Todos }, old => old + 10);
+
+            // Assert
+            Assert.That(s_client.GetQueryData<int>(TodoOne), Is.EqualTo(12));
         }
 
         [Test]
@@ -1214,7 +1738,7 @@ namespace Velvet.Tests
         #endregion
 
         private static QueryOptions<int> Options(QueryKey key, TimeSpan? staleTime = null)
-            => new(key, Fetch) { StaleTime = staleTime };
+            => new(key, (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = staleTime };
 
         private static VelvetTask<int> Fetch(CancellationToken token)
         {

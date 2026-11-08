@@ -100,7 +100,7 @@ namespace Velvet.Tests
         private static VNode Reader()
         {
             Hooks.UseQuery(
-                new QueryOptions<int>(Todos, Fetch)
+                new QueryOptions<int>(Todos, (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     Enabled = s_enabled,
                     InitialData = InitialData,
@@ -113,7 +113,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode Sibling()
         {
-            Hooks.UseQuery(new QueryOptions<int>(new QueryKey("other"), Fetch) { StaleTime = TimeSpan.MaxValue }, s_client);
+            Hooks.UseQuery(new QueryOptions<int>(new QueryKey("other"), (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = TimeSpan.MaxValue }, s_client);
             return V.Label(text: "sibling");
         }
 

@@ -9,7 +9,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies <see cref="QueryOptions{TQueryFnData, TData}.RefetchOnMount"/>, its function form and the
+    /// Specifies <see cref="QueryOptionsBase{TQueryFnData, TData}.RefetchOnMount"/>, its function form and the
     /// client's default, TanStack Query's <c>refetchOnMount</c>.
     /// <list type="bullet">
     /// <item>A reader mounting over stale data does not fetch under <c>Never</c>, and fetches fresh data under
@@ -34,7 +34,7 @@ namespace Velvet.Tests
         private static int s_calls;
         private static TimeSpan s_staleTime;
         private static QueryRefetchMode? s_secondMode;
-        private static Func<QueryInfo, QueryRefetchMode>? s_secondFn;
+        private static Func<Query, QueryRefetchMode>? s_secondFn;
         private static object? s_seenData;
         private static StateUpdater<bool> s_setShowSecond;
         private static StateUpdater<string> s_setFirstKey;
@@ -217,7 +217,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode FirstReader(string key)
         {
-            Hooks.UseQuery(new QueryOptions<int>(new QueryKey(key), Fetch) { StaleTime = s_staleTime }, s_client);
+            Hooks.UseQuery(new QueryOptions<int>(new QueryKey(key), (QueryFunctionContext context) => Fetch(context.CancellationToken)) { StaleTime = s_staleTime }, s_client);
             return V.Label(text: "first");
         }
 
@@ -225,7 +225,7 @@ namespace Velvet.Tests
         private static VNode SecondReader()
         {
             s_secondRenders.Add(Hooks.UseQuery(
-                new QueryOptions<int>(new QueryKey("todos"), Fetch)
+                new QueryOptions<int>(new QueryKey("todos"), (QueryFunctionContext context) => Fetch(context.CancellationToken))
                 {
                     StaleTime = s_staleTime,
                     RefetchOnMount = s_secondMode,

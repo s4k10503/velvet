@@ -6,7 +6,7 @@
   is the task's result, a faulted task fails the call, and the handle is committed after the last callback.
   A callback with nothing to wait for returns `VelvetTask.CompletedTask`, or is written `async`.
 - `QueryOptions.PlaceholderData` is handed `(previousData, previousQuery)`, the previous entry as a nullable
-  `QueryInfo`, instead of the previous `QueryKey`; the key is `previousQuery.QueryKey`. The signature of
+  `Query`, instead of the previous `QueryKey`; the key is `previousQuery.QueryKey`. The signature of
   `QueryPlaceholder.KeepPreviousData` follows.
 - `QueryOptions.StructuralSharing` is a `Func<object?, object, object>`, as v5's takes `unknown`, and a
   function given there is now also handed what a `Select` returns, which it was not when the type changed.
