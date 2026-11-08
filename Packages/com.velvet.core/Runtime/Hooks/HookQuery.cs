@@ -813,6 +813,11 @@ namespace Velvet
         internal IInfiniteQueryOptions<TQueryFnData>? Paging => Options as IInfiniteQueryOptions<TQueryFnData>;
         internal Func<TQueryFnData, TData>? Select => Options.Select;
 
+        // v5's shouldNotifyListeners adds error to the properties it watches where throwOnError is set, so a failure
+        // reaches the render that throws it; useSuspenseQuery sets throwOnError always.
+        internal QueryProperties ErrorWatch
+            => Suspense || ThrowOnError.IsSet ? QueryProperties.Error : QueryProperties.None;
+
         // TanStack's getOptimisticResult, which builds the entry a render reads when there is none, with the
         // render's options.
         internal QueryEntry<TQueryFnData> ReadEntry(QueryClient client)
@@ -871,6 +876,9 @@ namespace Velvet
 
         // ensurePreventErrorBoundaryRetry asks a function only over an entry in error, and otherwise counts it as
         // true, as v5 reads the function itself as truthy.
+        // Whether throwOnError is set at all, which v5 reads as truthy, a function included.
+        internal bool IsSet => _fn != null || _value;
+
         internal bool ThrowsOnMount<T>(QueryEntry<T> entry)
         {
             if (_fn == null) return _value;
@@ -1426,8 +1434,12 @@ namespace Velvet
                 _current = next;
                 _hasCurrent = true;
                 if (first || Notifies(changed)) OnChange();
-                // Whatever the component reads, as v5 tells the cache of every result that changed.
-                entry.Client.QueryCache.Notify(new QueryCacheEvent(QueryCacheEventType.ObserverResultsUpdated, entry.Query));
+                // Whatever the component reads, as v5 tells the cache of every result that changed. The observer
+                // UseQueries shares holds no query's result, so each of its queries announces its own.
+                if (_settings.Options is not RawQueryOptions<TQueryFnData>)
+                {
+                    entry.Client.QueryCache.Notify(new QueryCacheEvent(QueryCacheEventType.ObserverResultsUpdated, entry.Query));
+                }
             }
 
 
@@ -1484,7 +1496,7 @@ namespace Velvet
         {
             var listed = _settings.Options?.NotifyOnChangeProps;
             if (listed == null && _tracked == QueryProperties.None) return true;
-            return (changed & (listed ?? _tracked)) != QueryProperties.None;
+            return (changed & ((listed ?? _tracked) | _settings.ErrorWatch)) != QueryProperties.None;
         }
 
         internal QueryResult<TData> Read(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings)

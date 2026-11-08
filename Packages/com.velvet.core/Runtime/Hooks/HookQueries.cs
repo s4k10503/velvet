@@ -23,6 +23,8 @@ namespace Velvet
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
+        internal abstract QueryProperties ErrorWatch { get; }
+        internal abstract void AnnounceResultsUpdated();
         internal abstract void Sync(QueryClient client);
         internal abstract void ThrowIfError(QueryErrorResetBoundary boundary);
         // TanStack's shouldSuspend and fetchOptimistic for one query: a pending result starts the entry's request, and
@@ -90,6 +92,14 @@ namespace Velvet
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
         internal override QueryProperties? NotifyOnChangeProps => _options.NotifyOnChangeProps;
+        internal override QueryProperties ErrorWatch => _settings.ErrorWatch;
+
+        // TanStack's observerResultsUpdated, for this query's own result.
+        internal override void AnnounceResultsUpdated()
+        {
+            var entry = _observer.Entry ?? _entry;
+            entry.Client.QueryCache.Notify(new QueryCacheEvent(QueryCacheEventType.ObserverResultsUpdated, entry.Query));
+        }
 
         internal override void Sync(QueryClient client) => _observer.Sync(client, _shared);
 
@@ -383,9 +393,9 @@ namespace Velvet
             {
                 var changed = item.RefreshChanges();
                 if (changed == QueryProperties.None) continue;
-                var listed = item.NotifyOnChangeProps;
-                var watched = listed ?? _tracked;
-                if (watched == QueryProperties.None || (changed & watched) != QueryProperties.None) notifies = true;
+                item.AnnounceResultsUpdated();
+                var watched = item.NotifyOnChangeProps ?? _tracked;
+                if (watched == QueryProperties.None || (changed & (watched | item.ErrorWatch)) != QueryProperties.None) notifies = true;
             }
             return notifies;
         }
