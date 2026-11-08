@@ -1047,7 +1047,7 @@ namespace Velvet
         internal void DisposeMutationSlots()
         {
             if (MutationSlots == null) return;
-            foreach (var slot in MutationSlots) slot.Retired = true;
+            foreach (var slot in MutationSlots) slot.Retire();
             MutationSlots.Clear();
         }
 

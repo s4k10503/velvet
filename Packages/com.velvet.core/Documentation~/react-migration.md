@@ -98,6 +98,9 @@ public static VNode UserCard()
 ### 1-2a. Async mutations — `Hooks.UseMutation`
 
 TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-and-forget) and `MutateAsync` (awaitable), plus `Status` / `Data` / `Error` / `Variables` snapshots and `Reset`.
+It reads its `QueryClient` as `Hooks.UseQuery` does — from `QueryClientContext.Ref`, or the client passed as its
+second argument — and throws when there is none, as `useMutation` does without a `QueryClientProvider`; the
+client is the one the first render found.
 
 | React Query | Velvet |
 |-------------|--------|
@@ -107,6 +110,13 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 | `mutate(variables, { onSuccess, onError, onSettled })` | `mutation.Mutate(variables, new MutateOptions<TVariables, TData> { OnSuccess = ..., OnError = ..., OnSettled = ... })`; `MutateAsync` takes the same second argument |
 | `useMutation({ mutationFn, retry: 3, retryDelay })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { Retry = new RetryPolicy { Retry = 3, RetryDelay = ... } }` |
+| `useMutation({ mutationFn, mutationKey, scope: { id }, meta, gcTime })` | `new MutationOptions<TVariables, TData>(MutationFn: ...) { MutationKey = new QueryKey(...), Scope = new MutationScope(id), Meta = ..., GcTime = ... }`, on every option record |
+| `useMutation(options, queryClient)` | `Hooks.UseMutation(options, client)` |
+| `useMutationState({ filters, select })` | `Hooks.UseMutationState(new MutationStateOptions<TResult> { Filters = new MutationFilters { ... }, Select = mutation => ... })`; `Hooks.UseMutationState(filters)` returns each `MutationState` |
+| `useIsMutating(filters)` | `Hooks.UseIsMutating(filters)` |
+| `new MutationCache({ onMutate, onSuccess, onError, onSettled })` | `new MutationCache { OnMutate = ..., OnSuccess = ..., OnError = ..., OnSettled = ... }`, handed to `new QueryClient(new QueryClientOptions { MutationCache = ... })` |
+| `queryClient.getMutationCache()` / `queryClient.isMutating(filters)` | `client.GetMutationCache()` / `client.IsMutating(filters)` |
+| `mutationCache.subscribe(listener)` / `find` / `findAll` / `getAll` / `remove` / `clear` | `cache.Subscribe(listener)` (returns the unsubscribe `Action`) / `Find` / `FindAll` / `GetAll` / `Remove` / `Clear` |
 
 **Lifecycle callbacks.** `OnMutate` runs when the call starts — after the handle has turned `Pending`
 with the call's `Variables`, before `MutationFn` — and what it returns is the context that call's
@@ -253,6 +263,47 @@ v5's zero-delay timer does, unaffected by `Time.timeScale`; supply `Wait` to wai
 - A throwing **`onMutate`**, or one whose task faults, fails the call with its exception before `MutationFn` runs; `onError` and `onSettled` receive it with a default context.
 - A callback whose task faults is a throw from it: the rules in this list apply to a fault the same way.
 - A throwing **`onSettled`** follows the path it ran on. On success it fails the call as a throwing `onSuccess` does, so `onError` runs with its exception and `onSettled` runs a second time, with it — v5's order, since both handlers sit in the block its failure path catches. On failure it is logged as a throwing `onError` is, and the outcome stays the mutation's own.
+
+**The mutation cache.** Each `Mutate` / `MutateAsync` builds a `Mutation` in the client's `MutationCache`, as
+v5's observer builds one per `mutate`, and the handle shows the newest. A `Mutation` carries its
+`MutationId`, the option record the hook was given as `Options` (`MutationKey`, `Scope`, `Meta` and `GcTime`
+sit on `MutationOptionsBase`, which every option record derives from), its `Meta`, and a `MutationState`
+(`Status`, `Variables`, `Data`, `Error`, `Context`, `FailureCount`, `FailureReason`, `IsPaused`,
+`SubmittedAt` on the client's clock) replaced whole at every change, with the values boxed. `GcTime` after a
+mutation is built, or after a handle stops showing it, the cache removes it, unless it is still pending, in
+which case it is checked again `GcTime` later, as v5's `optionalRemove` reschedules; it is not collected while a
+handle shows it. `GcTime` is
+five minutes unless set, `TimeSpan.MaxValue` never removes it, and the clock is the client's, read once a
+frame as a query's is.
+
+`MutationFilters` select mutations as v5's do: `MutationKey` matches the keys it leads, as a query filter's key
+does, or only an equal key under `Exact`, and never a mutation without a key; `Status` and `Predicate` narrow
+further. `Find` takes `Exact` as true unless it is set, as v5's `find` defaults `exact: true`.
+
+The cache's `OnMutate`, `OnSuccess`, `OnError` and `OnSettled` run for every mutation, each before the option
+callback of its name and awaited as it is, handed the variables, the context `OnMutate` returned and the
+`Mutation` (so `mutation.Meta` reaches them). A throw from the cache's `OnMutate` or `OnSuccess`, or from its
+`OnSettled` after a success, fails the call as the options' would; one from its `OnError`, or from its
+`OnSettled` on the failure path, is logged and costs no later callback. A `Subscribe` listener hears `Added`, `Removed`, `Updated` (with the `MutationActionType`:
+`Pending`, `Failed`, `Pause`, `Continue`, `Success`, `Error`), `ObserverAdded` and `ObserverRemoved` as the
+handle takes and leaves a mutation (a newer call, `Reset` and unmounting each leave it), and
+`ObserverOptionsUpdated` when a commit hands the handle options unequal to those it last applied — the first
+commit included, with no mutation. That commit also applies v5's `setOptions`: where both carry a
+`MutationKey` and the two are unequal, the handle is detached as `Reset` detaches it, and otherwise a pending
+mutation takes the new options. `QueryClient.Clear` empties the mutation cache too.
+
+**Scopes.** Mutations whose `Scope` ids are equal run one at a time, in the order they started, whichever
+handles started them: a later one is `Pending` with `IsPaused` true — after its `OnMutate` has run, as in v5 —
+until every earlier one of the scope has settled, successfully or not, and starts as soon as the one ahead of
+it settles, where its `NetworkMode` and the application's visibility let a paused mutation continue. Mutations of different scopes, or without one, run side by side.
+
+**`UseMutationState` / `UseIsMutating`.** `UseMutationState` returns what `Select` makes of each mutation its
+`Filters` select, in the order the mutations were added — the `MutationState` without a `Select`, which the
+result type must then be able to hold. A cache event re-renders the component only when a selected mutation
+or its state is a different instance and what `Select` makes of them is not deeply equal to the list last
+returned; a deeply equal list is returned as that same list, as v5 shares it with `replaceEqualDeep`. `UseIsMutating(filters)` is the number of pending
+mutations those filters select, `UseMutationState` with `Status = Pending` counted, as v5 defines it. Both read
+the client as `UseMutation` does.
 
 ### 1-2b. Cached queries — `Hooks.UseQuery`
 

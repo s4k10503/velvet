@@ -23,6 +23,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class UseMutationRetryTests
     {
+        private static QueryClient s_mutationClient = new();
+
         private VisualElement _root = null!;
         private static MutationResult<int, int>? s_captured;
         private static MutationResult<int, Unit>? s_voidCaptured;
@@ -46,6 +48,7 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
+            s_mutationClient = new QueryClient();
             _root = new VisualElement();
             s_case++;
             s_captured = null;
@@ -612,14 +615,14 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnError: ForThisCase<Exception, int>((_, _) => s_onErrorCount++)) { Retry = s_retry });
+                OnError: ForThisCase<Exception, int>((_, _) => s_onErrorCount++)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
         [Component]
         public static VNode CaptureMutationLabelRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn) { Retry = s_retry });
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: $"{s_captured.Status.ToString().ToLowerInvariant()} failures={s_captured.FailureCount} paused={s_captured.IsPaused}");
         }
 
@@ -628,7 +631,7 @@ namespace Velvet.Tests
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: s_mutationFn,
-                OnSuccess: ForThisCase<int, int>((data, _) => s_delivered.Add(data))) { Retry = s_retry });
+                OnSuccess: ForThisCase<int, int>((data, _) => s_delivered.Add(data))) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -636,7 +639,7 @@ namespace Velvet.Tests
         public static VNode CaptureVoidMutationRender()
         {
             s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
-                MutationFn: async (v, ct) => await s_mutationFn(v, ct)) { Retry = s_retry });
+                MutationFn: async (v, ct) => await s_mutationFn(v, ct)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -646,7 +649,7 @@ namespace Velvet.Tests
             s_captured = Hooks.UseMutation(new MutationOptions<int, int, int>(
                 MutationFn: s_mutationFn,
                 OnMutate: _ => VelvetTask.FromResult(++s_onMutateCount),
-                OnSettled: ForThisCase<int, Exception?, int, int>((_, _, _, _) => s_onSettledCount++)) { Retry = s_retry });
+                OnSettled: ForThisCase<int, Exception?, int, int>((_, _, _, _) => s_onSettledCount++)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -654,7 +657,7 @@ namespace Velvet.Tests
         public static VNode CaptureNoInputMutationRender()
         {
             s_noInputCaptured = Hooks.UseMutation(new MutationOptions(
-                MutationFn: async ct => await s_mutationFn(0, ct)) { Retry = s_retry });
+                MutationFn: async ct => await s_mutationFn(0, ct)) { Retry = s_retry }, s_mutationClient);
             return V.Label(text: "ok");
         }
     }

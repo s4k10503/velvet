@@ -10,6 +10,8 @@ namespace Velvet.Tests.Performance
     [TestFixture]
     internal sealed class UseMutationPlayModeBenchmarks
     {
+        private static readonly QueryClient s_mutationClient = new();
+
         private static readonly int WarmupCount = BenchmarkRun.Warmup(5);
         private static readonly int MeasurementCount = BenchmarkRun.Measurements(20);
 
@@ -59,7 +61,7 @@ namespace Velvet.Tests.Performance
         [Component]
         private static VNode CaptureMutationRender()
         {
-            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn));
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(MutationFn: s_mutationFn), s_mutationClient);
             return V.Label(text: s_captured.Status.ToString());
         }
     }

@@ -30,7 +30,7 @@ namespace Velvet
     public sealed record MutationOptions<TVariables, TData>(
         Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
         Func<TData, TVariables, VelvetTask>? OnSuccess = null,
-        Func<Exception, TVariables, VelvetTask>? OnError = null)
+        Func<Exception, TVariables, VelvetTask>? OnError = null) : MutationOptionsBase
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the data and a null exception on
@@ -65,7 +65,7 @@ namespace Velvet
         Func<TVariables, VelvetTask<TContext>>? OnMutate = null,
         Func<TData, TVariables, TContext?, VelvetTask>? OnSuccess = null,
         Func<Exception, TVariables, TContext?, VelvetTask>? OnError = null,
-        Func<TData?, Exception?, TVariables, TContext?, VelvetTask>? OnSettled = null)
+        Func<TData?, Exception?, TVariables, TContext?, VelvetTask>? OnSettled = null) : MutationOptionsBase
     {
         /// <summary>As <see cref="MutationOptions{TVariables, TData}.Retry"/>.</summary>
         public RetryPolicy? Retry { get; init; }
@@ -78,7 +78,7 @@ namespace Velvet
     public sealed record MutationOptions<TVariables>(
         Func<TVariables, CancellationToken, VelvetTask> MutationFn,
         Func<TVariables, VelvetTask>? OnSuccess = null,
-        Func<Exception, TVariables, VelvetTask>? OnError = null)
+        Func<Exception, TVariables, VelvetTask>? OnError = null) : MutationOptionsBase
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on
@@ -97,7 +97,7 @@ namespace Velvet
     public sealed record MutationOptions(
         Func<CancellationToken, VelvetTask> MutationFn,
         Func<VelvetTask>? OnSuccess = null,
-        Func<Exception, VelvetTask>? OnError = null)
+        Func<Exception, VelvetTask>? OnError = null) : MutationOptionsBase
     {
         /// <summary>
         /// Runs after <see cref="OnSuccess"/> or <see cref="OnError"/>, with the exception on failure and null on

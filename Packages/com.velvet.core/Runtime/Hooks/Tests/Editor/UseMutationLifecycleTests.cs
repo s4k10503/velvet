@@ -35,6 +35,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class UseMutationLifecycleTests
     {
+        private static QueryClient s_mutationClient = new();
+
         private const string None = "none";
         private static int s_renderCount;
 
@@ -43,6 +45,7 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
+            s_mutationClient = new QueryClient();
             _root = new VisualElement();
             s_log.Clear();
             s_captured = null;
@@ -885,7 +888,7 @@ namespace Velvet.Tests
         [Component]
         public static VNode CleanupMutatesRender()
         {
-            var handle = Hooks.UseMutation(new MutationOptions<int, int, string>(MutationFn: s_mutationFn));
+            var handle = Hooks.UseMutation(new MutationOptions<int, int, string>(MutationFn: s_mutationFn), s_mutationClient);
             s_captured = handle;
             Hooks.UseEffect((Func<Action?>)(() => () => handle.Mutate(1)), Array.Empty<object?>());
             return V.Label(text: "ok");
@@ -919,7 +922,7 @@ namespace Velvet.Tests
                     if (error == null && s_settledThrowsOnSuccess != null) throw s_settledThrowsOnSuccess;
                     if (error != null && s_settledThrowsOnFailure != null) throw s_settledThrowsOnFailure;
                     return VelvetTask.CompletedTask;
-                }));
+                }), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -933,7 +936,7 @@ namespace Velvet.Tests
                     Record("settled", data, error, v, null);
                     return VelvetTask.CompletedTask;
                 },
-            });
+            }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -947,7 +950,7 @@ namespace Velvet.Tests
                     Record("settled", 0, error, v, null);
                     return VelvetTask.CompletedTask;
                 },
-            });
+            }, s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -961,7 +964,7 @@ namespace Velvet.Tests
                     Record("settled", 0, error, 0, null);
                     return VelvetTask.CompletedTask;
                 },
-            });
+            }, s_mutationClient);
             return V.Label(text: "ok");
         }
 

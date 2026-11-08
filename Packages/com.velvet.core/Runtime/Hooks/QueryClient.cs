@@ -83,10 +83,17 @@ namespace Velvet
         /// differently — game time that pauses, or a clock a test advances by hand.
         /// </summary>
         public Func<TimeSpan>? Clock { get; init; }
+
+        /// <summary>
+        /// The cache the client's mutations are kept in, TanStack Query's <c>mutationCache</c> option; null makes
+        /// a new one.
+        /// </summary>
+        public MutationCache? MutationCache { get; init; }
     }
 
     /// <summary>
-    /// Provides a <see cref="QueryClient"/> to the <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> calls below it:
+    /// Provides a <see cref="QueryClient"/> to the <see cref="Hooks.UseQuery{TQueryFnData, TData}"/>,
+    /// <see cref="Hooks.UseMutation{TVariables, TData}"/> and <see cref="Hooks.UseMutationState{TResult}"/> calls below it:
     /// <c>V.Provider(QueryClientContext.Ref, value: client, children: ...)</c>, TanStack Query's
     /// <c>QueryClientProvider</c>. Read it with <c>Hooks.UseContext(QueryClientContext.Ref)</c> to reach the
     /// client from a component, as <c>useQueryClient()</c> does.
@@ -94,8 +101,8 @@ namespace Velvet
     public static class QueryClientContext
     {
         /// <summary>
-        /// The context <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> reads. Its default is null, so a query with no
-        /// Provider above it and no client passed to it throws rather than sharing a hidden one.
+        /// The context the query and mutation hooks read. Its default is null, so a hook with no Provider above it and
+        /// no client passed to it throws rather than sharing a hidden one.
         /// </summary>
         public static readonly ComponentContext<QueryClient?> Ref
             = ComponentContext<QueryClient?>.Create(defaultValue: null);
@@ -128,6 +135,7 @@ namespace Velvet
             = (failureCount, _) => TimeSpan.FromMilliseconds(Math.Min(1000d * Math.Pow(2d, failureCount), 30000d));
 
         private readonly Func<TimeSpan> _clock;
+        private readonly MutationCache _mutationCache;
         // Advanced by every render that reads this client, so an entry whose last reader left under the current
         // value left after the render whose effects are subscribing now.
         private int _readEpoch;
@@ -151,6 +159,7 @@ namespace Velvet
             DefaultRefetchOnReconnect = options.RefetchOnReconnect;
             DefaultRefetchOnWindowFocusFn = options.RefetchOnWindowFocusFn;
             DefaultRefetchOnReconnectFn = options.RefetchOnReconnectFn;
+            _mutationCache = options.MutationCache ?? new MutationCache();
             if (options.Clock != null)
             {
                 _clock = options.Clock;
@@ -459,7 +468,8 @@ namespace Velvet
 
         /// <summary>
         /// Removes every entry and cancels every request in flight, as TanStack Query's <c>clear()</c>. A
-        /// mounted query re-renders without data and fetches into a new entry.
+        /// mounted query re-renders without data and fetches into a new entry. The mutations in
+        /// <see cref="GetMutationCache"/> are removed too; one still running runs on.
         /// </summary>
         public void Clear()
         {
@@ -471,9 +481,22 @@ namespace Velvet
             {
                 entry.Remove();
             }
+            _mutationCache.Clear();
         }
 
+        /// <summary>The cache the client's mutations are kept in, TanStack Query's <c>getMutationCache()</c>.</summary>
+        public MutationCache GetMutationCache() => _mutationCache;
+
+        /// <summary>
+        /// How many of the mutations <paramref name="filters"/> selects are pending, TanStack Query's
+        /// <c>isMutating</c>; the filters' own <see cref="MutationFilters.Status"/> is replaced.
+        /// </summary>
+        public int IsMutating(MutationFilters? filters = null)
+            => _mutationCache.FindAll((filters ?? new MutationFilters()) with { Status = MutationStatus.Pending }).Count;
+
         internal TimeSpan Now => _clock();
+
+        internal Func<TimeSpan> Clock => _clock;
 
         // The entries a filter selects, among those that have not expired. A snapshot, since what runs on them
         // can remove entries.

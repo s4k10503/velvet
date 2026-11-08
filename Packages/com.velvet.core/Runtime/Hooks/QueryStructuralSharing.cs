@@ -91,7 +91,9 @@ namespace Velvet
 
         private static bool IsApplicationClass(Type type)
         {
-            if (typeof(Delegate).IsAssignableFrom(type) || typeof(UnityEngine.Object).IsAssignableFrom(type))
+            // A Mutation is a live object a UseMutationState selector may return, which v5 keeps or replaces whole.
+            if (typeof(Delegate).IsAssignableFrom(type) || typeof(UnityEngine.Object).IsAssignableFrom(type)
+                || type == typeof(Mutation))
             {
                 return false;
             }

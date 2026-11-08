@@ -164,13 +164,13 @@ namespace Velvet
         public static (global::Velvet.ISearchParams searchParams, global::Velvet.SearchParamsSetter setSearchParams) UseSearchParams() =>
             (null, null);
         public static global::Velvet.MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
-            global::Velvet.MutationOptions<TVariables, TData> options) => null;
+            global::Velvet.MutationOptions<TVariables, TData> options, global::Velvet.QueryClient client = null) => null;
         public static global::Velvet.MutationResult<TVariables, TData> UseMutation<TVariables, TData, TContext>(
-            global::Velvet.MutationOptions<TVariables, TData, TContext> options) => null;
+            global::Velvet.MutationOptions<TVariables, TData, TContext> options, global::Velvet.QueryClient client = null) => null;
         public static global::Velvet.MutationResult<TVariables, global::Velvet.Unit> UseMutation<TVariables>(
-            global::Velvet.MutationOptions<TVariables> options) => null;
+            global::Velvet.MutationOptions<TVariables> options, global::Velvet.QueryClient client = null) => null;
         public static global::Velvet.MutationResult<global::Velvet.Unit, global::Velvet.Unit> UseMutation(
-            global::Velvet.MutationOptions options) => null;
+            global::Velvet.MutationOptions options, global::Velvet.QueryClient client = null) => null;
         public static global::Velvet.Ref<T> UseRef<T>() where T : class => null;
         public static global::Velvet.Ref<T> UseRef<T>(global::System.Func<T> initialFactory) where T : class => null;
         public static global::Velvet.MutableRef<T> UseMutableRef<T>(T initial) =>
@@ -192,6 +192,7 @@ namespace Velvet
         public override int GetHashCode() => 0;
     }
     public sealed class MutationResult<TVariables, TData> { }
+    public sealed class QueryClient { }
     public sealed record MutationOptions<TVariables, TData>(
         global::System.Func<TVariables, global::System.Threading.CancellationToken,
             global::Velvet.VelvetTask<TData>> MutationFn,

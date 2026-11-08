@@ -32,11 +32,14 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class UseMutationAsyncCallbackTests
     {
+        private static QueryClient s_mutationClient = new();
+
         private VisualElement _root = null!;
 
         [SetUp]
         public void SetUp()
         {
+            s_mutationClient = new QueryClient();
             _root = new VisualElement();
             s_log.Clear();
             s_captured = null;
@@ -421,7 +424,7 @@ namespace Velvet.Tests
                     s_log.Add("settled-start");
                     await s_settledGate.Task;
                     s_log.Add("settled-end");
-                }));
+                }), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -430,7 +433,7 @@ namespace Velvet.Tests
         {
             s_contextFreeCaptured = Hooks.UseMutation(new MutationOptions<int, int>(
                 MutationFn: (v, ct) => s_mutationFn(v, ct),
-                OnSuccess: async (data, v) => await s_successGate.Task));
+                OnSuccess: async (data, v) => await s_successGate.Task), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -439,7 +442,7 @@ namespace Velvet.Tests
         {
             s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
                 MutationFn: (_, _) => VelvetTask.CompletedTask,
-                OnSuccess: async v => await s_successGate.Task));
+                OnSuccess: async v => await s_successGate.Task), s_mutationClient);
             return V.Label(text: "ok");
         }
 
@@ -451,7 +454,7 @@ namespace Velvet.Tests
                 OnSuccess: null)
             {
                 OnSettled = async _ => await s_settledGate.Task,
-            });
+            }, s_mutationClient);
             return V.Label(text: "ok");
         }
 

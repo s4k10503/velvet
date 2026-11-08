@@ -2512,29 +2512,23 @@ namespace Velvet
         /// <typeparamref name="TVariables"/>; the <see cref="MutationOptions{TVariables, TData}.MutationFn"/> runs
         /// and the handle's status / data / error fields are updated, triggering a re-render.
         /// </summary>
+        /// <remarks>
+        /// TanStack Query's <c>useMutation</c>: each call builds a <see cref="Mutation"/> in the client's
+        /// <see cref="MutationCache"/>, where <see cref="UseMutationState{TResult}"/>,
+        /// <see cref="UseIsMutating"/> and the cache's own callbacks and events see it, and the handle shows the
+        /// newest one. The client is the one the first render resolved.
+        /// </remarks>
         /// <typeparam name="TVariables">Mutation input variables type. Use <see cref="Unit"/> for "no variables".</typeparam>
         /// <typeparam name="TData">Mutation result type. Use <see cref="Unit"/> for "no return value".</typeparam>
         /// <param name="options">The mutation function plus optional success / error / settled callbacks.</param>
+        /// <param name="client">The client whose cache keeps the mutations; null reads the one
+        /// <see cref="QueryClientContext.Ref"/> provides, and throws when no Provider supplies one.</param>
         /// <returns>A <see cref="MutationResult{TVariables, TData}"/>, reference-stable across renders.</returns>
         public static MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
-            MutationOptions<TVariables, TData> options)
+            MutationOptions<TVariables, TData> options, QueryClient? client = null)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            var fiber = NextMutationSlot(out var index, out var existing);
-            if (existing == null)
-            {
-                return AddMutationSlot(fiber, new HookMutationSlot<TVariables, TData> { Options = options });
-            }
-
-            if (existing is not HookMutationSlot<TVariables, TData> typed)
-            {
-                throw HookSlotTypeMismatch(fiber, "UseMutation", existing.GetType(),
-                    $"HookMutationSlot<{typeof(TVariables).Name}, {typeof(TData).Name}>", index);
-            }
-
-            // Refresh closure-captured options (latest render's MutationFn / callbacks).
-            typed.Options = options;
-            return typed.Result;
+            return UseContextFreeMutation(options, options, client);
         }
 
         /// <summary>
@@ -2548,15 +2542,18 @@ namespace Velvet
         /// <typeparam name="TContext">The value <c>OnMutate</c> hands to the call's later callbacks, such as the
         /// snapshot an optimistic write is rolled back to.</typeparam>
         /// <param name="options">The mutation function plus the optional lifecycle callbacks.</param>
+        /// <param name="client">As <see cref="UseMutation{TVariables, TData}"/>.</param>
         /// <returns>A <see cref="MutationResult{TVariables, TData}"/>, reference-stable across renders.</returns>
         public static MutationResult<TVariables, TData> UseMutation<TVariables, TData, TContext>(
-            MutationOptions<TVariables, TData, TContext> options)
+            MutationOptions<TVariables, TData, TContext> options, QueryClient? client = null)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
             var fiber = NextMutationSlot(out var index, out var existing);
+            var queryClient = UseMutationClient(client);
             if (existing == null)
             {
-                return AddMutationSlot(fiber, new HookContextMutationSlot<TVariables, TData, TContext> { Options = options });
+                return AddMutationSlot(fiber, new HookContextMutationSlot<TVariables, TData, TContext> { Options = options },
+                    queryClient, options);
             }
 
             if (existing is not HookContextMutationSlot<TVariables, TData, TContext> typed)
@@ -2568,6 +2565,7 @@ namespace Velvet
 
             // Refresh closure-captured options (latest render's MutationFn / callbacks).
             typed.Options = options;
+            ObserveMutationOptions(fiber, typed, options);
             return typed.Result;
         }
 
@@ -2576,10 +2574,10 @@ namespace Velvet
         /// returns no data (typical for Store-action mutations where state is updated internally).
         /// </summary>
         public static MutationResult<TVariables, Unit> UseMutation<TVariables>(
-            MutationOptions<TVariables> options)
+            MutationOptions<TVariables> options, QueryClient? client = null)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            return UseMutation(new MutationOptions<TVariables, Unit>(
+            return UseContextFreeMutation(new MutationOptions<TVariables, Unit>(
                 MutationFn: async (v, ct) =>
                 {
                     await options.MutationFn(v, ct);
@@ -2590,7 +2588,7 @@ namespace Velvet
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, v) => onSettled(ex, v) : null,
                 Retry = options.Retry,
-            });
+            }, options, client);
         }
 
         /// <summary>
@@ -2598,10 +2596,10 @@ namespace Velvet
         /// no input and returns no data. Pair with <see cref="MutationResultExtensions.Mutate{TData}"/> to call
         /// <c>mutation.Mutate()</c> without an explicit <c>Unit.Default</c> argument.
         /// </summary>
-        public static MutationResult<Unit, Unit> UseMutation(MutationOptions options)
+        public static MutationResult<Unit, Unit> UseMutation(MutationOptions options, QueryClient? client = null)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
-            return UseMutation(new MutationOptions<Unit, Unit>(
+            return UseContextFreeMutation(new MutationOptions<Unit, Unit>(
                 MutationFn: async (_, ct) =>
                 {
                     await options.MutationFn(ct);
@@ -2612,7 +2610,39 @@ namespace Velvet
             {
                 OnSettled = options.OnSettled is { } onSettled ? (_, ex, _) => onSettled(ex) : null,
                 Retry = options.Retry,
-            });
+            }, options, client);
+        }
+
+        // declared is the record the caller passed, which the void overloads adapt before it reaches the slot:
+        // the cache reads the key, scope, meta and gcTime off it, and hands it on as Mutation.Options.
+        private static MutationResult<TVariables, TData> UseContextFreeMutation<TVariables, TData>(
+            MutationOptions<TVariables, TData> options, MutationOptionsBase declared, QueryClient? client)
+        {
+            var fiber = NextMutationSlot(out var index, out var existing);
+            var queryClient = UseMutationClient(client);
+            if (existing == null)
+            {
+                return AddMutationSlot(fiber, new HookMutationSlot<TVariables, TData> { Options = options }, queryClient, declared);
+            }
+
+            if (existing is not HookMutationSlot<TVariables, TData> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, "UseMutation", existing.GetType(),
+                    $"HookMutationSlot<{typeof(TVariables).Name}, {typeof(TData).Name}>", index);
+            }
+
+            // Refresh closure-captured options (latest render's MutationFn / callbacks).
+            typed.Options = options;
+            ObserveMutationOptions(fiber, typed, declared);
+            return typed.Result;
+        }
+
+        private static QueryClient UseMutationClient(QueryClient? client)
+        {
+            var provided = UseContext(QueryClientContext.Ref);
+            return client ?? provided ?? throw new InvalidOperationException(
+                "UseMutation found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseMutation.");
         }
 
         private static ComponentFiber NextMutationSlot(out int index, out HookMutationSlot? existing)
@@ -2627,15 +2657,58 @@ namespace Velvet
 
         private static MutationResult<TVariables, TData> AddMutationSlot<TVariables, TData, TContext>(
             ComponentFiber fiber,
-            HookMutationSlot<TVariables, TData, TContext> slot)
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            QueryClient client,
+            MutationOptionsBase declared)
         {
+            slot.Client = client;
             slot.Result.MutateAction = (variables, callOptions) =>
                 RunMutationAsync(fiber, slot, variables, callOptions, rethrowOnFailure: false).Forget();
             slot.Result.MutateAsyncFunc = (variables, callOptions) =>
                 RunMutationAsync(fiber, slot, variables, callOptions, rethrowOnFailure: true);
             slot.Result.ResetAction = () => ResetMutation(fiber, slot);
+            slot.OptionsEffect = new HookEffectSlot { EffectFactory = () => CommitMutationOptions(fiber, slot) };
             fiber.MutationSlots!.Add(slot);
+            ObserveMutationOptions(fiber, slot, declared);
             return slot.Result;
+        }
+
+        // TanStack's useMutation hands the observer its options in an effect keyed on the options object, so a
+        // render passing the record the last commit applied queues nothing. Queued on the fiber's pending passive
+        // effects rather than through UseEffect, which would count a hook of another kind against the component.
+        private static void ObserveMutationOptions(ComponentFiber fiber, HookMutationSlot slot, MutationOptionsBase declared)
+        {
+            slot.Declared = declared;
+            if (ReferenceEquals(declared, slot.CommittedDeclared) || IsStrictDiagnosticPass(fiber)) return;
+            var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
+            if (!pending.Contains(slot.OptionsEffect!)) pending.Add(slot.OptionsEffect!);
+        }
+
+        // TanStack's MutationObserver.setOptions: options unequal to the last applied are announced, a changed
+        // mutation key detaches the handle from its mutation, and otherwise a pending mutation takes the options.
+        private static Action? CommitMutationOptions<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot)
+        {
+            var options = slot.Declared;
+            var previous = slot.CommittedDeclared;
+            if (ReferenceEquals(options, previous) || IsMutationOwnerGone(fiber, slot)) return null;
+            slot.CommittedDeclared = options;
+            if (!Equals(options, previous))
+            {
+                slot.Client.GetMutationCache().Notify(
+                    new MutationCacheEvent(MutationCacheEventType.ObserverOptionsUpdated, slot.Current));
+            }
+
+            if (previous?.MutationKey != null && options.MutationKey != null && !previous.MutationKey.Equals(options.MutationKey))
+            {
+                ResetMutation(fiber, slot);
+            }
+            else if (slot.Current is { State.Status: MutationStatus.Pending } current)
+            {
+                current.SetOptions(options);
+            }
+            return null;
         }
 
         // rethrowOnFailure distinguishes the two call shapes: mutateAsync (true) returns a task its caller
@@ -2663,71 +2736,169 @@ namespace Velvet
             // mutate(vars, { onSuccess }), so callOptions is delivered only to the call that still owns
             // the generation, the one CommitOutcome writes for.
             var mine = ++slot.Generation;
-
-            if (!IsMutationOwnerGone(fiber, slot))
-            {
-                slot.Result.MarkPending(variables);
-                RequestRender(fiber);
-            }
+            var policy = slot.Retry ?? RetryPolicy.NoRetry;
+            var mutation = StartMutation(fiber, slot, variables, policy);
+            var cache = slot.Client.GetMutationCache();
 
             // A local rather than a slot field, so overlapping calls each hand their callbacks their own
             // context. It is still default when OnMutate throws, and that is what the failure path hands on.
             var context = default(TContext)!;
             try
             {
-                // After MarkPending and inside the try, which is TanStack's order: OnMutate reads the handle
-                // as this call's pending one, and a throw from it fails the call before MutationFn is reached.
+                // After the pending dispatch and inside the try, which is TanStack's order: OnMutate reads the
+                // handle as this call's pending one, and a throw from either fails the call before MutationFn.
+                if (cache.OnMutate is { } cacheOnMutate) await cacheOnMutate(variables, mutation);
                 context = await slot.InvokeOnMutate(variables);
+                var boxed = slot.HasOnMutate ? slot.BoxContext(context) : null;
+                if (!Equals(boxed, mutation.State.Context)) mutation.DispatchPending(variables, boxed, mutation.State.IsPaused);
+                var call = new MutationCall<TVariables, TData, TContext>(fiber, slot, variables, mine, mutation);
+                // The scope ahead of it may have settled while OnMutate ran.
+                if (mutation.State.IsPaused && policy.CanFetch() && cache.CanRun(mutation)) ContinueMutation(call);
                 // Each attempt reads the slot's MutationFn, so a re-render during the wait is the one
                 // that runs. The token is the caller's: unmount retires the slot and leaves the wait running.
-                var data = await (slot.Retry ?? RetryPolicy.NoRetry).RunWithStateAsync(
-                    static (call, attemptToken) => call.Slot.InvokeMutationFn(call.Variables, attemptToken),
-                    new MutationCall<TVariables, TData, TContext>(fiber, slot, variables, mine),
+                var data = await policy.RunWithStateAsync(
+                    static (run, attemptToken) => run.Slot.InvokeMutationFn(run.Variables, attemptToken),
+                    call,
                     new RetryCallbacks<MutationCall<TVariables, TData, TContext>>
                     {
-                        OnFail = static (call, error) => call.ShowIfOwned(result => result.MarkRetrying(error)),
-                        OnPause = static call => call.ShowIfOwned(static result => result.MarkPaused()),
-                        OnContinue = static call => call.ShowIfOwned(static result => result.MarkContinued()),
+                        OnFail = static (run, error) =>
+                        {
+                            run.ShowIfOwned(result => result.MarkRetrying(error));
+                            run.Mutation.DispatchFailed(error);
+                        },
+                        OnPause = static run =>
+                        {
+                            run.ShowIfOwned(static result => result.MarkPaused());
+                            run.Mutation.DispatchPause();
+                        },
+                        OnContinue = ContinueMutation,
+                        CanRun = static run => run.Slot.Client.GetMutationCache().CanRun(run.Mutation),
+                        WaitToContinue = static run => run.Mutation.WaitToContinue(),
                     },
                     token);
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
-                // their own result. Either one throwing leaves the call a failure with nothing of its own
+                // their own result. Any of them throwing leaves the call a failure with nothing of its own
                 // written, and the failure path below then runs OnError and OnSettled with that exception —
                 // a throwing OnSettled included, as TanStack's catch does.
-                await slot.InvokeOnSuccess(data, variables, context);
-                await slot.InvokeOnSettled(data, null, variables, context);
+                await DeliverSuccess(slot, mutation, data, variables, context);
+                mutation.SettleSuccess(data);
                 if (CommitOutcome(fiber, slot, mine, data, error: null))
                 {
                     callOptions?.Deliver(data, null, variables, slot.BoxContext(context));
                 }
+                mutation.Announce(MutationActionType.Success);
                 return data;
             }
             catch (Exception ex)
             {
-                await DeliverFailure(slot, ex, variables, context);
+                await DeliverFailure(slot, mutation, ex, variables, context);
+                mutation.SettleError(ex);
                 // Committed after the handlers for the same reason as a success.
                 if (CommitOutcome(fiber, slot, mine, default!, ex))
                 {
                     callOptions?.Deliver(default, ex, variables, slot.BoxContext(context));
                 }
+                mutation.Announce(MutationActionType.Error);
                 if (rethrowOnFailure) throw;
                 return default!;
             }
+            finally
+            {
+                cache.RunNext(mutation);
+            }
+        }
+
+        // TanStack's MutationObserver.mutate up to Mutation.execute's first dispatch: the handle leaves the
+        // mutation it showed, a new one is built in the cache and shown, and it starts pending — paused when
+        // the network mode or an earlier mutation of its scope holds it.
+        private static Mutation StartMutation<TVariables, TData, TContext>(
+            ComponentFiber fiber,
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            TVariables variables,
+            RetryPolicy policy)
+        {
+            var cache = slot.Client.GetMutationCache();
+            slot.Detach();
+            var mutation = cache.Build(slot.Declared, slot.Client.Clock);
+            var observed = !IsMutationOwnerGone(fiber, slot);
+            if (observed)
+            {
+                slot.Current = mutation;
+                mutation.AddObserver();
+            }
+
+            var isPaused = !(policy.CanFetch() && cache.CanRun(mutation));
+            if (observed)
+            {
+                slot.Result.MarkPending(variables);
+                if (isPaused) slot.Result.MarkPaused();
+                RequestRender(fiber);
+            }
+            mutation.DispatchPending(variables, null, isPaused);
+            return mutation;
+        }
+
+        private static void ContinueMutation<TVariables, TData, TContext>(MutationCall<TVariables, TData, TContext> call)
+        {
+            call.ShowIfOwned(static result => result.MarkContinued());
+            call.Mutation.DispatchContinue();
+        }
+
+        // TanStack's order: each cache callback before the options' callback of the same name, every one waited
+        // for, and a throw from any of them failing the call.
+        private static async VelvetTask DeliverSuccess<TVariables, TData, TContext>(
+            HookMutationSlot<TVariables, TData, TContext> slot,
+            Mutation mutation,
+            TData data,
+            TVariables variables,
+            TContext context)
+        {
+            var cache = slot.Client.GetMutationCache();
+            if (cache.OnSuccess is { } cacheOnSuccess) await cacheOnSuccess(data, variables, mutation.State.Context, mutation);
+            await slot.InvokeOnSuccess(data, variables, context);
+            if (cache.OnSettled is { } cacheOnSettled)
+            {
+                await cacheOnSettled(data, null, mutation.State.Variables, mutation.State.Context, mutation);
+            }
+            await slot.InvokeOnSettled(data, null, variables, context);
         }
 
         // Contained one by one, as TanStack contains them: a throwing OnError must not cost the call its
         // OnSettled, and neither may cost it the outcome the caller commits after this returns. A task a
         // handler returns is waited for before the next one runs, and a fault in it is contained as a throw is.
+        // The cache's callback of each name runs before the options' one.
         private static async VelvetTask DeliverFailure<TVariables, TData, TContext>(
             HookMutationSlot<TVariables, TData, TContext> slot,
+            Mutation mutation,
             Exception error,
             TVariables variables,
             TContext context)
         {
+            var cache = slot.Client.GetMutationCache();
+            var cacheContext = mutation.State.Context;
+            try
+            {
+                if (cache.OnError is { } cacheOnError) await cacheOnError(error, variables, cacheContext, mutation);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
             try
             {
                 await slot.InvokeOnError(error, variables, context);
+            }
+            catch (Exception handlerEx)
+            {
+                VelvetTask.FromException(handlerEx).Forget();
+            }
+            try
+            {
+                if (cache.OnSettled is { } cacheOnSettled)
+                {
+                    await cacheOnSettled(null, error, mutation.State.Variables, cacheContext, mutation);
+                }
             }
             catch (Exception handlerEx)
             {
@@ -2776,17 +2947,20 @@ namespace Velvet
             public HookMutationSlot<TVariables, TData, TContext> Slot { get; }
             public TVariables Variables { get; }
             public long Generation { get; }
+            public Mutation Mutation { get; }
 
             public MutationCall(
                 ComponentFiber fiber,
                 HookMutationSlot<TVariables, TData, TContext> slot,
                 TVariables variables,
-                long generation)
+                long generation,
+                Mutation mutation)
             {
                 Fiber = fiber;
                 Slot = slot;
                 Variables = variables;
                 Generation = generation;
+                Mutation = mutation;
             }
 
             // A call writes the handle only while it still owns it, as at its outcome: a retired slot is a
@@ -2799,15 +2973,71 @@ namespace Velvet
             }
         }
 
+        // TanStack's MutationObserver.reset: the handle leaves the mutation it shows, which runs on.
         private static void ResetMutation<TVariables, TData, TContext>(
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot)
         {
             if (IsMutationOwnerGone(fiber, slot)) return;
             slot.Generation++;
+            slot.Detach();
             slot.Result.MarkIdle();
             RequestRender(fiber);
         }
+
+        #endregion
+
+        #region UseMutationState
+
+        /// <summary>
+        /// TanStack Query's <c>useMutationState({ filters, select })</c>: what
+        /// <see cref="MutationStateOptions{TResult}.Select"/> makes of each mutation in the client's
+        /// <see cref="MutationCache"/> that <see cref="MutationStateOptions{TResult}.Filters"/> selects, in the
+        /// order the mutations were added. The component re-renders when the list changes: a change in what a
+        /// mutation selects to, or in which mutations are selected. A list deeply equal to the one this hook last
+        /// returned is that same list, as v5's <c>replaceEqualDeep</c> shares it.
+        /// </summary>
+        /// <typeparam name="TResult">What each mutation selects to. Without a
+        /// <see cref="MutationStateOptions{TResult}.Select"/> it is the mutation's <see cref="MutationState"/>, so
+        /// <typeparamref name="TResult"/> must be one it can hold.</typeparam>
+        /// <param name="options">The filters and the selector; null selects every mutation's state.</param>
+        /// <param name="client">The client to read; null reads the one <see cref="QueryClientContext.Ref"/>
+        /// provides, and throws when no Provider supplies one.</param>
+        /// <returns>The selected values.</returns>
+        public static IReadOnlyList<TResult> UseMutationState<TResult>(
+            MutationStateOptions<TResult>? options, QueryClient? client = null)
+        {
+            if (options?.Select == null && !typeof(TResult).IsAssignableFrom(typeof(MutationState)))
+            {
+                throw new ArgumentException(
+                    $"MutationStateOptions<{typeof(TResult).Name}> needs a Select to turn a mutation into a {typeof(TResult).Name}.",
+                    nameof(options));
+            }
+            // Surface "UseMutationState" in HookGuard's outside-of-render message instead of "UseContext".
+            _ = Resolve("UseMutationState");
+            var provided = UseContext(QueryClientContext.Ref);
+            var queryClient = client ?? provided ?? throw new InvalidOperationException(
+                "UseMutationState found no QueryClient. Mount V.Provider(QueryClientContext.Ref, value: client, ...) " +
+                "above the caller, or pass the client to UseMutationState.");
+            var cache = queryClient.GetMutationCache();
+            var snapshots = UseMutableRef(static () => new MutationStateSnapshots<TResult>()).Current;
+            return UseSyncExternalStore(cache.StoreSubscribe, snapshots.Getter(cache, options));
+        }
+
+        /// <summary>
+        /// <see cref="UseMutationState{TResult}"/> without a selector: the <see cref="MutationState"/> of each
+        /// mutation <paramref name="filters"/> selects.
+        /// </summary>
+        public static IReadOnlyList<MutationState> UseMutationState(MutationFilters? filters = null, QueryClient? client = null)
+            => UseMutationState(new MutationStateOptions<MutationState> { Filters = filters }, client);
+
+        /// <summary>
+        /// TanStack Query's <c>useIsMutating(filters)</c>: how many of the mutations <paramref name="filters"/>
+        /// selects are pending, re-rendering the component when the number changes. The filters' own
+        /// <see cref="MutationFilters.Status"/> is replaced.
+        /// </summary>
+        public static int UseIsMutating(MutationFilters? filters = null, QueryClient? client = null)
+            => UseMutationState((filters ?? new MutationFilters()) with { Status = MutationStatus.Pending }, client).Count;
 
         #endregion
 

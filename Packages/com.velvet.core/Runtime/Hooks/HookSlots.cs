@@ -412,7 +412,30 @@ namespace Velvet
         // Set when the mount that created this slot unmounts. A remount of the same fiber builds new
         // slots, so a call still in flight from the earlier mount matches none of them, which the fiber's
         // IsDisposed cannot say once the remount has cleared it.
-        public bool Retired { get; set; }
+        public bool Retired { get; private set; }
+
+        // TanStack's MutationObserver state: the client fixed at the first render, as useMutation keeps the
+        // observer it built then; the options the latest render passed and those the last commit applied; and the
+        // mutation the handle shows, which holds this slot as its observer.
+        public QueryClient Client { get; set; } = null!;
+        public MutationOptionsBase Declared { get; set; } = null!;
+        public MutationOptionsBase? CommittedDeclared { get; set; }
+        public Mutation? Current { get; set; }
+        public HookEffectSlot? OptionsEffect { get; set; }
+
+        public void Retire()
+        {
+            Retired = true;
+            Detach();
+        }
+
+        public void Detach()
+        {
+            var current = Current;
+            if (current == null) return;
+            Current = null;
+            current.RemoveObserver();
+        }
     }
 
     // TContext is Unit for the options records that carry no context. The callbacks are read through the
@@ -430,6 +453,9 @@ namespace Velvet
         public abstract RetryPolicy? Retry { get; }
         public abstract VelvetTask<TData> InvokeMutationFn(TVariables variables, CancellationToken token);
         public abstract VelvetTask<TContext> InvokeOnMutate(TVariables variables);
+        // Whether OnMutate made the context, which is then the mutation's state as well; without one the state
+        // keeps none, as v5's onMutate returning undefined leaves it.
+        public abstract bool HasOnMutate { get; }
         // What a per-call callback receives as the context, which the context-free slot declines to box.
         public virtual object? BoxContext(TContext context) => context;
         public abstract VelvetTask InvokeOnSuccess(TData data, TVariables variables, TContext context);
@@ -447,6 +473,8 @@ namespace Velvet
             Options.MutationFn(variables, token);
 
         public override VelvetTask<Unit> InvokeOnMutate(TVariables variables) => VelvetTask.FromResult(Unit.Default);
+
+        public override bool HasOnMutate => false;
 
         public override object? BoxContext(Unit context) => null;
 
@@ -472,6 +500,8 @@ namespace Velvet
 
         public override VelvetTask<TContext> InvokeOnMutate(TVariables variables) =>
             Options.OnMutate is { } onMutate ? onMutate(variables) : VelvetTask.FromResult(default(TContext)!);
+
+        public override bool HasOnMutate => Options.OnMutate != null;
 
         public override VelvetTask InvokeOnSuccess(TData data, TVariables variables, TContext context) =>
             Options.OnSuccess is { } onSuccess ? onSuccess(data, variables, context) : VelvetTask.CompletedTask;
