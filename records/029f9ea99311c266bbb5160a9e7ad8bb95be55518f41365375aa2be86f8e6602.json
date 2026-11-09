@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 4 failed among the 24 case(s) that ran the site: Given_ANextPageInFlight_When_ItFails_Then_TheResultIsAFetchNextPageError, Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsFetchingTheNextPage, Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsNotRefetching",
+ "file": "e0739c9b1347f928eec061f68d6dd9e1d7e897399fb9982d437f566a5fa7b6d9",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_ANextPageInFlight_When_ItFails_Then_TheResultIsAFetchNextPageError",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "491d99a90b766701048fff4a36aca6fbc1b3f6737e1e4b9234e937b1a83366cb",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsFetchingTheNextPage",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "491d99a90b766701048fff4a36aca6fbc1b3f6737e1e4b9234e937b1a83366cb",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_ANextPageInFlight_When_TheComponentRenders_Then_ItIsNotRefetching",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "491d99a90b766701048fff4a36aca6fbc1b3f6737e1e4b9234e937b1a83366cb",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_APreviousPageInFlight_When_TheComponentRenders_Then_ItIsNotFetchingTheNextPage",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "491d99a90b766701048fff4a36aca6fbc1b3f6737e1e4b9234e937b1a83366cb",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "GetNextPageParam = getNextPageParam;",
+  "column": 12,
+  "line": 108,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/InfiniteQuery.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

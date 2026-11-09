@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 19 case(s) that ran the site: Given_APendingHandle_When_ACommitPassesNewMeta_Then_ThePendingMutationTakesIt",
+ "file": "b2275d469bb9ff4ad5dbd62c3d8e61bd6a0a047ff3fd3cc9e6d2e396f50ceba8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationCacheTests.Given_APendingHandle_When_ACommitPassesNewMeta_Then_ThePendingMutationTakesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationCacheTests.cs": "f25f5b8dbc8e29b5fce40b1ee3f994dc01fe16134b13ca93f602ef55c0e282a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "current.SetOptions(options);",
+  "column": 16,
+  "line": 2737,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

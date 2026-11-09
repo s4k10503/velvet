@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed: Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItAndItsParentUpdateTogether_Then_ItsSiblingBelowTheRowIsNotRenderedAgain, Given_ARowWhosePropsAreUnchangedAndWhoseOutputIsAComponent_When_TheirParentReRenders_Then_ThatComponentIsNotRenderedAgain; 1 other editor(s) were up",
+ "file": "608119debf9a14ca390d5995cdb43071fccaf383373370eb47eee6eb8aaff98e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_ARowWhosePropsAreUnchangedAndWhoseOutputIsAComponent_When_TheirParentReRenders_Then_ThatComponentIsNotRenderedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_ARowWhosePropsAreUnchanged_When_OneComponentBelowItAndItsParentUpdateTogether_Then_ItsSiblingBelowTheRowIsNotRenderedAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "749d7a058cbb24f231b496d11a3f87acb5c0b7ee1a27849fd7d9f3be24dbe15b",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "_ctx.InBailedOutput = RendersNothingHere(walk, reusedAsIs);",
+  "column": 16,
+  "line": 1146,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

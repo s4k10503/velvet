@@ -1,0 +1,42 @@
+{
+ "detail": "EditMode: 3 failed among the 6 case(s) that ran the site: Given_ASpringEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose, Given_ASpringOnTheFramerDefaults_When_SkewIsPlanned_Then_ItRunsOnTheTransformSpring, Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+ "file": "76f375d09d96cfdce3ab98f9ff375f42da735bfef88c3302aa42a23f5e5d0276",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringDriverTests.Given_ASpringEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDriverTests.cs": "15c894839d00bc3133ca79c259f1bd4d443f19feb04474110c831baac56b1d14"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSpringDriverTests.Given_ASpringOnTheFramerDefaults_When_SkewIsPlanned_Then_ItRunsOnTheTransformSpring",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDriverTests.cs": "15c894839d00bc3133ca79c259f1bd4d443f19feb04474110c831baac56b1d14"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionSpringDriverTests.Given_ATweenEnterFromASkewedPoseToAnUnskewedOne_When_Started_Then_TheElementShowsTheSkewedPose",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringDriverTests.cs": "15c894839d00bc3133ca79c259f1bd4d443f19feb04474110c831baac56b1d14"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 39,
+  "line": 266,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

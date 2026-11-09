@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "65df063b882f2b7c6cc315db90fffb2ee010e63912a80a90fdd16e04ee2177a5",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "_legacyFont = style.unityFont;",
+  "column": 16,
+  "line": 498,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TextLineBox.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

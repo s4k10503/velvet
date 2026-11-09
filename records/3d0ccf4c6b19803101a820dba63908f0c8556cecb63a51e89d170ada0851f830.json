@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 538 case(s) that ran the site: Given_StaggeredExit_When_FirstStaggerWindow_Then_FirstGhostSwappedButSecondWithheld",
+ "file": "38e1e105dd06f06a442000ef49dce2c2db5b5b19849ca91b41231b8c18dc59c5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_StaggeredExit_When_FirstStaggerWindow_Then_FirstGhostSwappedButSecondWithheld",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "",
+  "before": " && (StyleSkewClass.HasSkewClass(play.FromClasses) || StyleSkewClass.HasSkewClass(play.ToClasses))",
+  "column": 15,
+  "line": 948,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

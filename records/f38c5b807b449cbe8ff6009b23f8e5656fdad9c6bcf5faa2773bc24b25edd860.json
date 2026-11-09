@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "38e1e105dd06f06a442000ef49dce2c2db5b5b19849ca91b41231b8c18dc59c5",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "StartSpringVariant(in play, physics.Stiffness, physics.Damping, physics.Mass, null, null);",
+  "column": 16,
+  "line": 962,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

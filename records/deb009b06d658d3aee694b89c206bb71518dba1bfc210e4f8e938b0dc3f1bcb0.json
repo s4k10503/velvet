@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 298 case(s) that ran the site: Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(\"blur-sm drop-shadow-lg drop-shadow-[#ggg]/50\",\"- - 0\")",
+ "file": "2ca49a5e06e348767e3562916a049990cced34c75ad63081af8fbfcf3b9f8156",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RejectedCompositeTests.Given_LayersWhereARejectedValueHoldsItsProperty_When_Composed_Then_TheFamilyDrawsNothing(\"blur-sm drop-shadow-lg drop-shadow-[#ggg]/50\",\"- - 0\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedCompositeTests.cs": "a48e72c11c480d78e7108112435f0d6dfeefb5b61ea818801a9cffc1e6e5bb5e",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 32,
+  "line": 47,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCompositeRejection.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

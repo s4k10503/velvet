@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 26 case(s) that ran the site: Given_AnEllipseOfRemAndInchRadii_When_Extracted_Then_BothAreInPixels",
+ "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnEllipseOfRemAndInchRadii_When_Extracted_Then_BothAreInPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "ca77145832417e8e578a09f2c496249cb369d731362a48460188a13cf2f96c6e"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 75,
+  "line": 5227,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

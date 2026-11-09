@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "b262d14f32f7a9883b7e86bad22d30754e3d1359b9ed844d5e05f2af6f8a9d1e",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 45,
+  "line": 186,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryFilters.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 1344 case(s) that ran the site: Given_APulseSuspendedByADuration_When_AVariantSwapHasRunItsCourse_Then_TheNextPulseFrameIsPaintedAsWritten",
+ "file": "d54b08a06250f2216e39d327d13aa29dca9e5f80fd7f16ab9065c3d0a77677f8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateSuspensionUnderVariantSwapTests.Given_APulseSuspendedByADuration_When_AVariantSwapHasRunItsCourse_Then_TheNextPulseFrameIsPaintedAsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateSuspensionUnderVariantSwapTests.cs": "5d84a22ce20a1e5e8d956663d12282c8e426c89174dbf07c5f4bd542cdb6d820",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 75,
+  "line": 202,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

@@ -1,0 +1,48 @@
+{
+ "detail": "EditMode: 4 failed among the 101 case(s) that ran the site: Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius, Given_ATallInsetOutlineWithAnOversizedRadius_When_Built_Then_ItsCornersTakeHalfTheInsetBoxsWidth, Given_AWideInsetOutlineWithAnOversizedRadius_When_Built_Then_ItsCornersTakeHalfTheInsetBoxsHeight",
+ "file": "6eb5a280d60a0735ff6d958117f77a799bec0aed082719ac58cea8a336a5c2aa",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SilhouetteFaceCornerBoundTests.Given_ATallInsetOutlineWithAnOversizedRadius_When_Built_Then_ItsCornersTakeHalfTheInsetBoxsWidth",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceCornerBoundTests.cs": "76a9381b4be242a45863855415e97e1ea7bf317e2eca8d2479ea7dd1f947fee1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteFaceCornerBoundTests.Given_AWideInsetOutlineWithAnOversizedRadius_When_Built_Then_ItsCornersTakeHalfTheInsetBoxsHeight",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceCornerBoundTests.cs": "76a9381b4be242a45863855415e97e1ea7bf317e2eca8d2479ea7dd1f947fee1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteFaceCornerBoundTests.Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceCornerBoundTests.cs": "76a9381b4be242a45863855415e97e1ea7bf317e2eca8d2479ea7dd1f947fee1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SilhouetteFaceCornerBoundTests.Given_MixedRadiiOverlappingOnTheTopEdge_When_Built_Then_TheSmallerCornerIsScaledWithTheLarger",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SilhouetteFaceCornerBoundTests.cs": "76a9381b4be242a45863855415e97e1ea7bf317e2eca8d2479ea7dd1f947fee1"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 38,
+  "line": 319,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SilhouetteFace.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 3 case(s) that ran the site: Given_AFamilyNameHint_When_Extracted_Then_TheBracketIsReadAsTailwindReadsIt(\"font-[family-name:Open_Sans]\",\"Open Sans\"), Given_AFamilyNameHint_When_Extracted_Then_TheBracketIsReadAsTailwindReadsIt(\"font-[family-name:My\\\\_Font]\",\"My_Font\"), Given_AnAddressableKeyWithAnEscapedUnderscore_When_Extracted_Then_TheKeyKeepsTheUnderscore",
+ "file": "30cda5247a419d436620e9a45d7eb649147bce07981ecc332cf4cecc75db1ca6",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CustomPropertyFallbackClassTests.Given_AFamilyNameHint_When_Extracted_Then_TheBracketIsReadAsTailwindReadsIt(\"font-[family-name:My\\\\_Font]\",\"My_Font\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyFallbackClassTests.cs": "4a22099e603cd84e43cff73877ddaf026eff910ca44961bb5e37b3d0b0523fec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CustomPropertyFallbackClassTests.Given_AFamilyNameHint_When_Extracted_Then_TheBracketIsReadAsTailwindReadsIt(\"font-[family-name:Open_Sans]\",\"Open Sans\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyFallbackClassTests.cs": "4a22099e603cd84e43cff73877ddaf026eff910ca44961bb5e37b3d0b0523fec"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CustomPropertyFallbackClassTests.Given_AnAddressableKeyWithAnEscapedUnderscore_When_Extracted_Then_TheKeyKeepsTheUnderscore",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyFallbackClassTests.cs": "4a22099e603cd84e43cff73877ddaf026eff910ca44961bb5e37b3d0b0523fec"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 52,
+  "line": 281,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFontClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

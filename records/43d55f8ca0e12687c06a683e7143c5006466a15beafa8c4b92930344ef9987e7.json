@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 24 case(s) that ran the site: Given_ARequestOfAnEntryNothingReads_When_CancelQueriesRunsLater_Then_TheGcTimeRunsFromTheCancellation",
+ "file": "88660c3891deb64c798514cd618527ecd5f64471abe418bbbe6a66b52f652eca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryClientCommandsTests.Given_ARequestOfAnEntryNothingReads_When_CancelQueriesRunsLater_Then_TheGcTimeRunsFromTheCancellation",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryClientCommandsTests.cs": "43bab26e43caf4a68b6b2fbeaeb493589fa154f63ca3b58040e49b0a11d5f482"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "RescheduleCollection(Client.Now);",
+  "column": 16,
+  "line": 1946,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

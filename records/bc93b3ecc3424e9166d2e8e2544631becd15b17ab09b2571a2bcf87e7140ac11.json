@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 69 case(s) that ran the site: Given_GuardOnParamRoute_When_Navigating_Then_GuardReceivesMatchedParams",
+ "file": "1b0695d54b5db602b91a9353f95430c3e256e00d69f6c2f3ff31b9c1e7c59062",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RedirectTests.Given_GuardOnParamRoute_When_Navigating_Then_GuardReceivesMatchedParams",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RedirectTests.cs": "57469ada46df3431c4e7ba1bcd06cb4939d8518a63cbf56acaeb922270df6399",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/RouterHistoryProbe.cs": "5657eb0498603f19ffd3037401b45b5c09d6f70bf8cf56958a6b73425bd11585"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "captured ??= new Dictionary<string, string>();",
+  "column": 16,
+  "line": 507,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

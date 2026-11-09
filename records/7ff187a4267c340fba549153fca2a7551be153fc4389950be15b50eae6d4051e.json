@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 87 case(s) that ran the site: Given_AHookOnlyAnOpenRenderCalls_When_Closed_Then_ItThrowsFewerHooks(\"UseMutation\",\"UseMutation\",1,0)",
+ "file": "b2275d469bb9ff4ad5dbd62c3d8e61bd6a0a047ff3fd3cc9e6d2e396f50ceba8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HookCountDiagnosticTests.Given_AHookOnlyAnOpenRenderCalls_When_Closed_Then_ItThrowsFewerHooks(\"UseMutation\",\"UseMutation\",1,0)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "e6a1e91618e9f9dea44b09e7e1bcb7651a71de315c09f3ad3162a67ca461fc1e",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 2626,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

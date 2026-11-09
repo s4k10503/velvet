@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "081d6561b6fe16959548dad51c78b92e9240da37027bb49d8df662e25d26cb0a",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "",
+  "before": " && ReferenceEquals(current.SuspendedOn, fiber)",
+  "column": 49,
+  "line": 925,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRenderer.cs",
+  "shadowed": [
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

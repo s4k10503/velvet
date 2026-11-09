@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 5 case(s) that ran the site: Given_AJsonPostOfADictionaryWithArrayIndexKeys_When_TheActionReadsText_Then_ThoseKeysComeFirstAscending, Given_AJsonPostOfAnObject_When_TheActionReadsText_Then_ItIsWhatJsonStringifyWrites, Given_AJsonPostOfAString_When_TheActionReadsJson_Then_ItIsTheParsedValue",
+ "file": "5aa66ff8abd21fdbed70ad1b9c5c3d86363ceb0a82d3131779dd9b0399abd760",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteRequestTests.Given_AJsonPostOfADictionaryWithArrayIndexKeys_When_TheActionReadsText_Then_ThoseKeysComeFirstAscending",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteRequestTests.cs": "b60eb0ba273b068359f357f3c025bee8df00e14e9f249239a252fab29f6a5a89",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteRequestTests.Given_AJsonPostOfAString_When_TheActionReadsJson_Then_ItIsTheParsedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteRequestTests.cs": "b60eb0ba273b068359f357f3c025bee8df00e14e9f249239a252fab29f6a5a89",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteRequestTests.Given_AJsonPostOfAnObject_When_TheActionReadsText_Then_ItIsWhatJsonStringifyWrites",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteRequestTests.cs": "b60eb0ba273b068359f357f3c025bee8df00e14e9f249239a252fab29f6a5a89",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "target.Add(entry);",
+  "column": 16,
+  "line": 187,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/JsonText.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

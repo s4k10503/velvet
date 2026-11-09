@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 688 case(s) that ran the site: Given_ADelayedTweenSwapThatHasSwapped_When_AZeroDurationPoseNamingOpacityFollows_Then_OpacityLandsByTheSecondFrame",
+ "file": "d54b08a06250f2216e39d327d13aa29dca9e5f80fd7f16ab9065c3d0a77677f8",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionZeroDurationLandingTests.Given_ADelayedTweenSwapThatHasSwapped_When_AZeroDurationPoseNamingOpacityFollows_Then_OpacityLandsByTheSecondFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionZeroDurationLandingTests.cs": "215f08d9a9bad767a8ec751ab5f4fd785dc617d436162a3e01c7eccef59be7fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 39,
+  "line": 237,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleClassProjection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

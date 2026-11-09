@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 60 case(s) that ran the site: Given_ARadialAtTheTopMiddle_When_Baked_Then_TheTopRightCornerIsOnTheFarthestCornerEllipse",
+ "file": "93f02f0d80ab8cdb574e37a671375a392431b58dc2ea693de06b946fb20a6430",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientBoxAspectTests.Given_ARadialAtTheTopMiddle_When_Baked_Then_TheTopRightCornerIsOnTheFarthestCornerEllipse",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientBoxAspectTests.cs": "0858ee219feb6d13414801eee168513deeaf86e35bf5bc175c96dd41aabc4467"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 18,
+  "line": 1242,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+  "shadowed": [
+   "arithmetic",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

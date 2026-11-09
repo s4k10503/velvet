@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 1124 case(s) that ran the site: Given_ShadowOnMotion_When_Reconciled_Then_APaintBindingIsCreated",
+ "file": "44b623b305dc545ea77707855469b5e9a321bbc8ea905521aba46793c311eb9a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintBindingPatchTests.Given_ShadowOnMotion_When_Reconciled_Then_APaintBindingIsCreated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintBindingPatchTests.cs": "56c5a8942dae531fad09ae7aa04d5ca48f0236a5f28d95f2c83ebacf0e91699d",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "_patcher.Appliers.ApplyShadowOnPatch(element, motionPaintClasses, clipActive);",
+  "column": 12,
+  "line": 361,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodeFactory.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

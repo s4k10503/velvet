@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 4 failed among the 7 case(s) that ran the site: Given_AListResolvedTwice_When_TheTableGrows_Then_ThePrimaryIsAnnouncedOnce, Given_QuotedNames_When_TheListIsResolved_Then_TheQuotesAreNotPartOfTheName, Given_TheListsOfTwoFamiliesNamingEachOther_When_BothAreResolved_Then_NoFallbackLoopIsWritten",
+ "file": "a68d306b04c1910531a2723542540791d860496625d4fba6b9c7c1b737aa3597",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FontFamilyListTests.Given_AListResolvedTwice_When_TheTableGrows_Then_ThePrimaryIsAnnouncedOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyListTests.cs": "d98c3e3892f63b413010521235a220afbb581e2e259231b4e3a67f06d460a19f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FontFamilyListTests.Given_QuotedNames_When_TheListIsResolved_Then_TheQuotesAreNotPartOfTheName",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyListTests.cs": "d98c3e3892f63b413010521235a220afbb581e2e259231b4e3a67f06d460a19f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FontFamilyListTests.Given_TheListsOfTwoFamiliesNamingEachOther_When_BothAreResolved_Then_NoFallbackLoopIsWritten",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyListTests.cs": "d98c3e3892f63b413010521235a220afbb581e2e259231b4e3a67f06d460a19f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FontFamilyListTests.Given_TwoRegisteredFamilies_When_TheListIsResolved_Then_TheFirstIsAssignedWithTheSecondAsFallback",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FontFamilyListTests.cs": "d98c3e3892f63b413010521235a220afbb581e2e259231b4e3a67f06d460a19f"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "primary.fallbackFontAssetTable = table;",
+  "column": 20,
+  "line": 78,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/VelvetFontStack.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

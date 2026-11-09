@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 471 case(s) that ran the site: Given_AnImportantMsClassAndAHoverMl_When_Hovered_Then_TheImportantMarginKeepsTheEdge",
+ "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LogicalUtilityMountTests.Given_AnImportantMsClassAndAHoverMl_When_Hovered_Then_TheImportantMarginKeepsTheEdge",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LogicalUtilityTests.cs": "1e59259cd092286a5fada79ff206a640ba2ab4b2adc6d0d60a45808849e9a546",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "into.Add(new StyleClassProjection.InlineLayer(pair.Key, priorities[i]));",
+  "column": 20,
+  "line": 2085,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

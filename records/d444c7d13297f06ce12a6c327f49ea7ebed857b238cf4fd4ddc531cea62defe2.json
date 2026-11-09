@@ -1,15 +1,15 @@
 {
- "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ALengthOnlyAnElementCanMeasure_When_ParsedForAnInlineLength_Then_ItIsClaimed(\"top-[calc(50%-1rem)]\",Top)",
+ "detail": "EditMode: 1 failed among the 341 case(s) that ran the site: Given_ALengthOnlyAnElementCanMeasure_When_ParsedForAnInlineLength_Then_ItIsClaimed(\"top-[calc(50%-1rem)]\",Top)",
  "file": "b0b409f0fcdf7a3c31613c8b29f8ee07b3a9eb27318ed125dd029a819cecb450",
  "killers": [
   {
    "case": "Velvet.Tests.ArbitraryMathFunctionTests.Given_ALengthOnlyAnElementCanMeasure_When_ParsedForAnInlineLength_Then_ItIsClaimed(\"top-[calc(50%-1rem)]\",Top)",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryMathFunctionTests.cs": "37e2955bf159a1c2d4e2ec34e4b17eb9878aa82d6475084cda8c25e446c3f3ce"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryMathFunctionTests.cs": "a1f4a80cb2c74d7a68b4b4d8df5b958d14b53d52ec43eb719cabe9463be406a0"
    }
   }
  ],
- "measured_by": "39656590683",
+ "measured_by": "42606036406",
  "mutant": {
   "after": ">",
   "before": ">=",
@@ -27,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "569179b1861542122387fd3e6f2ff0d2cd7eeb27644af0b3bc010cd141810279",
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
  "verdict": "killed"
 }

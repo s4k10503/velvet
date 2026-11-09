@@ -1,0 +1,44 @@
+{
+ "detail": "EditMode: 2 failed among the 48 case(s) that ran the site: Given_ALinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates, Given_ANavLinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates",
+ "file": "71578c564cfbbe528ffbf67d50a2681691ff2bcf9219478fb0ca56381929061c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteLinkEventsTests.Given_ALinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkEventsTests.cs": "d54db543faa30640033ae5ca8101142482285be9030445ddfdca318daaf16ec8",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouteLinkEventsTests.Given_ANavLinkWhoseClickHandlerLeavesTheDefault_When_Clicked_Then_TheHandlerRunsAndThenItNavigates",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteLinkEventsTests.cs": "d54db543faa30640033ae5ca8101142482285be9030445ddfdca318daaf16ec8",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestMounts.cs": "f8401ad8b6f8ad1cafcdf5c1960ff0f082f4d876c6ee34e32e4d3d8cc7566653",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 72,
+  "line": 585,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Routing/Router.cs",
+  "shadowed": [
+   "literal"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

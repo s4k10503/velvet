@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 17 case(s) that ran the site: Given_AnonymousObjectsHoldingEqualLists_When_KeysAreRebuilt_Then_TheyAreEqual, Given_InstancesOfAClassWithNoEquality_When_TheyHoldEqualArrays_Then_TheKeysAreNotEqual",
+ "file": "5bd564fb74b622a4cc22410e64f9fb26f9e34c80fe7e1331e2ea52c37711cefb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryKeyMembersTests.Given_AnonymousObjectsHoldingEqualLists_When_KeysAreRebuilt_Then_TheyAreEqual",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryKeyMembersTests.cs": "dec1ea1522def1d89dcdff909ffd89d09841510955f591da2df1c84ff1a91b13"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryKeyMembersTests.Given_InstancesOfAClassWithNoEquality_When_TheyHoldEqualArrays_Then_TheKeysAreNotEqual",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryKeyMembersTests.cs": "dec1ea1522def1d89dcdff909ffd89d09841510955f591da2df1c84ff1a91b13"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 25,
+  "line": 86,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryKeyParts.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

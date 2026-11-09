@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 247 case(s) that ran the site: Given_StaggeredExit_When_FirstStaggerWindow_Then_FirstGhostSwappedButSecondWithheld",
+ "file": "608119debf9a14ca390d5995cdb43071fccaf383373370eb47eee6eb8aaff98e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_StaggeredExit_When_FirstStaggerWindow_Then_FirstGhostSwappedButSecondWithheld",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 118,
+  "line": 2954,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/GeneralPathReconciler.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

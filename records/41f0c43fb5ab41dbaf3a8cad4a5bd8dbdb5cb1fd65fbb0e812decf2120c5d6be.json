@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "79252ce6bcbc6f095dc0add00ef6aad34380b9fce848d456a49e8400b379d82f",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "s_followed.Remove(element);",
+  "column": 16,
+  "line": 153,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

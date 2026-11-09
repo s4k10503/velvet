@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "54407e9af91f715d0d83b21f3c867fa2f26b14e8cd0ecb8f2284a2424013e4ef",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost, newNode.FocusOrder, _ctx);",
+  "column": 16,
+  "line": 1261,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

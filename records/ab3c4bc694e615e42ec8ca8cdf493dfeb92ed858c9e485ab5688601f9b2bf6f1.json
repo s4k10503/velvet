@@ -1,0 +1,152 @@
+{
+ "detail": "EditMode: 13 failed: Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"p-guttertest\",\"p-[length:10px]\"), Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"p-4\",\"p-[length:12px]\"), 5px]\")",
+ "file": "79252ce6bcbc6f095dc0add00ef6aad34380b9fce848d456a49e8400b379d82f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"-mt-2\",\"-mt-[length:6px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"-mt-guttertest\",\"-mt-[length:10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"max-h-4\",\"max-h-[length:12px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"max-w-guttertest\",\"max-w-[length:10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"p-4\",\"p-[length:12px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"p-7\",\"p-[length:10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"p-guttertest\",\"p-[length:10px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"translate-x-2\",\"translate-x-[length:6px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_AProjectTokenInANamespace_When_AUtilityOfThatNamespaceIsRead_Then_ItIsTheBracketedUtilityReadingTheVariable(\"w-1.5\",\"w-[length:4.5px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ThemeTokenClassTests.Given_ASpacingUnitDeclaredOnTheRoot_When_AStepIsRead_Then_ItIsWrittenWithTheLiteral(\"p-4\",\"p-[length:12px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RemSheetImport.cs": "c418b5208957f8ec41af73a0276f76473ade1a90c483d1cad18b2bae5ad46569",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenClassTests.cs": "ca9934812fd508b6c522db5a0480b1012593afaab41216b6255469cf6f343766",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 120,
+  "line": 498,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleThemeTokens.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

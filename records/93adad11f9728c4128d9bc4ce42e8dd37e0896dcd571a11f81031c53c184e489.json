@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 168 case(s) that ran the site: Given_ADivideWidthOfATenthOfAnEm_When_Settled_Then_TheDividerIsTwoPixels",
+ "file": "9f5f43e097b8df72dba2f7aa879131e79fd0ab04520f17c3cbe2574d006da3b1",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MeasuredLengthPanelTests.Given_ADivideWidthOfATenthOfAnEm_When_Settled_Then_TheDividerIsTwoPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MeasuredLengthPanelTests.cs": "52b3649208b556c50fab6d571faa44ca23569949ff67921bc70575b9ce750d3f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 80,
+  "line": 110,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleDivideManipulator.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

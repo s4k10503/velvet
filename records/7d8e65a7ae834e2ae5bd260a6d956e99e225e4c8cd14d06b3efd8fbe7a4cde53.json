@@ -1,0 +1,39 @@
+{
+ "detail": "EditMode: 2 failed among the 60 case(s) that ran the site: Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"[--brand:red]\"), Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"w-(--w)\")",
+ "file": "54407e9af91f715d0d83b21f3c867fa2f26b14e8cd0ecb8f2284a2424013e4ef",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PatchClassTokenOwnershipTests.Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"[--brand:red]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchClassTokenOwnershipTests.cs": "828823464619f1d2af83565e0849eb8106ea49aa75da7833338d545c9f9b6bc8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.PatchClassTokenOwnershipTests.Given_ATokenAnotherPassOwns_When_ItIsAddedOnReRender_Then_TheTokenIsNotOnTheClassList(\"w-(--w)\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PatchClassTokenOwnershipTests.cs": "828823464619f1d2af83565e0849eb8106ea49aa75da7833338d545c9f9b6bc8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 2931,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

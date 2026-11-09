@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 593 case(s) that ran the site: Given_WarmNavigateAsyncSteadyState_When_Navigated_Then_AllocationMatchesPinnedExpectation, Given_WarmYieldAwaitBeforeNavigate_When_Navigated_Then_AllocationMatchesPinnedExpectation",
+ "file": "1b0695d54b5db602b91a9353f95430c3e256e00d69f6c2f3ff31b9c1e7c59062",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterNavigationAllocationEditorTests.Given_WarmNavigateAsyncSteadyState_When_Navigated_Then_AllocationMatchesPinnedExpectation",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterNavigationAllocationEditorTests.cs": "eaa0c3079014245e530b51f49300215c3831d3b31f820e931b743a0209f574b5",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RouterNavigationAllocationEditorTests.Given_WarmYieldAwaitBeforeNavigate_When_Navigated_Then_AllocationMatchesPinnedExpectation",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterNavigationAllocationEditorTests.cs": "eaa0c3079014245e530b51f49300215c3831d3b31f820e931b743a0209f574b5",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "",
+  "before": " || !path.Contains('?')",
+  "column": 46,
+  "line": 204,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

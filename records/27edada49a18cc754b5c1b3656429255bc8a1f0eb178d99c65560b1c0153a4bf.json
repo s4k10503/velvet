@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 131 case(s) that ran the site: Given_ATweenExitOfEveryChannelKindOnAHeldClock_When_ItIsCancelledAQuarterOfTheWayOut_Then_EachTurnsBackOverTheShortenedDuration, Given_ATweenWhoseOverrideNamesAllOfEveryChannelKind_When_TheClockStepsAFrame_Then_EachMovesOnTheOverride, Given_ATweenWithAnOverrideNamingTheShorthandOfItsLength_When_TheClockStepsAFrame_Then_ItTimesTheLonghand",
+ "file": "248fc85f551678d2011d2147c40795d6d68727c9dd52222c57b92961a1f4d521",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_ATweenExitOfEveryChannelKindOnAHeldClock_When_ItIsCancelledAQuarterOfTheWayOut_Then_EachTurnsBackOverTheShortenedDuration",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_ATweenWhoseOverrideNamesAllOfEveryChannelKind_When_TheClockStepsAFrame_Then_EachMovesOnTheOverride",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionClockTests.Given_ATweenWithAnOverrideNamingTheShorthandOfItsLength_When_TheClockStepsAFrame_Then_ItTimesTheLonghand",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 32,
+  "line": 112,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionPropertyClassParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ARegisteredKeyframeAnimation_When_AFrameIsApplied_Then_TheRotationIsTheValueAtThatPhase",
+ "file": "a6bf18b0488edb1b25e9fa163fec8236f240934837b71a410e0638ab39beb35c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateMotionPanelTests.Given_ARegisteredKeyframeAnimation_When_AFrameIsApplied_Then_TheRotationIsTheValueAtThatPhase",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AnimateMotionPanelTests.cs": "0b7883a3d00ebebb36f8d68bc2d97cb4a2e4138a3106cefc3663b22ceb1dd0b2",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "ApplyCustom(element, binding, t, free, driven, yielded);",
+  "column": 20,
+  "line": 717,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimateDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

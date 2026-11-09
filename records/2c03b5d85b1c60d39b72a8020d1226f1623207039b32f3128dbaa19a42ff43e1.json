@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "8ddb4a0def1afa9c87c360f99ae3f8ec5bfa54e7d0faac081fc2ea11088ec203",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "",
+  "before": " && !s_bindings.TryGetValue(element, out _)",
+  "column": 24,
+  "line": 256,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

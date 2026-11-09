@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "a2103c19eb7966929b8eb13d83f08cf02cff00ca8429c04da6ab1908ab1ea81a",
  "killers": [],
- "measured_by": "42014657035",
+ "measured_by": "42606036406",
  "mutant": {
   "after": ";",
   "before": "aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
  "verdict": "survived"
 }

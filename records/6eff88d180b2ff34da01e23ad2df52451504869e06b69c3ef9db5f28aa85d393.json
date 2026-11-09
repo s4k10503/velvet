@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 9 case(s) that ran the site: Given_ANegativelyInfiniteResult_When_Evaluated_Then_ItIsTheMostNegativeFloat(\"calc(1px*round(down,-5,infinity))\")",
+ "file": "241f79512abf2fbb7ee05a98d27e02e00229b4c41adc09e6f26d04147bd7ccfd",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MathFunctionTests.Given_ANegativelyInfiniteResult_When_Evaluated_Then_ItIsTheMostNegativeFloat(\"calc(1px*round(down,-5,infinity))\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MathFunctionTests.cs": "d5f1c1fcc5a634bcd168af125e88a6acfb3dac6b621599115f7c2a409f476d11"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "_at += 2;",
+  "column": 16,
+  "line": 780,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleLengthExpression.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

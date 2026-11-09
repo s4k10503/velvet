@@ -1,64 +1,113 @@
 {
- "detail": "EditMode: 5 failed among the 187 case(s) that ran the site: Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt, Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens, Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders",
+ "detail": "EditMode: 91 failed in Velvet.Tests.Styling.Editor: Given_BorderRadiusClass_When_Reconciled_Then_AppliesAllFourCorners, Given_BorderRadiusStyle_When_Applied_Then_SetsAllFourCorners, Given_ABoxFittedFromItsOwnStylesheetRadius_When_ItGrowsToFitIt_Then_TheSlotIsHandedBackToTheStylesheet",
  "file": "359c9ff413743bda0e386b932041525e1fe826320321b1bb48a3ff45398212d0",
  "killers": [
   {
-   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_AHolderRoundingOnATransition_When_AnotherTakesItsId_Then_TheOtherMixesFromTheRadiusItIsDrawnAt",
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_BorderRadiusClass_When_Reconciled_Then_AppliesAllFourCorners",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   },
   {
-   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionDoublingInPlace_When_ItsPoseTweensItsRadiusMidMove_Then_ItIsDrawnAtThePosesRadiusAsItTweens",
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_BorderRadiusStyle_When_Applied_Then_SetsAllFourCorners",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
-    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   },
   {
-   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionJoiningARoundedHolder_When_AQuarterOfItsTweenHasPassed_Then_ItsRadiusIsMixingFromTheHolders",
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_ABoxFittedFromItsOwnStylesheetRadius_When_ItGrowsToFitIt_Then_TheSlotIsHandedBackToTheStylesheet",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
    }
   },
   {
-   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionRoundedByAStylesheetDoublingInPlace_When_ItsClassChangesToALargerRadiusMidMove_Then_ItIsDrawnAtTheNewRadius",
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_ABoxWhoseOwnStylesheetGivesItARadiusBeyondItsHeight_When_LaidOut_Then_ItsCornersAreScaledToFitIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
    }
   },
   {
-   "case": "Velvet.Tests.MotionScheduledMechanicsTests.Given_ALayoutIdMotionRoundedByItsRulesWithAnInlineInitialRadius_When_ItDoublesInPlace_Then_ItIsDrawnSquare",
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_ABoxWithNoRoundedClassWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionScheduledMechanicsTests.cs": "0fabe7f3cf541fadcc9467d951af7f41a49ec57543b7105eeb79b841cf8b8fdd",
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
-    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
-    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_AClassCornerFittedBesideAnArbitraryOne_When_TheClassIsRemoved_Then_TheArbitraryCornerTakesItsDeclaredRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_APercentRadiusBeyondHalf_When_LaidOut_Then_ItIsScaledInPercent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_ARounded3xlBoxShorterThanItsRadius_When_ItGrowsToFitIt_Then_TheSlotIsHandedBackToTheStylesheet",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_ARoundedFullBox_When_ItsClassBecomesRoundedMd_Then_EveryCornerTakesTheMdRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  },
+  {
+   "case": "Velvet.Tests.CornerRadiusFitPanelTests.Given_ATransitionAllRoundedFullBox_When_FirstLaidOut_Then_ItsCornersLandAtHalfTheHeightAtOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CornerRadiusFitPanelTests.cs": "26960a6a4f62345d1cbf1f63772e9afd4f8421877e98b316e57573e7a02cb632",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
    }
   }
  ],
- "measured_by": "42205822333",
+ "measured_by": "42606036406",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -76,6 +125,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
  "verdict": "killed"
 }

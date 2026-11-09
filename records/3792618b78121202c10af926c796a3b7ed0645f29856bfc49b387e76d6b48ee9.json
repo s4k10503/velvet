@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d9cc5946da12193a32d196a86611fd7da34bfae0e6d1c130116fd0ab8fe0a48e",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 278,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

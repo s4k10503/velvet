@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 1 failed: Given_ALabelWhoseClassRuleSetsAZeroBorderWidth_When_Resolved_Then_ItIsNotMarked",
+ "file": "c13fb81921c484136448cd8b13f02db5e8ca8df0bafa6cafea145d65c2e84ebe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BorderPreflightTests.Given_ALabelWhoseClassRuleSetsAZeroBorderWidth_When_Resolved_Then_ItIsNotMarked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightTests.cs": "ca2d5d946986c89ba66d4cbab91ae1976df33cccdf7840ef114f8c741ddaf535",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 957,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BorderPreflight.cs",
+  "shadowed": [
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

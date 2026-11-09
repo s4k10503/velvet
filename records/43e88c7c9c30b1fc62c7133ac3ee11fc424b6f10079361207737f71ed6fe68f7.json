@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 443 case(s) that ran the site: Given_ANavigationThatOnlyAddsAFragment_When_Navigated_Then_NoLoaderRunsAgain",
+ "file": "71578c564cfbbe528ffbf67d50a2681691ff2bcf9219478fb0ca56381929061c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterNavigateOptionsTests.Given_ANavigationThatOnlyAddsAFragment_When_Navigated_Then_NoLoaderRunsAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterNavigateOptionsTests.cs": "4b9f2a4529a146b15b24b001bc6df263b476c8daca47e2af4233a970248f07bf",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
+    "Packages/com.velvet.core/TestUtilities/RouterHistoryProbe.cs": "5657eb0498603f19ffd3037401b45b5c09d6f70bf8cf56958a6b73425bd11585"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 45,
+  "line": 1328,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Routing/Router.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

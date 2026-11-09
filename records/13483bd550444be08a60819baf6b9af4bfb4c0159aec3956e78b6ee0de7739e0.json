@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "f6b17c586cf818dd000d4c3692f347598ae4a90c02ccd00d133bc77541604d17",
+ "killers": [],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 71,
+  "line": 202,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/VelvetFonts.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

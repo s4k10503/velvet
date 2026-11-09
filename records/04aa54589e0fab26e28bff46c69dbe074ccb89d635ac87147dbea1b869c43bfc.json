@@ -1,0 +1,86 @@
+{
+ "detail": "EditMode: 8 failed among the 568 case(s) that ran the site: Given_ACancelledRequest_When_TheGcTimePassesAfterTheReaderLeft_Then_TheEntryIsCollected, Given_AMountedQuery_When_ItsKeyChangesAndTheOldGcTimePasses_Then_TheOldEntryIsCollected, Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadAtNine_Then_ItIsCollected",
+ "file": "88660c3891deb64c798514cd618527ecd5f64471abe418bbbe6a66b52f652eca",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_ACancelledRequest_When_TheGcTimePassesAfterTheReaderLeft_Then_TheEntryIsCollected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AMountedQuery_When_ItsKeyChangesAndTheOldGcTimePasses_Then_TheOldEntryIsCollected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadAtNine_Then_ItIsCollected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AnExpiredUnreadEntry_When_AnotherQuerySubscribes_Then_TheEntryIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry_RendersAData",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AnExpiredUnreadEntry_When_ItsReaderMountsAgain_Then_ItSubscribesToAFreshEntry_RendersAStatus",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AnUnreadEntryWhoseRequestLandedPastItsGcTime_When_AGcTimeHasPassedSinceItLanded_Then_ItIsCollected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueryHookTests.Given_AnUnreadEntry_When_TheClientSweepsAtAndJustBeforeItsGcTime_Then_ItIsRemovedOnlyAtIt_RemovedAt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
+    "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "entry.RenderHoldPolls = 0;",
+  "column": 12,
+  "line": 929,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryClient.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

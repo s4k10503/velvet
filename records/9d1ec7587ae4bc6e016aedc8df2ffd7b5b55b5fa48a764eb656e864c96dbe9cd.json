@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 39 case(s) that ran the site: Given_ALowerCaseRingOffset_When_Extracted_Then_ItIsThatManyPixels",
+ "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LengthUnitCaseTests.Given_ALowerCaseRingOffset_When_Extracted_Then_ItIsThatManyPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LengthUnitCaseTests.cs": "5b2d84673cecbd6dee13f0c6b070d7b28fb4dbf62b785cd2214f10778a189a2c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 24,
+  "line": 5269,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

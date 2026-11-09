@@ -1,0 +1,64 @@
+{
+ "detail": "EditMode: 7 failed among the 7 case(s) that ran the site: Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"w-[-5px]\"), Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"p-[-5px]\"), Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"rounded-[-2px]\")",
+ "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"basis-[-4px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"border-[-2px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"max-w-[-4px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"p-[-5px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"rounded-[-2px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"text-[-4px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LiteralRangeTests.Given_ANegativeLiteralWhereThePropertyTakesNone_When_Parsed_Then_TheClassIsDeclined(\"w-[-5px]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LiteralRangeTests.cs": "2fe6524116ec2c895fb77c5a25edafa8c17c642738f92e9dbe7c4b4272b6f78c"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 410,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

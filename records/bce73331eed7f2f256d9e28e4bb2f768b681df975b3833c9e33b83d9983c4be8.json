@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 57 case(s) that ran the site: Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_TheNavigationsLocationCarriesTheDestinationsParams",
+ "file": "71578c564cfbbe528ffbf67d50a2681691ff2bcf9219478fb0ca56381929061c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterAwaitedLoaderTests.Given_AnAwaitLoaderThatHasNotResolved_When_Navigating_Then_TheNavigationsLocationCarriesTheDestinationsParams",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterAwaitedLoaderTests.cs": "a31f6592f872582cab8a1a4d8f1e60b0991a5daa84af684d5c1aa66fd910fce1",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "42606036406",
+ "mutant": {
+  "after": ";",
+  "before": "allParams[kvp.Key] = kvp.Value;",
+  "column": 24,
+  "line": 1355,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Routing/Router.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}
