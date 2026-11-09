@@ -1,0 +1,68 @@
+{
+ "detail": "EditMode: 6 failed: Given_AHandleShowingACall_When_TheComponentUnmounts_Then_TheListenerHearsTheHandleLeaveIt, Given_AnUnmountedHandlesSettledCall_When_ItsGcTimeHasPassed_Then_ItIsRemoved, Given_AnUnobservedPendingCall_When_ItsGcTimePasses_Then_ItIsKeptAndRemovedAGcTimeLater",
+ "file": "7a6a4064394bd07a79260046a9cc96acf63fbd937ee72c78d5e66e757fc8dd2f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationCacheTests.Given_AHandleShowingACall_When_TheComponentUnmounts_Then_TheListenerHearsTheHandleLeaveIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationCacheTests.cs": "f25f5b8dbc8e29b5fce40b1ee3f994dc01fe16134b13ca93f602ef55c0e282a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MutationCacheTests.Given_AShortGcTime_When_ItPassesAfterTheHandleLeaves_Then_TheCallIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationCacheTests.cs": "f25f5b8dbc8e29b5fce40b1ee3f994dc01fe16134b13ca93f602ef55c0e282a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MutationCacheTests.Given_AnUnmountedHandlesSettledCall_When_ItsGcTimeHasPassed_Then_ItIsRemoved",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationCacheTests.cs": "f25f5b8dbc8e29b5fce40b1ee3f994dc01fe16134b13ca93f602ef55c0e282a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MutationCacheTests.Given_AnUnobservedPendingCall_When_ItsGcTimePasses_Then_ItIsKeptAndRemovedAGcTimeLater",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationCacheTests.cs": "f25f5b8dbc8e29b5fce40b1ee3f994dc01fe16134b13ca93f602ef55c0e282a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationLifecycleTests.Given_ACallInFlightFromAnEarlierMount_When_TheSameFiberIsMountedAgainAndTheCallSettles_Then_ItsPerCallCallbacksDoNotRun",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationLifecycleTests.cs": "ebd51466d6be03219008d7ff90b74553322cd90c4a682326bebb625da1990983",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationLifecycleTests.Given_AStaleHandleFromAnEarlierMount_When_ItIsResetAfterTheRemount_Then_TheNewMountDoesNotRender",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationLifecycleTests.cs": "ebd51466d6be03219008d7ff90b74553322cd90c4a682326bebb625da1990983",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42555673605",
+ "mutant": {
+  "after": ";",
+  "before": "foreach (var slot in MutationSlots) slot.Retire();",
+  "column": 12,
+  "line": 1050,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}
