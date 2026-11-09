@@ -12060,9 +12060,17 @@ class CappedPlanTests(unittest.TestCase):
         self.assertEqual(dealt, "[0]")
 
     def test_Given_ACappedPlan_When_ThePassMeasures_Then_OnlyTheFirstMutantReachesTheEditor(self):
-        # Arrange
+        # Arrange — a salt ranking the first mutant first, since the plan deals by rank.
         campaign = RecordCampaign()
-        campaign.plan("--cap", "1")
+        project = campaign.project.resolve()
+        source = project / RecordCampaign.SOURCE
+        text = source.read_text()
+        listed = mutation_check.one_per_line(
+            mutation_check.mutations_for(source, text, set(range(1, len(text.splitlines()) + 1))))
+        salt = next(salt for salt in ("salt-{}".format(number) for number in range(1000))
+                    if mutation_check.ranked(listed, project, salt) == [1, 2])
+        with mock.patch.object(mutation_check, "sample_salt", lambda _project, _base: salt):
+            campaign.plan("--cap", "1")
 
         # Act
         campaign.run_over_diff("--launch-per-mutant", "--reuse", str(campaign.project / "reuse.json"),

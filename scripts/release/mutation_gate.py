@@ -10,8 +10,8 @@ section owns the rule and the way out; this holds the decision:
   push run of each required workflow (`red_base.REQUIRED_WORKFLOWS`) at it concluded `success`.
 - `mutation_check.py --gate` over the campaign's scope at the commit (`change_base.campaign_scope`),
   reading the record branch (`mutation_record.py`), which is refused where it holds a commit its
-  writer did not make: every mutant holds a standing verdict, and every survivor among them is
-  answered.
+  writer did not make: every mutant of the scope's sample holds a standing verdict, every standing
+  survivor is answered, and no declaration is stale.
 
 The mutation half reads git and the record alone: it runs in a worktree checked out from the release
 commit's objects, so nothing uncommitted in the dispatch's checkout reaches it, and it refuses a
@@ -150,8 +150,8 @@ def main(argv=None, environ=None, read=gh_json):
         shutil.rmtree(scratch, ignore_errors=True)
     print(printed)
     if code != 0:
-        print("::error::the mutation record does not answer every mutant of this release; what the gate "
-              "printed above names each and how it is answered, and CONTRIBUTING.md's release section "
+        print("::error::the mutation record does not answer this release; what the gate printed above "
+              "names each mutant it refuses on and how it is answered, and CONTRIBUTING.md's release section "
               "says how to release without the gate")
         failed = True
     return 1 if failed else 0
