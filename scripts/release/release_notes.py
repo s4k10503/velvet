@@ -23,6 +23,11 @@ ANY_HEADING = re.compile(r"^#{1,6}(?: |$)")
 
 HIGHLIGHTS_TITLE = "Highlights"
 
+# GitHub refuses a longer release body with "body is too long (maximum is 125000 characters)". upm.yml
+# builds the note before it pushes either tag and creates the release after both, so a note refused
+# here stops the dispatch where a note refused by GitHub leaves the tags pushed and no release.
+RELEASE_BODY_LIMIT = 125_000
+
 # The two sections that carry no version. CONTRIBUTING.md's release section owns which entry goes in
 # which and what a release does with each.
 OPEN_SECTION = "Unreleased"
@@ -411,6 +416,13 @@ def compare_link(repo, previous_tag, tag):
     return f"https://github.com/{repo}/commits/{tag}"
 
 
+def heading_anchor(changelog_text, version):
+    """The fragment GitHub's file view gives the `## [version]` heading."""
+    heading = next(line for line in changelog_text.splitlines()
+                   if (match := VERSION_HEADING.match(line)) and match.group("version") == version)
+    return re.sub(r"[^\w\- ]", "", heading.lstrip("#").strip().lower()).replace(" ", "-")
+
+
 def build_notes(
     changelog_text,
     version,
@@ -426,32 +438,51 @@ def build_notes(
 
     package_url = f"https://github.com/{repo}.git#{install_tag}"
     install_guide = f"https://github.com/{repo}/blob/{install_tag}/README.md#installation"
-    parts = [
-        f"## {HIGHLIGHTS_TITLE}",
-        "",
-        *highlights,
-        "",
-        "## Install",
-        "",
-        "Unity Package Manager ▸ **Add package from git URL**, or in `Packages/manifest.json`:",
-        "",
-        "```jsonc",
-        f'"com.velvet.core": "{package_url}"',
-        "```",
-        "",
-        f"Requires Unity {unity_version} or newer — see [Installation]({install_guide}) for details.",
-        "",
+    changelog_url = (f"https://github.com/{repo}/blob/{install_tag}/CHANGELOG.md"
+                     f"#{heading_anchor(changelog_text, version)}")
+
+    def assemble(long_form):
+        parts = [
+            f"## {HIGHLIGHTS_TITLE}",
+            "",
+            *highlights,
+            "",
+            "## Install",
+            "",
+            "Unity Package Manager ▸ **Add package from git URL**, or in `Packages/manifest.json`:",
+            "",
+            "```jsonc",
+            f'"com.velvet.core": "{package_url}"',
+            "```",
+            "",
+            f"Requires Unity {unity_version} or newer — see [Installation]({install_guide}) for details.",
+            "",
+            *long_form,
+            "",
+            f"**Full Changelog**: {compare_link(repo, previous_compare_tag, compare_tag or install_tag)}",
+            "",
+        ]
+        return absolutize_links("\n".join(parts), repo, install_tag)
+
+    notes = assemble([
         "<details>",
         "<summary><b>Full changelog</b></summary>",
         "",
         *remainder,
         "",
         "</details>",
-        "",
-        f"**Full Changelog**: {compare_link(repo, previous_compare_tag, compare_tag or install_tag)}",
-        "",
-    ]
-    return absolutize_links("\n".join(parts), repo, install_tag)
+    ])
+    if len(notes) <= RELEASE_BODY_LIMIT:
+        return notes
+    notes = assemble([
+        f"The long-form entries for {version} are too long for a release note: read them in "
+        f"[CHANGELOG.md]({changelog_url}).",
+    ])
+    if len(notes) > RELEASE_BODY_LIMIT:
+        raise ReleaseNotesError(
+            f"Version {version}'s note is {len(notes)} characters without its long-form entries, "
+            f"over the {RELEASE_BODY_LIMIT} GitHub accepts. Shorten its Highlights.")
+    return notes
 
 
 def parse_args(argv):

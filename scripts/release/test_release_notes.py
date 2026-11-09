@@ -444,6 +444,119 @@ class BuildNotes(unittest.TestCase):
         self.assertIn("[the repo](https://github.com/other/repo)", notes)
 
 
+# Written here rather than imported, so that a base lacking the builder's own constant still runs
+# these cases and answers them.
+GITHUB_RELEASE_BODY_LIMIT = 125_000
+
+
+def with_entry_of(length, changelog=COMPLETE):
+    """`changelog` with 2.0.0's long-form entry padded to `length` characters on one line."""
+    entry = "- A long-form entry."
+    return changelog.replace(entry, entry + "x" * (length - len(entry)))
+
+
+def note_length_with_entry_of(length):
+    return len(notes_for(with_entry_of(length)))
+
+
+class NoteOverGitHubsLimit(unittest.TestCase):
+    """GitHub refuses a release body over its limit, so a note its long-form entries would take past it
+    links them at the tag's CHANGELOG instead, and one past it without them is refused."""
+
+    def overflowing(self):
+        return notes_for(with_entry_of(2 * GITHUB_RELEASE_BODY_LIMIT))
+
+    def test_Given_LongFormEntriesOverTheLimit_When_Building_Then_TheNoteFitsWithinIt(self):
+        # Arrange / Act
+        notes = self.overflowing()
+
+        # Assert
+        self.assertLessEqual(len(notes), GITHUB_RELEASE_BODY_LIMIT)
+
+    def test_Given_LongFormEntriesOverTheLimit_When_Building_Then_TheNoteLinksTheVersionAtTheTag(self):
+        # Arrange / Act
+        notes = self.overflowing()
+
+        # Assert
+        self.assertIn(
+            f"[CHANGELOG.md](https://github.com/{REPO}/blob/v2.0.0/CHANGELOG.md#200---2026-08-02)", notes)
+
+    # GREEN_ON_BASE(characterization): the base leads every note with Highlights and install.
+    # What this pins is that dropping the long-form entries took nothing above them.
+    def test_Given_LongFormEntriesOverTheLimit_When_Building_Then_HighlightsAndInstallStay(self):
+        # Arrange
+        head = notes_for(COMPLETE).split("<details>", 1)[0]
+
+        # Act
+        notes = self.overflowing()
+
+        # Assert
+        self.assertTrue(notes.startswith(head))
+
+    # GREEN_ON_BASE(characterization): the base ends every note with the compare link.
+    # What this pins is that dropping the long-form entries kept it.
+    def test_Given_LongFormEntriesOverTheLimit_When_Building_Then_TheCompareLinkStays(self):
+        # Arrange / Act
+        notes = self.overflowing()
+
+        # Assert
+        self.assertTrue(notes.rstrip().endswith(
+            f"**Full Changelog**: https://github.com/{REPO}/compare/v1.0.0-main...v2.0.0"))
+
+    # GREEN_ON_BASE(characterization): the base keeps the long-form entries of every note.
+    # What this pins is the boundary: a note exactly at the limit is one GitHub accepts.
+    def test_Given_ANoteExactlyAtTheLimit_When_Building_Then_ItKeepsItsLongFormEntries(self):
+        # Arrange -- the entry is one line with no link, so each character added lengthens the note by one.
+        short = len("- A long-form entry.")
+        length = short + GITHUB_RELEASE_BODY_LIMIT - note_length_with_entry_of(short)
+
+        # Act
+        notes = notes_for(with_entry_of(length))
+
+        # Assert
+        self.assertIn("<details>", notes)
+
+    def test_Given_ANoteOneOverTheLimit_When_Building_Then_ItLeavesItsLongFormEntriesOut(self):
+        # Arrange
+        short = len("- A long-form entry.")
+        length = short + GITHUB_RELEASE_BODY_LIMIT - note_length_with_entry_of(short) + 1
+
+        # Act
+        notes = notes_for(with_entry_of(length))
+
+        # Assert
+        self.assertNotIn("<details>", notes)
+
+    def test_Given_HighlightsOverTheLimit_When_Building_Then_ItRaises(self):
+        # Arrange
+        changelog = COMPLETE.replace(
+            "- Something else.", "- Something else" + "x" * GITHUB_RELEASE_BODY_LIMIT + ".")
+
+        # Act / Assert
+        with self.assertRaises(ReleaseNotesError):
+            notes_for(changelog)
+
+    def test_Given_HighlightsOverTheLimit_When_TheCommandBuildsTheNote_Then_NothingIsWritten(self):
+        # Arrange
+        changelog = COMPLETE.replace(
+            "- Something else.", "- Something else" + "x" * GITHUB_RELEASE_BODY_LIMIT + ".")
+        with tempfile.TemporaryDirectory() as root:
+            Path(root, "CHANGELOG.md").write_text(changelog, encoding="utf-8")
+            Path(root, "package.json").write_text(json.dumps({"unity": "6000.3"}), encoding="utf-8")
+            argv = ["--version", "2.0.0", "--repo", REPO,
+                    "--changelog", str(Path(root, "CHANGELOG.md")),
+                    "--package-json", str(Path(root, "package.json")),
+                    "--output", str(Path(root, "note.md"))]
+
+            # Act
+            with contextlib.redirect_stderr(io.StringIO()):
+                release_notes.main(argv)
+            written = Path(root, "note.md").exists()
+
+        # Assert
+        self.assertFalse(written)
+
+
 SYNTHETIC = """# Changelog
 
 ## [1.1.0] - 2026-01-02

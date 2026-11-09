@@ -4559,6 +4559,70 @@ def decide_reuse(mutants, directory, project):
     return reused, reasons
 
 
+# How many mutants of a scope the release gate requires a standing verdict for. CONTRIBUTING.md's
+# release section owns the figure.
+SAMPLE_SIZE = 400
+
+
+def sample_salt(project, base):
+    return merge_base_of(project, base)
+
+
+def ranked(mutants, project, salt):
+    """Every index of `mutants`, the lowest rank first: a hash of `salt` and the mutant's mutation,
+    the stripped text of its line and which of the identical such mutants of its file in `mutants`
+    it is.
+
+    Not `record_key`, which hashes the file's bytes and the line's position: any edit to a file would
+    draw all of that file's mutants again.
+    """
+    texts, keys, seen = {}, {}, {}
+    for number in sorted(range(1, len(mutants) + 1),
+                         key=lambda number: (str(mutants[number - 1].path), mutants[number - 1].line,
+                                             mutants[number - 1].column)):
+        mutant = mutants[number - 1]
+        if mutant.path not in texts:
+            texts[mutant.path] = mutant.path.read_text().splitlines() if mutant.path.exists() else []
+        lines = texts[mutant.path]
+        text = lines[mutant.line - 1].strip() if 0 < mutant.line <= len(lines) else ""
+        identity = (relative_to(mutant.path, project).as_posix(), mutant.operator, mutant.before,
+                    mutant.after, text)
+        ordinal = seen.get(identity, 0)
+        seen[identity] = ordinal + 1
+        keys[number] = hashlib.sha256(json.dumps([salt, *identity, ordinal]).encode()).hexdigest()
+    return sorted(keys, key=lambda number: (keys[number], number))
+
+
+def sampled(mutants, project, salt, size=None):
+    """The `size` lowest-ranked indices."""
+    return set(ranked(mutants, project, salt)[:SAMPLE_SIZE if size is None else size])
+
+
+def recorded_survivors(mutants, directory, project):
+    """The indices whose entry in the record, standing or lapsed, is a survivor."""
+    found = set()
+    for number, mutant in enumerate(mutants, start=1):
+        entry = record_entry(directory, record_key(mutant, project))
+        if entry is not None and entry.get("verdict") in SURVIVING:
+            found.add(number)
+    return found
+
+
+def dealing_order(mutants, project, salt, survivors):
+    """Every index of `mutants` in the order a capped plan deals them, each part by rank: the sample,
+    then `survivors`, then the rest.
+
+    A survivor's entry lapses on a change to any test source (`tests_digest`), and the gate does not
+    wait for one outside the sample; dealt next, it is measured again and, standing and unanswered,
+    refuses the release after.
+    """
+    sample = sampled(mutants, project, salt)
+    order = ranked(mutants, project, salt)
+    return ([number for number in order if number in sample]
+            + [number for number in order if number in survivors and number not in sample]
+            + [number for number in order if number not in sample and number not in survivors])
+
+
 def load_reuse(path, mutants, project):
     """({index: entry}, {index: why}, [the indices past `--cap`]) from the file `--emit-reuse` wrote,
     refused unless each reused entry is of the mutant at its index in this tree's list."""
@@ -5371,19 +5435,21 @@ def report_shard(mutants, selected, shard):
     return 0
 
 
-def gate(mutants, reused, reasons, declared, coverage, project):
-    """The record's decision over the diff, made without an editor: 0 where every mutant holds a
-    standing verdict and every survivor among them is answered, 1 otherwise.
+def gate(mutants, reused, reasons, declared, coverage, project, sample):
+    """The record's decision over the diff, made without an editor: 0 where every mutant of `sample`
+    holds a standing verdict, every standing survivor anywhere in the scope is answered and no
+    declaration is stale, 1 otherwise.
 
     The same tree and the same record give the same lines and the same exit, since nothing here is
-    measured: a mutant the record holds no standing verdict for is unresolved, never a pass.
+    measured: a sampled mutant the record holds no standing verdict for is unresolved, never a pass.
     """
     print(coverage)
-    unresolved = [number for number in range(1, len(mutants) + 1) if number not in reused]
+    unmeasured = [number for number in range(1, len(mutants) + 1) if number not in reused]
+    unresolved = [number for number in unmeasured if number in sample]
     for number, record in reused.items():
         mutants[number - 1].verdict, mutants[number - 1].detail = record["verdict"], reuse_detail(record)
     unanswered, stale = answered(
-        mutants, {(mutants[number - 1].path, mutants[number - 1].line) for number in unresolved}, declared)
+        mutants, {(mutants[number - 1].path, mutants[number - 1].line) for number in unmeasured}, declared)
     for number in unresolved:
         print("\nUNRESOLVED  {}\n            {}".format(mutants[number - 1].describe(project),
                                                        reasons.get(number, "-")))
@@ -5392,11 +5458,13 @@ def gate(mutants, reused, reasons, declared, coverage, project):
     for path, subject, declaration in stale:
         print("\nSTALE       {}:{} declares a survivor, and line {} has none"
               .format(relative_to(path, project), declaration.line, subject))
-    print("\ngate: {} mutant(s); {} resolved, {} unresolved, {} unanswered, {} stale".format(
-        len(mutants), len(reused), len(unresolved), len(unanswered), len(stale)))
+    print("\ngate: {} mutant(s), {} sampled; {} resolved, {} unresolved, {} unmeasured outside the sample, "
+          "{} unanswered, {} stale".format(
+              len(mutants), len(sample), len(reused), len(unresolved), len(unmeasured) - len(unresolved),
+              len(unanswered), len(stale)))
     if unresolved:
-        print("An unresolved mutant is one no record run has measured to a verdict yet: the next record "
-              "run on this\nbranch measures it, and `gh workflow run mutation.yml --ref <branch>` starts "
+        print("An unresolved mutant is a sampled one that holds no standing verdict: record runs deal the "
+              "sample\nfirst, and `gh workflow run mutation.yml --ref <branch>` starts "
               "one. A change\nanswers an unanswered survivor or a stale declaration.")
     return 1 if unresolved or unanswered or stale else 0
 
@@ -5460,11 +5528,12 @@ def main():
                              "would use, as mutants=N and shards=[...] lines, and stop")
     parser.add_argument("--gate", action="store_true",
                         help="with --reuse-from, decide the diff from the record alone, without an "
-                             "editor: refuse a mutant the record holds no standing verdict for, an "
+                             "editor: refuse a sampled mutant that holds no standing verdict, an "
                              "unanswered survivor and a stale declaration")
     parser.add_argument("--cap", type=int, metavar="N",
                         help="with --plan, deal at most the first N mutants the record does not "
-                             "answer, in the list's order, and leave the rest to a later run")
+                             "answer, the sample first, then the record's survivors, each part in "
+                             "rank order, and leave the rest to a later run")
     parser.add_argument("--emit-mutants", metavar="FILE",
                         help="with --plan, write the mutant list the plan counted to FILE, for "
                              "every shard and the verdict to measure and decide over")
@@ -5741,7 +5810,10 @@ def main():
     if args.reuse_from is not None:
         reused, reasons = decide_reuse(mutants, args.reuse_from, project)
         if args.cap is not None:
-            pending = [number for number in range(1, len(mutants) + 1) if number not in reused][args.cap:]
+            survivors = recorded_survivors(mutants, args.reuse_from, project)
+            unanswered = [number for number in dealing_order(mutants, project, sample_salt(project, args.base),
+                                                             survivors) if number not in reused]
+            pending = sorted(unanswered[args.cap:])
         if args.emit_reuse is not None:
             Path(args.emit_reuse).write_text(json.dumps({
                 "schema": RECORD_SCHEMA, "reused": {str(number): record for number, record in reused.items()},
@@ -5751,7 +5823,8 @@ def main():
         reused, reasons, pending = load_reuse(args.reuse, mutants, project)
 
     if args.gate:
-        return gate(mutants, reused, reasons, declarations_for(targets, changed), coverage, project)
+        return gate(mutants, reused, reasons, declarations_for(targets, changed), coverage, project,
+                    sampled(mutants, project, sample_salt(project, args.base)))
 
     if args.plan and args.survivors_of is None:
         owed = len(mutants) - len(reused) - len(pending)

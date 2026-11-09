@@ -309,15 +309,18 @@ once it is recorded neither a later run nor the release gate fails on it.
 the mutated one, a stylesheet, an assembly definition or a project setting does not lapse a verdict,
 though it can change what a mutant does. The per-change key this replaced hashed every such input, and
 on the default branch it lapsed on 36 of the 56 first-parent commits of one week, measured, which would
-have measured the scope again nearly every day. Where such a reach is suspected, deleting the entries
-from the branch or raising `MUTATOR_VERSION`, which moves every key, measures them again. The
+have measured the scope again nearly every day. Where such a reach is suspected, a change to the mutated file's bytes, which
+moves its entries' keys, a change to the code of a kill's recorded fixtures, which lapses that kill, or
+raising `MUTATOR_VERSION`, which moves every key, measures them again. The
 other side of the rule is that a change to any test re-measures every survivor in scope, the declared
 ones included.
 
-**One run measures at most a cap, in a fixed order, and the next run continues.** `mutation-plan`
-generates the scope's mutants in the order `--list` prints them, looks each one up in the record, and
-deals the first `RECORD_CAP` the record does not answer across at most `RECORD_SHARDS` shards
-(`mutation_check.py --cap`, `--max-shards`); the rest are pending, left to a later run, and fail nothing.
+**One run measures at most a cap, in rank order, and the next run continues.** `mutation-plan`
+generates the scope's mutants, looks each one up in the record, and deals the first `RECORD_CAP` the
+record does not answer across at most `RECORD_SHARDS` shards (`mutation_check.py --cap`,
+`--max-shards`): first the release gate's sample ([Releasing](#releasing) owns it), then each mutant
+whose entry is a survivor that lapsed, then the rest, each part in the rank the gate samples by. The
+rest are pending, left to a later run, and fail nothing.
 `mutation.yml` declares both figures: 240 mutants over forty-eight shards of five, which `mutation-shard` runs at most
 twelve at a time (`max-parallel`, below), so a full run's shards are four waves of the shard job's 360-minute
 limit, 24 hours at the very worst, with the plan, Library, verdict, record and report jobs on top;
@@ -1569,11 +1572,28 @@ of `main` that CI built rather than building a release of their own. Before anyt
 
 - where the default branch holds the commit, whichever ref the release was dispatched from, the newest
   completed push run of each required workflow (`red_base.REQUIRED_WORKFLOWS`) at the commit passed;
-- the record answers every mutant of the campaign's scope at the commit
+- the record answers the campaign's scope at the commit
   ([Checking that the tests can fail](#checking-that-the-tests-can-fail) owns the scope and the
-  record): each holds an entry that still stands, and every survivor among them is answered by a
-  declaration. A mutant past a run's cap, never measured, or measured to nothing is unresolved, and
-  refuses the release.
+  record): each mutant of the sample below holds an entry that still stands, every standing survivor
+  anywhere in the scope is answered by a declaration, and no declaration is stale. A sampled mutant
+  past a run's cap, never measured, or measured to nothing is unresolved and refuses the release. Any
+  other mutant nothing measured refuses nothing, a survivor whose entry lapsed included: a change to
+  any test source outside a C# comment lapses every survivor's entry, and the gate does not wait for
+  one outside the sample. Record runs deal such a survivor ahead of the unsampled rest, so it is
+  measured again, and where it still survives unanswered it refuses a release while that entry stands.
+
+**The sample is drawn from git alone.** `mutation_check.py`'s `ranked` orders the scope's mutants by a
+hash of the scope's base commit — the release tag, or the cutover — with each mutant's file path,
+operator, both texts, the stripped text of its line and which of the scope's identical such mutants of
+its file it is, and `sampled` takes the `SAMPLE_SIZE` lowest, or the whole scope where it holds fewer.
+Nobody picks it: each release tag draws a fresh sample, and neither a line's position nor the file's
+bytes is hashed, so a mutant's hash holds while its line's text does and the scope gains or loses no
+identical mutant of its file above it. Its rank still moves as other mutants enter or leave the
+scope. `SAMPLE_SIZE` is 400, a round figure above the 385 at which a sampled
+share of any verdict lies within five percentage points of the scope's at 95% confidence, by the
+normal approximation to the binomial at its widest (1.96 · √(0.25 / 385) ≈ 0.05), whatever the
+scope's size.
+`scripts/test_quality/test_release_sample.py` holds the draw, the deal and the gate over a sample.
 
 The gate checks the commit out into a worktree of its own and reads that, so nothing uncommitted in
 the dispatch's checkout reaches it, and runs that commit's copy of the campaign's scripts, the copy its
@@ -1581,7 +1601,7 @@ record runs measured with; it refuses a commit whose tree has no record tooling.
 repository too, where the scope's tag and cutover can be cut off the history and the scope comes out
 empty: `upm.yml` runs it before the step that fetches `main` at depth one. Its mutation half reads
 git and the record alone, so the same commit and record give it the same answer. Where it refuses,
-its log names each mutant: wait for the record runs to catch up, dispatch one
+its log names each mutant it refuses on: wait for the record runs to catch up, dispatch one
 (`gh workflow run mutation.yml --ref <branch>`), or answer the survivors by a pull request.
 
 **The way past it** is the dispatch's `skip_release_gate` input: a reason written there releases
@@ -1636,7 +1656,13 @@ is never written twice. Each version therefore needs a `### Highlights` block ab
 `### Added` / `### Changed` / `### Fixed` headings: a handful of one-paragraph bullets, which the
 note leads with and the long-form entries follow, collapsed. A version missing one fails the release
 — and fails the `Test ▸ release-notes` check on the pull request that introduced it, which is where
-you want to hear about it. Preview a note before merging:
+you want to hear about it.
+
+GitHub refuses a release body over 125,000 characters, and `upm.yml` creates the release only after
+it has pushed both tags. So where the long-form entries would take the note past that, the builder
+leaves them out and links the version's section of `CHANGELOG.md` at the release tag in their place;
+Highlights, install and the compare link stay. A note still over the limit without them is refused
+before any tag is pushed, and its Highlights are what to shorten. Preview a note before merging:
 
 ```bash
 python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
