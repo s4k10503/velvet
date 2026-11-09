@@ -1,0 +1,100 @@
+{
+ "detail": "EditMode: 10 failed: Given_AConstantRetryDelay_When_AnOperationFailsTenTimes_Then_EveryRetryWaitsForIt, Given_ARetryDueWhileOffline_When_TheDeviceComesBackOnline_Then_TheRetryRuns, Given_ARetryDueWhileUnfocused_When_TheApplicationRegainsFocus_Then_TheRetryRuns",
+ "file": "34c4c3bcc4dfa213d2d9e536eec5cad619815408d8c63e8bae48849f3439e5f5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_AConstantRetryDelay_When_AnOperationFailsTenTimes_Then_EveryRetryWaitsForIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_ARetryDueWhileOffline_When_TheDeviceComesBackOnline_Then_TheRetryRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_ARetryDueWhileUnfocused_When_TheApplicationRegainsFocus_Then_TheRetryRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_AZeroDelay_When_AnOperationFailsSynchronously_Then_TheRetryWaitsForAFrame",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_NetworkModeOfflineFirst_When_TheDeviceIsOffline_Then_TheFirstAttemptRunsAndTheRetryWaitsForAConnection",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_NoIsFocusedOnThePolicy_When_NetworkSignalsReadHidden_Then_TheRetryWaitsUntilItReadsVisible",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_RetryTrue_When_AnOperationFailsTenTimes_Then_ItIsRetriedUntilItSucceeds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationRetryTests.Given_AComponentRenderingIsPaused_When_ARetryPausesAfterTheLastFlush_Then_TheLabelShowsPaused",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationRetryTests.cs": "42bbe0f8c8dc8f53dc949de96e393f81c7cd3e6fce5ffff925e3741e2f6a5784",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseMutationRetryTests.Given_ARetryDueWhileUnfocused_When_FramesPass_Then_TheHandleIsPausedWithItsFailureCount",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseMutationRetryTests.cs": "42bbe0f8c8dc8f53dc949de96e393f81c7cd3e6fce5ffff925e3741e2f6a5784",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VelvetTaskAllocationComparisonTests.Given_WarmYieldAwaitSteadyState_When_YieldDrainedAndAwaited_Then_SteadyPathAllocatesNoMoreThanMeasuredBlocks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/VelvetTaskAllocationComparisonTests.cs": "ab7a45985dcd88bc9a4da556292a05e3105b22aeb0b8db63b73b4bac8c91957b",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "42515926643",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 76,
+  "line": 278,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Async/RetryPolicy.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "334125d9b2bbe221b1ca0ce7c0cdad47b2be54bd2e036cb0c774450808d0a8b8",
+ "verdict": "killed"
+}

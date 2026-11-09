@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 447 failed: Given_MemoizedChild_When_APropChanges_Then_ChildReRenders, Given_AChildMountedByItsOwnComponentsStateBehindASiblingMotion_When_PausedForFiveFrames_Then_ItsOpacityHolds, Given_AChildMountedByItsOwnComponentsStatePartWayThroughItsMountEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds",
+ "detail": "EditMode: 450 failed: Given_MemoizedChild_When_APropChanges_Then_ChildReRenders, Given_AChildMountedByItsOwnComponentsStateBehindASiblingMotion_When_PausedForFiveFrames_Then_ItsOpacityHolds, Given_AChildMountedByItsOwnComponentsStatePartWayThroughItsMountEnter_When_PausedForFiveFrames_Then_ItsOpacityHolds",
  "file": "2aaf0433aaa0e964cc7401c320404cd6623d2802994f2fe8f59f32387b1d17e9",
  "killers": [
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionExiting_When_ItsKeyReturnsWithATypeFlip_Then_TheNewElementEnters",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
@@ -13,7 +13,7 @@
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionHoldingAnInnerPresence_When_ATypeFlipCreatesItAgain_Then_TheNewElementEnters",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
@@ -21,7 +21,7 @@
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionSettled_When_ATypeFlipCreatesItAgainUnderItsKey_Then_TheNewElementEnters",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
@@ -29,7 +29,7 @@
   {
    "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AKeyedMotionTheFirstRenderMountedUnderInitialFalse_When_ATypeFlipCreatesItAgain_Then_NoEnterPlays",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "23e9a2197fc055df39ba9629ecf297e058c4677a8a489bbdaa6cdfaa72237f1a",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
@@ -93,7 +93,7 @@
    }
   }
  ],
- "measured_by": "42387265711",
+ "measured_by": "42515926643",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -107,6 +107,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a2ec51e8bdf5a5f4f627c5ac2178b2017d34cfc04b135f7da13e147f252b36c6",
+ "tests": "334125d9b2bbe221b1ca0ce7c0cdad47b2be54bd2e036cb0c774450808d0a8b8",
  "verdict": "killed"
 }

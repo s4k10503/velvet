@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AManualVisualEffectGraph_When_PlayedThenStopped_Then_ItDrawsOnlyWhilePlaying",
  "file": "3d0f9b098824aebce97b0a09c893b09eba67b6ba571646eb19f5458ae41c01ec",
- "killers": [],
- "measured_by": "42482824250",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_AManualVisualEffectGraph_When_PlayedThenStopped_Then_ItDrawsOnlyWhilePlaying",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "adb1fa1183edfeac5be94a6075b58576bb96abb01386a6182bcf1ab44361cc34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
+   }
+  }
+ ],
+ "measured_by": "42515926643",
  "mutant": {
   "after": "",
   "before": " && DerivesFromVNode(type)",
@@ -18,6 +29,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "bee10020bc42d82f97b9695a9cb9b761a1938165485efd0307791b40085b75b1",
- "verdict": "survived"
+ "tests": "334125d9b2bbe221b1ca0ce7c0cdad47b2be54bd2e036cb0c774450808d0a8b8",
+ "verdict": "killed"
 }

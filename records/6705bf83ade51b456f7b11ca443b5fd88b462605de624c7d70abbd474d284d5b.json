@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed in Velvet.Tests.Async.Editor: Given_AnApplicationNotVisible_When_TheDeviceComesOnlineBeforeTheFirstAttempt_Then_TheAttemptRuns, Given_WarmYieldAwaitSteadyState_When_YieldDrainedAndAwaited_Then_SteadyPathAllocatesNoMoreThanMeasuredBlocks",
+ "file": "34c4c3bcc4dfa213d2d9e536eec5cad619815408d8c63e8bae48849f3439e5f5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RetryPolicyTests.Given_AnApplicationNotVisible_When_TheDeviceComesOnlineBeforeTheFirstAttempt_Then_TheAttemptRuns",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/RetryPolicyTests.cs": "3b2c0c2fda95b64549ca5a19f6d2d9500e4b3e100bec97b7f592bc2eb65c175c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  },
+  {
+   "case": "Velvet.Tests.VelvetTaskAllocationComparisonTests.Given_WarmYieldAwaitSteadyState_When_YieldDrainedAndAwaited_Then_SteadyPathAllocatesNoMoreThanMeasuredBlocks",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Async/Tests/Editor/VelvetTaskAllocationComparisonTests.cs": "ab7a45985dcd88bc9a4da556292a05e3105b22aeb0b8db63b73b4bac8c91957b",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "42515926643",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 60,
+  "line": 90,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Async/RetryPolicy.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "334125d9b2bbe221b1ca0ce7c0cdad47b2be54bd2e036cb0c774450808d0a8b8",
+ "verdict": "killed"
+}
