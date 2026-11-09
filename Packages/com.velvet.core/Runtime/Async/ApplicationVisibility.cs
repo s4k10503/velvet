@@ -354,7 +354,7 @@ namespace Velvet
 
             public ulong WindowCount()
             {
-                // MUTANT_SURVIVES(unreachable, line removed): the #if opening the macOS arm is false in the Linux editor CI's suites run in.
+                // MUTANT_SURVIVES(unreachable, line removed): this arm compiles only in a macOS editor or player, and CI's suites run in the Linux editor.
                 _windows = SendForObject(s_application, s_windows);
                 return (ulong)SendForCount(_windows, s_count);
             }
