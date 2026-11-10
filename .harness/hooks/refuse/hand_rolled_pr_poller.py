@@ -38,7 +38,8 @@ sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 from shell_commands import (  # noqa: E402
     ENV_ASSIGNMENT, LEADING_WORDS, command_segments, leading_program, mask_shell_literals)
 from shell_commands import tokens_of, without_redirections  # noqa: E402
-from watcher_state import HEARTBEAT, LOCK, READY_STATE, alive, unreadable_beat  # noqa: E402
+from watcher_state import (ACTIONABLE, HANDED_OFF, HEARTBEAT, LOCK, READY_STATE,  # noqa: E402
+                           REPORTED, alive, unreadable_beat)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -54,7 +55,8 @@ UNREADABLE_POLICY = "none"
 UNREADABLE_PROBE = {"command": "until gh pr view 1; do sleep 60; done", "run_in_background": True}
 
 # Matched by file name, so a wait reaching one of these through `~` or `$HOME` is still reaching it.
-WATCHER_FILES = {path.name for path in (HEARTBEAT, LOCK, READY_STATE)}
+WATCHER_FILES = {path.name for path in (HEARTBEAT, LOCK, READY_STATE, ACTIONABLE, REPORTED,
+                                        HANDED_OFF)}
 
 SUBJECTS = {"gh", "settle.py"} | WATCHER_FILES
 

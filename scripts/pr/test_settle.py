@@ -291,7 +291,7 @@ def holder(state):
     return settle.Worktree(f"/trees/{state.branch}", state.after, False, False)
 
 
-# A `held` value for a holder `settle.py merge` may remove: clean, at the pull request's head.
+# A `held` value for a holder `settle.clean_at` reads as clean, at the pull request's head.
 CLEAN = "clean"
 
 
@@ -328,7 +328,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 state.held == CLEAN for state in states.values()
                 if f"/trees/{state.branch}" == str(path))),
             ("project_state", lambda _project, base: base_state(
-                {state.branch: holder(state) for state in states.values() if state.held}, base, red,
+                {state.branch: [holder(state)] for state in states.values() if state.held}, base, red,
                 releasing, required)),
         ):
             # `create`, so the table is posed to a settle that has not got a reading as well.
@@ -826,11 +826,15 @@ def keeping_the_lock(handles):
 # retires has stopped before it.
 CLOCK_BOUND = 180
 
+# Who an `--until-actionable` run in `watch_until` reports to, unless a case names another.
+CALLER = "caller-a"
+
 
 def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
                 states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None,
                 until_actionable=False, seed_reported=None, readings=(), required=None,
-                holder=False, holder_stops_after=None, seed_actionable=None):
+                holder=False, holder_stops_after=None, seed_actionable=None, caller=None,
+                reported_by=None):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
     `asked` sends the record somewhere else, for a case about it not being written; `bound` is how
@@ -842,8 +846,10 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
 
     `holder` starts another process holding the lock, beating at the clock's start, and
     `holder_stops_after` ends it after that many polls; `seed_actionable` is the text that process
-    left for a follower.
+    left for a follower. An `--until-actionable` run reports to `caller`, `CALLER` by default, and
+    `seed_reported` is what `reported_by`, by default that same caller, was already told.
     """
+    caller = caller or CALLER
     printed = io.StringIO()
     handles = []
     with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory, \
@@ -876,8 +882,6 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             (Path(directory) / "asked").write_bytes(seed_asked)
         elif seed_asked is not None:
             (Path(directory) / "asked").write_text(f"{int(seed_asked)}\n", encoding="utf-8")
-        if seed_reported is not None:
-            (Path(directory) / "reported").write_text(seed_reported, encoding="utf-8")
         with fabricated_readings({1: fabricate(1)} if states is None else states,
                                  required=required) as stack:
             for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED", "HANDED_OFF", "REPORTED",
@@ -888,6 +892,10 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             if asked is not None:
                 stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED", asked,
                                                       create=True))
+            if seed_reported is not None:
+                record = settle.watcher_state.reported_record(reported_by or caller)
+                record.parent.mkdir(parents=True, exist_ok=True)
+                record.write_text(seed_reported, encoding="utf-8")
             if not listing_answers:
                 stack.enter_context(mock.patch.object(settle, "open_pull_requests",
                                                      refuse_to_answer))
@@ -902,7 +910,8 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
                 # Passed only where asked for, so the cases that do not ask still run on a tree
                 # whose `watch` takes no such argument.
                 code = settle.watch(Path("."), "main",
-                                    **({"until_actionable": True} if until_actionable else {}))
+                                    **({"until_actionable": True, "caller": caller}
+                                       if until_actionable else {}))
             except Polled:
                 code = None
             # Read before this closes it: what a case asks is whether the code let the lock go, so
@@ -2460,30 +2469,20 @@ def head_of(tree):
 REAL_WORKTREE_CLEAN = getattr(settle, "worktree_clean", None)
 
 
-class RemovableWorktreeTests(unittest.TestCase):
-    """Which holder of a pull request's branch `settle.py merge` may remove without losing anything."""
+class CleanHolderTests(unittest.TestCase):
+    """Which holder of a pull request's branch `clean_at` reads as all that keeps it from merging."""
 
-    def removable(self, arrange=None, branch="topic", sha=None, project=None):
-        """`settle.removable` asked about the worktree on `branch`, after `arrange(project, tree)`."""
+    def clean(self, arrange=None, branch="topic", sha=None):
+        """`settle.clean_at` asked about the worktree on `branch`, after `arrange(project, tree)`."""
         with worktree_holding() as (root, tree, head):
             if arrange is not None:
                 arrange(root, tree)
-            listed = settle.worktrees(root)
-            return settle.removable(project(root, tree) if project else root, listed[branch],
-                                    head if sha is None else sha(root))
+            holders = settle.worktrees(root)[branch]
+            return settle.clean_at(holders[0], head if sha is None else sha(root))
 
-    def test_Given_ACleanWorktreeAtTheHead_When_Asked_Then_ItIsRemovable(self):
+    def test_Given_ACleanWorktreeAtTheHead_When_Asked_Then_ItIsClean(self):
         # Act / Assert
-        self.assertTrue(self.removable())
-
-    def test_Given_AWorktreeHoldingOnlyIgnoredFiles_When_Asked_Then_ItIsRemovable(self):
-        # Arrange — `Library` is what a seeded worktree here holds, and it is ignored.
-        def library(_root, tree):
-            (tree / "Library").mkdir()
-            (tree / "Library" / "ArtifactDB").write_text("x", encoding="utf-8")
-
-        # Act / Assert
-        self.assertTrue(self.removable(library))
+        self.assertTrue(self.clean())
 
     def test_Given_AWorktreeHoldingAnUntrackedFile_When_Asked_Then_ItIsNot(self):
         # Arrange
@@ -2491,56 +2490,63 @@ class RemovableWorktreeTests(unittest.TestCase):
             (tree / "notes.txt").write_text("x", encoding="utf-8")
 
         # Act / Assert
-        self.assertFalse(self.removable(untracked))
+        self.assertFalse(self.clean(untracked))
+
+    def test_Given_AnUntrackedFileGitIsConfiguredToHide_When_Asked_Then_ItIsNot(self):
+        # Arrange — `status.showUntrackedFiles=no` leaves a plain `git status --porcelain` empty.
+        def hidden(_root, tree):
+            subprocess.run(["git", "-C", str(tree), "config", "status.showUntrackedFiles", "no"],
+                           capture_output=True, check=True)
+            (tree / "notes.txt").write_text("x", encoding="utf-8")
+
+        # Act / Assert
+        self.assertFalse(self.clean(hidden))
 
     def test_Given_AWorktreeWithACommitThePullRequestLacks_When_Asked_Then_ItIsNot(self):
-        # Arrange — clean, so only the HEAD separates it from the removable one.
+        # Arrange — clean, so only the HEAD separates it from the clean one.
         def ahead(_root, tree):
             committed(tree)
 
         # Act / Assert
-        self.assertFalse(self.removable(ahead))
+        self.assertFalse(self.clean(ahead))
 
     def test_Given_ALockedWorktree_When_Asked_Then_ItIsNot(self):
-        # Arrange — what a running agent's worktree carries here.
+        # Arrange — git removes a locked one only when forced twice.
         def locked(root, tree):
             subprocess.run(["git", "-C", str(root), "worktree", "lock", str(tree)],
                            capture_output=True, check=True)
 
         # Act / Assert
-        self.assertFalse(self.removable(locked))
+        self.assertFalse(self.clean(locked))
 
-    def test_Given_TheMainWorkingTreeAtTheHead_When_Asked_Then_ItIsNot(self):
-        # Arrange — asked from the linked tree, so the main one is not also the tree this runs from.
+    def test_Given_TheMainWorkingTreeAtItsHead_When_Asked_Then_ItIsNot(self):
         # Act / Assert
-        self.assertFalse(self.removable(branch="main", sha=head_of,
-                                        project=lambda _root, tree: tree))
+        self.assertFalse(self.clean(branch="main", sha=head_of))
 
-    def test_Given_TheTreeThisRunsFrom_When_Asked_Then_ItIsNot(self):
-        # Act / Assert
-        self.assertFalse(self.removable(project=lambda _root, tree: tree))
+    def test_Given_TwoWorktreesHoldingOneBranch_When_Listed_Then_BothAreKept(self):
+        # Arrange — `worktree add -f` puts a branch in a second tree, and a reading keeping one of
+        # the two would judge the branch by whichever git listed last.
+        with worktree_holding() as (root, _tree, _head):
+            subprocess.run(["git", "-C", str(root), "worktree", "add", "-q", "-f",
+                            str(root.parent / "second"), "topic"], capture_output=True, check=True)
+
+            # Act
+            holders = settle.worktrees(root)["topic"]
+
+            # Assert
+            self.assertEqual(len(holders), 2)
 
 
-class WorktreeMergeTests(unittest.TestCase):
-    """What the decision and `settle.py merge` do about the worktree a pull request was written in."""
+class HeldBranchMergeTests(unittest.TestCase):
+    """What `settle.py merge` does about the worktree a pull request was written in: refuses, as it
+    always has, and leaves the worktree where it is."""
 
-    def merge(self, project, head, dry_run=False, arrange=None, between=None):
-        """(what `gh` was sent, the decision's reasons) for a merge of PR 1, whose head is `head` on
-        `topic`, with every reading but the worktrees fabricated. `between` runs after the
-        decision's worktree reading and before any later one."""
+    def merge(self, project, head):
+        """(what `gh` was sent, what was refused) for a merge of PR 1, whose head is `head` on
+        `topic`, with every reading but the worktrees fabricated."""
         sent = []
-        listings = []
-
-        def worktrees(project):
-            listings.append(project)
-            if len(listings) == 2 and between is not None:
-                between()
-            return listed(project)
-
-        listed = settle.worktrees
         state = fabricate(1, branch="topic")._replace(sha=head, after=head)
         with fabricated_readings({1: state}) as stack:
-            stack.enter_context(mock.patch.object(settle, "worktrees", worktrees))
             stack.enter_context(mock.patch.object(settle, "worktree_clean", REAL_WORKTREE_CLEAN))
             stack.enter_context(mock.patch.object(
                 settle, "project_state",
@@ -2553,11 +2559,20 @@ class WorktreeMergeTests(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             refused = io.StringIO()
             stack.enter_context(contextlib.redirect_stderr(refused))
-            settle.merge(project, 1, None, dry_run=dry_run)
+            settle.merge(project, 1, None, dry_run=False)
         return sent, refused.getvalue()
 
-    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_ItIsRemoved(self):
-        # Arrange — an ignored `Library` in it, which the unforced removal has to take as well.
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_NothingIsSent(self):
+        # Arrange
+        with worktree_holding() as (project, _tree, head):
+            # Act
+            sent, _ = self.merge(project, head)
+
+            # Assert
+            self.assertEqual(sent, [])
+
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_ItIsLeftInPlace(self):
+        # Arrange — an ignored file in it, which a removal would take as well.
         with worktree_holding() as (project, tree, head):
             (tree / "Library").mkdir()
             (tree / "Library" / "ArtifactDB").write_text("x", encoding="utf-8")
@@ -2566,54 +2581,56 @@ class WorktreeMergeTests(unittest.TestCase):
             self.merge(project, head)
 
             # Assert
-            self.assertFalse(tree.exists())
+            self.assertTrue((tree / "Library" / "ArtifactDB").exists())
 
-    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_TheMergeIsSent(self):
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_TheReasonIsTheOldOne(self):
         # Arrange
         with worktree_holding() as (project, _tree, head):
-            # Act
-            sent, _ = self.merge(project, head)
-
-            # Assert
-            self.assertEqual(len(sent), 1)
-
-    def test_Given_AWorktreeHoldingAnUntrackedFile_When_Merged_Then_ItIsRefusedAsBefore(self):
-        # Arrange — refused rather than forced, with the reason a holder always had.
-        with worktree_holding() as (project, tree, head):
-            (tree / "notes.txt").write_text("x", encoding="utf-8")
-
             # Act
             _, refused = self.merge(project, head)
 
             # Assert
             self.assertIn(settle.held_reason("topic"), refused)
 
-    def test_Given_ACommitMadeInTheWorktreeAfterTheDecision_When_Merged_Then_NothingIsSent(self):
-        # Arrange — clean throughout, so git's own refusal to remove a dirty tree cannot be what
-        # stops it: only reading the HEAD again can.
-        with worktree_holding() as (project, tree, head):
-            # Act
-            sent, _ = self.merge(project, head, between=lambda: committed(tree))
 
-            # Assert
-            self.assertEqual(sent, [])
+# The line `fabricate(5, held=...)` prints once its holder is all that blocks it.
+HELD_LINE = "PR#5 0000000 READY once the worktree at /trees/topic-5 is removed"
 
-    def test_Given_ACleanWorktreeHoldingTheBranch_When_DryRun_Then_ItIsLeftInPlace(self):
-        # Arrange
-        with worktree_holding() as (project, tree, head):
-            # Act
-            self.merge(project, head, dry_run=True)
 
-            # Assert
-            self.assertTrue(tree.exists())
+class HeldBranchWatchTests(unittest.TestCase):
+    """A pull request held only by clean worktrees at its head wakes the caller, who decides."""
 
-    def test_Given_ACleanHolderInATable_When_TheWatcherPolls_Then_ItIsRecordedAsReady(self):
-        # Arrange — the watcher reaches it through the same decision, so the READY it prints is
-        # one the merge then takes.
+    def test_Given_OnlyACleanWorktreeHoldsTheBranch_When_WatchedUntilActionable_Then_ItSaysSo(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states={5: fabricate(5, held=CLEAN)})
+
+        # Assert
+        self.assertIn(HELD_LINE, watched.output)
+
+    def test_Given_OnlyACleanWorktreeHoldsTheBranch_When_ThePollEnds_Then_ItIsNotRecordedReady(self):
+        # Arrange — the ready record is `merge`'s own decision, and `merge` refuses a held branch.
         table = {5: fabricate(5, held=CLEAN)}
 
         # Act / Assert
-        self.assertEqual(polled(table), {5})
+        self.assertEqual(polled(table), set())
+
+    def test_Given_ADirtyWorktreeHoldsTheBranch_When_WatchedUntilActionable_Then_ItWaits(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, states={5: fabricate(5, held=True)})
+
+        # Assert — None is what a run still polling at the clock's bound leaves.
+        self.assertIsNone(watched.code)
+
+    def test_Given_ACleanHolderAndAPendingCheck_When_WatchedUntilActionable_Then_ItWaits(self):
+        # Arrange — the holder is not all that blocks it.
+        pending = [{"name": "Unity", "bucket": "pending"}]
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=2,
+                              states={5: fabricate(5, held=CLEAN, results=pending)})
+
+        # Assert
+        self.assertIsNone(watched.code)
 
 
 # The line a ready `fabricate(1)` prints, its sha being the number padded with zeros.
@@ -2801,6 +2818,52 @@ class FollowerTests(unittest.TestCase):
 
         # Assert
         self.assertIn(READY_LINE, watched.output)
+
+
+class PerCallerTests(unittest.TestCase):
+    """What one caller was told says nothing of what another heard."""
+
+    def test_Given_AnotherCallerWasToldOfAReadyOne_When_ThisCallerWatches_Then_ItIsToldToo(self):
+        # Arrange — one run exited over it and freed the lock, which this one then takes.
+        told = stamped_lines(READY_LINE)
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, seed_reported=told,
+                              reported_by="caller-b")
+
+        # Assert — a run that read the other's record as its own keeps polling to the bound.
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AnotherCallerWasToldOfAReadyOne_When_ThisCallerFollows_Then_ItIsToldToo(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True,
+                              seed_actionable=stamped_lines(READY_LINE),
+                              seed_reported=stamped_lines(READY_LINE), reported_by="caller-b")
+
+        # Assert — 1 is the refusal, None a run still following at the clock's bound.
+        self.assertEqual(watched.code, 0)
+
+
+# A head that moved while its checks were read, whose one check failed at the head first read.
+MOVED_FAILING = {1: fabricate(1, moved=True, results=[{"name": "Unity", "bucket": "fail"}])}
+
+
+class MovedHeadTests(unittest.TestCase):
+    """Check results read at a head that has since moved are about that head and not the new one."""
+
+    def test_Given_AHeadThatMovedWhileRead_When_Watched_Then_TheResultNamesTheHeadItWasReadAt(self):
+        # Act
+        watched = watch_until(bound=0, states=MOVED_FAILING)
+
+        # Assert
+        self.assertIn("PR#1 0000000 Unity => fail", watched.output)
+
+    def test_Given_AHeadThatMovedWhileRead_When_WatchedUntilActionable_Then_ItsOldResultWakesNothing(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, states=MOVED_FAILING)
+
+        # Assert
+        self.assertIsNone(watched.code)
 
 
 class HandOffTests(unittest.TestCase):

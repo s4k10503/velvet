@@ -15,6 +15,7 @@ stops the several; the pid here is what lets a reader ask whether the process th
 still exists. That is all it establishes — `running` answers about a process id, not about a watcher.
 """
 
+import hashlib
 import os
 import shlex
 import time
@@ -55,9 +56,9 @@ RETIRE_AFTER = 120 * POLL_SECONDS
 # otherwise read the delivery itself as a dead watcher and refuse the edits that act on it.
 HANDED_OFF = Path.home() / ".velvet-pr-watch.handed-off"
 
-# The actionable lines a `watch --until-actionable` run has already exited to report, so a re-arm
-# waits for something new rather than exiting at once over a pull request its caller already heard
-# about. `settle.py` owns how long a record of them is carried.
+# A directory of records, one per caller, of the actionable lines a `watch --until-actionable` run
+# has already exited to report, so a re-arm waits for something new rather than exiting at once over
+# a pull request its caller already heard about. `settle.py` owns how long a record is carried.
 REPORTED = Path.home() / ".velvet-pr-watch.reported"
 
 # The actionable lines of the watcher's last poll, written by every watcher, so a
@@ -65,11 +66,17 @@ REPORTED = Path.home() / ".velvet-pr-watch.reported"
 ACTIONABLE = Path.home() / ".velvet-pr-watch.actionable"
 
 
+def reported_record(caller):
+    """The record under `REPORTED` for `caller`, named by a digest so any caller string makes one
+    file name."""
+    return REPORTED / hashlib.sha256(caller.encode("utf-8")).hexdigest()[:16]
+
+
 def rearm_command(root):
     """The watcher in the form an agent runs it: backgrounded, it exits — waking its caller — once
-    an open pull request is ready or has a failing check or failed run it has not already exited
-    over. It says where it runs, since `refuse/background_relative_path.py` refuses a backgrounded
-    relative path."""
+    an open pull request is ready, is held only by clean worktrees at its head, or has a failing
+    check or failed run its caller has not already been told of. It says where it runs, since
+    `refuse/background_relative_path.py` refuses a backgrounded relative path."""
     return f"cd {shlex.quote(str(root))} && python3 scripts/pr/settle.py watch --until-actionable"
 
 
