@@ -75,6 +75,40 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base discards a box-shadow whose bracket colour mixes an invalid alpha.
+        [Test]
+        public void Given_ASizeModifierPast100BesideABracketShadowColour_When_Extracted_Then_TheShadowIsDiscarded()
+        {
+            // Act — the control is the same pair with the size's modifier inside the range.
+            var drawn = Shadow("shadow-lg/50", "shadow-[#ff0000]") ? Shadow("shadow-lg/150", "shadow-[#ff0000]") : true;
+
+            // Assert
+            Assert.That(drawn, Is.False);
+        }
+
+        [Test]
+        public void Given_ASizeModifierPast100BesideShadowInherit_When_Extracted_Then_TheShadowStays()
+        {
+            // Act — Tailwind writes shadow-inherit as --tw-shadow-color: inherit, with no color-mix() for the alpha to
+            // break.
+            var drawn = Shadow("shadow-lg/150", "shadow-inherit");
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
+
+        [Test]
+        public void Given_ASizeModifierPast100BesideAShadowColour_When_ItsDeclaredColourIsRead_Then_AChildInheritsNone()
+        {
+            // Act — the colour's color-mix() is invalid where it is computed, so a child's shadow-inherit takes no colour
+            // from it and keeps each layer's own.
+            var declared = StyleShadowClass.DeclaredColours(new[] { "shadow-lg/150", "shadow-red-500" }).Shadow;
+
+            // Assert
+            Assert.That(declared.Inherit ? "inherit" : declared.Colour is { } c ? ColorUtility.ToHtmlStringRGBA(c) : "none",
+                Is.EqualTo("none"));
+        }
+
         [Test]
         public void Given_ABracketedNegativeSizeModifier_When_Extracted_Then_ItsOwnColourIsClear()
         {
