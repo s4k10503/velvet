@@ -6,8 +6,8 @@ using System.Threading;
 
 namespace Velvet
 {
-    // One query of a UseQueries render, whatever its data types: its options and settings, the observer it shares
-    // with the other queries of its entry, the observer that computes its own result, and the entry it read.
+    // One query of a UseQueries render, whatever its data types: its options and settings, the observer that holds
+    // its subscription, the observer that computes its own result, and the entry it read.
     internal abstract class QueriesItem
     {
         internal abstract QueryKey KeyId { get; }
@@ -32,9 +32,8 @@ namespace Velvet
         internal abstract Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>? Suspend(QueryClient client, out object request);
     }
 
-    // The shared observer holds the entry's own data under the options without a select, as v5's one observer for
-    // a queryHash does whatever each query selects; each query's TData comes from its computer, as v5's
-    // getOptimisticResult(options) runs for each query on that observer.
+    // The observer is matched by its entry alone, as v5 matches one by queryHash whatever each query selects, so it
+    // holds the entry's own data under the options without a select; the query's TData comes from its computer.
     internal sealed class QueriesItem<TQueryFnData, TData> : QueriesItem
     {
         private readonly QueryOptionsBase<TQueryFnData, TData> _options;
@@ -81,7 +80,7 @@ namespace Velvet
             _entry = _settings.ReadEntry(client);
             _settings = _settings.PreventingErrorBoundaryRetry(_entry, boundary);
             _shared = _shared.PreventingErrorBoundaryRetry(_entry, boundary);
-            // The shared observer's own reading is what its next update is compared with, as for UseQuery.
+            // The observer's own reading is what its next update is compared with, as for UseQuery.
             _observer.Read(_entry, _shared, source);
             return _computer.Read(_entry, _settings, source);
         }
@@ -128,7 +127,7 @@ namespace Velvet
         }
     }
 
-    // A query's options without the select, for the observer the queries of one entry share.
+    // A query's options without the select, for the observer that holds a UseQueries query's subscription.
     internal sealed record RawQueryOptions<TQueryFnData> : QueryOptionsBase<TQueryFnData, TQueryFnData>
     {
         private RawQueryOptions(QueryOptionsBase origin, QueryFunction<TQueryFnData> function)
@@ -146,7 +145,7 @@ namespace Velvet
 
         internal override QueryFunction<TQueryFnData> Function => Fn;
 
-        // The shared observer tells the hook of every change to the entry, and each query decides from its own
+        // The observer tells the hook of every change to the entry, and each query decides from its own
         // result whether it re-renders, as v5's observer compares its selected result's tracked properties.
         internal static RawQueryOptions<TQueryFnData> Of<TData>(QueryOptionsBase<TQueryFnData, TData> source) => new(source, source.Function)
         {
@@ -283,16 +282,18 @@ namespace Velvet
             return read;
         }
 
-        // TanStack's #findMatchingObservers: a query takes the observer the last commit held over the same entry, the
-        // last of them where several did, as v5's Map keeps the last, and queries over one entry share it whatever
-        // their data types. Each query's computer is kept for the next query over the entry with the same types,
-        // in the order they come, so its select memo carries over.
+        // TanStack's #findMatchingObservers: a query is handed, whatever its data types, the first observer the last
+        // commit held over its entry that no query before it was handed, and a new one where none is left. Each
+        // query's computer is kept for the next query over the entry with the same types, in the order they come, so
+        // its select memo carries over.
         private void Match(QueriesRead read)
         {
-            var byKey = new Dictionary<QueryKey, QueryObserver>();
+            var byKey = new Dictionary<QueryKey, Queue<QueryObserver>>();
             foreach (var observer in _observers)
             {
-                if (observer.CommittedKeyId is { } id) byKey[id] = observer;
+                if (observer.CommittedKeyId is not { } id) continue;
+                if (!byKey.TryGetValue(id, out var held)) byKey.Add(id, held = new Queue<QueryObserver>());
+                held.Enqueue(observer);
             }
             var computers = new Dictionary<(QueryKey, Type), Queue<object>>();
             foreach (var item in _items)
@@ -305,7 +306,8 @@ namespace Velvet
             {
                 var item = read.Items[i];
                 var computer = computers.TryGetValue((item.KeyId, item.ResultType), out var queue) && queue.Count > 0 ? queue.Dequeue() : null;
-                item.Match(byKey.TryGetValue(item.KeyId, out var held) ? held : null, computer, OnObserverChanged);
+                var observer = byKey.TryGetValue(item.KeyId, out var held) && held.Count > 0 ? held.Dequeue() : null;
+                item.Match(observer, computer, OnObserverChanged);
                 read.Observers[i] = item.Observer;
             }
         }

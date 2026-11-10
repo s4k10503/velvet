@@ -1,0 +1,106 @@
+#nullable enable
+using System;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.UIElements;
+using Velvet.Editor;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Pins how UI Toolkit's own importer reads a number in a custom property, which UssCustomPropertyText reads the
+    /// same way to decide what it quotes.
+    /// </summary>
+    internal sealed class UssNumberImportTests
+    {
+        private const string Name = "--x";
+
+        private static bool FailsTheSheet(string value) => Imported(value, sheet => sheet.importedWithErrors);
+
+        // The property's stored value spelled back as CSS, or null where the importer failed the sheet or stored no
+        // such property.
+        private static string? StoredText(string value) => Imported(value, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
+
+        private static T Imported<T>(string value, Func<StyleSheet, T> read)
+        {
+            var sheet = ScriptableObject.CreateInstance<StyleSheet>();
+            try
+            {
+                var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
+                StockStyleSheetImport.Import!.Invoke(impl, new object[] { sheet, ":root { " + Name + ": " + value + "; }" });
+                return read(sheet);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(sheet);
+            }
+        }
+
+        private static string? Spelled(StyleSheet sheet)
+        {
+            var rules = EngineMember.StyleSheetRules.ResolveProperty()?.GetValue(sheet) as Array;
+            foreach (var rule in rules ?? Array.Empty<object>())
+            {
+                var properties = EngineMember.StyleRuleProperties.ResolveProperty()?.GetValue(rule) as Array;
+                foreach (var property in properties ?? Array.Empty<object>())
+                {
+                    if (EngineMember.StylePropertyName.ResolveProperty()?.GetValue(property) as string == Name
+                        && EngineMember.StylePropertyValues.ResolveProperty()?.GetValue(property) is Array handles)
+                    {
+                        return StyleCustomProperties.Spell(sheet, handles);
+                    }
+                }
+            }
+            return null;
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a number is an engine fact the base meets too.
+        // These are numbers its lexer reads as CSS does, which UssCustomPropertyText leaves unquoted.
+        [TestCase("4px")]
+        [TestCase("1.5px")]
+        [TestCase("-3px")]
+        public void Given_ANumberTheLexerReadsAsCssDoes_When_TheStockImporterReadsTheRawSheet_Then_ItStoresItAsWritten(string value)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(value));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a number is an engine fact the base meets too.
+        // One case for each reading of UssCustomPropertyText.MisreadsNumber that fails the sheet: no exponent, and a
+        // unit started at a `-`, a `_` and a non-ASCII character.
+        [TestCase("1e3px")]
+        [TestCase("1-2")]
+        [TestCase("1_a")]
+        [TestCase("1٣")]
+        public void Given_ANumberTheLexerReadsAsAnUnkeptUnit_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
+        {
+            // Arrange
+            // Act
+            var failed = FailsTheSheet(value);
+
+            // Assert
+            Assert.That(failed, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a number is an engine fact the base meets too.
+        // The readings of UssCustomPropertyText.MisreadsNumber that split the value: a full stop no digit follows is
+        // dropped after an integer, signed or not, and a unit ends at its first character that is not an ASCII letter.
+        [TestCase("3.px", "3 px")]
+        [TestCase("-3.px", "-3 px")]
+        [TestCase("1px_a", "1px _a")]
+        public void Given_ANumberTheLexerEndsElsewhereThanCss_When_TheStockImporterReadsTheRawSheet_Then_ItStoresOtherTokens(
+            string value, string expected)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+    }
+}

@@ -234,8 +234,8 @@ namespace Velvet
         // What a request runs, as v5 reads options.queryFn; an infinite query's runs its behavior instead.
         internal abstract QueryFunction<TQueryFnData> Function { get; }
 
-        // These options without their select, for the observer UseQueries shares among the queries of one entry,
-        // which holds the entry's own data whatever each query makes of it.
+        // These options without their select, for the observer that holds a UseQueries query's subscription,
+        // which holds the entry's own data whatever the query makes of it.
         internal QueryOptionsBase<TQueryFnData, TQueryFnData> Raw() => RawQueryOptions<TQueryFnData>.Of(this);
 
         /// <summary>
@@ -1436,7 +1436,7 @@ namespace Velvet
                 _hasCurrent = true;
                 if (first || Notifies(changed)) OnChange();
                 // Whatever the component reads, as v5 tells the cache of every result that changed. The observer
-                // UseQueries shares holds no query's result, so each of its queries announces its own.
+                // holding a UseQueries query's subscription holds no query's result, so the query announces its own.
                 if (_settings.Options is not RawQueryOptions<TQueryFnData>)
                 {
                     entry.Client.QueryCache.Notify(new QueryCacheEvent(QueryCacheEventType.ObserverResultsUpdated, entry.Query));
@@ -1641,9 +1641,9 @@ namespace Velvet
                 && settings.Rules.ShouldFetchOptionally(entry, inRender);
         }
 
-        // UseQueries' result for one query over the observer the queries of its entry share, TanStack's
+        // UseQueries' result for one query over the observer that holds its subscription, TanStack's
         // getOptimisticResult(options) on that observer: this observer subscribes to nothing and computes the
-        // query's own result, its select and placeholder memo its own, while the shared one holds the subscription.
+        // query's own result, its select and placeholder memo its own.
         private QueryEntryObserver<TQueryFnData>? _host;
 
         internal void Host(QueryEntryObserver<TQueryFnData> host) => _host = host;
@@ -1662,7 +1662,7 @@ namespace Velvet
         }
 
         // A result computed outside a render from the entry as it stands, as v5 reads a query's result after its
-        // shared observer told of a change.
+        // observer told of a change.
         internal QueryResult<TData> Refresh(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, IQueryResultSource source)
         {
             if (entry.HasData) _lastWithData = entry;

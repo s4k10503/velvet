@@ -149,8 +149,9 @@ still generate theirs.
 
 A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--spacing: 0.25rem`,
 `--breakpoint-3xl: 120rem`), and `calc()`, `min()`, `max()` and `clamp()` are evaluated. UI Toolkit's own importer fails
-a whole file on a `rem` it meets in a custom property and drops a math function, `cubic-bezier()` or `steps()`, so `Velvet.Editor` imports such a file
-itself, storing those custom properties as the text they were written with. A new or edited file is imported first by
+a whole file on a `rem` it meets in a custom property, drops a math function, `cubic-bezier()` or `steps()`, and fails
+the file on or splits a number it reads otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as `3 px`, `1px_a` as
+`1px _a`), so `Velvet.Editor` imports such a file itself, storing those custom properties as the text they were written with. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
 file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,
 start from their defaults on the file's new importer. The selection is not made for a file in a package the Package Manager installs, which

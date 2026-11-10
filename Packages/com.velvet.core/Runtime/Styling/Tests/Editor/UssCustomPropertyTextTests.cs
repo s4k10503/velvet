@@ -32,9 +32,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's rewrite already leaves every one of these as it found it; the
-        // easing keyword and the step-like name added here are the values the new cubic-bezier() and steps() match must not take.
+        // easing keyword and the step-like name are the values the cubic-bezier() and steps() match must not take.
         [TestCase(":root { --spacing: 4px; }")]
-        [TestCase(":root { --a: 50%; --b: 200ms; --c: 1e3px; --d: 90deg; }")]
+        [TestCase(":root { --a: 50%; --b: 200ms; --d: 90deg; }")]
         [TestCase(":root { --ease-out: ease-out; --ease-lin: linear; --mysteps: 3px; }")]
         [TestCase(":root { --color-brand: #ff0066; --animate-x: kf 2s linear infinite; }")]
         [TestCase(":root { --spacing-2: var(--spacing-1); --font: \"Inter\"; }")]
@@ -90,7 +90,6 @@ namespace Velvet.Tests
         [TestCase(":root { --x: 4px .; }")]
         [TestCase(":root { --x: 4; }")]
         [TestCase(":root { --x: 4.5; }")]
-        [TestCase(":root { --x: 1e3; }")]
         public void Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -105,7 +104,6 @@ namespace Velvet.Tests
         [TestCase(".a { --x\u007f: 1rem; }")]
         [TestCase(":root { --x: \"a\" 1rem; }")]
         [TestCase(":root { --x: mysteps(3); }")]
-        [TestCase(":root { --x: 1e+3px; }")]
         [TestCase(":root { --x: .5.p; }")]
         public void Given_ADeclarationTheRewriteDeclines_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
@@ -130,6 +128,53 @@ namespace Velvet.Tests
         [TestCase(":root { --x: 4e; }", ":root { --x: \"4e\"; }")]
         [TestCase(":root { --x: 4e+; }", ":root { --x: \"4e+\"; }")]
         public void Given_AnUnkeptUnitInADeclarationOfAnUnusualShape_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: 1_a; }", ":root { --x: \"1_a\"; }")]
+        [TestCase(":root { --x: 1-a; }", ":root { --x: \"1-a\"; }")]
+        [TestCase(":root { --x: 1\u0663; }", ":root { --x: \"1\u0663\"; }")]
+        public void Given_AUnitStartedByAnUnderscoreAHyphenOrANonAsciiCharacter_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: 1px_a; }", ":root { --x: \"1px_a\"; }")]
+        [TestCase(":root { --x: 1px-a; }", ":root { --x: \"1px-a\"; }")]
+        [TestCase(":root { --x: 1-2; }", ":root { --x: \"1-2\"; }")]
+        [TestCase(":root { --x: 3.px; }", ":root { --x: \"3.px\"; }")]
+        [TestCase(":root { --x: 3.; }", ":root { --x: \"3.\"; }")]
+        [TestCase(":root { --x: 1e3; }", ":root { --x: \"1e3\"; }")]
+        [TestCase(":root { --x: 1e3px; }", ":root { --x: \"1e3px\"; }")]
+        [TestCase(":root { --x: 1e+3px; }", ":root { --x: \"1e+3px\"; }")]
+        public void Given_ANumberTheImportersLexerReadsOtherwiseThanCss_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already quotes it, for a unit `p` neither CSS nor the importer
+        // reads; it stays quoted because the importer's lexer drops the full stop and stores `3 p`.
+        [TestCase(":root { --x: 3.p; }", ":root { --x: \"3.p\"; }")]
+        public void Given_AFullStopNoDigitFollowsAfterANumber_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
             string uss, string expected)
         {
             // Arrange

@@ -479,7 +479,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_TheyShareOneObserver()
+        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_EachKeepsAnObserverOfItsOwn()
         {
             // Arrange
             s_keys = new[] { "a", "a" };
@@ -490,7 +490,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
-                Is.EqualTo(1), "v5's map of observers by hash keeps one for each entry");
+                Is.EqualTo(2), "v5 keeps a list of the observers of each hash and hands them out in order");
+        }
+
+        [Test]
+        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(Reader);
+            var renders = s_renders.Count;
+
+            // Act
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders + 1),
+                "Each query takes the observer it held, so v5's setQueries finds no structural change to notify of");
         }
 
         [Test]
@@ -510,7 +527,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheListCommitsAgain_Then_TheyShareOneObserver()
+        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheListCommitsAgain_Then_EachKeepsAnObserverOfItsOwn()
         {
             // Arrange
             using var mounted = Mount(MixedReader);
@@ -521,7 +538,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
-                Is.EqualTo(1), "v5 keeps one observer for each queryHash, whatever each query selects");
+                Is.EqualTo(2), "v5 matches an observer by its queryHash alone, whatever each query selects");
         }
 
         [Test]

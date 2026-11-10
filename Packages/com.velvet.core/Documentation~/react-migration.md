@@ -706,9 +706,9 @@ that are `Fetching`, a paused one left out.
 **Several queries in one hook.** `UseQueries` reads each query of its list as `UseQuery` would and returns the
 results in the list's order, so the number of queries can change between renders. A query keeps its observer
 while some query of the list reads the same entry, whatever its position, as v5 matches observers by
-`queryHash`, and queries of one list over one entry share one observer, as v5's map of them keeps one, whatever
-each makes of the entry's data: each query's result is its own, from its own `Select`, as v5's
-`getOptimisticResult(options)` runs for each query on that observer; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
+`queryHash`, whatever each makes of the entry's data. Queries of one list over one entry each keep an observer of
+their own, the first held over the entry going to the first of them, as v5 hands out its list of them in order. Each
+query's result is its own, from its own `Select`; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
 entry logs a warning, in the Editor and a development build, as v5 warns outside production. Two to four
 queries passed as their own arguments keep their own data types, and the hook returns a tuple of their results
 or hands `combine` each result as its own argument; a list built at run time holds queries of one type. A

@@ -7,9 +7,11 @@ namespace Velvet.Editor
 {
     /// <summary>
     /// Rewrites the custom properties of a USS file that UI Toolkit's importer cannot hold: a value with a unit
-    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) fails the whole sheet, and one with a CSS math function, <c>cubic-bezier()</c> or
-    /// <c>steps()</c> is dropped. Such a value becomes a quoted string of its own text, which the importer stores as written and the
-    /// theme readers take back as CSS (<see cref="StyleCustomProperties.Spell"/>).
+    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) fails the whole sheet, one with a CSS math function,
+    /// <c>cubic-bezier()</c> or <c>steps()</c> is dropped, and one with a number its lexer reads otherwise than CSS
+    /// does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>). Such a value becomes a quoted
+    /// string of its own text, which the importer stores as written and the theme readers take back as CSS
+    /// (<see cref="StyleCustomProperties.Spell"/>).
     /// </summary>
     internal static class UssCustomPropertyText
     {
@@ -214,15 +216,16 @@ namespace Velvet.Editor
             return " !important";
         }
 
-        // Whether the importer would fail or drop value: a unit it does not keep, or a math function. A value holding a
-        // quote or a backslash is left as written, so a unit in it still fails the importer.
+        // Whether the importer would fail, drop or split value: a number its lexer reads otherwise than CSS does or with
+        // a unit it does not keep, or a math function. A value holding a quote or a backslash is left as written, so a
+        // unit in it still fails the importer.
         internal static bool NeedsQuoting(string value)
         {
             if (value.IndexOfAny(new[] { '"', '\'', '\\' }) >= 0)
             {
                 return false;
             }
-            return TailwindMathSpacing.HasMathFunction(value) || HasEasingFunction(value) || HasUnkeptUnit(value);
+            return TailwindMathSpacing.HasMathFunction(value) || HasEasingFunction(value) || HasMisreadNumber(value);
         }
 
         // cubic-bezier() and steps(), which the importer drops from a custom property as it does a math function.
@@ -240,7 +243,7 @@ namespace Velvet.Editor
             return at >= 0;
         }
 
-        private static bool HasUnkeptUnit(string value)
+        private static bool HasMisreadNumber(string value)
         {
             var i = 0;
             while (i < value.Length)
@@ -256,17 +259,10 @@ namespace Velvet.Editor
                 }
                 else if (StartsNumber(value, i))
                 {
-                    i = NumberEnd(value, i);
-                    var unitEnd = i;
-                    while (unitEnd < value.Length && char.IsLetter(value[unitEnd]))
-                    {
-                        unitEnd++;
-                    }
-                    if (unitEnd > i && !s_importerUnits.Contains(value.Substring(i, unitEnd - i)))
+                    if (MisreadsNumber(value, ref i))
                     {
                         return true;
                     }
-                    i = unitEnd;
                 }
                 else
                 {
@@ -286,48 +282,58 @@ namespace Velvet.Editor
             return c == '#' || c == '_' || char.IsLetter(c) || c > 127;
         }
 
-        // A sign is not read: the number it would open ends where the one after it does, so the unit is the same.
+        // A sign is not read: the lexer reads the number it would open as it reads the one after it.
         private static bool StartsNumber(string value, int i)
         {
             if (value[i] == '.')
             {
                 i++;
             }
-            return i < value.Length && char.IsDigit(value[i]);
+            return i < value.Length && IsDigit(value[i]);
         }
 
-        private static int NumberEnd(string value, int i)
+        // Reads the number at i as UI Toolkit's lexer does, moving i past it, and answers whether that reading is not
+        // CSS's or its unit is not one the importer keeps. The lexer reads no exponent, drops a full stop no digit
+        // follows where the number has no fraction yet, starts a unit at a `-`, a `_` or a non-ASCII character as well
+        // as at an ASCII letter, and ends one at its first character that is not an ASCII letter, where CSS reads on
+        // through digits, `-`, `_` and non-ASCII characters. UssNumberImportTests holds each of those.
+        private static bool MisreadsNumber(string value, ref int i)
         {
-            while (i < value.Length && char.IsDigit(value[i]))
+            var fraction = value[i] == '.';
+            i = DigitsEnd(value, fraction ? i + 1 : i);
+            if (!fraction && i < value.Length && value[i] == '.')
+            {
+                if (i + 1 == value.Length || !IsDigit(value[i + 1]))
+                {
+                    return true;
+                }
+                i = DigitsEnd(value, i + 1);
+            }
+            if (i == value.Length || !StartsUnit(value[i]))
+            {
+                return false;
+            }
+            var unit = i++;
+            while (i < value.Length && IsAsciiLetter(value[i]))
             {
                 i++;
             }
-            if (i < value.Length && value[i] == '.')
+            return !s_importerUnits.Contains(value.Substring(unit, i - unit)) || (i < value.Length && IsIdentChar(value[i]));
+        }
+
+        private static int DigitsEnd(string value, int i)
+        {
+            while (i < value.Length && IsDigit(value[i]))
             {
                 i++;
-                while (i < value.Length && char.IsDigit(value[i]))
-                {
-                    i++;
-                }
-            }
-            // An exponent only where digits follow, so `1em` keeps its unit.
-            if (i < value.Length && value[i] is 'e' or 'E')
-            {
-                var j = i + 1;
-                if (j < value.Length && value[j] is '+' or '-')
-                {
-                    j++;
-                }
-                if (j < value.Length && char.IsDigit(value[j]))
-                {
-                    while (j < value.Length && char.IsDigit(value[j]))
-                    {
-                        j++;
-                    }
-                    i = j;
-                }
             }
             return i;
         }
+
+        private static bool IsDigit(char c) => c is >= '0' and <= '9';
+
+        private static bool IsAsciiLetter(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
+
+        private static bool StartsUnit(char c) => IsAsciiLetter(c) || c is '-' or '_' || c > 127;
     }
 }
