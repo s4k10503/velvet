@@ -72,12 +72,14 @@ def reported_record(caller):
     return REPORTED / hashlib.sha256(caller.encode("utf-8")).hexdigest()[:16]
 
 
-def rearm_command(root):
+def rearm_command(root, caller=None):
     """The watcher in the form an agent runs it: backgrounded, it exits — waking its caller — once
-    an open pull request is ready, is held only by clean worktrees at its head, or has a failing
-    check or failed run its caller has not already been told of. It says where it runs, since
-    `refuse/background_relative_path.py` refuses a backgrounded relative path."""
-    return f"cd {shlex.quote(str(root))} && python3 scripts/pr/settle.py watch --until-actionable"
+    an open pull request is ready, is held only by worktrees, or has a failing check or failed run
+    that `caller` has not already been told of. Without a caller, the run reports everything
+    standing. It says where it runs, since `refuse/background_relative_path.py` refuses a
+    backgrounded relative path."""
+    command = f"cd {shlex.quote(str(root))} && python3 scripts/pr/settle.py watch --until-actionable"
+    return command if caller is None else f"{command} --caller {shlex.quote(caller)}"
 
 
 def beat(pid, now=None):

@@ -331,7 +331,9 @@ something that is itself on the critical path. Work that is off the critical pat
 A pending check stops blocking once a watcher writes {HEARTBEAT} on each
 poll. Run the committed one rather than writing another — the hand-written ones have been pinned to
 a single PR number, which leaves the next one unwatched behind a fresh heartbeat. Run it in the
-background: it exits once a pull request is ready or failing, and that exit is what reaches you:
+background: it exits once a pull request is ready or failing, and that exit is what reaches you.
+Re-run the command it prints as it exits: its `--caller` keeps what it already told you from
+being told again:
 
   {rearm_command(HOOK_DIRECTORY.parent.parent)}
 
