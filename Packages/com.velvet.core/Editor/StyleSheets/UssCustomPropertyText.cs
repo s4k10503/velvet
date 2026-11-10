@@ -48,12 +48,16 @@ namespace Velvet.Editor
                 }
                 else if (!char.IsWhiteSpace(c))
                 {
-                    if (atStart && c == '-' && i + 1 < uss.Length && uss[i + 1] == '-' && TryRewriteDeclaration(uss, ref i, output))
+                    var start = i;
+                    if (atStart && c == '-' && i + 1 < uss.Length && uss[i + 1] == '-')
                     {
-                        atStart = false;
-                        continue;
+                        RewriteDeclaration(uss, ref i, output);
                     }
                     atStart = false;
+                    if (i != start)
+                    {
+                        continue;
+                    }
                 }
                 output.Append(c);
                 i++;
@@ -80,6 +84,7 @@ namespace Velvet.Editor
             if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
             {
                 var close = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                // MUTANT_SURVIVES(equivalent, boundary): the search starts at i + 2, so a match is never at 0.
                 return close < 0 ? text.Length : close + 2;
             }
             if (c != '"' && c != '\'')
@@ -100,7 +105,8 @@ namespace Velvet.Editor
             return text.Length;
         }
 
-        private static bool TryRewriteDeclaration(string uss, ref int i, StringBuilder output)
+        // Moves i past the declaration only where it rewrites it, so a declaration left as written is copied by the caller.
+        private static void RewriteDeclaration(string uss, ref int i, StringBuilder output)
         {
             var nameEnd = i;
             while (nameEnd < uss.Length && IsIdentChar(uss[nameEnd]))
@@ -121,7 +127,7 @@ namespace Velvet.Editor
             }
             if (colon >= uss.Length || uss[colon] != ':')
             {
-                return false;
+                return;
             }
             var valueStart = colon + 1;
             var valueEnd = ValueEnd(uss, valueStart);
@@ -130,7 +136,7 @@ namespace Velvet.Editor
             value = value.Trim();
             if (!NeedsQuoting(value))
             {
-                return false;
+                return;
             }
             var newlines = 0;
             for (var k = valueStart; k < valueEnd; k++)
@@ -145,7 +151,6 @@ namespace Velvet.Editor
             // The line breaks the value held, so an importer message names the line the author wrote.
             output.Append('"').Append(important).Append('\n', newlines);
             i = valueEnd;
-            return true;
         }
 
         private static bool IsIdentChar(char c) => char.IsLetterOrDigit(c) || c is '-' or '_' || c > 127;
@@ -200,6 +205,7 @@ namespace Velvet.Editor
         private static string SplitImportant(ref string value)
         {
             var bang = value.LastIndexOf('!');
+            // MUTANT_SURVIVES(equivalent, boundary): a bang at 0 leaves NeedsQuoting either an empty value or `!important`, declining both.
             if (bang < 0 || !string.Equals(value.Substring(bang + 1).Trim(), "important", StringComparison.OrdinalIgnoreCase))
             {
                 return string.Empty;
@@ -280,13 +286,10 @@ namespace Velvet.Editor
             return c == '#' || c == '_' || char.IsLetter(c) || c > 127;
         }
 
+        // A sign is not read: the number it would open ends where the one after it does, so the unit is the same.
         private static bool StartsNumber(string value, int i)
         {
-            if (value[i] is '+' or '-')
-            {
-                i++;
-            }
-            if (i < value.Length && value[i] == '.')
+            if (value[i] == '.')
             {
                 i++;
             }
@@ -295,10 +298,6 @@ namespace Velvet.Editor
 
         private static int NumberEnd(string value, int i)
         {
-            if (value[i] is '+' or '-')
-            {
-                i++;
-            }
             while (i < value.Length && char.IsDigit(value[i]))
             {
                 i++;

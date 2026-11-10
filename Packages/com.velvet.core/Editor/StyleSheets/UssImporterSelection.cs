@@ -24,15 +24,14 @@ namespace Velvet.Editor
             }
         }
 
-        /// <summary>Selects the importer for the file at path where it needs it, and answers whether it did.</summary>
-        internal static bool Ensure(string path)
+        /// <summary>Selects the importer for the file at path where it needs it.</summary>
+        internal static void Ensure(string path)
         {
             if (AssetDatabase.GetImporterOverride(path) == typeof(VelvetStyleSheetImporter) || IsImmutable(path) || !Needs(path))
             {
-                return false;
+                return;
             }
             AssetDatabase.SetImporterOverride<VelvetStyleSheetImporter>(path);
-            return true;
         }
 
         private static bool IsImmutable(string path)

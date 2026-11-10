@@ -1,3 +1,6 @@
+using System;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 using NUnit.Framework;
 using Velvet.Editor;
 
@@ -60,6 +63,115 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(lines, Is.EqualTo(uss.Split('\n').Length));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves a custom property written outside any rule as it is.
+        [TestCase("--x: 1rem;")]
+        [TestCase(".a { } --x: 1rem;")]
+        [TestCase("--a: 4px; --b: 1rem;")]
+        public void Given_ACustomPropertyOutsideAnyRule_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already leaves as written each text or value ending inside a token it reads.
+        [TestCase(".a {-")]
+        [TestCase(".a { color: red; } /")]
+        [TestCase("\"abc")]
+        [TestCase(".a{--x")]
+        [TestCase(".a { --x ")]
+        [TestCase(":root { --x: 4px -; }")]
+        [TestCase(":root { --x: 4px +; }")]
+        [TestCase(":root { --x: 4px .; }")]
+        [TestCase(":root { --x: 4; }")]
+        [TestCase(":root { --x: 4.5; }")]
+        [TestCase(":root { --x: 1e3; }")]
+        public void Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already declines to rewrite each of these declarations as written.
+        [TestCase(".a { --x\u007f: 1rem; }")]
+        [TestCase(":root { --x: \"a\" 1rem; }")]
+        [TestCase(":root { --x: mysteps(3); }")]
+        [TestCase(":root { --x: 1e+3px; }")]
+        [TestCase(":root { --x: .5.p; }")]
+        public void Given_ADeclarationTheRewriteDeclines_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(uss));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already quotes each of these values and leaves the rest as written.
+        [TestCase(".a { --x: 1rem", ".a { --x: \"1rem\"")]
+        [TestCase(":root { --bg: url(a;b.png) 1rem; }", ":root { --bg: \"url(a;b.png) 1rem\"; }")]
+        [TestCase(".a { --x: 1rem /; }", ".a { --x: \"1rem /\"; }")]
+        [TestCase(".a { --x: 1rem/* c */2rem; }", ".a { --x: \"1rem 2rem\"; }")]
+        [TestCase(".a { --f: \"x\"; --g: 1rem; }", ".a { --f: \"x\"; --g: \"1rem\"; }")]
+        [TestCase(".a { --f: \"a\\\"b\"; --g: 1rem; }", ".a { --f: \"a\\\"b\"; --g: \"1rem\"; }")]
+        [TestCase(".a { --x : 1rem; }", ".a { --x : \"1rem\"; }")]
+        [TestCase(":root { --x: \u007f1rem; }", ":root { --x: \"\u007f1rem\"; }")]
+        [TestCase(":root { --x: 1px2rem; }", ":root { --x: \"1px2rem\"; }")]
+        [TestCase(":root { --x: 4e; }", ":root { --x: \"4e\"; }")]
+        [TestCase(":root { --x: 4e+; }", ":root { --x: \"4e+\"; }")]
+        public void Given_AnUnkeptUnitInADeclarationOfAnUnusualShape_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);
+
+        // On a thread of its own, so a rewrite that never returns fails its case rather than holding the suite; it then
+        // reads as null, which no expected text equals.
+        private static string RewriteWithin(string uss)
+        {
+            string rewritten = null;
+            Exception thrown = null;
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    rewritten = UssCustomPropertyText.Rewrite(uss);
+                }
+                catch (Exception exception)
+                {
+                    thrown = exception;
+                }
+            })
+            {
+                IsBackground = true,
+            };
+            thread.Start();
+            if (!thread.Join(RewriteBound))
+            {
+                return null;
+            }
+            if (thrown != null)
+            {
+                ExceptionDispatchInfo.Capture(thrown).Throw();
+            }
+            return rewritten;
         }
     }
 }

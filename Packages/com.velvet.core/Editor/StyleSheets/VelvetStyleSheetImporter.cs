@@ -46,7 +46,6 @@ namespace Velvet.Editor
                 ctx.LogImportError("IOException : " + exception.Message);
             }
             var sheet = ScriptableObject.CreateInstance<StyleSheet>();
-            sheet.hideFlags = HideFlags.NotEditable;
             try
             {
                 if (!string.IsNullOrEmpty(uss))
@@ -57,6 +56,8 @@ namespace Velvet.Editor
             finally
             {
                 ctx.AddObjectToAsset("stylesheet", sheet);
+                // MUTANT_SURVIVES(equivalent, line removed): the sheet is the only object added, so the import makes it the main one anyway;
+                // VelvetStyleSheetImporterTests' main-asset case reads that.
                 ctx.SetMainObject(sheet);
             }
         }
