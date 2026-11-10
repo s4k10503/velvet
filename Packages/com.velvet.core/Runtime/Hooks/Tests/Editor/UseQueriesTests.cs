@@ -70,6 +70,12 @@ namespace Velvet.Tests
             s_now = TimeSpan.Zero;
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
+        }
+
         #region Results
 
         [Test]
@@ -278,6 +284,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never notified from a commit; deleting `_committed = false;` from QueriesObserver.LeaveAll reddens it.
+        [Test]
+        public void Given_StrictModeAndCachedData_When_TheMountsEffectsReplay_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            using var mounted = Mount(Reader);
+            var renders = s_renders.Count;
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders), "v5's StrictMode replay hands setQueries the observers it kept, so nothing is replaced");
+        }
+
+        [Test]
+        public void Given_ARenderedCombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersOnce_Then_ItsCommitRendersWhatTheCombineMakesOfIt()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(StaleReader);
+            Rerender(mounted);
+            s_now = TimeSpan.FromSeconds(2);
+
+            // Act
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true), "v5's setQueries runs combine over the result it replaced and re-renders for what changed");
         }
 
         #endregion
