@@ -752,8 +752,8 @@ namespace Velvet
 
 
         // Discards a suspended IndexedReconcile state and returns the old instances it held. Invoked on a new
-        // Reconcile.
-        private void DiscardPendingIndexedState()
+        // Reconcile or during Dispose.
+        internal void DiscardPendingIndexedState()
         {
             if (PendingIndexedState is not { } state) return;
             PendingIndexedState = null;

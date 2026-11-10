@@ -72,8 +72,23 @@ namespace Velvet
 
         private readonly ClearablePool<OldSlotOccupants> _oldSlotOccupantsPool = new(o => o.Clear());
 
-        public OldSlotOccupants RentOldSlotOccupants() => _oldSlotOccupantsPool.Rent();
-        public void ReturnOldSlotOccupants(OldSlotOccupants occupants) => _oldSlotOccupantsPool.Return(occupants);
+        // Every instance rented and not yet returned, parked passes' among them: ReconcilerContext
+        // .NoteSlotOccupantChanged reaches each one through it.
+        internal List<OldSlotOccupants> RentedOldSlotOccupants { get; } = new();
+
+        public OldSlotOccupants RentOldSlotOccupants()
+        {
+            var occupants = _oldSlotOccupantsPool.Rent();
+            RentedOldSlotOccupants.Add(occupants);
+            return occupants;
+        }
+
+        public void ReturnOldSlotOccupants(OldSlotOccupants occupants)
+        {
+            var rented = RentedOldSlotOccupants.LastIndexOf(occupants);
+            if (rented >= 0) RentedOldSlotOccupants.RemoveAt(rented);
+            _oldSlotOccupantsPool.Return(occupants);
+        }
 
         #endregion
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -48,6 +49,11 @@ namespace Velvet.Tests
         private static ToggleStore<bool> s_moveStore;
         private static bool s_zParkZManaged;
         private static ComponentFiber s_zParkFiber;
+        private static int s_restackGeneration;
+        private static bool s_restackKeyed;
+        private static bool s_restackSwapHead;
+        private static VNode s_restackRow5;
+        private static ComponentFiber s_restackFiber;
         private static ToggleStore<bool> s_structuralSweepStore;
         private static ToggleStore<bool> s_structuralPatchStore;
         private static bool s_crossFiberAZManaged;
@@ -82,6 +88,11 @@ namespace Velvet.Tests
             s_moveStore = null;
             s_zParkZManaged = false;
             s_zParkFiber = null;
+            s_restackGeneration = 0;
+            s_restackKeyed = false;
+            s_restackSwapHead = false;
+            s_restackRow5 = null;
+            s_restackFiber = null;
             s_structuralSweepStore = null;
             s_structuralPatchStore = null;
             s_crossFiberAZManaged = false;
@@ -1541,6 +1552,113 @@ namespace Velvet.Tests
                 (backBandHeldItem0BeforeTheReRender, parkedAfterItem0,
                     !Band(root, front: false).Any, TrailingItemOrder(root)),
                 Is.EqualTo((true, true, true, ExpectedTrailingItemOrder)));
+        }
+
+        #endregion
+
+        #region A hover restack between two slices of a parked pass
+
+        // ZParkHost's shape — a Fragment of flat host leaves, so a tiny budget parks the fiber's own diff — with
+        // item5 relocated by hover rather than by the render, so its slot changes hands while the pass is parked
+        // and outside any pass.
+        [Component(Compiler = false)]
+        private static VNode RestackParkHost()
+        {
+            s_restackFiber = FiberAmbientStack.Current;
+            var children = new VNode[10];
+            for (var i = 0; i < 10; i++)
+            {
+                children[i] = i == 5 && s_restackRow5 != null ? s_restackRow5 : RestackRow(i);
+            }
+            if (s_restackSwapHead)
+            {
+                (children[0], children[1]) = (children[1], children[0]);
+            }
+            return V.Fragment(children: children);
+        }
+
+        private static VNode RestackRow(int i)
+            => V.Div(name: "item" + i, key: s_restackKeyed ? "k" + i : null,
+                className: i == 5 ? "absolute hover:z-10" : null,
+                children: new VNode[] { V.Label(name: "text" + i, text: "g" + s_restackGeneration) });
+
+        private static void Hover(VisualElement element, bool over)
+        {
+            if (over)
+            {
+                using var e = PointerOverEvent.GetPooled();
+                element.SimulateEvent(e);
+            }
+            else
+            {
+                using var e = PointerOutEvent.GetPooled();
+                element.SimulateEvent(e);
+            }
+        }
+
+        private static bool IsRelocated(VisualElement element)
+            => FiberZLayerCoordinator.PlaceholderOf(s_restackFiber.Reconciler!.Context, element) != null;
+
+        // GREEN_ON_BASE(refactor): the base read item5's slot live when the resumed slice patched it.
+        // Without ReconcilerContext.NoteSlotOccupantChanged item5's text stays "g0".
+        [Test]
+        public void Given_AParkedPassOverAHoveredRow_When_TheHoverEndsBeforeTheResume_Then_TheResumedSlicePatchesTheRow()
+        {
+            // Arrange — item5 is hovered, so the pass that parks resolved its slot to item5's placeholder.
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RestackParkHost, key: "root"));
+            var item5 = root.Q<VisualElement>("item5");
+            Hover(item5, over: true);
+            var relocatedAtThePark = IsRelocated(item5);
+            s_restackGeneration = 1;
+            s_restackFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_restackFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_restackFiber.HasPendingReconcileWorkForTest();
+
+            // Act — the hover ends between the slices, returning item5 to its slot, then the pass resumes.
+            Hover(item5, over: false);
+            var returnedBeforeTheResume = !IsRelocated(item5);
+            s_restackFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — null where an arrangement did not hold, which the expected value cannot equal.
+            Assert.That(
+                relocatedAtThePark && parked && returnedBeforeTheResume ? item5.Q<Label>("text5").text : null,
+                Is.EqualTo("g1"));
+        }
+
+        // GREEN_ON_BASE(refactor): the base read item5's slot live when keyed Pass 2 reused it.
+        // Without ReconcilerContext.NoteSlotOccupantChanged an unnamed child that holds no row stands among them.
+        [Test]
+        public void Given_AParkedKeyedReorderOverAHoveredRow_When_TheHoverEndsBeforeTheResume_Then_TheRowsAreTheDeclaredOnes()
+        {
+            // Arrange — item5 is one VNode across both renders, so Pass 2 reuses its element without patching it,
+            // and the head swap sends the diff to Pass 2.
+            s_restackKeyed = true;
+            s_restackRow5 = RestackRow(5);
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RestackParkHost, key: "root"));
+            var item5 = root.Q<VisualElement>("item5");
+            Hover(item5, over: true);
+            var relocatedAtThePark = IsRelocated(item5);
+            s_restackSwapHead = true;
+            s_restackFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_restackFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_restackFiber.HasPendingReconcileWorkForTest();
+
+            // Act
+            Hover(item5, over: false);
+            var returnedBeforeTheResume = !IsRelocated(item5);
+            s_restackFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — every physical child in order: a row by its name, a live placeholder as the row it holds in
+            // brackets, anything else as "?". item5 ends the pass relocated, a placeholder holding its slot.
+            var placeholders = s_restackFiber.Reconciler!.Context.ZLayerPlaceholders;
+            var rows = string.Join(",", root.Children().Select(child =>
+                placeholders.TryGetValue(child, out var held) ? "[" + held.name + "]"
+                : child.name is { Length: > 0 } n ? n : "?"));
+            Assert.That(
+                relocatedAtThePark && parked && returnedBeforeTheResume ? rows : null,
+                Is.EqualTo("item1,item0,item2,item3,item4,[item5],item6,item7,item8,item9,item5"));
         }
 
         #endregion

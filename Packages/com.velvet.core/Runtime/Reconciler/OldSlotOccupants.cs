@@ -7,10 +7,12 @@ namespace Velvet
 {
     // The element each old leaf of one container occupies, read from the live child list at the container's
     // entry, beside the element a patch of it reaches through a wrapper. Entry i is old leaf i, at logical slot
-    // slotStart + i; a slot nothing occupied is null. After the entry the diff names an old instance through this
-    // alone — ContainerOldInstanceReadTests fails where a slot read comes back — and an entry changes only where a
-    // patch of that leaf hands back its slot's new occupant (Replace) or the list is read again (ResolveAgain). A
-    // parked pass owns its instance until the slice that finishes it, or a fresh pass that discards it.
+    // slotStart + i; a slot nothing occupied is null. After the entry the diff takes the element it patches or
+    // reuses from here rather than from the live list — ContainerOldInstanceReadTests fails where a slot read comes
+    // back — while removals and inserts stay addressed by slot. An entry changes only where a patch of that leaf
+    // hands back its slot's new occupant (Replace), a z-layer swap names the slot's new element
+    // (ReplaceOccupant), or the list is read again (ResolveAgain). A parked pass owns its instance until the slice
+    // that finishes it, or a fresh pass or Dispose that discards it.
     internal sealed class OldSlotOccupants
     {
         private readonly List<VisualElement?> _occupants = new();
@@ -32,8 +34,8 @@ namespace Velvet
         internal VisualElement? Resolved(int index)
             => (uint)index < (uint)_resolved.Count ? _resolved[index] : null;
 
-        // One walk over the child list. Bounded by slotLimit as the indexed diff's slot-missing guard is, so a
-        // following tenant's row is never taken for one of this container's.
+        // One walk over the child list, bounded by slotLimit as the indexed diff's slot-missing guard is: where a
+        // caller passes a following tenant's start, that tenant's rows are not taken for this container's.
         internal void Resolve(VisualElement parent, int slotStart, int count, int slotLimit, FiberNodePatcher patcher)
         {
             Clear();
@@ -78,6 +80,16 @@ namespace Velvet
         {
             _occupants[index] = occupant;
             _resolved[index] = patcher.ResolveWrapped(occupant);
+        }
+
+        // ReconcilerContext.NoteSlotOccupantChanged: the slot `from` held under parent now holds `to`.
+        internal void ReplaceOccupant(VisualElement parent, VisualElement from, VisualElement to)
+        {
+            if (!ReferenceEquals(_parent, parent)) return;
+            for (var i = 0; i < _occupants.Count; i++)
+            {
+                if (ReferenceEquals(_occupants[i], from)) Replace(i, to, _patcher!);
+            }
         }
 
         internal void Clear()

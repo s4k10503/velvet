@@ -95,7 +95,8 @@ namespace Velvet
             // Whether an old leaf's slot is still occupied is asked through it; LogicalSlotCursor owns what it saves
             // and when it falls back.
             public LogicalSlotCursor OldSlots;
-            // Which element an old leaf is, read once before the walk.
+            // Which element an old leaf is, read before the walk and again where a drain wrote into the container
+            // (OldSlotOccupants.ResolveAgain).
             public OldSlotOccupants OldOccupants = null!;
             // What a presence's removals of this walk keep until the removals run: the retirement of the
             // dropped ghosts' trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back

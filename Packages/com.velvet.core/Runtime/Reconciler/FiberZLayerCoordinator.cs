@@ -337,6 +337,7 @@ namespace Velvet
                 s_held.Remove(placeholder);
                 s_held.Remove(real);
                 parent.hierarchy.Remove(placeholder);
+                ctx.NoteSlotOccupantChanged(parent, placeholder, real);
                 MarkPending(ctx, parent);
                 return;
             }
@@ -554,6 +555,7 @@ namespace Velvet
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
             parent.hierarchy.Insert(parent.hierarchy.IndexOf(real), placeholder);
+            ctx.NoteSlotOccupantChanged(parent, real, placeholder);
             MarkPending(ctx, parent);
         }
 
@@ -564,6 +566,7 @@ namespace Velvet
         {
             var parent = placeholder.parent!;
             Exchange(parent, placeholder, real);
+            ctx.NoteSlotOccupantChanged(parent, placeholder, real);
             Retire(ctx, placeholder);
             RetireAnchorOf(ctx, real);
             s_held.Remove(real);
@@ -1029,6 +1032,7 @@ namespace Velvet
                 Hold(placeholder, Role.Slot, entry.Real);
                 ctx.ZLayerPlaceholders[placeholder] = entry.Real;
                 parent.hierarchy.Add(placeholder);
+                ctx.NoteSlotOccupantChanged(parent, entry.Real, placeholder);
                 entry.Slot = placeholder;
                 changed = true;
             }
@@ -1039,6 +1043,7 @@ namespace Velvet
                 s_held.Remove(entry.Real);
                 ctx.ZLayerPlaceholders.Remove(entry.Slot);
                 ctx.ZLayerMembers.Remove(entry.Real);
+                ctx.NoteSlotOccupantChanged(parent, entry.Slot, entry.Real);
                 entry.Slot = entry.Real;
                 changed = true;
             }

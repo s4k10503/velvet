@@ -2123,6 +2123,14 @@ namespace Velvet
         // who resolves them again and why.
         internal List<OldSlotOccupants> OpenOldInstances { get; } = new();
 
+        // FiberZLayerCoordinator put `to` in the logical slot `from` held under parent. Each diff holding old
+        // instances of parent names that slot's element by `to` from here on, since the swap can come from outside
+        // the diff: an out-of-pass restack between two slices of a parked pass is one.
+        internal void NoteSlotOccupantChanged(VisualElement parent, VisualElement from, VisualElement to)
+        {
+            foreach (var occupants in BufferPool.RentedOldSlotOccupants) occupants.ReplaceOccupant(parent, from, to);
+        }
+
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a
         // patch can tell a STABLE ref apart from a swapped one — a ref cycles
