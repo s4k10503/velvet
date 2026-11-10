@@ -42,5 +42,20 @@ namespace Velvet.Tests
             // Assert
             Assert.That(sorted, Is.EqualTo("0,1,2,3,4,5,6,7"));
         }
+
+        // GREEN_ON_BASE(characterization): the base already merges correctly; deleting MergeLow's `Array.Copy(_work, baseA, temp, 0, lengthA);` reddens it.
+        [Test]
+        public void Given_TwoInterleavingRunsOfThirtyTwo_When_Sorted_Then_TheMergeOrdersEveryElement()
+        {
+            // Arrange — the odd numbers ascending and then the even ones: two natural runs of the minimum run length,
+            // and no longer first run, so the merge copies the first into the temporary array (MergeLow).
+            var list = Enumerable.Range(0, 32).Select(i => 2 * i + 1).Concat(Enumerable.Range(0, 32).Select(i => 2 * i)).ToList();
+
+            // Act
+            JsArraySort.Sort(list, (x, y) => x.CompareTo(y));
+
+            // Assert
+            Assert.That(string.Join(",", list), Is.EqualTo(string.Join(",", Enumerable.Range(0, 64))));
+        }
     }
 }

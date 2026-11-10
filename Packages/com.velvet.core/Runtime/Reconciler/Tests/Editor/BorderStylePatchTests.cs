@@ -105,6 +105,23 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already repaints it dotted; deleting `NoteFaceBorderStyle(element, newClassNames);` from ApplyBorderStyleOnPatch reddens it.
+        [Test]
+        public void Given_AShadowedBorderDashedElement_When_ThePatchMakesItDotted_Then_TheShadowRepaintsTheBorderDotted()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var oldTree = new VNode[] { V.Div(className: "shadow-md border-dashed", name: "card") };
+            Mount(scope, oldTree);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, oldTree,
+                new VNode[] { V.Div(className: "shadow-md border-dotted", name: "card") });
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings[scope.Root[0]].BorderStyle, Is.EqualTo(BorderLineStyle.Dotted));
+        }
+
         // Face handoff: adding a shadow to an already border-dashed element in ONE patch moves face
         // ownership to the shadow silhouette. The dashed layer defers (detaches) LAST in the patch, but it
         // must hand the captured border color to the new owner and leave the suppression in place — a plain

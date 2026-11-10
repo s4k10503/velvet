@@ -44,6 +44,7 @@ namespace Velvet.Tests
         private static ToggleStore<bool> s_typeFlipStore;
         private static ToggleStore<bool> s_signFlipStore;
         private static ToggleStore<bool> s_clipAddedStore;
+        private static ToggleStore<int> s_clipThenGoneStore;
         private static ToggleStore<bool> s_moveStore;
         private static bool s_zParkZManaged;
         private static ComponentFiber s_zParkFiber;
@@ -77,6 +78,7 @@ namespace Velvet.Tests
             s_typeFlipStore = null;
             s_signFlipStore = null;
             s_clipAddedStore = null;
+            s_clipThenGoneStore = null;
             s_moveStore = null;
             s_zParkZManaged = false;
             s_zParkFiber = null;
@@ -762,6 +764,46 @@ namespace Velvet.Tests
                     Band(root.Q<VisualElement>("parent"), front: true).Contains(wrapper),
                     ReferenceEquals(wrapper.parent, root.Q<VisualElement>("parent"))),
                 Is.EqualTo((true, true, true)));
+        }
+
+        // 0 shows the card bare, 1 wraps it in a clip-path, 2 removes it.
+        [Component]
+        private static VNode ClipThenGoneHost()
+        {
+            var phase = Hooks.UseStore(s_clipThenGoneStore, x => x);
+            return V.Div(name: "parent", className: "relative", children: new VNode[]
+            {
+                phase == 2
+                    ? null
+                    : V.Div(name: "card", className: "absolute z-10 w-[10px] h-[10px]"
+                        + (phase == 1 ? " clip-path-[circle(40%)]" : "")),
+                V.Div(name: "next"),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes the wrapper out; flipping the `!=` in Rehome to `==` reddens it.
+        [Test]
+        public void Given_ARelocatedElementAPatchWrappedInAClipPath_When_ItIsRemoved_Then_ItsWrapperLeavesTheParent()
+        {
+            // Arrange
+            using var store = new ToggleStore<int>(0);
+            s_clipThenGoneStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ClipThenGoneHost, key: "root"));
+            store.Set(1);
+            mounted.FlushStateForTest();
+            var wrapped = root.Q<VisualElement>("card")?.parent?.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass) == true;
+
+            // Act
+            store.Set(2);
+            mounted.FlushStateForTest();
+
+            // Assert — a card the patch never wrapped reads -1, which the expected count cannot equal
+            var parent = root.Q<VisualElement>("parent");
+            var wrappers = wrapped
+                ? parent.Query<VisualElement>(className: FiberWrapperElementAppliers.ClipPathWrapperClass).ToList().Count
+                : -1;
+            Assert.That(wrappers, Is.EqualTo(0));
         }
 
         #endregion

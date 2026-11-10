@@ -49,6 +49,18 @@ namespace Velvet.Tests
             return V.Custom<VisualElement>(name: "box", children: children);
         }
 
+        // The rows follow an AnimatePresence among the box's children, which the walk expands before reaching them.
+        [Component(Compiler = false)]
+        private static VNode PresenceThenRows()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var children = new VNode[Rows + 1];
+            children[0] = V.AnimatePresence(new VNode[] { V.Label(name: "present", key: "present") }, key: "presence");
+            for (var i = 0; i < Rows; i++) children[i + 1] = V.Component(Row, i, key: "k" + i);
+            return V.Custom<VisualElement>(name: "box", children: children);
+        }
+
         [Component(Memoize = true, Compiler = false)]
         private static VNode Row(int id) => V.Custom<CountingRow>(name: "r" + id, children: new VNode[] { V.Label(name: "l" + id) });
 
@@ -121,6 +133,25 @@ namespace Velvet.Tests
             var reads = RowReadsDuringParentRerender(offsetAfter: 0);
 
             // Assert
+            Assert.That(reads, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already bails on the rows; deleting `walk.ReuseSuspended--;` reddens it.
+        [Test]
+        public void Given_RowsWhosePropsAreUnchangedAfterAnAnimatePresence_When_TheirParentReRenders_Then_NoRowElementIsPatched()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(PresenceThenRows));
+            var rows = root.Query<CountingRow>().ToList();
+            foreach (var row in rows) row.Reads = 0;
+
+            // Act
+            s_setTick.Invoke(t => t + 1);
+            mounted.FlushStateForTest();
+
+            // Assert — a box holding fewer rows than it declares reads -1, which the expected count cannot equal
+            var reads = rows.Count == Rows ? rows.Sum(row => row.Reads) : -1;
             Assert.That(reads, Is.EqualTo(0));
         }
 

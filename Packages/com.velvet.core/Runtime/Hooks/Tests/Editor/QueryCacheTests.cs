@@ -493,6 +493,83 @@ namespace Velvet.Tests
                 "A dictionary's entries are written sorted, as v5's hashKey sorts an object's keys");
         }
 
+        // GREEN_ON_BASE(characterization): the base already lets the number go; writing `held.Holders + 1` in ReleaseNumbers reddens it.
+        [Test]
+        public void Given_TwoEntriesSharingAnOpaquePart_When_BothAreRemovedAndAnEntryTakesThePartAgain_Then_ItIsGivenANewNumber()
+        {
+            // Arrange
+            var part = new object();
+            s_client.SetQueryData(new QueryKey("a", part), 1);
+            s_client.SetQueryData(new QueryKey("b", part), 1);
+            s_client.RemoveQueries();
+
+            // Act
+            s_client.SetQueryData(new QueryKey("c", part), 1);
+
+            // Assert
+            Assert.That(s_client.GetQueryCache().GetAll()[0].QueryHash, Is.EqualTo("[\"c\",#2]"),
+                "A number no entry holds any more is let go, so the cache keeps no part alive");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already sorts a set's texts; deleting `texts.Sort(StringComparer.Ordinal);` reddens it.
+        [Test]
+        public void Given_ASetBuiltOutOfOrder_When_ItsHashIsRead_Then_ItsElementsAreWrittenSorted()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("k", new HashSet<string> { "b", "a" }), 1);
+
+            // Act
+            var hash = s_client.GetQueryCache().GetAll()[0].QueryHash;
+
+            // Assert
+            Assert.That(hash, Is.EqualTo("[\"k\",Set[\"a\",\"b\"]]"),
+                "A set's elements are written in ordinal order of their text, so the order it was filled in does not show");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already writes the suffix; deleting the sbyte case's `Append` line reddens it.
+        [Test]
+        public void Given_AnSbytePart_When_ItsHashIsRead_Then_ItIsWrittenWithItsSuffix()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("k", (sbyte)5), 1);
+
+            // Act
+            var hash = s_client.GetQueryCache().GetAll()[0].QueryHash;
+
+            // Assert
+            Assert.That(hash, Is.EqualTo("[\"k\",5SB]"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already escapes it; deleting `builder.Append("\\\\");` reddens it.
+        [Test]
+        public void Given_AStringPartHoldingABackslash_When_ItsHashIsRead_Then_TheBackslashIsEscaped()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("a\\b"), 1);
+
+            // Act
+            var hash = s_client.GetQueryCache().GetAll()[0].QueryHash;
+
+            // Assert
+            Assert.That(hash, Is.EqualTo("[\"a\\\\b\"]"),
+                "v5's hashKey writes a string as JSON.stringify does");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already writes it bare; writing `character <= ' '` in AppendJsonString reddens it.
+        [Test]
+        public void Given_AStringPartHoldingASpace_When_ItsHashIsRead_Then_TheSpaceIsWrittenAsItIs()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("a b"), 1);
+
+            // Act
+            var hash = s_client.GetQueryCache().GetAll()[0].QueryHash;
+
+            // Assert
+            Assert.That(hash, Is.EqualTo("[\"a b\"]"),
+                "JSON.stringify escapes only the characters below the space");
+        }
+
         [Test]
         public void Given_AnEntryThatWasRemoved_When_GetLooksUpItsHash_Then_NothingIsFound()
         {
@@ -700,6 +777,36 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(hash, Is.EqualTo("[\"k\",{\"a\":1,\"a!\":2}]"), "v5's hashKey sorts the keys alone");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already clears it; deleting `_writtenFetchStatus = null;` from ResetState reddens it.
+        [Test]
+        public void Given_AStatusWrittenFetchingWithNoRequest_When_TheEntryIsReset_Then_ItReadsIdle()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            var query = Find();
+            query.SetState(query.State with { FetchStatus = QueryFetchStatus.Fetching });
+
+            // Act
+            s_client.ResetQueries(new QueryFilters { QueryKey = Todos }).Forget();
+
+            // Assert
+            Assert.That(Find().State.FetchStatus, Is.EqualTo(QueryFetchStatus.Idle), "v5's reset writes the initial state, whose fetchStatus is idle");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already reads it; writing `FetchStatus != QueryFetchStatus.Fetching` reddens it.
+        [Test]
+        public void Given_AStateWhoseRequestRuns_When_IsFetchingIsRead_Then_ItIsTrue()
+        {
+            // Arrange
+            var state = new QueryState { FetchStatus = QueryFetchStatus.Fetching };
+
+            // Act
+            var fetching = state.IsFetching;
+
+            // Assert
+            Assert.That(fetching, Is.True);
         }
 
         [Test]

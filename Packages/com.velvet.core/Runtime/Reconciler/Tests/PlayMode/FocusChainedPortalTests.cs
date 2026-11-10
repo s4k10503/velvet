@@ -22,6 +22,7 @@ namespace Velvet.Tests
     {
         private static PanelFocusOrder s_focusOrder;
         private static StateUpdater<bool> s_setShowFirstPortal;
+        private static StateUpdater<PanelFocusOrder> s_setSwitchableOrder;
 
         private GameObject _panelGo;
         private PanelSettings _settings;
@@ -55,6 +56,7 @@ namespace Velvet.Tests
         {
             s_focusOrder = PanelFocusOrder.Isolated;
             s_setShowFirstPortal = default;
+            s_setSwitchableOrder = default;
             _panelGo = new GameObject("ChainedPortalPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = TestPanelSettings.Create();
@@ -259,6 +261,82 @@ namespace Velvet.Tests
             // Assert
             Assert.That((held, p2.panel.focusController.focusedElement, main1.panel.focusController.focusedElement),
                 Is.EqualTo((true, (Focusable)null, (Focusable)main1)));
+        }
+
+        // The order is state, so a re-render changes it on the portal already mounted.
+        [Component]
+        private static VNode SwitchableOrderPortalHost()
+        {
+            var (order, setOrder) = Hooks.UseState(PanelFocusOrder.Isolated);
+            s_setSwitchableOrder = setOrder;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "main1"),
+                V.Portal(UILayer.Overlay, key: "portal", focusOrder: order, children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                    V.Button(name: "p2"),
+                }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already chains the patched order; deleting the patch path's `ConfigurePortalFocusOrder` call reddens it.
+        [UnityTest]
+        public IEnumerator Given_AnIsolatedLayerPortalReRenderedAsAppended_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(SwitchableOrderPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            s_setSwitchableOrder.Invoke(PanelFocusOrder.Appended);
+            yield return null;
+            yield return null;
+            var main1 = Main("main1");
+            var p1 = HostElement("p1");
+            main1.Focus();
+
+            // Act
+            SendMove(main1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1));
+        }
+
+        // An appended host with nothing focusable in it: the declaring panel is the only one with an element.
+        [Component]
+        private static VNode UnfocusableAppendedPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "portal", children: new VNode[]
+            {
+                V.Label(text: "note", name: "note"),
+            }),
+        });
+
+        // GREEN_ON_BASE(characterization): the base already leaves focus alone; writing `step <= panels.Count` in the panel hop loop reddens it.
+        // The hop is to another panel; with no other panel holding an element there is none to make.
+        [UnityTest]
+        public IEnumerator Given_AnAppendedHostWithNothingFocusable_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItIsNotFocusedAgain()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(UnfocusableAppendedPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var main1 = Main("main1");
+            main1.Focus();
+            yield return null;
+            var focusIns = 0;
+            main1.RegisterCallback<FocusInEvent>(_ => focusIns++);
+
+            // Act
+            SendMove(main1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That(focusIns, Is.EqualTo(0));
         }
 
         [UnityTest]

@@ -331,6 +331,8 @@ namespace Velvet
                 }
             }
             var physical = LogicalChildSlots.ToPhysical(container, logical);
+            // MUTANT_SURVIVES(equivalent): a slot remembered at logical 0 is never read, since the walk back above
+            // takes only a logical below the remembered one and not below 0.
             if (logical >= 0 && physical < container.childCount && !LogicalChildSlots.IsInvisible(container[physical]))
             {
                 Remember(container, logical, physical);

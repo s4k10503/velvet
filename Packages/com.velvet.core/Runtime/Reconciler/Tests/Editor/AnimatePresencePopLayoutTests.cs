@@ -152,6 +152,53 @@ namespace Velvet.Tests
                 Is.EqualTo(Position.Absolute));
         }
 
+        // ZManagedPresenceList with the presence itself taken out of the tree when the keys read "-".
+        [Component]
+        private static VNode RemovableZManagedPresenceList()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            if (keys == "-") return V.Div(name: "presence-host", className: "relative");
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                var motion = V.Motion(className: "w-[60px] h-[24px]",
+                    variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }, enterOnMount: false);
+                children.Add(V.Div(name: "item-" + key, key: key.ToString(), className: "absolute z-10",
+                    children: new VNode[] { motion }));
+            }
+            return V.Div(name: "presence-host", className: "relative", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", mode: s_mode, children: children.ToArray()),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already unpins it; deleting `ctx.PinnedGhosts.Remove(real);` from TakeReal reddens it.
+        [Test]
+        public void Given_AZManagedGhostPinnedByAPopLayoutExit_When_ThePresenceLeavesTheTree_Then_TheGhostIsNoLongerPinned()
+        {
+            // Arrange
+            using var store = new SetStore();
+            s_store = store;
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
+            using var mounted = V.Mount(_window.rootVisualElement, V.Component(RemovableZManagedPresenceList, key: "list"));
+            EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
+            var ctx = mounted.Root.Reconciler.Context;
+            var scheduler = ctx.BatchScheduler;
+            var item = _window.rootVisualElement.Q<VisualElement>("item-b");
+            store.Set("ac");
+            scheduler.DrainImmediateForTest();
+            var pinned = ctx.PinnedGhosts.TryGetValue(item, out _);
+
+            // Act
+            store.Set("-");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — a ghost the exit never pinned reads as null, which the expected value is not
+            bool? stillPinned = pinned ? ctx.PinnedGhosts.TryGetValue(item, out _) : null;
+            Assert.That(stillPinned, Is.EqualTo(false));
+        }
+
         // GREEN_ON_BASE(refactor): this fixture and case are unchanged; they share a file with the pop-layout flow fixture, whose SetUp now attaches the bundled sheet.
         [Test]
         public void Given_AZManagedElementWrappingMotion_When_FindFirstMotionDescendantRuns_Then_ReturnsTheNestedMotion()

@@ -25,6 +25,9 @@ namespace Velvet.Tests
         private static QueryClient s_client = null!;
         private static MutationScope? s_firstScope;
         private static MutationScope? s_secondScope;
+        private static RetryPolicy? s_firstRetry;
+        private static VelvetTaskCompletionSource s_retryWait = null!;
+        private static System.Threading.CancellationTokenSource s_cancel = null!;
         private static MutationResult<int, int>? s_first;
         private static MutationResult<int, int>? s_second;
         private static readonly List<int> s_started = new();
@@ -37,6 +40,9 @@ namespace Velvet.Tests
             s_client = new QueryClient();
             s_firstScope = new MutationScope("todos");
             s_secondScope = new MutationScope("todos");
+            s_firstRetry = null;
+            s_retryWait = new VelvetTaskCompletionSource();
+            s_cancel = new System.Threading.CancellationTokenSource();
             s_first = null;
             s_second = null;
             s_started.Clear();
@@ -54,6 +60,9 @@ namespace Velvet.Tests
                 foreach (var gate in s_gates.Values.ToArray()) opened |= gate.TrySetResult(0);
             }
             while (opened);
+            s_cancel.Cancel();
+            s_retryWait.TrySetResult();
+            s_cancel.Dispose();
             s_client.Clear();
         }
 
@@ -202,13 +211,40 @@ namespace Velvet.Tests
             Assert.That(s_started, Is.EqualTo(new[] { 1, 2 }));
         }
 
+        // GREEN_ON_BASE(characterization): the base already asks canRun before a retry; removing `&& (callbacks.CanRun?.Invoke(state) ?? true)` from CanContinue reddens it.
+        // A call taken out of the cache while it waits to retry no longer heads its scope; the paused call behind it does.
+        [Test]
+        public void Given_ARetryingCallRemovedAheadOfAPausedOne_When_ItsRetryIsDue_Then_ItDoesNotStartAgain()
+        {
+            // Arrange
+            s_firstRetry = new RetryPolicy
+            {
+                Retry = 1,
+                IsOnline = static () => true,
+                IsFocused = static () => true,
+                Wait = static (_, _) => s_retryWait.Task,
+            };
+            using var mounted = Mount();
+            s_first!.Mutate(1, new MutateOptions<int, int> { CancellationToken = s_cancel.Token });
+            s_second!.Mutate(2);
+            s_gates[1].TrySetException(new InvalidOperationException("first attempt"));
+            var cache = s_client.GetMutationCache();
+            cache.Remove(cache.GetAll()[0]);
+
+            // Act
+            s_retryWait.TrySetResult();
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { 1 }));
+        }
+
         private MountedTree Mount() => V.Mount(_root, V.Component(TwoMutationsRender, key: "scope"));
 
         private static string[] States() => s_client.GetMutationCache().GetAll()
             .Select(mutation => $"{mutation.State.Status} paused:{mutation.State.IsPaused}")
             .ToArray();
 
-        private static MutationOptions<int, int> Gated(MutationScope? scope) => new(MutationFn: (v, _) =>
+        private static MutationOptions<int, int> Gated(MutationScope? scope, RetryPolicy? retry = null) => new(MutationFn: (v, _) =>
         {
             s_started.Add(v);
             var gate = new VelvetTaskCompletionSource<int>();
@@ -217,12 +253,13 @@ namespace Velvet.Tests
         })
         {
             Scope = scope,
+            Retry = retry,
         };
 
         [Component]
         private static VNode TwoMutationsRender()
         {
-            s_first = Hooks.UseMutation(Gated(s_firstScope), s_client);
+            s_first = Hooks.UseMutation(Gated(s_firstScope, s_firstRetry), s_client);
             s_second = Hooks.UseMutation(Gated(s_secondScope), s_client);
             return V.Label(text: "scope");
         }

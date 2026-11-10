@@ -30,6 +30,7 @@ namespace Velvet.Tests
         private static DndAccessibility s_accessibility;
         private static (bool IsDragging, bool IsOver, string ActiveId) s_probe;
         private static double s_clock;
+        private static readonly List<int> s_keyboardDroppableCounts = new();
 
         private static readonly DndMonitorListener s_monitor =
             new(OnDragOver: e => s_events.Add("monitor-over:" + e.Over?.Id));
@@ -49,6 +50,7 @@ namespace Velvet.Tests
             s_accessibility = null;
             s_probe = default;
             s_clock = 0d;
+            s_keyboardDroppableCounts.Clear();
         }
 
         [TearDown]
@@ -338,6 +340,65 @@ namespace Velvet.Tests
             Assert.That(TranslateOf(item), Is.EqualTo(new[] { 25f, 0f }));
         }
 
+        // Records how many droppables each arrow key's move is handed, then steps as the default getter does.
+        private static Vector2? CountingCoordinates(in DndKeyboardMove move)
+        {
+            s_keyboardDroppableCounts.Add(move.Droppables.Count);
+            return DndKeyboardSensor.DefaultCoordinates(in move);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lists it once; deleting `_queryBuffer.Clear();` from KeyboardMove reddens it.
+        [Test]
+        public void Given_AKeyboardDragOverOneDroppable_When_ASecondArrowKeyMovesIt_Then_ItsMoveListsThatDroppableOnce()
+        {
+            // Arrange
+            s_sensors = new DndSensor[] { new DndKeyboardSensor(coordinateGetter: CountingCoordinates) };
+            Mount(HookScene);
+            var item = Q("item");
+            SendKey(item, KeyCode.Space);
+            SendKey(item, KeyCode.RightArrow);
+
+            // Act
+            SendKey(item, KeyCode.RightArrow);
+
+            // Assert
+            Assert.That(s_keyboardDroppableCounts.Last(), Is.EqualTo(1));
+        }
+
+        // A draggable beside an element the scope can take away mid-drag.
+        [Component]
+        private static VNode RemovableSiblingScene()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            s_setFlag = setShow;
+            return V.DndContext(
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item", key: "item",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    show ? V.Div(name: "sibling", key: "sibling", className: "w-[20px] h-[20px]") : null,
+                });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already removes it; deleting `|| !_pressChain.Remove(element)` from ForgetPressChainElement reddens it.
+        // A keyboard drag holds no pointer and no press chain, so an element leaving mid-drag has nothing of the
+        // session's to give back.
+        [Test]
+        public void Given_AKeyboardDrag_When_AnElementOutsideItLeavesTheTree_Then_ItIsRemoved()
+        {
+            // Arrange
+            Mount(RemovableSiblingScene);
+            SendKey(Q("item"), KeyCode.Space);
+
+            // Act
+            s_setFlag.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Q("sibling"), Is.Null);
+        }
+
         [Test]
         public void Given_AScopeAnnouncingThroughACallback_When_APointerDragStarts_Then_ItAnnouncesThePickUp()
         {
@@ -464,6 +525,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Q("ghost"), Is.Not.Null);
+        }
+
+        // OverlayRecipeScene with the drop animation turned off.
+        [Component]
+        private static VNode OverlayWithoutDropAnimationScene()
+        {
+            var (activeId, setActiveId) = Hooks.UseState((string)null);
+            return V.DndContext(
+                onDragStart: e => setActiveId.Invoke(e.Active.Id),
+                onDragEnd: _ => setActiveId.Invoke((string)null),
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", name: "item", key: "item", movement: DragMovement.None,
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                    V.DragOverlay(key: "overlay", dropAnimation: DndDropAnimation.None, children: activeId != null
+                        ? new VNode[] { V.Label("ghost", name: "ghost", key: "ghost") }
+                        : System.Array.Empty<VNode>()),
+                });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already drops them at once; turning the first `||` of the no-animation test in DndDropAnimator into `&&` reddens it.
+        [Test]
+        public void Given_ADragOverlayWithoutADropAnimationAwayFromItsSource_When_TheDropClearsItsChildren_Then_TheyGoAtOnce()
+        {
+            // Arrange
+            Mount(OverlayWithoutDropAnimationScene);
+            var item = Q("item");
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            item.SendPointerMoveEvent(new Vector2(110, 60));
+
+            // Act
+            item.SendPointerUpEvent(new Vector2(110, 60));
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Q("ghost"), Is.Null);
         }
 
         // Three 50x50 items stacked in a vertical list by the container's own column flow: the fixture attaches no
