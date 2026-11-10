@@ -143,7 +143,7 @@ namespace Velvet
 
             if (slotExists)
             {
-                _host.Remove(parent, occupants.Occupant(slot.Index)!);
+                _host.Remove(parent, occupants.Occupant(slot.Index)!, occupants.PhysicalAtEntry(slot.Index));
             }
             var newElement = _factory.CreateElement(newNode);
             // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
@@ -548,9 +548,19 @@ namespace Velvet
         // range's rows and no further, since the ranges of other Portals on the same target can follow it.
         internal void RemoveRows(VisualElement target, int slotStart, int count)
         {
-            for (var slot = slotStart + count - 1; slot >= slotStart; slot--)
+            var rows = _ctx.BufferPool.RentOldSlotOccupants();
+            try
             {
-                if (LogicalChildSlots.TryGetPhysical(target, slot, out var at)) _host.Remove(target, target[at]);
+                rows.Resolve(target, slotStart, count, int.MaxValue, _patcher);
+                for (var i = count - 1; i >= 0; i--)
+                {
+                    var row = rows.Occupant(i);
+                    if (row != null) _host.Remove(target, row, rows.PhysicalAtEntry(i));
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(rows);
             }
         }
 
@@ -797,14 +807,22 @@ namespace Velvet
             if (available < 0) available = 0;
             if (oldNodes.Length <= available) return false;
 
-            // Logical slots, converted per step: the walk is downward so each removal only shifts slots
-            // after the one just removed, and an invisible child interleaved in the range is skipped rather
-            // than torn out with the rendered ones.
-            var cursor = new DescendingSlotCursor();
-            for (var i = rangeEnd - 1; i >= slotStart; i--)
+            // The range's rows are read before any goes, past an invisible child interleaved in them, and removed
+            // from the last.
+            var rows = _ctx.BufferPool.RentOldSlotOccupants();
+            try
             {
-                _host.Remove(parent, parent[cursor.ToPhysical(parent, i)]);
-                if (_ctx.IsAborted) return true;
+                rows.Resolve(parent, slotStart, available, slotLimit, _patcher);
+                for (var i = available - 1; i >= 0; i--)
+                {
+                    var row = rows.Occupant(i);
+                    if (row != null) _host.Remove(parent, row, rows.PhysicalAtEntry(i));
+                    if (_ctx.IsAborted) return true;
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(rows);
             }
             var slots = new LogicalSlotCursor();
             for (var i = 0; i < newNodes.Length; i++)
@@ -1024,7 +1042,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                _host.Remove(parent, old);
+                _host.Remove(parent, old, inputs.OldOccupants.PhysicalAtEntry(i));
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -1238,7 +1256,7 @@ namespace Velvet
             if (linearEnd == newNodes.Length)
             {
                 for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
-                    _host.Remove(parent, occupants.Occupant(i)!);
+                    _host.Remove(parent, occupants.Occupant(i)!, occupants.PhysicalAtEntry(i));
                 return false;
             }
 
@@ -1344,7 +1362,7 @@ namespace Velvet
                 // leaves the not-yet-removed indices intact.
                 for (var i = oldMidEnd - 1; i >= linearEnd; i--)
                 {
-                    _host.Remove(parent, occupants.Occupant(i)!);
+                    _host.Remove(parent, occupants.Occupant(i)!, occupants.PhysicalAtEntry(i));
                     if (_ctx.IsAborted) return;
                 }
             }
@@ -1400,7 +1418,7 @@ namespace Velvet
                 {
                     if (ShouldRemoveOldKeyedEntry(OldKey(oldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                     {
-                        _host.Remove(parent, pass.OldOccupants.Occupant(i)!);
+                        _host.Remove(parent, pass.OldOccupants.Occupant(i)!, pass.OldOccupants.PhysicalAtEntry(i));
                     }
                 }
 
@@ -1646,7 +1664,7 @@ namespace Velvet
             {
                 if (AbortIfCanceled(state)) return true;
 
-                _host.Remove(parent, state.OldOccupants!.Occupant(i)!);
+                _host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));
 
                 var next = i - 1;
                 if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
@@ -1739,7 +1757,7 @@ namespace Velvet
 
                 if (ShouldRemoveOldKeyedEntry(OldKey(state.OldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                 {
-                    _host.Remove(parent, state.OldOccupants!.Occupant(i)!);
+                    _host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));
                 }
 
                 var next = i - 1;

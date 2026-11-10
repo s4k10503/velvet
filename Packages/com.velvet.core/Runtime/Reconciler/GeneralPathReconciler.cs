@@ -596,7 +596,7 @@ namespace Velvet
                 var old = commit.OldOccupants.Occupant(i);
                 if (!patched.Contains(i) && old != null)
                 {
-                    _ctx.HostCommit.Remove(parent, old);
+                    _ctx.HostCommit.Remove(parent, old, commit.OldOccupants.PhysicalAtEntry(i));
                 }
             }
 

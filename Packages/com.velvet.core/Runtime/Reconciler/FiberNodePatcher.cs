@@ -52,8 +52,8 @@ namespace Velvet
         // PatchNode must not modify the childCount or child order of element's
         // parent. Reconciling the child container (children of element itself) is not subject
         // to this constraint, but removing/inserting the element from its parent is forbidden.
-        // The diff removes old leaves and inserts new ones by slot, so a patch that moved the slots would have a
-        // later removal take the wrong element. New VNode types must preserve this contract.
+        // The diff inserts new leaves by slot, so a patch that moved the slots would have a later insert land in the
+        // wrong place. New VNode types must preserve this contract.
         // Returns what occupies the element's slot once the patch is done, which a wrapper added or removed and a
         // z-layer relocation in either direction change; the diff names the old leaf by it from then on.
         internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)

@@ -4,12 +4,11 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Ops for the writes a reconcile makes into containers it did not create in the same walk: child lists, the
-    // rows each fiber and each Portal is recorded at, a Suspense's hide and reveal, and the fibers a container
-    // drops. ChildReconciler, GeneralPathReconciler and ChildElementPlacement call no child-list writer of their
-    // own (HostCommitRoutingTests), though a method they call can. Each op applies where it is called. Insert and
-    // Remove name elements rather than positions, and the position is read off the live child list as the op
-    // applies; the physical index Insert is passed is taken only where the live list confirms it.
+    // Ops for the writes a reconcile makes into a container: its child list, the rows each fiber and each Portal is
+    // recorded at, a Suspense's hide and reveal, and the fibers it drops. The container can be one the same walk
+    // created — a new element's children reconcile through the same diff — and nothing here tells that apart from
+    // a committed one. ChildReconciler, GeneralPathReconciler and ChildElementPlacement call no child-list writer of
+    // their own (HostCommitRoutingTests), though a method they call can. Each op applies where it is called.
     internal sealed class HostCommitQueue
     {
         private readonly ReconcilerContext _ctx;
@@ -21,36 +20,32 @@ namespace Velvet
             _cleaner = new FiberElementCleaner(ctx);
         }
 
-        // Puts child in front of before, a rendered child of parent, or at LogicalChildSlots.AppendIndex where
-        // before is null.
-        internal void Insert(VisualElement parent, VisualElement child, VisualElement? before, int physicalHint)
-            => parent.Insert(InsertIndex(parent, before, physicalHint), child);
-
-        private static int InsertIndex(VisualElement parent, VisualElement? before, int hint)
-        {
-            if (before != null)
-            {
-                return Holds(parent, before, hint) ? hint : parent.IndexOf(before);
-            }
-            return LogicalChildSlots.IsAppendIndex(parent, hint) ? hint : LogicalChildSlots.AppendIndex(parent);
-        }
+        // At the index LogicalSlotCursor resolved for the child's slot.
+        internal void Insert(VisualElement parent, int physical, VisualElement child) => parent.Insert(physical, child);
 
         // Takes element out of parent with everything it holds released (FiberElementCleaner). Nothing is done
         // where element is no longer parent's child.
-        internal void Remove(VisualElement parent, VisualElement element)
+        internal void Remove(VisualElement parent, VisualElement element, int near)
         {
-            var at = IndexOfNear(parent, element, _lastRemoval);
-            if (at < 0) return;
-            _lastRemoval = at;
-            _cleaner.RemoveElement(parent, at);
+            var at = IndexNear(parent, element, near);
+            if (at >= 0) _cleaner.RemoveElement(parent, at);
         }
 
-        // Where the last removal was, which the next one's IndexOfNear starts from: the loops that only remove run
-        // from the last slot down.
-        private int _lastRemoval;
-
-        private static bool Holds(VisualElement parent, VisualElement element, int physical)
-            => (uint)physical < (uint)parent.childCount && ReferenceEquals(parent[physical], element);
+        // parent.IndexOf(element), searched outward from near, the index the caller last knew the element at, so a
+        // removal costs how far the element has moved since rather than its index. IndexOfNear gives up after a short
+        // window because its seed is another element's position; this one's is the element's own.
+        private static int IndexNear(VisualElement parent, VisualElement element, int near)
+        {
+            var n = parent.childCount;
+            if (near >= n) near = n - 1;
+            if (near < 0) near = 0;
+            for (var d = 0; near + d < n || near - d >= 0; d++)
+            {
+                if (near + d < n && ReferenceEquals(parent[near + d], element)) return near + d;
+                if (d > 0 && near - d >= 0 && ReferenceEquals(parent[near - d], element)) return near - d;
+            }
+            return -1;
+        }
 
         // Re-places the non-LIS elements so the slot range [slotStart, slotStart + count) ends up in
         // newElements order, walking RIGHT→LEFT and inserting each moved element immediately BEFORE the element

@@ -42,13 +42,13 @@ namespace Velvet.Tests.Performance
         }
 
         [Test]
-        public void Given_AWarmQueue_When_AChildIsInsertedAtTheAppendPosition_Then_NothingIsAllocated()
+        public void Given_AWarmQueue_When_AChildIsInsertedAtTheEnd_Then_NothingIsAllocated()
         {
             // Arrange
             var parent = ParentOf(2);
             var child = new VisualElement();
             Action takeOut = () => child.RemoveFromHierarchy();
-            Action insert = () => Host.Insert(parent, child, before: null, physicalHint: parent.childCount);
+            Action insert = () => Host.Insert(parent, parent.childCount, child);
             takeOut();
             insert();
 
@@ -73,7 +73,7 @@ namespace Velvet.Tests.Performance
                 child = children[next++ % children.Count];
                 parent.Add(child);
             };
-            Action remove = () => Host.Remove(parent, child);
+            Action remove = () => Host.Remove(parent, child, parent.childCount - 1);
             putBack();
             remove();
 
