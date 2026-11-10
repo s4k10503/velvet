@@ -838,6 +838,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABlurInsideItsDelay_When_ItIsTakenAwayAgain_Then_TheElementEndsUnblurred()
+        {
+            // Arrange — a second's tween after half a second's delay.
+            var element = MountResolved("transition-filter duration-1000");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            ForcePanelUpdate(element.panel);
+            ApplyBlur(element, 12f);
+
+            // Act — taken away, and then the tick runs past where the tween would have ended.
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            binding.StartTime -= 10.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert
+            var painted = element.style.filter.value is { Count: > 0 } list ? list[0].GetParameter(0).floatValue : 0f;
+            Assert.That(painted, Is.EqualTo(0f));
+        }
+
+        [Test]
         public void Given_TransitionFilterOnJumpStartStepsAfterADelay_When_ABlurStarts_Then_ItsStartFrameHasNotMoved()
         {
             // Arrange

@@ -129,7 +129,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's CurveFor reads the inline slot alone, so a list code writes and puts
-        // back leaves nothing behind. Calling `Adopt` from MotionTweenTiming.OwnCurve keeps the list as the element's own
+        // back leaves nothing behind. Calling `Adopt` from MotionTweenTiming.PeekOwn keeps the list as the element's own
         // once it is put back, which reddens this case.
         [Test]
         public void Given_ATransitionUtilityOnATweenedElementWhoseCodeWritesATimingAndPutsItBack_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere()
@@ -152,8 +152,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's CurveFor reads the inline slot, where code's keyword stands.
-        // Dropping `Same(slot, hold.WrittenCurve)` from MotionTweenTiming.OwnCurve reads the tween's own list beneath it,
-        // which reddens this case.
+        // Dropping `Same(slot, written)` from MotionTweenTiming.Peek reads the tween's own list beneath it, which
+        // reddens this case.
         [Test]
         public void Given_ATransitionUtilityOnATweenedElementWhoseCodeHoldsATimingInline_When_AWidthTransitionRunsAQuarterSecond_Then_TheKeywordEasesIt()
         {
@@ -191,8 +191,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base retimes by the layer whatever wrote the keyword it left.
-        // Dropping `Adopt` from MotionTweenTiming.PlaysCurve leaves the Motion tween's list holding the slot after
-        // code writes over it, which reddens this case.
+        // Dropping `Same(element.style.transitionTimingFunction, hold.WrittenCurve)` from MotionTweenTiming.PlaysCurve
+        // reads the Motion tween's list as holding the slot after code writes over it, which reddens this case.
         [Test]
         public void Given_AnEaseLayerWhoseKeywordCodeWritesOverAMotionTweens_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere()
         {
@@ -210,6 +210,49 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        // The timing a paired-timing element holds inline once a narrowing of its opacity ends, after a drag wrote its own
+        // lists over the narrowing's, `midDrag` read the element's timing, and the drag put the lists back.
+        private static StyleKeyword TimingLeftInlineAfterADrag(Action<VisualElement> midDrag)
+        {
+            using var host = new HeadlessEditorPanelHost();
+            host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Sheet));
+            var element = new VisualElement();
+            element.AddToClassList("paired-timing-test");
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            var owner = new object();
+            MotionNativeTransitionGuard.NarrowIfIntercepted(element, owner, MotionTransitionSlots.Opacity);
+            var style = element.style;
+            var (property, duration, timing) = (style.transitionProperty, style.transitionDuration, style.transitionTimingFunction);
+            style.transitionProperty = new List<StylePropertyName> { new("translate") };
+            style.transitionDuration = new List<TimeValue> { new(200f, TimeUnit.Millisecond) };
+            style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Ease) };
+            midDrag(element);
+            (style.transitionProperty, style.transitionDuration, style.transitionTimingFunction) = (property, duration, timing);
+            MotionNativeTransitionGuard.Release(element, owner);
+            return element.style.transitionTimingFunction.keyword;
+        }
+
+        [Test]
+        public void Given_ANarrowingOfPairedTimingWhoseListsADragPutsBack_When_AProjectionPassRunsMidDrag_Then_NoTimingIsLeftInlineOnceItEnds()
+        {
+            // Act
+            var keyword = TimingLeftInlineAfterADrag(MotionNativeTransitionGuard.Refresh);
+
+            // Assert
+            Assert.That(keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ANarrowingOfPairedTimingWhoseListsADragPutsBack_When_ItsTransitionsAreReadMidDrag_Then_NoTimingIsLeftInlineOnceItEnds()
+        {
+            // Act
+            var keyword = TimingLeftInlineAfterADrag(element => StyleCascade.Lists(element));
+
+            // Assert
+            Assert.That(keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]

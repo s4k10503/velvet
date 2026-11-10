@@ -158,7 +158,13 @@ namespace Velvet
             }
             if (ChannelsAreNoOp(channels))
             {
-                // from == to: nothing to animate; let the resolver write the identical value.
+                // from == to: nothing to animate; let the resolver write the identical value. A running tween heading
+                // elsewhere stops here, or its tick runs on to that target over the resolver's write
+                // (Given_ABlurInsideItsDelay_When_ItIsTakenAwayAgain_Then_TheElementEndsUnblurred).
+                if (bound != null)
+                {
+                    Cancel(bound);
+                }
                 return false;
             }
 

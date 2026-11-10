@@ -15,5 +15,9 @@
 - A Motion's tween on an element carrying an `ease-[…]` class, or a theme's `ease-<name>`, now runs on the Motion's own
   `Easing` where that is the keyword nearest the class's function. The class's function replaced it.
 - A `transition-filter` tween whose `ease-[…]` class runs `steps(…, jump-start)` or `steps(…, jump-both)` holds its
-  start through a positive `transition-delay`, as CSS does; it took its first step as the delay began. A change back
-  made inside the delay is shortened from that start, not from the step.
+  start through a positive `transition-delay`, as CSS does; it took its first step as the delay began.
+- A `transition-filter` tween whose filter is changed back to the one it shows, as when a hover ends inside the
+  delay, now stops there. It ran on to the filter it had been heading for and stayed on it.
+- An element a Motion narrows, and whose rules give its transitions more than one duration, delay or timing
+  function, takes back its own timing when the narrowing ends after a sortable list's drag shifted it. The drag's
+  200 ms ease was kept in its place.

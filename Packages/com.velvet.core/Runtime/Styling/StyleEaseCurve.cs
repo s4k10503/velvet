@@ -281,7 +281,7 @@ namespace Velvet
             {
                 return binding.LayerMode == resolved ? layer : null;
             }
-            return binding.Classed && MotionTweenTiming.OwnCurve(element).keyword == StyleKeyword.Null
+            return binding.Classed && MotionTweenTiming.PeekOwn(element).Curve.keyword == StyleKeyword.Null
                 ? OfKeyword(resolved)
                 : null;
         }
