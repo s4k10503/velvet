@@ -127,6 +127,10 @@ namespace Velvet
 
         private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site, out bool reusedAsIs)
         {
+            // MUTANT_SURVIVES(equivalent): an inline fiber CreateAndMountFiber makes has no committed leaf or child fiber yet.
+            // MountInline leaves its output to the caller's expansion, and those are all a reused reading acts on:
+            // GeneralPathReconciler.CommitLeaf leaves unpatched an old leaf whose key the fiber owns, and
+            // ReconcileExistingFiber bails a child fiber registered under it. GetOrCreate discards the wrapper path's.
             reusedAsIs = false;
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (node.Body == null) throw new ArgumentException("ComponentNode.Body must not be null.", nameof(node));
@@ -150,7 +154,6 @@ namespace Velvet
             in FiberMountSite site,
             out bool reusedAsIs)
         {
-            reusedAsIs = false;
             // Context is read live from the cursor (ComponentContextStack) during
             // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
             // are already pushed on the live stack by the current expansion walk; an isolated
@@ -196,6 +199,7 @@ namespace Velvet
                 if (isMemoized) existingFiber.InvalidateMemoCache();
             }
 
+            reusedAsIs = !(propsChanged || existingFiber.IsDirty || existingFiber.RenderOwed || refChanged);
             if (site.IsInline)
             {
                 // Synchronously re-render when props changed or the fiber is dirty
@@ -212,7 +216,6 @@ namespace Velvet
                 // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork
                 // reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
-                reusedAsIs = !(propsChanged || existingFiber.IsDirty || existingFiber.RenderOwed || refChanged);
                 if (!reusedAsIs)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the
@@ -675,17 +678,15 @@ namespace Velvet
             List<ComponentFiber>? mounted = null;
             CollectFibersInSubtree(root, ref mounted);
             if (!reader.MountDiscarded && (mounted == null || !mounted.Contains(reader))) return;
-            var kept = new HashSet<ComponentFiber>();
             for (var f = reader; f != null; f = f.Parent)
             {
                 if (f.MountDiscarded) continue;
                 if (mounted == null || !mounted.Contains(f)) break;
-                kept.Add(f);
                 f.MountDiscarded = true;
             }
             if (mounted == null) return;
-            mounted.RemoveAll(f => kept.Contains(f) || f.MountDiscarded);
-            if (mounted.Count > 0) DisposeTogether(mounted);
+            mounted.RemoveAll(f => f.MountDiscarded);
+            DisposeTogether(mounted);
         }
 
         // Single-root form of DisposeFibersUnder(HashSet), selecting through CollectFibersInSubtree. Element teardown
