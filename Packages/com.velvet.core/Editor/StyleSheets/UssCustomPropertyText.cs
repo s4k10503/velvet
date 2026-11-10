@@ -7,15 +7,23 @@ namespace Velvet.Editor
 {
     /// <summary>
     /// Rewrites the custom properties of a USS file that UI Toolkit's importer cannot hold: a value with a unit
-    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) or, in most values, a delimiter (the <c>/</c> of
-    /// <c>16 / 9</c>) fails the whole sheet, one with a CSS math function,
-    /// <c>cubic-bezier()</c> or <c>steps()</c> is dropped, and one with a number its lexer reads otherwise than CSS
-    /// does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>). Such a value becomes a quoted
-    /// string of its own text, which the importer stores as written and the theme readers take back as CSS
-    /// (<see cref="StyleCustomProperties.Spell"/>).
+    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …), in most values a delimiter (the <c>/</c> of
+    /// <c>16 / 9</c>), or a hex colour it cannot parse fails the whole sheet, one with a function it does not know (a
+    /// CSS math function, <c>cubic-bezier()</c>, <c>steps()</c>) is dropped, and one with a number its lexer reads
+    /// otherwise than CSS does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>). Such a value
+    /// becomes a quoted string of its own text, which the importer stores as written and the theme readers take back
+    /// as CSS (<see cref="StyleCustomProperties.Spell"/>).
     /// </summary>
     internal static class UssCustomPropertyText
     {
+        // The functions StyleValueImporter reads besides resource(), matched as written; it drops every other one but
+        // url() with a warning.
+        private static readonly HashSet<string> s_importerFunctions = new(StringComparer.Ordinal)
+        {
+            "rgb", "rgba", "none", "filter", "var", "env", "linear-gradient", "tint", "opacity", "invert", "grayscale",
+            "sepia", "blur", "contrast", "hue-rotate", "prop",
+        };
+
         // The units StyleValueImporter's unit table maps; every other one is an error that leaves the sheet empty.
         private static readonly HashSet<string> s_importerUnits = new(StringComparer.Ordinal)
         {
@@ -217,79 +225,30 @@ namespace Velvet.Editor
             return " !important";
         }
 
-        // Whether the importer would fail, drop or split value: a token it rejects or drops, a number its lexer reads
-        // otherwise than CSS does or with a unit it does not keep, or a math function. A value holding a quote or a
-        // backslash is left as written, so such a token in it still fails the importer.
+        // Whether the importer would fail, drop or split value: a token it rejects or drops, or a number its lexer reads
+        // otherwise than CSS does or with a unit it does not keep. A value holding a quote or a backslash is left as
+        // written, so such a token in it still fails the importer.
         internal static bool NeedsQuoting(string value)
-        {
-            if (value.IndexOfAny(new[] { '"', '\'', '\\' }) >= 0)
-            {
-                return false;
-            }
-            return TailwindMathSpacing.HasMathFunction(value) || HasEasingFunction(value) || HasUnheldToken(value);
-        }
-
-        // cubic-bezier() and steps(), which the importer drops from a custom property as it does a math function.
-        private static bool HasEasingFunction(string value)
-            => HasFunction(value, "cubic-bezier") || HasFunction(value, "steps");
-
-        private static bool HasFunction(string value, string name)
-        {
-            var open = name + "(";
-            var at = value.IndexOf(open, StringComparison.OrdinalIgnoreCase);
-            while (at > 0 && IsIdentChar(value[at - 1]))
-            {
-                at = value.IndexOf(open, at + 1, StringComparison.OrdinalIgnoreCase);
-            }
-            return at >= 0;
-        }
+            => value.IndexOfAny(new[] { '"', '\'', '\\' }) < 0 && HasUnheldToken(value);
 
         // Reads value token by token as UI Toolkit's lexer does, and answers whether one is a token the importer fails
-        // the sheet on or drops: a delimiter, a bracket no function name opens, a colon, a number it misreads, or a
-        // full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere. A value of
-        // identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all the same.
-        // What resource() encloses is left unread, as the importer takes it as a path whatever it holds.
+        // the sheet on or drops: a delimiter, a bracket no function name opens, a colon, a function it does not know
+        // (a CSS math function, cubic-bezier(), steps()), a hex colour it cannot parse or CSS reads further, a number it
+        // misreads, or a full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere.
+        // A value of identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all
+        // the same. What resource() encloses is left unread, as the importer takes it as a path whatever it holds.
         // UssValueImportTests holds each of those. What url() encloses is left unread too.
         private static bool HasUnheldToken(string value)
         {
             var functions = 0;
             var i = 0;
-            while (i < value.Length)
+            var held = true;
+            while (held && i < value.Length)
             {
                 var c = value[i];
                 if (char.IsWhiteSpace(c) || c == ',')
                 {
                     i++;
-                }
-                else if (c == '#' || StartsIdentifier(value, i))
-                {
-                    // An identifier, a function name or a hex colour: digits inside it are no number.
-                    var start = i;
-                    i = NameEnd(value, i + 1);
-                    if (i < value.Length && value[i] == '(')
-                    {
-                        if (EnclosesAPath(value.Substring(start, i - start)))
-                        {
-                            var close = value.IndexOf(')', i);
-                            i = close < 0 ? value.Length : close + 1;
-                        }
-                        else
-                        {
-                            functions++;
-                            i++;
-                        }
-                    }
-                }
-                else if (StartsNumber(value, i))
-                {
-                    if (value[i] is '+' or '-')
-                    {
-                        i++;
-                    }
-                    if (MisreadsNumber(value, ref i))
-                    {
-                        return true;
-                    }
                 }
                 else if (c == ')' && functions > 0)
                 {
@@ -298,10 +257,55 @@ namespace Velvet.Editor
                 }
                 else
                 {
-                    return true;
+                    held = ReadsHeldToken(value, ref i, ref functions);
                 }
             }
-            return false;
+            return !held;
+        }
+
+        // Whether the importer holds the token at i as CSS reads it, moving i past the token where it does.
+        private static bool ReadsHeldToken(string value, ref int i, ref int functions)
+        {
+            if (value[i] == '#')
+            {
+                var digits = HexEnd(value, i + 1) - (i + 1);
+                i += 1 + digits;
+                return digits is 3 or 4 or 6 or 8 && (i == value.Length || !IsIdentChar(value[i]));
+            }
+            if (StartsIdentifier(value, i))
+            {
+                return ReadsHeldName(value, ref i, ref functions);
+            }
+            if (!StartsNumber(value, i))
+            {
+                return false;
+            }
+            if (value[i] is '+' or '-')
+            {
+                i++;
+            }
+            return !MisreadsNumber(value, ref i);
+        }
+
+        // An identifier or a function name: digits inside it are no number.
+        private static bool ReadsHeldName(string value, ref int i, ref int functions)
+        {
+            var start = i;
+            i = NameEnd(value, i + 1);
+            if (i == value.Length || value[i] != '(')
+            {
+                return true;
+            }
+            var name = value.Substring(start, i - start);
+            if (EnclosesAPath(name))
+            {
+                var close = value.IndexOf(')', i);
+                i = close < 0 ? value.Length : close + 1;
+                return true;
+            }
+            functions++;
+            i++;
+            return s_importerFunctions.Contains(name);
         }
 
         private static bool EnclosesAPath(string name)
@@ -315,6 +319,15 @@ namespace Velvet.Editor
                 return i + 1 < value.Length && IsNameStart(value[i + 1]);
             }
             return IsNameStart(c);
+        }
+
+        private static int HexEnd(string value, int i)
+        {
+            while (i < value.Length && (IsDigit(value[i]) || value[i] is >= 'a' and <= 'f' or >= 'A' and <= 'F'))
+            {
+                i++;
+            }
+            return i;
         }
 
         private static int NameEnd(string value, int i)

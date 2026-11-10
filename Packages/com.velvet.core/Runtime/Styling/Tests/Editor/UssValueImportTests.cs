@@ -105,7 +105,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
         // The tokens UssCustomPropertyText.HasUnheldToken takes for ones that fail the sheet: a delimiter, at the top
-        // level or among a function's arguments, and a bracket no function name opens.
+        // level or among a function's arguments, a bracket no function name opens, and a hex colour whose digits
+        // number other than three, four, six or eight.
         [TestCase("16 / 9")]
         [TestCase(".5.p")]
         [TestCase("3.5.p")]
@@ -113,6 +114,8 @@ namespace Velvet.Tests
         [TestCase("a !b")]
         [TestCase("var(--a, 1 / 2)")]
         [TestCase("(1)")]
+        [TestCase("#zzz")]
+        [TestCase("#12345")]
         public void Given_ATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
         {
             // Arrange
@@ -121,6 +124,51 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(failed, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText.HasUnheldToken quotes a function outside the ones it lists, matched as written,
+        // because the importer drops it.
+        [TestCase("mysteps(3)")]
+        [TestCase("RGB(0, 0, 0)")]
+        public void Given_AFunctionTheImporterDoesNotKnow_When_TheStockImporterReadsTheRawSheet_Then_ItStoresNothing(string value)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.Empty);
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText.HasUnheldToken leaves a function it lists and a hex colour of three, four, six or eight
+        // digits unquoted because the importer stores them.
+        [TestCase("blur(4px)", "blur(4px)")]
+        [TestCase("#ff0066", "#ff0066ff")]
+        public void Given_AKnownFunctionOrAParsableHexColour_When_TheStockImporterReadsTheRawSheet_Then_ItStoresIt(
+            string value, string expected)
+        {
+            // Arrange
+            // Act
+            var stored = StoredText(value);
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText.HasUnheldToken quotes a hex colour a name character follows because the importer's
+        // lexer ends the colour at its last hex digit, where CSS reads the hash on.
+        [Test]
+        public void Given_AHexColourANameCharacterFollows_When_TheStockImporterReadsTheRawSheet_Then_ItStoresOtherTokens()
+        {
+            // Arrange
+            // Act
+            var stored = StoredText("#abcxyz");
+
+            // Assert
+            Assert.That(stored, Is.EqualTo("#aabbccff xyz"));
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.

@@ -45,6 +45,8 @@ namespace Velvet.Tests
         [TestCase(":root { --bg: resource(a/b.png); --img: url(a/b.png); }")]
         [TestCase(":root { --a: +1; --b: -.5; --c: rgba(0, 0, 0, .5); }")]
         [TestCase(":root { --f: _a \u00e9; }")]
+        [TestCase(":root { --f: blur(4px) var(--a) linear-gradient(to right, #fff, #000); }")]
+        [TestCase(":root { --h: #abc #abcd #aabbcc #aabbccdd; }")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -103,7 +105,6 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base already declines to rewrite each of these declarations as written.
         [TestCase(".a { --x\u007f: 1rem; }")]
         [TestCase(":root { --x: \"a\" 1rem; }")]
-        [TestCase(":root { --x: mysteps(3); }")]
         public void Given_ADeclarationTheRewriteDeclines_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -180,6 +181,12 @@ namespace Velvet.Tests
         [TestCase(":root { --x: var(--a, 1 / 2); }", ":root { --x: \"var(--a, 1 / 2)\"; }")]
         [TestCase(":root { --x: (1); }", ":root { --x: \"(1)\"; }")]
         [TestCase(":root { --x: a:b; }", ":root { --x: \"a:b\"; }")]
+        [TestCase(":root { --x: mysteps(3); }", ":root { --x: \"mysteps(3)\"; }")]
+        [TestCase(":root { --x: RGB(0, 0, 0); }", ":root { --x: \"RGB(0, 0, 0)\"; }")]
+        [TestCase(":root { --x: var(--a, foo(1)); }", ":root { --x: \"var(--a, foo(1))\"; }")]
+        [TestCase(":root { --x: #zzz; }", ":root { --x: \"#zzz\"; }")]
+        [TestCase(":root { --x: #12345; }", ":root { --x: \"#12345\"; }")]
+        [TestCase(":root { --x: #abcxyz; }", ":root { --x: \"#abcxyz\"; }")]
         public void Given_ATokenTheImporterRejectsOrDrops_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
             string uss, string expected)
         {
