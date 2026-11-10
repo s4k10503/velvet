@@ -177,7 +177,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base ends with no inline image here, as it does after any move.
-        // Reading the inline image in ProjectedCornerFace.InlineImage through `element.style.backgroundImage` alone
+        // Hiding the native image with StyleKeyword.None and comparing the slot with what the getter then reads back
         // reddens this case.
         [Test]
         public void Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_TheOverrideIsRemovedMidMove_Then_NoImageIsHandedBack()
@@ -210,15 +210,48 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base hands back no inline image after any move, this one included.
-        // Dropping the image read from ProjectedCornerFace.Resume reddens this case.
+        // GREEN_ON_BASE(characterization): the base ends with no inline image here, as it does after any move.
+        // Hiding the native image with StyleKeyword.None and comparing the slot through ProjectedCornerFace.InlineImage
+        // reddens this case.
         [Test]
-        public void Given_AnInlineImagedLayoutIdMotionRunningItsColoursOn_When_ItsImageIsClearedAndItMovesAgain_Then_TheClearedImageIsNotHandedBack()
+        public void Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_ItsOverrideTurnsToNoneMidMove_Then_NoImageIsHandedBack()
         {
-            // Arrange — an image given inline, moving, its background turned red over five seconds mid-move, then
-            // landed with its colours still running on to its own.
-            s_classes = "rounded-[20px] bg-blue-500 transition-colors duration-[5000ms]";
-            s_movedClasses = "rounded-[20px] bg-red-500 transition-colors duration-[5000ms]";
+            // Arrange — an image given by a style override, then moving, drawn at a quarter across and a half down.
+            s_classes = "rounded-[20px]";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(box, new StyleBackground(texture));
+                Tick();
+                Step(mounted, 1);
+                for (var i = 0; i < 3; i++) Tick();
+                var moved = ProjectedCornerFace.TryGetRadii(box, out _);
+
+                // Act — the override turned to none, then until the move hands its face back.
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(box, new StyleBackground(StyleKeyword.None));
+                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+
+                // Assert — the texture where the move never painted the face, which no hand-back leaves.
+                Assert.That(moved ? box.style.backgroundImage.value.texture : texture, Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the image slot through IStyle's getter alone.
+        // Hiding the native image with StyleKeyword.None in place of ProjectedCornerFace.Hidden reddens this case.
+        [Test]
+        public void Given_AnInlineImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsDrawnAndReassertedAgain_Then_NothingIsAllocated()
+        {
+            // Arrange — an image given inline, moving, drawn at a quarter across and a half down; the face's pass and its
+            // panel-update check taken once to warm them, and a canary allocating a known array.
+            s_classes = "rounded-[20px] bg-blue-500";
             VelvetStyleUtilities.AttachTo(Root);
             using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
             Tick();
@@ -229,19 +262,32 @@ namespace Velvet.Tests
                 box.style.backgroundImage = new StyleBackground(texture);
                 Tick();
                 Step(mounted, 1);
-                Tick();
-                Step(mounted, 2);
-                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
-                box.style.backgroundImage = new StyleBackground(StyleKeyword.None);
-                var runningOn = box.style.backgroundColor.keyword != StyleKeyword.Null;
+                for (var i = 0; i < 3; i++) Tick();
+                var painting = ProjectedCornerFace.TryGetProjection(box, out var radii, out var scale);
+                const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic
+                    | System.Reflection.BindingFlags.Static;
+                var face = typeof(ProjectedCornerFace);
+                var states = face.GetField("s_states", Private)!.GetValue(null);
+                var lookup = new object[] { box, null };
+                states.GetType().GetMethod("TryGetValue")!.Invoke(states, lookup);
+                var call = System.Linq.Expressions.Expression.Call(face.GetMethod("Reassert", Private)!,
+                    System.Linq.Expressions.Expression.Constant(box), System.Linq.Expressions.Expression.Constant(lookup[1]));
+                var reassert = System.Linq.Expressions.Expression.Lambda<System.Action>(call).Compile();
+                System.Action pass = () =>
+                {
+                    ProjectedCornerFace.Draw(box, radii, 0f, scale);
+                    reassert();
+                };
+                pass();
+                System.Action canary = () => System.GC.KeepAlive(new byte[16]);
+                canary();
 
-                // Act — moved back while its colours run on, then until that move hands its face back.
-                Step(mounted, 0);
-                Tick();
-                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+                // Act
+                var blocks = GCAllocationProbe.MedianBlocksDuring(pass);
+                var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
 
-                // Assert — the texture where the colours had landed before the second move, which the cleared slot never holds.
-                Assert.That(runningOn ? box.style.backgroundImage.value.texture : texture, Is.Null);
+                // Assert — none, where the face paints the image and the canary's are counted.
+                Assert.That(painting && counted ? blocks : -1, Is.Zero, $"{blocks} blocks per pass; the canary's counted: {counted}");
             }
             finally
             {

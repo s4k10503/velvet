@@ -246,10 +246,7 @@ namespace Velvet
             }
             var style = element.style;
             state.Own.Take(element);
-            // MUTANT_SURVIVES(equivalent, line removed): the element's own image stays the value Take read whether or
-            // not the first SyncImage reads the slot as written elsewhere, and where the element clips, that pass writes
-            // the clip either way, nothing having clipped before it.
-            state.WrittenImage = state.Own.Image;
+            state.WrittenImage = style.backgroundImage;
             state.WrittenPositionX = style.backgroundPositionX;
             state.WrittenPositionY = style.backgroundPositionY;
             state.WrittenRepeat = style.backgroundRepeat;
@@ -266,7 +263,6 @@ namespace Velvet
         {
             state.Tail!.Pause();
             state.Tail = null;
-            state.Own.Image = state.WrittenImage = InlineImage(element);
             state.RewriteClip = true;
             InsertFirst(element, state);
             state.Guard?.Resume();
@@ -275,10 +271,10 @@ namespace Velvet
         // The projection's pass runs every StyleAnimateDriver.TickMs and a write lands at any time, so a slot something
         // else wrote is taken back here, at each update of the panel, rather than left to that pass: until the clip is
         // written back over the image slot, the element clips to its native, unrounded box
-        // (Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle).
+        // (Given_AClippingRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_AnImageIsWrittenInlineBetweenItsPasses_Then_TheClipIsWrittenBackAtTheNextPanelUpdate).
         private static void Reassert(VisualElement element, State state)
         {
-            if (state.Tail != null || !WrittenElsewhere(element, state)) return;
+            if (state.Tail != null || !WrittenElsewhere(element.style, state)) return;
             if (!SyncImage(element, state))
             {
                 End(element);
@@ -288,13 +284,10 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        private static bool WrittenElsewhere(VisualElement element, State state)
-        {
-            var style = element.style;
-            return InlineImage(element) != state.WrittenImage || style.backgroundPositionX != state.WrittenPositionX
+        private static bool WrittenElsewhere(IStyle style, State state)
+            => style.backgroundImage != state.WrittenImage || style.backgroundPositionX != state.WrittenPositionX
                 || style.backgroundPositionY != state.WrittenPositionY || style.backgroundRepeat != state.WrittenRepeat
                 || style.backgroundSize != state.WrittenSize;
-        }
 
         // Steps the colours on to the element's own, writing each inline until it lands and then its own; true once
         // every one has, when the face is done with the element.
@@ -402,14 +395,13 @@ namespace Velvet
         // Takes back each image slot something else wrote since this did, and reads whether the element clips its content
         // now; reads the element's own image off its own slots and, beneath them, its rules. Where it clips, a slot
         // something else wrote has the clip's written over it again (SyncClip); where it does not, the image slot holds
-        // none and the placement slots its own. False where the element's own image is one this does not paint.
+        // Hidden's pixel and the placement slots their own. False where the element's own image is one this does not paint.
         private static bool SyncImage(VisualElement element, State state)
         {
             var style = element.style;
             var own = state.Own;
             var foreign = false;
-            var inline = InlineImage(element);
-            if (inline != state.WrittenImage) (own.Image, foreign) = (inline, true);
+            if (style.backgroundImage != state.WrittenImage) (own.Image, foreign) = (InlineImage(element), true);
             if (style.backgroundPositionX != state.WrittenPositionX) (own.X, foreign) = (style.backgroundPositionX, true);
             if (style.backgroundPositionY != state.WrittenPositionY) (own.Y, foreign) = (style.backgroundPositionY, true);
             if (style.backgroundRepeat != state.WrittenRepeat) (own.Repeat, foreign) = (style.backgroundRepeat, true);
@@ -420,20 +412,31 @@ namespace Velvet
             if (clips && (foreign || !state.Clips)) state.RewriteClip = true;
             if (!clips && state.Clips) HandBackPlacement(element, state);
             state.Clips = clips;
-            if (clips) return true;
-            style.backgroundImage = new StyleBackground(StyleKeyword.None);
-            // As InlineImage reads it, which is what each later pass compares
-            // (Given_AnInlineImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
-            state.WrittenImage = InlineImage(element);
+            if (!clips) style.backgroundImage = state.WrittenImage = Hidden();
             return true;
+        }
+
+        // A clear pixel only this writes, which hides the native image where the face paints its own: any other value in
+        // the slot, a keyword included, was written elsewhere
+        // (Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_ItsOverrideTurnsToNoneMidMove_Then_NoImageIsHandedBack).
+        private static Texture2D? s_hidden;
+
+        private static StyleBackground Hidden()
+        {
+            if (s_hidden == null)
+            {
+                s_hidden = new Texture2D(1, 1);
+                s_hidden.SetPixel(0, 0, Color.clear);
+                s_hidden.Apply();
+            }
+            return new StyleBackground(s_hidden);
         }
 
         private static readonly InlineEntryReader? s_inlineEntries = InlineEntryReader.Resolve();
 
         // The element's inline background image: the style's own reading where that names an image, else the entry's
         // RenderTexture or keyword, which that reading gives as StyleKeyword.Null as it gives no entry at all
-        // (Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_TheOverrideIsRemovedMidMove_Then_NoImageIsHandedBack,
-        // Given_ARenderTextureImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
+        // (Given_ARenderTextureImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
         private static StyleBackground InlineImage(VisualElement element)
         {
             var read = element.style.backgroundImage;
