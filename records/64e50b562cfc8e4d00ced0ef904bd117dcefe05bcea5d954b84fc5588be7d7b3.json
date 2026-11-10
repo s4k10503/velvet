@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 7 case(s) that ran the site: Given_AnOverlayPortaledOutOfAnEditorPanelMount_When_Mounted_Then_ItsChildrenStayInThePortal",
  "file": "eb47ebd0fa0da3d7d71d2d1652b18b8f58be1f575865e8b41c82d0e75f738063",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DragOverlayHostTests.Given_AnOverlayPortaledOutOfAnEditorPanelMount_When_Mounted_Then_ItsChildrenStayInThePortal",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/DragOverlayHostTests.cs": "d6b379db19247d5cf977c0ad5961d7f7c6bb91424d9b4f7c23dd761ca6856436",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42803778704",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -13,9 +22,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

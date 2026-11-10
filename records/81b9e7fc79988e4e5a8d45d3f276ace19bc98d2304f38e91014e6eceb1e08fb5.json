@@ -1,8 +1,18 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AnAsyncActionWhoseWriteBeforeSuspendingCommits_When_ThatTransitionLaneRenderRuns_Then_TheEntryStaysUntilTheActionCompletes",
  "file": "f75b800333028dd165e8cb6991a947a9d8f50de17494efef2e3f71415e030783",
- "killers": [],
- "measured_by": "41604882667",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseOptimisticTests.Given_AnAsyncActionWhoseWriteBeforeSuspendingCommits_When_ThatTransitionLaneRenderRuns_Then_TheEntryStaysUntilTheActionCompletes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseOptimisticTests.cs": "4947876ca810f90e57194445a9904740eb5bbd676e9ae623d66bc36eca63255c",
+    "Packages/com.velvet.core/TestUtilities/AsyncActionsInFlightTestAccess.cs": "11111385db8b74b91d046342600e4a605fdce6c8f8ceb54e28adf8c204136034",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42803778704",
  "mutant": {
   "after": ";",
   "before": "s_followers.Clear();",
@@ -13,9 +23,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

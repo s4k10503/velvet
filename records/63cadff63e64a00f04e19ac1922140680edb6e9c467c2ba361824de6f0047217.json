@@ -1,8 +1,8 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: -; 1 other editor(s) were up",
  "file": "359c9ff413743bda0e386b932041525e1fe826320321b1bb48a3ff45398212d0",
  "killers": [],
- "measured_by": "42609496466",
+ "measured_by": "42803778704",
  "mutant": {
   "after": ">=",
   "before": ">",
@@ -18,6 +18,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "survived"
 }

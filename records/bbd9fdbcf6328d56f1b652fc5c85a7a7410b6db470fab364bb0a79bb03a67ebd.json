@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ALabelReadingAPropertyOfAGenericClass_When_Compiled_Then_NoInstructionNamesAGenericParameter",
  "file": "865f5b436be777c7f0fc73b901ee3e9c4000f5155e52a8ad9654b7e7c08b5278",
- "killers": [],
- "measured_by": "42555673605",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeKeyedMemberTests.Given_ALabelReadingAPropertyOfAGenericClass_When_Compiled_Then_NoInstructionNamesAGenericParameter",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeKeyedMemberTests.cs": "c2fc5d217e92e8038dac9353b79d75a6988b775ac93ec198bf914e0f7256e94f",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "42803778704",
  "mutant": {
   "after": "",
   "before": " || !IsStorable(getter.ReturnType)",
@@ -16,9 +24,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }
