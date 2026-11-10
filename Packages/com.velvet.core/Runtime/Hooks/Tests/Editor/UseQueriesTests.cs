@@ -46,6 +46,7 @@ namespace Velvet.Tests
         private static int s_warnings;
         private static string s_typed = string.Empty;
         private static readonly List<VelvetTaskCompletionSource<string>> s_textSources = new();
+        private static TimeSpan s_now;
 
 
         [SetUp]
@@ -66,6 +67,7 @@ namespace Velvet.Tests
             s_events.Clear();
             s_throwOnError = false;
             s_setTick = default;
+            s_now = TimeSpan.Zero;
         }
 
         #region Results
@@ -256,6 +258,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_combined.Count, Is.EqualTo(renders),
                 "What combine returns is shared with what it returned before, and an equal value re-renders nothing");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already shows it; deleting `_observer.Read(_entry, _shared, source);` from QueriesItem.Read reddens it.
+        [Test]
+        public void Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(StaleReader);
+            s_now = TimeSpan.FromSeconds(2);
+
+            // Act
+            Rerender(mounted);
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true));
         }
 
         #endregion
@@ -540,6 +560,17 @@ namespace Velvet.Tests
             Assert.That(s_combineCalls, Is.EqualTo(calls), "v5's shouldSkipCombine passes over combine while a suspense query has no data");
         }
 
+        // GREEN_ON_BASE(characterization): the base already suspends; passing `suspense: false` from the four-query combine overload reddens it.
+        [Test]
+        public void Given_FourSuspendingQueriesWithACombine_When_NoneHasLanded_Then_TheSuspenseShowsItsFallback()
+        {
+            // Act
+            using var mounted = Mount(FourSuspendingCombineReader);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("loading"));
+        }
+
         [Test]
         public void Given_TwoSuspendingQueries_When_BothHaveLanded_Then_TheComponentRendersTheirData()
         {
@@ -640,6 +671,18 @@ namespace Velvet.Tests
             return V.Label(text: "sum");
         }
 
+        private static readonly Func<IReadOnlyList<QueryResult<int>>, bool> s_allStale
+            = results => results.All(result => result.IsStale);
+
+        [Component]
+        private static VNode StaleReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_combined.Add(Hooks.UseQueries(new[] { Options("a") with { StaleTime = TimeSpan.FromSeconds(1) } }, s_allStale, s_client));
+            return V.Label(text: "stale");
+        }
+
         [Component]
         private static VNode StatusReader()
         {
@@ -716,6 +759,16 @@ namespace Velvet.Tests
         private static VNode SuspendingSumReader()
         {
             var sum = Hooks.UseSuspenseQueries(Queries(), s_sum, s_client);
+            return V.Label(text: "sum:" + sum);
+        }
+
+        [Component]
+        private static VNode FourSuspendingCombineReader()
+        {
+            var sum = Hooks.UseSuspenseQueries(
+                Options("a"), Options("b"), Options("c"), Options("d"),
+                (QueryResult<int> a, QueryResult<int> b, QueryResult<int> c, QueryResult<int> d) => a.Data + b.Data + c.Data + d.Data,
+                s_client);
             return V.Label(text: "sum:" + sum);
         }
 

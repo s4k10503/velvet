@@ -1639,6 +1639,23 @@ namespace Velvet.Tests
         // The active rect shared by the ranking cases: 10x10 at the origin, center (5,5).
         private static readonly Rect s_active = new(0, 0, 10, 10);
 
+        // GREEN_ON_BASE(characterization): the base already finds nowhere to go; writing `origin.y >= corner.y` for the up arrow reddens it.
+        // A droppable whose top is level with the drag's lies beside it, not above it.
+        [Test]
+        public void Given_OnlyADroppableLevelWithTheDrag_When_SortableKeyboardCoordinatesReadsTheUpArrow_Then_ItHasNowhereToGo()
+        {
+            // Arrange
+            var move = new DndKeyboardMove(
+                KeyCode.UpArrow, s_active, new DraggableInfo("active", null, new VisualElement()), null,
+                new[] { Candidate("beside", new Rect(20, 0, 10, 10)) });
+
+            // Act
+            var next = DndSortable.KeyboardCoordinates(in move);
+
+            // Assert
+            Assert.That(next, Is.Null);
+        }
+
         [Test]
         public void Given_CandidatesRegisteredOutOfOrder_When_RectIntersectionRuns_Then_TheyAreRankedByIntersectionRatioNotOverlapArea()
         {

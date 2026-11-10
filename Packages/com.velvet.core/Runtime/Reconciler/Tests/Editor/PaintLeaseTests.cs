@@ -15,6 +15,10 @@ namespace Velvet.Tests
     {
         private static readonly string[] Small = { "shadow-sm" };
         private static readonly string[] Large = { "shadow-lg" };
+        private static readonly string[] Skewed = { "skew-x-6" };
+        private static readonly string[] SkewedFurther = { "skew-x-12" };
+        private static readonly string[] RedToBlue = { "bg-gradient-to-r", "from-red-500", "to-blue-500" };
+        private static readonly string[] GreenToBlue = { "bg-gradient-to-r", "from-green-500", "to-blue-500" };
 
         private static float BlurOf(string[] classNames)
         {
@@ -142,6 +146,66 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(leases.Holds(card, FiberPaintLeases.Layer.Shadow), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already keeps the hold; writing `_handles != 0` in Hold.Open reddens it.
+        [Test]
+        public void Given_APlayHoldingTheShadowThatHasDrawn_When_APlayOfAnotherLayerOpensOverIt_Then_TheShadowIsStillHeld()
+        {
+            // Arrange
+            var (scope, card, _) = MountSmall();
+            using var _s = scope;
+            var leases = scope.Reconciler.Context.PaintLeases;
+            leases.Open(card, Small, Large, isExit: false);
+
+            // Act
+            leases.Open(card, Skewed, SkewedFurther, isExit: false);
+
+            // Assert
+            Assert.That(leases.Holds(card, FiberPaintLeases.Layer.Shadow), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already keeps the z; writing `_hasZ = true;` in TakeLive reddens it.
+        [Test]
+        public void Given_APlayOfTheShadowOnAStackedElement_When_ItIsReleasedHavingBeenToldNoZ_Then_TheElementKeepsItsZ()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: "relative z-10 shadow-sm", name: "card") });
+            var card = scope.Root.Q<VisualElement>("card");
+            var context = scope.Reconciler.Context;
+            var lease = context.PaintLeases.Open(card, Small, Large, isExit: false);
+
+            // Act
+            lease.Release();
+
+            // Assert — an element with no recorded facts reads -1, which no z the class names can equal
+            int? z = context.StackingFacts.TryGetValue(card, out var facts) ? facts.Z : -1;
+            Assert.That(z, Is.EqualTo(10));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already binds the blend; deleting `GradientBackground.RebindOwned(_element, current, value);` reddens it.
+        [Test]
+        public void Given_APlayBetweenTwoGradients_When_ItDrawsHalfway_Then_TheBoundGradientIsTheBlend()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                new VNode[] { V.Div(className: string.Join(" ", RedToBlue), name: "card") });
+            var card = scope.Root[0];
+            var context = scope.Reconciler.Context;
+            StyleGradientClass.TryExtract(RedToBlue, card, out var from, out _);
+            StyleGradientClass.TryExtract(GreenToBlue, card, out var to, out _);
+            var lease = context.PaintLeases.Open(card, RedToBlue, GreenToBlue, isExit: false);
+            context.PaintLeases.Note(card, GreenToBlue);
+            lease.Apply(0f);
+
+            // Act
+            lease.Apply(0.5f);
+
+            // Assert
+            Assert.That(context.GradientBackgrounds[card].Spec, Is.EqualTo(MotionPaintInterpolation.Gradient(from, to, 0.5f)));
         }
 
         [Test]

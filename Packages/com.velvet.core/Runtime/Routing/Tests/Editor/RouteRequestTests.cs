@@ -180,6 +180,22 @@ namespace Velvet.Tests
             Assert.That(data, Is.EqualTo("1,True,null,x"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already parses it; deleting the `SkipWhitespace();` after a member's value in ReadObject reddens it.
+        [Test]
+        public void Given_AJsonPostOfAStringWithSpaceAfterAMembersValue_When_TheActionReadsJson_Then_ItIsTheParsedObject()
+        {
+            // Arrange
+            const string body = "{\"a\":1 ,\"b\":2 }";
+
+            // Act
+            var data = ActionData(
+                request => request.Json() is Dictionary<string, object?> json ? string.Join(",", json.Keys) : "not an object",
+                body, Json);
+
+            // Assert
+            Assert.That(data, Is.EqualTo("a,b"));
+        }
+
         [Test]
         public void Given_AJsonPostOfAnObject_When_TheActionReadsText_Then_ItIsWhatJsonStringifyWrites()
         {
@@ -296,6 +312,22 @@ namespace Velvet.Tests
         {
             // Arrange
             var body = new FormData();
+            body.Append("a", "1");
+            body.Append("b", "2");
+
+            // Act
+            var data = ActionData(request => request.Text(), body, PlainText);
+
+            // Assert
+            Assert.That(data, Is.EqualTo("a=1\nb=2\n"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already writes the lines; deleting `AddAll(pairs, searchParams);` from PlainText reddens it.
+        [Test]
+        public void Given_ATextPostOfSearchParams_When_TheActionReadsText_Then_EachEntryIsALine()
+        {
+            // Arrange
+            var body = new SearchParams();
             body.Append("a", "1");
             body.Append("b", "2");
 

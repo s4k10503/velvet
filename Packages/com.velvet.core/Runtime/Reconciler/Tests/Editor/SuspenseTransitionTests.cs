@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -27,6 +28,8 @@ namespace Velvet.Tests
             s_setShown = default;
             s_start = default;
             s_hostFiber = null;
+            s_otherSource = null;
+            s_readerKeys.Clear();
         }
 
         private string Texts() => _root.DisplayedLabelTexts("|");
@@ -184,6 +187,65 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("value:0"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already reveals it; deleting `&& ReferenceEquals(current.SuspendedOn, fiber)` from IsWaitedOnByAGivenUpTransitionPass reddens it.
+        [Test]
+        public void Given_ATransitionGivenUpOnOneBoundarysRead_When_AnotherBoundarysReadResolves_Then_ThatBoundaryShowsItsContent()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TwoBoundaryHostRender, key: "host"));
+            s_start.Invoke(() => s_setKey.Invoke(1));
+            FlushTwice(mounted);
+            var givenUp = s_hostFiber.SuspendedInTransition;
+
+            // Act
+            s_otherSource.TrySetResult(5);
+            FlushTwice(mounted);
+
+            // Assert — a host whose transition was not given up reads as no content, which the expected label is not in
+            var shown = givenUp ? Texts() : "not given up";
+            Assert.That(shown, Does.Contain("other:5"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already keeps the update; deleting `_baseQueue = _beforeBaseQueue;` from UndoCommit reddens it, as measured: the retry renders key 0 first.
+        [Test]
+        public void Given_ATransitionWhoseLaterSliceSuspendsARevealedPrimary_When_TheResourceResolves_Then_TheNewContentIsShown()
+        {
+            // Arrange
+            s_slicedTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(SlicedHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_start.Invoke(() => s_setKey.Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_hostFiber.FlushStateWithTinyBudgetForTest();
+            var readInTheFirstSlice = s_sources.Count != 0;
+            for (var slices = 0; slices < 100 && s_hostFiber.HasPendingReconcileWorkForTest() && s_sources.Count == 0; slices++)
+            {
+                FiberWorkLoop.ContinueReconcile(s_hostFiber);
+            }
+            var keptWhileSuspended = !readInTheFirstSlice && s_sources.Count == 1
+                && s_slicedTarget.DisplayedLabelTexts("|") == "value:0";
+
+            s_readerKeys.Clear();
+
+            // Act — the retry reads the key's resource again, and that read is settled too
+            for (var settled = 0; settled < 3 && settled < s_sources.Count; settled++)
+            {
+                s_sources[settled].TrySetResult(7);
+                mounted.FlushStateForTest();
+                s_hostFiber.DrainTimeSlicedReconcileForTest();
+                mounted.FlushStateForTest();
+                mounted.FlushEffectsForTest();
+            }
+
+            // Assert — the retry renders the key the transition wrote, and never the one it replaced on the way. A pass
+            // that did not suspend in a later slice with the primary kept, or that never shows the resolved content,
+            // reads as a key no render can hold.
+            var keys = keptWhileSuspended && s_slicedTarget.DisplayedLabelTexts("|") == "value:7"
+                ? string.Join(",", s_readerKeys.Distinct())
+                : "-1";
+            Assert.That(keys, Is.EqualTo("1"));
+        }
+
         // GREEN_ON_BASE(characterization): the merge base already shows the fallback when an urgent update
         // suspends a revealed primary; what this pins is that only a transition's render declines.
         [Test]
@@ -237,6 +299,65 @@ namespace Velvet.Tests
                     fallback: V.Label(text: "loading"),
                     children: new VNode[] { V.Component(ReaderRender, key, key: "reader") }),
             });
+        }
+
+        private static VelvetTaskCompletionSource<int> s_otherSource;
+
+        // The first boundary's reader is the one a transition suspends; the second's is pending from the mount.
+        [Component]
+        private static VNode TwoBoundaryHostRender()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            var (key, setKey) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_setKey = setKey;
+            s_start = start;
+            return V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(ReaderRender, key, key: "reader") }),
+                V.Suspense(
+                    fallback: V.Label(text: "other-loading"),
+                    children: new VNode[] { V.Component(OtherReaderRender, key: "other") }),
+            });
+        }
+
+        [Component]
+        private static VNode OtherReaderRender()
+        {
+            var value = Hooks.Use<int>(_ =>
+            {
+                s_otherSource ??= new VelvetTaskCompletionSource<int>();
+                return s_otherSource.Task;
+            }, "other");
+            return V.Label(text: "other:" + value);
+        }
+
+        // The transition mounts rows ahead of a Portal holding the boundary, so the slices park among the rows and
+        // the boundary is reached in a later one; the case reads whether it was.
+        private const int SlicedRows = 30;
+        private static VisualElement s_slicedTarget;
+        private static readonly List<int> s_readerKeys = new();
+
+        [Component]
+        private static VNode SlicedHostRender()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            var (_, start) = Hooks.UseTransition();
+            var (key, setKey) = Hooks.UseState(0);
+            s_setKey = setKey;
+            s_start = start;
+            var rows = key == 0 ? 0 : SlicedRows;
+            var children = new VNode[rows + 1];
+            for (var i = 0; i < rows; i++) children[i] = V.Label(text: "row-" + i, key: "row-" + i);
+            children[rows] = V.Portal(s_slicedTarget, key: "boundary", children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading"),
+                    children: new VNode[] { V.Component(ReaderRender, key, key: "reader") }),
+            });
+            return V.Fragment(children: children);
         }
 
         [Component]
@@ -307,6 +428,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode ReaderRender(int key)
         {
+            s_readerKeys.Add(key);
             var value = Hooks.Use<int>(_ =>
             {
                 if (key == 0) return VelvetTask.FromResult(0);
