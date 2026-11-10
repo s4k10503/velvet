@@ -33,6 +33,17 @@ Read the `fullname` roster in the XML, not only the count, before trusting a fil
 
 **Write into a directory made for the run, as above — never /tmp/results.xml, and never a fixed name under Logs.** The first is one file for every worktree and every session on the machine, the second one file for every agent working in the checkout, and the compile-error paragraph below is what reading another run's file costs.
 
+## Compiling before a push
+
+A compile error that first shows in CI costs the round that found it, so compile first. `scripts/unity/compile_check.py` runs the editor's own Roslyn with the response file the editor last wrote for each assembly, over the sources its asmdef owns now, with no editor running; its docstring owns which of the editor's lines are reused and which the sources have moved past. It proves that those sources compile and nothing more: the IL post-processor is not run, no test is, and a source no asmdef owns (`Assets/Editor` holds this project's) is left to CI.
+
+```bash
+python3 scripts/unity/compile_check.py                                  # every asmdef assembly
+python3 scripts/unity/compile_check.py Velvet Velvet.Tests.Styling.Editor
+```
+
+From a worktree whose `Library` holds no response files, name a checkout the editor has compiled with `--project <checkout>`; the sources still come from the worktree. A selection is compiled with everything it references that this project declares, so the second line above compiles `Velvet`, `Velvet.Editor` and `Velvet.TestUtilities` before the test assembly. What reads a changed surface and is not selected is not compiled, so after a change to a surface other assemblies read, compile everything.
+
 ## Traps that produce wrong answers
 
 **Never pass `-nographics`.** Any test that mounts a real panel — an `EditorWindow.rootVisualElement`, or anything reading `resolvedStyle` or firing pointer/focus events — fails with "No graphic device is available". Graphics-free tests pass with graphics on, so there is no reason to use the flag.

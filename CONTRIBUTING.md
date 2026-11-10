@@ -922,8 +922,11 @@ proves, and what the sources carry), `release/` (cutting a release and publishin
 suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
 contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request), `ci/`
 (which commit a workflow job reads its change against) and `unity/` (the Library seed, sample sync,
-and `asset_meta_check.py`, which `Test ▸ test-quality` runs to refuse an asset under `Assets` or
-the package and its `.meta` committed apart). Two rules keep
+`compile_check.py`, which compiles the assemblies the asmdefs declare with the editor's own Roslyn and
+the options it last used, so a compile error is found before a push rather than by the CI round, and
+`asset_meta_check.py`, which
+`Test ▸ test-quality` runs to refuse an asset under `Assets` or the package and its `.meta` committed
+apart). Two rules keep
 the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
