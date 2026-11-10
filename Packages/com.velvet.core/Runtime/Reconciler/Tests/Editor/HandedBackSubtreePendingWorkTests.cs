@@ -7,8 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a host element the parent hands back by instance is still entered where a component inside it
-    /// has work pending, as React enters a subtree whose childLanes are set, and that the mark standing for that is
-    /// clear once the work has settled, so an unchanged subtree costs the walk one read.
+    /// has work pending, as React enters a subtree whose childLanes are set, that it is left unentered however many
+    /// fibers it holds where none has, and that the mark standing for that is clear once the work has settled, so an
+    /// unchanged subtree costs the walk one read.
     /// </summary>
     [TestFixture]
     internal sealed class HandedBackSubtreePendingWorkTests
@@ -18,6 +19,8 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setLeafTick;
         private static VelvetTaskCompletionSource<int> s_source;
         private static ComponentFiber s_ownerFiber;
+        private static int s_heldLeaves;
+        private static int s_heldLeafRenders;
 
         private VisualElement _root = null!;
 
@@ -30,6 +33,8 @@ namespace Velvet.Tests
             s_setLeafTick = default;
             s_source = null;
             s_ownerFiber = null;
+            s_heldLeaves = 0;
+            s_heldLeafRenders = 0;
         }
 
         private static object PendingWorkBelow(ComponentFiber fiber)
@@ -84,6 +89,36 @@ namespace Velvet.Tests
             });
         }
 
+        [Component(Compiler = false)]
+        private static VNode HeldLeaf()
+        {
+            s_heldLeafRenders++;
+            return V.Label(text: "leaf");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode HeldLeaves()
+        {
+            var children = new VNode[s_heldLeaves];
+            for (var i = 0; i < children.Length; i++)
+            {
+                children[i] = V.Component(HeldLeaf, key: "leaf" + i);
+            }
+            return V.Div(name: "leaves", children: children);
+        }
+
+        [Component]
+        private static VNode ManyFiberOwner()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOrder = setTick;
+            return V.Div(name: "box", children: new VNode[]
+            {
+                V.Label(name: "tick", text: "tick:" + tick),
+                V.Div(name: "held", children: new VNode[] { V.Component(HeldLeaves, key: "leaves") }),
+            });
+        }
+
         // GREEN_ON_BASE(characterization): the merge base builds the row again on every render, so the reader is reached
         // there whatever the keyed pass does with a row handed back by instance.
         [Test]
@@ -101,6 +136,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<Label>("loading")?.text, Is.EqualTo("loading"));
+        }
+
+        [TestCase(200)]
+        [TestCase(400)]
+        public void Given_AnElementHandedBackOverManyFibers_When_TheOwnerRendersAgain_Then_NoneOfThemRendersAgain(int leaves)
+        {
+            // Arrange
+            s_heldLeaves = leaves;
+            using var mounted = V.Mount(_root, V.Component(ManyFiberOwner, key: "owner"));
+
+            // Act
+            s_setOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_heldLeafRenders, Is.EqualTo(leaves));
         }
 
         // Read by reflection so the fixture builds where the mark does not exist.
