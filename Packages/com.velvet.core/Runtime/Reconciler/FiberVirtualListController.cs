@@ -325,7 +325,12 @@ namespace Velvet
             if (_isDisposed)
             {
                 ClearRenderedItems();
+                return;
             }
+
+            // Last, once the buffers name the rows placed: outside a pass this ends the range as a pass ends, which
+            // can throw.
+            _reconciler.EndRowPlacementForController(_visibleContainer);
         }
 
         // Indexes the still-rendered items into the two old-row tables, for RenderRange's reuse/patch
@@ -567,15 +572,17 @@ namespace Velvet
             _lastRenderedIndex = -1;
         }
 
-        // Repopulates _visibleContainer from newElements at its new scroll offset. An element FiberZLayerCoordinator
-        // relocated out of a row's slot is left standing: the placeholder holding the slot is what newElements names,
-        // and the coordinator arranges the two again once the rows are placed.
+        // Repopulates _visibleContainer from newElements at its new scroll offset. Only the rows go and come back: what
+        // holds no slot of its own (LogicalChildSlots.IsInvisible) is left standing — an element FiberZLayerCoordinator
+        // relocated out of a row's slot, whose placeholder is what newElements names, and a band or layer hosted
+        // beside a row, which its attach callback puts beside the row again as the row comes back onto the panel.
+        // The coordinator arranges the relocated elements again where the range ends.
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
             _reconciler.BeginRowPlacementForController(_visibleContainer);
             for (var i = _visibleContainer.childCount - 1; i >= 0; i--)
             {
-                if (!FiberZLayerCoordinator.IsRelocatedReal(_visibleContainer[i]))
+                if (!LogicalChildSlots.IsInvisible(_visibleContainer[i]))
                 {
                     _visibleContainer.RemoveAt(i);
                 }
@@ -588,8 +595,6 @@ namespace Velvet
             container.bottom = _horizontal ? 0 : StyleKeyword.Null;
             container.right = _horizontal ? StyleKeyword.Null : 0;
 
-            var slots = new LogicalSlotCursor();
-            var slot = 0;
             for (var i = 0; i < newCount; i++)
             {
                 if (newElements[i] != null)
@@ -598,10 +603,9 @@ namespace Velvet
                     var box = _reconciler.RowBoxForController(newElements[i]);
                     if (_horizontal) box.style.width = length;
                     else box.style.height = length;
-                    slots.Insert(_visibleContainer, slot++, newElements[i]);
+                    _visibleContainer.Add(newElements[i]);
                 }
             }
-            _reconciler.EndRowPlacementForController();
         }
 
         // The buffers go with the rows they held: IndexOldRenderedItems offers whatever they still name

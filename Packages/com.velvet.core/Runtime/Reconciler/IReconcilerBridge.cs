@@ -37,11 +37,10 @@ namespace Velvet
         // be (re)mounted, so the controller must store this return value, not its stale pre-patch reference.
         VisualElement PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode);
 
-        // Bracket the controller's rewrite of the container's rows, which leaves the elements
-        // FiberZLayerCoordinator relocated out of the rows' slots standing: Begin before the first row is
-        // removed, End once every row is placed.
+        // Bracket the controller's rewrite of the container's rows, which leaves standing what holds no slot of
+        // its own: Begin before the first row is removed, End once every row is placed.
         void BeginRowPlacementForController(VisualElement container);
-        void EndRowPlacementForController();
+        void EndRowPlacementForController(VisualElement container);
 
         // The element that is the row, given the occupant of its slot: the one a placeholder stands for.
         VisualElement RowBoxForController(VisualElement occupant);

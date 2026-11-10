@@ -541,7 +541,51 @@ namespace Velvet
 
         #region IReconcilerBridge
 
-        VisualElement IReconcilerBridge.CreateElementForController(VNode node) => NodeFactory.CreateElement(node);
+        VisualElement IReconcilerBridge.CreateElementForController(VNode node)
+        {
+            var held = HoldRowMounts();
+            try
+            {
+                return NodeFactory.CreateElement(node);
+            }
+            finally
+            {
+                ReturnRowMounts(held);
+            }
+        }
+
+        // Outside a pass, a Component row's render is a top-level pass of its own, whose end drains the deferred
+        // mounts while the rows created ahead of it are not yet in the list, and drops a mount whose placeholder has
+        // no parent. So those rows' mounts are set aside while another row is created or patched, and go back ahead
+        // of whatever that row queued, for the end of the range to drain (EndRowPlacementForController).
+        private (VisualElement Placeholder, VNode Node, VisualElement? Target, List<KeyValuePair<object, object>> ContextSnapshot,
+            ComponentFiber? LogicalParent)[]? HoldRowMounts()
+        {
+            var queue = _ctx.PendingPortalMounts;
+            if (_ctx.SharedReconcileDepth > 0 || queue.Count == 0) return null;
+            var held = queue.ToArray();
+            queue.Clear();
+            return held;
+        }
+
+        private void ReturnRowMounts((VisualElement Placeholder, VNode Node, VisualElement? Target,
+            List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)[]? held)
+        {
+            if (held == null) return;
+            var queue = _ctx.PendingPortalMounts;
+            var queuedSince = queue.ToArray();
+            queue.Clear();
+            foreach (var entry in held)
+            {
+                queue.Enqueue(entry);
+                // The drain mounts a host only for a placeholder still in this set, which a pass's end clears.
+                if (entry.Node is not ZLayerMountNode) _ctx.PendingHostPlaceholders.Add(entry.Placeholder);
+            }
+            foreach (var entry in queuedSince)
+            {
+                queue.Enqueue(entry);
+            }
+        }
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => ElementCleaner.CleanupElement(element);
 
@@ -560,8 +604,7 @@ namespace Velvet
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
 
-        // Every range render ends here, and one run from a geometry or scroll callback has no pass whose end would
-        // walk the pointer-events scopes; ahead of the layout work, which reads the rows it placed.
+        // Every range render ends here, ahead of the layout work, which reads the rows it placed.
         void IReconcilerBridge.CommitStrandedLayoutWorkForController()
         {
             PointerEventsScope.RequestSyncAll(_ctx);
@@ -576,7 +619,15 @@ namespace Velvet
             // is read before the patch, which forgets the placeholder where it puts that element back in the slot.
             var real = NodePatcher.ResolveWrapped(
                 _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element);
-            NodePatcher.PatchNode(NodePatcher.ResolveWrapped(element), oldNode, newNode);
+            var held = HoldRowMounts();
+            try
+            {
+                NodePatcher.PatchNode(NodePatcher.ResolveWrapped(element), oldNode, newNode);
+            }
+            finally
+            {
+                ReturnRowMounts(held);
+            }
             // A class change can wrap/unwrap or relocate during the patch, swapping the slot's occupant; return
             // the one it left so the controller re-mounts the right node (the parallel of ChildReconciler's
             // post-patch re-fetch).
@@ -588,25 +639,22 @@ namespace Velvet
         void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
             => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
 
-        // A range rendered inside a pass is placed and arranged where the pass ends (FinishTopLevelPass). Outside one,
-        // the elements its rows' creation relocated join their parents here rather than at the next pass, and every
-        // other queued mount is left to that pass's drain.
-        void IReconcilerBridge.EndRowPlacementForController()
+        // A range rendered inside a pass is placed where that pass ends. One rendered outside a pass ends here as a
+        // top-level pass ends, its rows now in the list, as ContinueReconcile ends a resumed slice: what the rows'
+        // creation deferred — a relocated element, a Portal's or WorldSpace's host — is placed within the range
+        // render rather than at whichever pass comes next.
+        void IReconcilerBridge.EndRowPlacementForController(VisualElement container)
         {
             if (_ctx.SharedReconcileDepth > 0) return;
-            for (var queued = _ctx.PendingPortalMounts.Count; queued > 0; queued--)
+            VNodePool.BeginReleaseScope();
+            try
             {
-                var entry = _ctx.PendingPortalMounts.Dequeue();
-                if (entry.Node is ZLayerMountNode mount)
-                {
-                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, entry.Placeholder, mount);
-                }
-                else
-                {
-                    _ctx.PendingPortalMounts.Enqueue(entry);
-                }
+                FinishTopLevelPass(container, walked: true);
             }
-            FiberZLayerCoordinator.ResortLayers(_ctx);
+            finally
+            {
+                VNodePool.EndReleaseScope();
+            }
         }
 
         VisualElement IReconcilerBridge.RowBoxForController(VisualElement occupant)
