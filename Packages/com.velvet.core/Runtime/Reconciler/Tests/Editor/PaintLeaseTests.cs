@@ -112,6 +112,26 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.ShadowBindings.ContainsKey(card), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base already attaches it; writing `== 0` for the skew layer's `!= 0` in the lease's Attach reddens it.
+        [Test]
+        public void Given_APlayEndingOnASkewTheElementLacks_When_ItDraws_Then_TheSkewIsAttached()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(className: "", name: "card") });
+            var card = scope.Root[0];
+            var leases = scope.Reconciler.Context.PaintLeases;
+            var lease = leases.Open(card, Array.Empty<string>(), Skewed, isExit: false);
+            leases.Note(card, Skewed);
+
+            // Act
+            lease.Apply(0f);
+            lease.Apply(0.5f);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.SkewTransformed.ContainsKey(card), Is.True);
+        }
+
         [Test]
         public void Given_APlayEndingWithoutTheShadow_When_ItIsReleased_Then_TheLayerIsDetached()
         {

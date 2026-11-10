@@ -1656,6 +1656,25 @@ namespace Velvet.Tests
             Assert.That(next, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base already keeps the left edge; writing `<` for the left edge's `<=` in RestrictToBoundingRect reddens it.
+        [Test]
+        public void Given_ARectWiderThanTheWindowWithItsLeftEdgeOnTheWindows_When_RestrictToWindowEdgesRuns_Then_TheLeftEdgeStays()
+        {
+            // Arrange
+            var args = new DndModifierArgs
+            {
+                Transform = Vector2.zero,
+                DraggingNodeRect = new Rect(0, 0, 200, 50),
+                WindowRect = new Rect(0, 0, 100, 100),
+            };
+
+            // Act
+            var translate = DndModifiers.RestrictToWindowEdges(in args);
+
+            // Assert
+            Assert.That(translate.x, Is.EqualTo(0f));
+        }
+
         [Test]
         public void Given_CandidatesRegisteredOutOfOrder_When_RectIntersectionRuns_Then_TheyAreRankedByIntersectionRatioNotOverlapArea()
         {

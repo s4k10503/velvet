@@ -647,6 +647,21 @@ namespace Velvet.Tests
             Assert.That(s_client.GetQueryState<int>(Todos)!.Error?.Message, Is.EqualTo("written"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already writes the count; deleting `DataUpdateCount = state.DataUpdateCount;` from WriteState reddens it.
+        [Test]
+        public void Given_AnEntry_When_SetStateWritesADataUpdateCount_Then_TheStateReadsIt()
+        {
+            // Arrange
+            s_client.SetQueryData(Todos, 1);
+            var query = Find();
+
+            // Act
+            query.SetState(query.State with { DataUpdateCount = 7 });
+
+            // Assert
+            Assert.That(Find().State.DataUpdateCount, Is.EqualTo(7));
+        }
+
         [Test]
         public void Given_AnEntry_When_SetStateWrites_Then_TheCacheAnnouncesASetStateUpdate()
         {

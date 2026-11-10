@@ -260,14 +260,16 @@ namespace Velvet.Tests
                 "What combine returns is shared with what it returned before, and an equal value re-renders nothing");
         }
 
-        // GREEN_ON_BASE(characterization): the base already shows it; deleting `_observer.Read(_entry, _shared, source);` from QueriesItem.Read reddens it.
+        // GREEN_ON_BASE(characterization): the base already shows it once a render has caught up with the mount; deleting `_observer.Read(_entry, _shared, source);` from QueriesItem.Read reddens it.
         [Test]
         public void Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt()
         {
-            // Arrange
+            // Arrange — the render before the data turns stale runs the combine over the results the mount's commit
+            // recorded, so the first render after it has nothing new to combine.
             s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
             s_client.SetQueryData(new QueryKey("a"), 1);
             using var mounted = Mount(StaleReader);
+            Rerender(mounted);
             s_now = TimeSpan.FromSeconds(2);
 
             // Act
