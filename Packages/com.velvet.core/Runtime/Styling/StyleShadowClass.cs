@@ -75,17 +75,23 @@ namespace Velvet
     // The colour one family's classes declare on an element: inherit, a colour, or neither.
     internal readonly struct DeclaredShadowColour
     {
-        public DeclaredShadowColour(bool inherit, Color? colour)
+        public DeclaredShadowColour(bool inherit, Color? colour, bool invalid = false)
         {
             Inherit = inherit;
             Colour = colour;
+            Invalid = invalid;
         }
 
         public bool Inherit { get; }
 
         public Color? Colour { get; }
 
-        public bool SameAs(DeclaredShadowColour other) => Inherit == other.Inherit && Colour == other.Colour;
+        // A colour the browser finds invalid where it is computed, which a child's -inherit takes as it is: the
+        // property is registered with the universal syntax.
+        public bool Invalid { get; }
+
+        public bool SameAs(DeclaredShadowColour other)
+            => Inherit == other.Inherit && Colour == other.Colour && Invalid == other.Invalid;
     }
 
     // The colours an element's classes declare for each family, which a child's -inherit class takes.
@@ -251,13 +257,17 @@ namespace Velvet
             }
 
             // The colour a child's -inherit takes: this one, its alpha scaled by the size's /N, as the browser
-            // substitutes --tw-shadow-alpha on this element; none where that /N leaves the colour invalid, so the child
-            // keeps its own.
+            // substitutes --tw-shadow-alpha on this element; invalid where that /N leaves the colour's color-mix()
+            // invalid.
             public DeclaredShadowColour Declared()
             {
-                if (Inherit || Colour == null || float.IsNaN(SizeScale))
+                if (Inherit || Colour == null)
                 {
                     return new DeclaredShadowColour(Inherit, null);
+                }
+                if (float.IsNaN(SizeScale))
+                {
+                    return new DeclaredShadowColour(false, null, invalid: true);
                 }
                 var colour = Colour.Value;
                 colour.a *= SizeScale;
@@ -341,16 +351,16 @@ namespace Velvet
             {
                 return false;
             }
-            if (suffix == "inherit")
+            if (suffix is "inherit" or "initial")
             {
-                // inherit takes no modifier.
+                // Neither takes a modifier.
                 if (alpha != null)
                 {
                     return false;
                 }
                 if (Takes(ref family.ColourImportant, important))
                 {
-                    family.Inherit = true;
+                    family.Inherit = suffix == "inherit";
                     family.Colour = null;
                 }
                 return true;

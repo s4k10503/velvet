@@ -97,16 +97,53 @@ namespace Velvet.Tests
             Assert.That(drawn, Is.True);
         }
 
-        [Test]
-        public void Given_ASizeModifierPast100BesideAShadowColour_When_ItsDeclaredColourIsRead_Then_AChildInheritsNone()
+        // A child whose shadow-inherit layers sit under parentClasses, with the parent's declared colours recorded.
+        private static UnityEngine.UIElements.VisualElement InheritingChild(string[] parentClasses, string[] childClasses)
         {
-            // Act — the colour's color-mix() is invalid where it is computed, so a child's shadow-inherit takes no colour
-            // from it and keeps each layer's own.
-            var declared = StyleShadowClass.DeclaredColours(new[] { "shadow-lg/150", "shadow-red-500" }).Shadow;
+            var parent = new UnityEngine.UIElements.VisualElement();
+            var child = new UnityEngine.UIElements.VisualElement();
+            parent.Add(child);
+            BoxShadowSilhouette.RecordDeclaredColours(parent, parentClasses);
+            StyleShadowClass.TryExtract(childClasses, out var layers);
+            BoxShadowSilhouette.Attach(child, layers, childClasses);
+            return child;
+        }
+
+        [TestCase("shadow-lg/150 shadow-red-500", "shadow-lg shadow-inherit")]
+        [TestCase("inset-shadow-sm/150 inset-shadow-red-500", "inset-shadow-sm inset-shadow-inherit")]
+        public void Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(
+            string parentClasses, string childClasses)
+        {
+            // Act — the parent's colour is a color-mix() the browser finds invalid where it is computed; the property is
+            // registered with the universal syntax, so the child inherits that value as it is, and its box-shadow, which
+            // reads it, is invalid in turn and computes to none.
+            var discarded = BoxShadowSilhouette.DiscardedByInheritance(
+                InheritingChild(parentClasses.Split(' '), childClasses.Split(' ')));
 
             // Assert
-            Assert.That(declared.Inherit ? "inherit" : declared.Colour is { } c ? ColorUtility.ToHtmlStringRGBA(c) : "none",
-                Is.EqualTo("none"));
+            Assert.That(discarded, Is.True);
+        }
+
+        [Test]
+        public void Given_AParentWithAShadowColourInsideItsRange_When_AChildInheritsIt_Then_TheChildDrawsItsBoxShadow()
+        {
+            // Act
+            var discarded = BoxShadowSilhouette.DiscardedByInheritance(
+                InheritingChild(new[] { "shadow-lg/50", "shadow-red-500" }, new[] { "shadow-lg", "shadow-inherit" }));
+
+            // Assert
+            Assert.That(discarded, Is.False);
+        }
+
+        [Test]
+        public void Given_AnImportantShadowInitialOverASizeModifierPast100AndAColour_When_Extracted_Then_TheLayersAreOpaqueBlack()
+        {
+            // Act — shadow-initial takes the colour class's place, so each layer falls back to its own colour, whose
+            // alpha the size's /150 takes and clamps to 1.
+            StyleShadowClass.TryExtract(new[] { "shadow-lg/150", "shadow-red-500", "!shadow-initial" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Length > 0 ? ColorUtility.ToHtmlStringRGBA(spec[0].Color) : "no layer", Is.EqualTo("000000FF"));
         }
 
         [Test]
