@@ -2234,16 +2234,19 @@ namespace Velvet
         // changed, and the hide that render ends with takes that setup back here.
         internal void DetachRefsWhileHidden(VisualElement element)
         {
+            DetachRefWhileHidden(element);
+            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+        }
+
+        internal void DetachRefWhileHidden(VisualElement element)
+        {
             var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)
                 ? _pendingRefAttaches[queued].Callback
                 : RefCallbacks.TryGetValue(element, out var installed) ? installed.Callback : null;
-            if (callback != null)
-            {
-                DetachRefCallback(element);
-                DropPendingRefAttach(element);
-                _refsDetachedWhileHidden[element] = callback;
-            }
-            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+            if (callback == null) return;
+            DetachRefCallback(element);
+            DropPendingRefAttach(element);
+            _refsDetachedWhileHidden[element] = callback;
         }
 
         // Over element and every element below it, short of one a nested Suspense still hides, whose refs that

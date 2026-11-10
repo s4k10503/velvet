@@ -202,6 +202,36 @@ namespace Velvet
             return Precedes(parent, element);
         }
 
+        // Where the fiber's output starts: its first row, or the row a fiber holding none sits in front of. Null for
+        // a fiber holding none behind the last row of a container, which endOf names, and for a fiber mounted
+        // nowhere.
+        internal static VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf)
+        {
+            endOf = null;
+            var mount = fiber.MountPoint;
+            if (mount == null) return null;
+            if (LogicalChildSlots.TryGetPhysical(mount, fiber.MountSlotStart, out var physical)) return mount[physical];
+            endOf = mount;
+            return null;
+        }
+
+        // Whether element, or with atEnd the place behind its last child, comes after everything inside subtree.
+        internal bool ComesAfter(VisualElement subtree, VisualElement element, bool atEnd)
+        {
+            var chainA = ChainOf(subtree, _chainA);
+            var chainB = ChainOf(element, _chainB);
+            var ia = chainA.Count - 1;
+            var ib = chainB.Count - 1;
+            while (ia > 0 && ib > 0 && ReferenceEquals(chainA[ia - 1], chainB[ib - 1]))
+            {
+                ia--;
+                ib--;
+            }
+            if (ia == 0) return false;
+            if (ib == 0) return atEnd;
+            return SiblingPrecedes(chainA[ia - 1], chainB[ib - 1]);
+        }
+
         // Whether the walk completes a before b: a is inside b, or comes earlier in the tree.
         internal bool Precedes(VisualElement a, VisualElement b)
         {
