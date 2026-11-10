@@ -311,8 +311,10 @@ namespace Velvet
             var offset = default(BandSlots);
             var shadow = default(StyleShadowClass.BoxShadowSlot);
             var shadowColour = default(StyleShadowClass.BoxShadowSlot);
+            var shadowAlpha = default(StyleShadowClass.BoxShadowSlot);
             var insetShadow = default(StyleShadowClass.BoxShadowSlot);
             var insetShadowColour = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadowAlpha = default(StyleShadowClass.BoxShadowSlot);
             foreach (var cls in classNames)
             {
                 if (string.IsNullOrEmpty(cls))
@@ -340,16 +342,17 @@ namespace Velvet
                 {
                     ReadBoxShadowPart(suffix!, "inset-ring", important, ref insetRing);
                 }
-                else if (!StyleShadowClass.TryReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour))
+                else if (!StyleShadowClass.TryReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour,
+                    ref shadowAlpha))
                 {
                     StyleShadowClass.TryReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
-                        ref insetShadowColour);
+                        ref insetShadowColour, ref insetShadowAlpha);
                 }
             }
             var declared = ring.Width.Set || insetRing.Width.Set || shadow.Set || insetShadow.Set;
             return new BoxShadowReading(declared, declared && (ring.Discards || insetRing.Discards
-                || (offset.Width.Set && offset.Colour.Rejected) || StyleShadowClass.Discards(shadow, shadowColour)
-                || StyleShadowClass.Discards(insetShadow, insetShadowColour)));
+                || (offset.Width.Set && offset.Colour.Rejected) || StyleShadowClass.Discards(shadow, shadowColour, shadowAlpha)
+                || StyleShadowClass.Discards(insetShadow, insetShadowColour, insetShadowAlpha)));
         }
 
         // The width and colour slots of ring-*, inset-ring-* or ring-offset-*.

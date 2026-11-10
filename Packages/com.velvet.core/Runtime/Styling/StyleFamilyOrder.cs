@@ -39,8 +39,8 @@ namespace Velvet
             (StyleGapClass.IsGapToken, s_noLane),
             (StyleGridClass.IsGridToken, s_noLane),
             (StyleDivideClass.IsDivideToken, s_noLane),
-            (StyleShadowClass.IsShadowClass, s_noLane),
-            (StyleShadowClass.IsInsetBoxShadowClass, s_noLane),
+            (StyleShadowClass.IsShadowClass, ShadowLane),
+            (StyleShadowClass.IsInsetBoxShadowClass, ShadowLane),
             (StyleRingClass.IsRingClass, RingLane),
             (StyleBackdropClass.IsBackdropClass, s_noLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
@@ -190,6 +190,9 @@ namespace Velvet
         }
 
         private static string Core(string token) => StyleArbitraryValueResolver.StripImportant(token, out _);
+
+        // A size whose /N declares its family's alpha variable declares one property more than a size without one.
+        private static int ShadowLane(string core) => StyleShadowClass.DeclaresAlpha(core) ? 0 : 1;
 
         // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)

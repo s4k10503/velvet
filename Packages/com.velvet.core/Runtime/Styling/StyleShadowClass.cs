@@ -192,7 +192,8 @@ namespace Velvet
         public static bool IsShadowClass(string cls)
         {
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
-            return !string.IsNullOrEmpty(core) && (core == "shadow" || core.StartsWith("shadow-", StringComparison.Ordinal));
+            return !string.IsNullOrEmpty(core) && (core == "shadow" || core.StartsWith("shadow-", StringComparison.Ordinal)
+                || core.StartsWith("shadow/", StringComparison.Ordinal));
         }
 
         // inset-shadow-* and inset-ring-* write layers of the same box-shadow, so they are drawn by this paint.
@@ -203,8 +204,9 @@ namespace Velvet
                 || core.StartsWith("inset-ring-", StringComparison.Ordinal));
         }
 
-        // Cheap early-out gate: true when ANY class is shadow or inset-ring, or begins with shadow-, inset-shadow- or
-        // inset-ring-. Used to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
+        // Cheap early-out gate: true when ANY class is shadow or inset-ring, or begins with shadow-, shadow/,
+        // inset-shadow- or inset-ring-. Used to skip the full parse on the ~99% of elements that carry no shadow class
+        // and no binding.
         public static bool HasShadowClass(string[] classNames)
         {
             if (classNames == null)
@@ -229,13 +231,16 @@ namespace Velvet
             public ShadowSpec[] Layers;
             // The size's /N as its own colour takes it, clamped to 0..1 as oklab(from <colour> l a b / N) clamps it.
             public float? SizeAlpha;
-            // The size's /N as --tw-shadow-alpha scales a colour class beside it (TrySizeColourScale).
+            // The family's alpha variable, --tw-shadow-alpha or --tw-inset-shadow-alpha, as it scales a colour class
+            // beside it (SizeColourScale): a declaration of its own, which a size with a /N makes and a size without one
+            // leaves, whichever size holds the layers.
             public float SizeScale;
             public Color? Colour;
             // -inherit, which takes the parent's colour for this family and keeps each layer's own where it has none.
             public bool Inherit;
-            // Whether an important class holds the layers (with their /N), or the colour.
+            // Whether an important class holds the layers (with their own colour's /N), the alpha variable, or the colour.
             public bool LayersImportant;
+            public bool AlphaImportant;
             public bool ColourImportant;
 
             public ShadowSpec[] Resolved(ShadowColourFamily family)
@@ -390,7 +395,10 @@ namespace Velvet
             {
                 family.Layers = layers;
                 family.SizeAlpha = alpha;
-                family.SizeScale = scale ?? 1f;
+            }
+            if (scale != null && Takes(ref family.AlphaImportant, important))
+            {
+                family.SizeScale = scale.Value;
             }
             return true;
         }
@@ -480,7 +488,7 @@ namespace Velvet
         }
 
         // The suffix of a root-* class with its type hint dropped, and the /N after it, clamped to 0..1 as the alpha of
-        // a colour (alpha) and as the factor --tw-shadow-alpha scales a colour beside it by (scale, TrySizeColourScale);
+        // a colour (alpha) and as the factor --tw-shadow-alpha scales a colour beside it by (scale, SizeColourScale);
         // false for a class of another root, a malformed hint or a modifier that is no opacity modifier.
         private static bool TrySplitModifier(string cls, string root, out string suffix, out float? alpha, out float? scale)
         {
@@ -571,7 +579,7 @@ namespace Velvet
             // initial.
             public bool MixesAlpha { get; private set; }
 
-            // A layer's size carries an opacity modifier outside 0..100%, which makes the colour beside it invalid.
+            // The alpha variable holds a percentage outside 0..100%, which makes a colour mixed through it invalid.
             public bool ScaleInvalid { get; private set; }
 
             // Takes the slot for a class read after the one holding it, unless that one is important and this is not.
@@ -596,20 +604,21 @@ namespace Velvet
         internal static bool IsInsetBoxShadowClass(string cls)
             => cls.StartsWith("inset-shadow", StringComparison.Ordinal) || cls.StartsWith("inset-ring", StringComparison.Ordinal);
 
-        // Whether a family's layer and colour discard the box-shadow: a layer the browser rejects, or one reading
-        // the family's colour variable where the colour is one the browser rejects.
-        internal static bool Discards(in BoxShadowSlot layer, in BoxShadowSlot colour)
-            => layer.Set && (layer.Rejected || (layer.ReadsColour && (colour.Rejected || (colour.MixesAlpha && layer.ScaleInvalid))));
+        // Whether a family's layer, colour and alpha variable discard the box-shadow: a layer the browser rejects, or one
+        // reading the family's colour variable where the colour is one the browser rejects or one mixed through an alpha
+        // outside 0..100%.
+        internal static bool Discards(in BoxShadowSlot layer, in BoxShadowSlot colour, in BoxShadowSlot alpha)
+            => layer.Set && (layer.Rejected || (layer.ReadsColour && (colour.Rejected || (colour.MixesAlpha && alpha.ScaleInvalid))));
 
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
 
-        // Offers core, a class without its important modifier, to the slot of root's family it writes, root being
+        // Offers core, a class without its important modifier, to the slots of root's family it writes, root being
         // "shadow" or "inset-shadow", as Tailwind writes it: a size, none or a bracket it does not type as a colour
-        // writes the layer, and a palette name, a keyword or a bracket it types as a colour writes the colour
-        // variable alone. False for any other class.
+        // writes the layer, and a size's /N the alpha variable as well, and a palette name, a keyword or a bracket it
+        // types as a colour writes the colour variable alone. False for any other class.
         internal static bool TryReadBoxShadowClass(string core, string root, bool important, ref BoxShadowSlot layer,
-            ref BoxShadowSlot colour)
+            ref BoxShadowSlot colour, ref BoxShadowSlot alpha)
         {
             if (!core.StartsWith(root, StringComparison.Ordinal))
             {
@@ -623,10 +632,10 @@ namespace Velvet
             {
                 return false;
             }
-            var scaleInvalid = SizeScaleInvalid(core, 0);
             if (body == root && !inset)
             {
-                layer.Offer(important, false, readsColour: true, scaleInvalid: scaleInvalid);
+                layer.Offer(important, false, readsColour: true);
+                OfferSizeAlpha(core, slash, important, ref alpha);
                 return true;
             }
             if (!body.StartsWith(root + "-", StringComparison.Ordinal))
@@ -634,9 +643,15 @@ namespace Velvet
                 return false;
             }
             var suffix = body.Substring(root.Length + 1);
-            if (suffix == "none" || (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix)))
+            if (suffix == "none")
             {
-                layer.Offer(important, false, readsColour: suffix != "none", scaleInvalid: scaleInvalid);
+                layer.Offer(important, false);
+                return true;
+            }
+            if (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix))
+            {
+                layer.Offer(important, false, readsColour: true);
+                OfferSizeAlpha(core, slash, important, ref alpha);
                 return true;
             }
             if (TryReadBracket(core, root, out var hint, out var value))
@@ -648,7 +663,8 @@ namespace Velvet
                 }
                 else
                 {
-                    layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value), scaleInvalid);
+                    layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value));
+                    OfferSizeAlpha(core, slash, important, ref alpha);
                 }
                 return true;
             }
@@ -658,6 +674,27 @@ namespace Velvet
                 return true;
             }
             return false;
+        }
+
+        // A size's /N, which Tailwind writes as the family's alpha variable, a declaration apart from the layers.
+        private static void OfferSizeAlpha(string core, int slash, bool important, ref BoxShadowSlot alpha)
+        {
+            if (slash >= 0)
+            {
+                alpha.Offer(important, false, scaleInvalid: SizeScaleInvalid(core, 0));
+            }
+        }
+
+        // Whether core, a class without its important modifier, is a shadow-* or inset-shadow-* size whose /N declares
+        // the family's alpha variable.
+        internal static bool DeclaresAlpha(string core)
+        {
+            var layer = default(BoxShadowSlot);
+            var colour = default(BoxShadowSlot);
+            var alpha = default(BoxShadowSlot);
+            var root = core.StartsWith("inset-shadow", StringComparison.Ordinal) ? "inset-shadow" : "shadow";
+            TryReadBoxShadowClass(core, root, false, ref layer, ref colour, ref alpha);
+            return alpha.Set;
         }
 
         // Whether a colour class's opacity modifier lies outside 0..100%, which leaves the color-mix() Tailwind writes

@@ -502,7 +502,7 @@ namespace Velvet
             {
                 if (binding.Layers[i].Inset == inset)
                 {
-                    DrawShadowQuad(mgc, binding, binding.Layers[i].MeasuredOn(mgc.visualElement), box, unscale);
+                    DrawShadowQuad(mgc, ve, binding.Layers[i].MeasuredOn(ve), box, unscale);
                 }
             }
         }
@@ -537,15 +537,15 @@ namespace Velvet
         // renderer behaviour pinned by PaintOpacityParityPlaybackTests, with its consequence on this paint
         // pinned by ShadowFadeOpacityPlaybackTests — so restoring a multiplier means refuting those rather
         // than re-deriving a measurement.
-        private static void DrawShadowQuad(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowSpec layer,
+        private static void DrawShadowQuad(MeshGenerationContext mgc, VisualElement ve, in ShadowSpec layer,
             in ShadowBox box, Vector2 unscale)
         {
             var tint = layer.InheritFrom == ShadowColourFamily.None
                 ? layer.Color
-                : InheritedColour(mgc.visualElement, layer.InheritFrom) ?? layer.Color;
+                : InheritedColour(ve, layer.InheritFrom) ?? layer.Color;
             if (float.IsNaN(tint.r))
             {
-                var current = mgc.visualElement.resolvedStyle.color;
+                var current = ve.resolvedStyle.color;
                 current.a *= tint.a;
                 tint = current;
             }

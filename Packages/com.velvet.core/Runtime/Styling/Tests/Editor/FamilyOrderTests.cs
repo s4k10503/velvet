@@ -108,6 +108,22 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
+        // A size's /N declares its family's alpha variable, so Tailwind emits it ahead of a size without one whatever
+        // their names.
+        [TestCase("shadow-lg shadow-lg/150", "shadow-lg/150 shadow-lg")]
+        [TestCase("shadow shadow/50", "shadow/50 shadow")]
+        [TestCase("shadow-[0_0_5px_#000] shadow-lg/50", "shadow-lg/50 shadow-[0_0_5px_#000]")]
+        [TestCase("inset-shadow-sm inset-shadow-xs/50", "inset-shadow-xs/50 inset-shadow-sm")]
+        public void Given_AShadowSizeWrittenBeforeOneWithAnOpacityModifier_When_ClassNamesAreParsed_Then_TheOneWithTheModifierIsPutFirst(
+            string className, string expected)
+        {
+            // Act
+            var tokens = V.ParseClassNames(className);
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
+        }
+
         // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written.
         // Each is already in Tailwind's order, or ranked by another layer (a variant, the other importance), or in
         // a family no resolver folds, so putting every token of a prefix in one order reddens it.

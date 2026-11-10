@@ -196,6 +196,53 @@ namespace Velvet.Tests
             Assert.That(colour, Is.EqualTo("0000001A"));
         }
 
+        // A size without a /N declares no alpha variable, so it leaves the one another size declares, an important size
+        // as much as a plain one.
+        [TestCase("shadow-lg/150 shadow-xl shadow-red-500", "shadow-lg/50 shadow-xl shadow-red-500")]
+        [TestCase("!shadow-lg shadow-md/150 shadow-red-500", "!shadow-lg shadow-md/50 shadow-red-500")]
+        [TestCase("inset-shadow-sm/150 inset-shadow-xs inset-shadow-red-500",
+            "inset-shadow-sm/50 inset-shadow-xs inset-shadow-red-500")]
+        public void Given_ASizeModifierPast100AndAnotherSizeHoldingTheLayersBesideAShadowColour_When_Reconciled_Then_TheShadowIsDiscarded(
+            string classes, string control)
+        {
+            // Act — the control is the same classes with the modifier inside the range.
+            var colour = ReconciledLayerColour(control) != "unbound" ? ReconciledLayerColour(classes) : "control unbound";
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("unbound"));
+        }
+
+        [Test]
+        public void Given_TheBareShadowWithAnOpacityModifier_When_Reconciled_Then_ItsLayersTakeTheModifiersAlpha()
+        {
+            // Act
+            var colour = ReconciledLayerColour("shadow/50");
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("00000080"));
+        }
+
+        [Test]
+        public void Given_ASizeModifierAndALaterSizeWithoutOneBesideAShadowColour_When_Reconciled_Then_TheModifierScalesTheColour()
+        {
+            // Act
+            var colour = ReconciledLayerColour("shadow-lg/50 shadow-xl shadow-red-500");
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("FB2C3680"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps an important size's modifier over a later plain size's.
+        [Test]
+        public void Given_AnImportantSizeModifierAndALaterPlainOnePast100BesideAShadowColour_When_Reconciled_Then_TheImportantOneScalesTheColour()
+        {
+            // Act
+            var colour = ReconciledLayerColour("!shadow-lg/50 shadow-md/150 shadow-red-500");
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("FB2C3680"));
+        }
+
         [Test]
         public void Given_AnImportantShadowInitialOverASizeModifierPast100AndAColour_When_Extracted_Then_TheLayersAreOpaqueBlack()
         {
