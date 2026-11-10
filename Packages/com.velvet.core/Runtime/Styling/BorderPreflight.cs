@@ -777,6 +777,8 @@ namespace Velvet
                 {
                     SyncSide(element, state, i);
                 }
+                // Set after every side, so that the sides one pass shows first all land without a transition.
+                state.Landed |= state.Held != Sides.None;
                 state.Rule?.Reassert(element);
                 WatchOver(element, state);
             }
@@ -902,7 +904,6 @@ namespace Velvet
             {
                 hold?.Release();
             }
-            state.Landed = true;
             state.Held |= side;
             // A face that took the slot's colour before the layer was shown, or whose sentinel a colour of another layer
             // written over while the layer was applied, takes the colour the slot holds now.

@@ -181,5 +181,16 @@ namespace Velvet.Tests
             // Assert
             Assert.That(spec.Stops?.Length > 0 ? spec.Stops[0].Position : float.NaN, Is.EqualTo(0f));
         }
+
+        [Test]
+        public void Given_AFromPositionOpeningOnAParenthesis_When_Extracted_Then_TheStopIsAtItsInitialPosition()
+        {
+            // Act
+            StyleGradientClass.TryExtract(
+                new[] { "bg-linear-to-r", "from-[#ff0000]", "from-25%", "from-[length:(10px)]", "to-[#0000ff]" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Stops?.Length > 0 ? spec.Stops[0].Position : float.NaN, Is.EqualTo(0f));
+        }
     }
 }

@@ -56,7 +56,7 @@ namespace Velvet
                     property = composed == ArbitraryProperty.FilterDropShadow && TailwindDataTypes.IsColor(value.AsSpan())
                         ? ArbitraryProperty.FilterDropShadowColor
                         : composed;
-                    return !Accepts(function, value);
+                    return !Accepts(function, value, negated);
                 }
             }
             return false;
@@ -89,7 +89,7 @@ namespace Velvet
                 : OpensBracket(core, at, "skew-y-") ? SkewAxis.Y
                 : SkewAxis.Both;
             return (axis != SkewAxis.Both || OpensBracket(core, at, "skew-"))
-                && TryReadValue(core, negated, out var value) && !Accepts("angle", value);
+                && TryReadValue(core, negated, out var value) && !Accepts("angle", value, negated);
         }
 
         // Whether core holds prefix and a bracket from at.
@@ -113,13 +113,19 @@ namespace Velvet
 
         // Whether the browser takes value where Tailwind writes it for function. A math function is judged by the type
         // it comes to; a var() or another function nothing here reads to the end is taken.
-        private static bool Accepts(string function, string value)
+        private static bool Accepts(string function, string value, bool negated)
         {
+            // Negated, Tailwind writes the value inside calc(), where parentheses only group.
+            while (negated && value.Length > 1 && value[0] == '(' && value[value.Length - 1] == ')')
+            {
+                value = value.Substring(1, value.Length - 2).Trim();
+            }
             if (StyleLengthExpression.OpensMathFunction(value.AsSpan()))
             {
                 return AcceptsMath(function, StyleLengthExpression.TypeOf(value.AsSpan()));
             }
-            // A var() or another function this does not read may come to anything.
+            // A var() or another function this does not read may come to anything. A parenthesis with no name before it
+            // opens no function, and the browser takes no value that opens on one.
             if (value.IndexOf('(') > 0)
             {
                 return true;
@@ -168,7 +174,7 @@ namespace Velvet
 
         // Whether the browser takes value as a <length-percentage>, a function taken as Accepts takes one.
         internal static bool TakesLengthPercentage(string value)
-            => value.IndexOf('(') >= 0 || IsZero(value) || IsLength(value) || IsPercentage(value);
+            => value.IndexOf('(') > 0 || IsZero(value) || IsLength(value) || IsPercentage(value);
 
         internal static bool IsLength(string value) => IsDimension(value, TailwindDataTypes.s_lengthUnits);
 

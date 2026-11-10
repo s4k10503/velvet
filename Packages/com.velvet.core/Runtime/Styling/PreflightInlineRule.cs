@@ -79,6 +79,10 @@ namespace Velvet
         private bool _live;
         // The sides a UXML style attribute's own rule colours, which stand over preflight as any inline colour does.
         private int _blocked;
+        // The sides shown where an inline value was read standing over the rule. Clearing that value reverts the property to
+        // what the rules give, and the transition then running heads away from the colour shown, which Holds alone takes
+        // for one toward it.
+        private int _covered;
 
         private PreflightInlineRule(UnityEngine.Object sheet, object rule, Array all, Color[] colors)
             => (_sheet, _rule, _all, _colors) = (sheet, rule, all, colors);
@@ -171,7 +175,7 @@ namespace Velvet
             {
                 return;
             }
-            if (Shows(side) && Same(_colors[side], colour) && Holds(element, side, colour))
+            if (Shows(side) && Same(_colors[side], colour) && !Uncovered(element, side) && Holds(element, side, colour))
             {
                 return;
             }
@@ -190,6 +194,7 @@ namespace Velvet
             s_valueId.SetValue(value, s_ids[side]);
             s_valueColor!.SetValue(value, colour);
             s_applyValue!.Invoke(accessor, new[] { value });
+            _covered &= ~(1 << side);
             element.MarkDirtyRepaint();
         }
 
@@ -205,7 +210,7 @@ namespace Velvet
         {
             for (var side = 0; side < s_properties.Length; side++)
             {
-                if (Shows(side) && !Holds(element, side, _colors[side]))
+                if (Shows(side) && (Uncovered(element, side) || !Holds(element, side, _colors[side])))
                 {
                     Show(element, side, _colors[side]);
                 }
@@ -219,7 +224,7 @@ namespace Velvet
             var lost = false;
             for (var side = 0; side < s_properties.Length; side++)
             {
-                lost |= Shows(side) && !Holds(element, side, _colors[side]);
+                lost |= Shows(side) && (Uncovered(element, side) || !Holds(element, side, _colors[side]));
             }
             return lost;
         }
@@ -233,6 +238,7 @@ namespace Velvet
                 return;
             }
             _shown &= ~(1 << side);
+            _covered &= ~(1 << side);
             Publish();
             if (HasInlineValue(element, side) || s_accessor!.GetValue(element) is not { } accessor)
             {
@@ -263,6 +269,17 @@ namespace Velvet
 
         // Whether the element's computed style shows colour on side where nothing overrides the rule: an inline value
         // or a transition still running toward it leaves a different one there legitimately.
+        // Whether an inline value read standing over side has been cleared since, recording one that stands now.
+        private bool Uncovered(VisualElement element, int side)
+        {
+            if (HasInlineValue(element, side))
+            {
+                _covered |= 1 << side;
+                return false;
+            }
+            return (_covered & (1 << side)) != 0;
+        }
+
         private static bool Holds(VisualElement element, int side, Color colour)
             => Same(ResolvedColor(element, side), colour) || HasInlineValue(element, side)
                 || (bool)s_running!.Invoke(element, new[] { s_ids[side] });

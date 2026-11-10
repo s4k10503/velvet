@@ -637,7 +637,6 @@ namespace Velvet
             {
                 return channel.Target;
             }
-            // MUTANT_SURVIVES(equivalent, boundary): a zero duration reaches this line only with elapsedSec below the delay, since `ended` returned at or past it, so the quotient is negative infinity and Clamp01 gives the same 0.
             var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
             return Mathf.LerpUnclamped(channel.Origin, channel.Target, UssEasing.Evaluate(own.Easing, progress));
         }

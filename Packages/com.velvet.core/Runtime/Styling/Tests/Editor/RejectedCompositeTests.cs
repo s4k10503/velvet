@@ -328,6 +328,43 @@ namespace Velvet.Tests
             Assert.That(composed, Is.EqualTo("- - 0"));
         }
 
+        [TestCase("hue-rotate-[(2deg)]")]
+        [TestCase("translate-x-[(10px)]")]
+        public void Given_ABracketOpeningOnAParenthesis_When_ReadForRejection_Then_ItIsRejected(string cls)
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected(cls, out _);
+
+            // Assert
+            Assert.That(rejected, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): Tailwind writes a negated value inside calc(), where its parentheses group,
+        // and the base took any value holding a parenthesis.
+        [TestCase("-hue-rotate-[(2deg)]")]
+        [TestCase("-scale-x-[(2)]")]
+        [TestCase("-scale-y-[((2))]")]
+        [TestCase("-translate-x-[(10px)]")]
+        public void Given_ANegatedBracketOpeningOnAParenthesis_When_ReadForRejection_Then_NothingIsRejected(string cls)
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected(cls, out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a negated skew is written inside calc() as the other negated families are.
+        [Test]
+        public void Given_ANegatedSkewOpeningOnAParenthesis_When_ReadForRejection_Then_TheSkewIsKept()
+        {
+            // Act
+            var rejected = StyleCompositeRejection.RejectsSkew("-skew-x-[(10deg)]", out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): the base reads no utility of a negated filter, which Tailwind does not negate.
         [Test]
         public void Given_ANegatedFilterThatTailwindDoesNotNegate_When_ReadForRejection_Then_NothingIsRejected()

@@ -944,29 +944,52 @@ namespace Velvet.Tests
             Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(written));
         }
 
-        // GREEN_ON_BASE(characterization): the base lets a border colour transition run once its preflight has landed.
         [Test]
-        public void Given_ABorderedLabelWithAColourTransitionWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderTransitionsBack()
+        public void Given_ABorderedLabelWithAColourTransition_When_Mounted_Then_ItsLastSideIsAtOnceTheTextColour()
         {
-            // Arrange — the inline colour is shown whole before it is cleared.
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+
+            // Act
+            var tag = MountLabel("border transition-colors duration-1000 text-red-500");
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderLeftColor, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ABorderedLabelWithAColourTransitionWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderIsMidwayBackToTheTextColour()
+        {
+            // Arrange — the inline magenta is shown whole before it is cleared. Magenta has no green, the text colour
+            // some, so a green between none and the text colour's is a transition from one toward the other.
             var expected = TextColourOf("text-red-500");
             var tag = MountLabel("border transition-colors duration-1000 text-red-500");
             var now = Time.realtimeSinceStartupAsDouble;
             EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            Tick(tag, 4, 0.4, ref now);
             tag.style.borderTopColor = new StyleColor(Color.magenta);
-            Settled("tag");
-            now += 2.0;
-            EditorPanelTestHelpers.DriveAnimationsOnce(tag.panel);
-            Settled("tag");
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 4, 0.4, ref now);
 
             // Act
             tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
-            now += 0.1;
-            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
-            Settled("tag");
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 2, 0.2, ref now);
 
-            // Assert — the colour preflight shows again is one the element has shown, so it is reached by a transition.
-            Assert.That(tag.resolvedStyle.borderTopColor, Is.Not.EqualTo(expected));
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor.g, Is.InRange(0.01f, expected.g - 0.01f));
+        }
+
+        // Advances the panel's clock by step, count times, running its scheduler, its animations and a style pass each time.
+        private static void Tick(VisualElement element, int count, double step, ref double now)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                now += step;
+                EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+                EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
+                ForcePanelUpdate(element.panel);
+            }
         }
 
         // GREEN_ON_BASE(characterization): the base hands a shadow face the sheet colour its preflight lets go to.
