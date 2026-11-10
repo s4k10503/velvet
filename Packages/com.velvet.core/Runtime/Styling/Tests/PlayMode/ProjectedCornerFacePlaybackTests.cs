@@ -265,8 +265,7 @@ namespace Velvet.Tests
             _texture.SetPixels32(green);
             _texture.Apply();
             yield return MountAndWiden("ImageBeyondCircle", card => card.style.backgroundImage = new StyleBackground(_texture));
-            // The texture turned blue mid-move: the panel's texture is not cleared between frames, so a face that paints
-            // no image leaves the green the element drew before the move.
+            // The texture turned blue mid-move, so that blue is read only where the image is drawn after the change.
             var blue = new Color32[16];
             for (var i = 0; i < blue.Length; i++) blue[i] = new Color32(0, 0, 255, 255);
             _texture.SetPixels32(blue);

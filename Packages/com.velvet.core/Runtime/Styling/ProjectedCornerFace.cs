@@ -1,5 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -160,7 +162,7 @@ namespace Velvet
         {
             if (!s_states.TryGetValue(element, out var state))
             {
-                if (!TryReadImage(OwnLayer(element, new InlineSlots().Take(element.style)), element.resolvedStyle, out _)) return false;
+                if (!TryReadImage(OwnLayer(element, new InlineSlots().Take(element)), element.resolvedStyle, out _)) return false;
                 state = Begin(element);
             }
             else if (state.Tail != null)
@@ -243,8 +245,11 @@ namespace Velvet
                 color.Carry.Land(drawn);
             }
             var style = element.style;
-            state.Own.Take(style);
-            state.WrittenImage = style.backgroundImage;
+            state.Own.Take(element);
+            // MUTANT_SURVIVES(equivalent, line removed): the element's own image stays the value Take read whether or
+            // not the first SyncImage reads the slot as written elsewhere, and where the element clips, that pass writes
+            // the clip either way, nothing having clipped before it.
+            state.WrittenImage = state.Own.Image;
             state.WrittenPositionX = style.backgroundPositionX;
             state.WrittenPositionY = style.backgroundPositionY;
             state.WrittenRepeat = style.backgroundRepeat;
@@ -261,8 +266,7 @@ namespace Velvet
         {
             state.Tail!.Pause();
             state.Tail = null;
-            var style = element.style;
-            state.Own.Image = state.WrittenImage = style.backgroundImage;
+            state.Own.Image = state.WrittenImage = InlineImage(element);
             state.RewriteClip = true;
             InsertFirst(element, state);
             state.Guard?.Resume();
@@ -274,7 +278,7 @@ namespace Velvet
         // (Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle).
         private static void Reassert(VisualElement element, State state)
         {
-            if (state.Tail != null || !WrittenElsewhere(element.style, state)) return;
+            if (state.Tail != null || !WrittenElsewhere(element, state)) return;
             if (!SyncImage(element, state))
             {
                 End(element);
@@ -284,10 +288,13 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
-        private static bool WrittenElsewhere(IStyle style, State state)
-            => style.backgroundImage != state.WrittenImage || style.backgroundPositionX != state.WrittenPositionX
+        private static bool WrittenElsewhere(VisualElement element, State state)
+        {
+            var style = element.style;
+            return InlineImage(element) != state.WrittenImage || style.backgroundPositionX != state.WrittenPositionX
                 || style.backgroundPositionY != state.WrittenPositionY || style.backgroundRepeat != state.WrittenRepeat
                 || style.backgroundSize != state.WrittenSize;
+        }
 
         // Steps the colours on to the element's own, writing each inline until it lands and then its own; true once
         // every one has, when the face is done with the element.
@@ -401,7 +408,8 @@ namespace Velvet
             var style = element.style;
             var own = state.Own;
             var foreign = false;
-            if (style.backgroundImage != state.WrittenImage) (own.Image, foreign) = (style.backgroundImage, true);
+            var inline = InlineImage(element);
+            if (inline != state.WrittenImage) (own.Image, foreign) = (inline, true);
             if (style.backgroundPositionX != state.WrittenPositionX) (own.X, foreign) = (style.backgroundPositionX, true);
             if (style.backgroundPositionY != state.WrittenPositionY) (own.Y, foreign) = (style.backgroundPositionY, true);
             if (style.backgroundRepeat != state.WrittenRepeat) (own.Repeat, foreign) = (style.backgroundRepeat, true);
@@ -414,10 +422,62 @@ namespace Velvet
             state.Clips = clips;
             if (clips) return true;
             style.backgroundImage = new StyleBackground(StyleKeyword.None);
-            // What the slot reads back, which is not the keyword written
+            // As InlineImage reads it, which is what each later pass compares
             // (Given_AnInlineImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
-            state.WrittenImage = style.backgroundImage;
+            state.WrittenImage = InlineImage(element);
             return true;
+        }
+
+        private static readonly InlineEntryReader? s_inlineEntries = InlineEntryReader.Resolve();
+
+        // The element's inline background image: the style's own reading where that names an image, else the entry's
+        // RenderTexture or keyword, which that reading gives as StyleKeyword.Null as it gives no entry at all
+        // (Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_TheOverrideIsRemovedMidMove_Then_NoImageIsHandedBack,
+        // Given_ARenderTextureImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
+        private static StyleBackground InlineImage(VisualElement element)
+        {
+            var read = element.style.backgroundImage;
+            return read.keyword == StyleKeyword.Null && s_inlineEntries != null ? s_inlineEntries.Read(element, read) : read;
+        }
+
+        // The engine's own lookup of an element's inline background-image entry; none where a member it reads is not there.
+        private sealed class InlineEntryReader
+        {
+            private readonly FieldInfo _access;
+            private readonly MethodInfo _tryGet;
+            private readonly FieldInfo _keyword;
+            private readonly FieldInfo _resource;
+            private readonly object?[] _args;
+
+            private InlineEntryReader(FieldInfo access, MethodInfo tryGet, FieldInfo keyword, FieldInfo resource, object id)
+            {
+                (_access, _tryGet, _keyword, _resource) = (access, tryGet, keyword, resource);
+                _args = new[] { id, System.Activator.CreateInstance(keyword.DeclaringType!) };
+            }
+
+            public static InlineEntryReader? Resolve()
+            {
+                var access = EngineMember.ElementInlineStyleAccess.ResolveField();
+                var tryGet = EngineMember.StyleValueCollectionTryGetValue.ResolveMethod();
+                var keyword = EngineMember.StyleValueKeyword.ResolveField();
+                var resource = EngineMember.StyleValueResource.ResolveField();
+                var id = EngineMember.BackgroundImagePropertyId.ResolveField()?.GetValue(null);
+                if (access == null || tryGet == null || keyword == null || resource == null || id == null) return null;
+                return tryGet.DeclaringType!.IsAssignableFrom(access.FieldType)
+                    ? new InlineEntryReader(access, tryGet, keyword, resource, id)
+                    : null;
+            }
+
+            public StyleBackground Read(VisualElement element, StyleBackground none)
+                => (bool)_tryGet.Invoke(_access.GetValue(element), _args) ? EntryOf(_args[1]!) : none;
+
+            private StyleBackground EntryOf(object entry)
+            {
+                var handle = (GCHandle)_resource.GetValue(entry);
+                var texture = handle.IsAllocated ? handle.Target as RenderTexture : null;
+                return texture != null ? new StyleBackground(Background.FromRenderTexture(texture))
+                    : new StyleBackground((StyleKeyword)_keyword.GetValue(entry));
+            }
         }
 
         // The placement slots back to the element's own, which no longer place a clip.
@@ -439,9 +499,10 @@ namespace Velvet
             public StyleBackgroundRepeat Repeat;
             public StyleBackgroundSize Size;
 
-            public InlineSlots Take(IStyle style)
+            public InlineSlots Take(VisualElement element)
             {
-                (Image, X, Y) = (style.backgroundImage, style.backgroundPositionX, style.backgroundPositionY);
+                var style = element.style;
+                (Image, X, Y) = (InlineImage(element), style.backgroundPositionX, style.backgroundPositionY);
                 (Repeat, Size) = (style.backgroundRepeat, style.backgroundSize);
                 return this;
             }

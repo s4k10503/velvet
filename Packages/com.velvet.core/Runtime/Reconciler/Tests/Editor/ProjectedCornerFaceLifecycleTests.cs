@@ -176,6 +176,181 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base ends with no inline image here, as it does after any move.
+        // Reading the inline image in ProjectedCornerFace.InlineImage through `element.style.backgroundImage` alone
+        // reddens this case.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_TheOverrideIsRemovedMidMove_Then_NoImageIsHandedBack()
+        {
+            // Arrange — an image given by a style override, then moving, drawn at a quarter across and a half down.
+            s_classes = "rounded-[20px]";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(box, new StyleBackground(texture));
+                Tick();
+                Step(mounted, 1);
+                for (var i = 0; i < 3; i++) Tick();
+                var moved = ProjectedCornerFace.TryGetRadii(box, out _);
+
+                // Act — the override withdrawn, then until the move hands its face back.
+                StyleArbitraryValueResolver.WriteBackgroundImageOverride(box, null);
+                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+
+                // Assert — the texture where the move never painted the face, which no hand-back leaves.
+                Assert.That(moved ? box.style.backgroundImage.value.texture : texture, Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands back no inline image after any move, this one included.
+        // Dropping the image read from ProjectedCornerFace.Resume reddens this case.
+        [Test]
+        public void Given_AnInlineImagedLayoutIdMotionRunningItsColoursOn_When_ItsImageIsClearedAndItMovesAgain_Then_TheClearedImageIsNotHandedBack()
+        {
+            // Arrange — an image given inline, moving, its background turned red over five seconds mid-move, then
+            // landed with its colours still running on to its own.
+            s_classes = "rounded-[20px] bg-blue-500 transition-colors duration-[5000ms]";
+            s_movedClasses = "rounded-[20px] bg-red-500 transition-colors duration-[5000ms]";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                box.style.backgroundImage = new StyleBackground(texture);
+                Tick();
+                Step(mounted, 1);
+                Tick();
+                Step(mounted, 2);
+                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+                box.style.backgroundImage = new StyleBackground(StyleKeyword.None);
+                var runningOn = box.style.backgroundColor.keyword != StyleKeyword.Null;
+
+                // Act — moved back while its colours run on, then until that move hands its face back.
+                Step(mounted, 0);
+                Tick();
+                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+
+                // Assert — the texture where the colours had landed before the second move, which the cleared slot never holds.
+                Assert.That(runningOn ? box.style.backgroundImage.value.texture : texture, Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes the clip back between the projection's own passes.
+        // Flipping `state.Tail != null` in ProjectedCornerFace.Reassert, or the image comparison in WrittenElsewhere,
+        // reddens this case.
+        [Test]
+        public void Given_AClippingRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_AnImageIsWrittenInlineBetweenItsPasses_Then_TheClipIsWrittenBackAtTheNextPanelUpdate()
+        {
+            // Arrange — clipping, moving, drawn at a quarter across and a half down, its clip written over its image slot.
+            s_classes = "rounded-[20px] overflow-hidden";
+            using var mounted = MountAndWiden();
+            for (var i = 0; i < 3; i++) Tick();
+            var box = Root.Q<VisualElement>("box");
+            var clipped = box.style.backgroundImage.value.vectorImage != null;
+            var simulator = (UnityEngine.UIElements.TestFramework.PanelSimulator)typeof(MotionSimulatedPanelTestsBase)
+                .GetField("_sim", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .GetValue(this);
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                // Act — an image written inline, then a panel update a millisecond on, before the projection's next pass.
+                box.style.backgroundImage = new StyleBackground(texture);
+                simulator.FrameUpdateMs(1);
+
+                // Assert — null where the clip was never written, which a written-back clip never is.
+                Assert.That(clipped ? box.style.backgroundImage.value.vectorImage : null, Is.Not.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves the corners of a vector-imaged element to UI Toolkit.
+        // Returning true where ProjectedCornerFace.Draw declines an image it does not paint reddens this case.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionWithAVectorBackgroundImage_When_ItIsDrawnScaledDifferentlyOnEachAxis_Then_ItsRadiusSlotsHoldARadius()
+        {
+            // Arrange — a vector image given inline, which the face does not paint.
+            s_classes = "rounded-[20px]";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var image = ScriptableObject.CreateInstance<VectorImage>();
+            using (var painter = new Painter2D())
+            {
+                painter.BeginPath();
+                painter.MoveTo(Vector2.zero);
+                painter.LineTo(new Vector2(4f, 0f));
+                painter.LineTo(new Vector2(4f, 4f));
+                painter.ClosePath();
+                painter.Fill();
+                painter.SaveToVectorImage(image);
+            }
+            try
+            {
+                box.style.backgroundImage = new StyleBackground(image);
+                Tick();
+
+                // Act — drawn at a quarter across and a half down.
+                Step(mounted, 1);
+                Tick();
+
+                // Assert — a radius UI Toolkit draws, where the face would hold the slots at none.
+                Assert.That(box.style.borderTopLeftRadius.value.value, Is.Not.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(image);
+            }
+        }
+
+        [Test]
+        public void Given_ARenderTextureImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack()
+        {
+            // Arrange — a render texture given inline, then moving, drawn at a quarter across and a half down.
+            s_classes = "rounded-[20px]";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var texture = new RenderTexture(4, 4, 0);
+            try
+            {
+                box.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(texture));
+                Tick();
+                Step(mounted, 1);
+                for (var i = 0; i < 3; i++) Tick();
+                var moved = ProjectedCornerFace.TryGetRadii(box, out _);
+
+                // Act — until the move hands its face back, and a frame on for the style pass.
+                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+                Tick();
+
+                // Assert — null where the move never painted the face, which the texture never is.
+                Assert.That(moved ? box.resolvedStyle.backgroundImage.renderTexture : null, Is.SameAs(texture));
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
         // GREEN_ON_BASE(characterization): the base hands the background-repeat slot back as the move lands. Dropping
         // the background-repeat write from ProjectedCornerFace.HandBackPlacement reddens this case.
         [Test]
