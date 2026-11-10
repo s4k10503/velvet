@@ -1,10 +1,9 @@
-using UnityEngine.UIElements;
-
 namespace Velvet
 {
     // React bails an element it is handed again, and skips a subtree it was handed again, only where no fiber in it
-    // has work pending: its lanes and childLanes. ComponentFiber.PendingWorkBelow stands for childLanes here, so the
-    // question costs one read where no work has been marked below since it was last answered.
+    // has work pending: its lanes and childLanes. ComponentFiber.PendingWorkBelow stands for childLanes here: an
+    // identity skip reads it alone, and Below, which a render calls before it reconciles, clears it once nothing
+    // marked is pending.
     internal static class FiberPendingWork
     {
         // Work of the fiber's own that a pass reaching it must render it for, beside IsDirty and RenderOwed: a pass of
@@ -37,24 +36,6 @@ namespace Velvet
                 if (PendingAtOrBelow(child)) return true;
             }
             root.PendingWorkBelow = false;
-            return false;
-        }
-
-        // Whether a fiber below owner whose output sits inside element has work pending, which is what a walk that
-        // leaves element unvisited would leave unrendered. A fiber is placed by its mount point, or by the
-        // placeholder of the Portal it renders through; one with neither counts as inside.
-        internal static bool HoldsPendingUnder(ComponentFiber owner, VisualElement element)
-        {
-            if (!owner.PendingWorkBelow) return false;
-            var anyPending = false;
-            for (var child = owner.Child; child != null; child = child.Sibling)
-            {
-                if (!PendingAtOrBelow(child)) continue;
-                anyPending = true;
-                var placed = child.OwningPortalPlaceholder ?? child.MountPoint;
-                if (placed == null || ReferenceEquals(placed, element) || element.Contains(placed)) return true;
-            }
-            if (!anyPending) owner.PendingWorkBelow = false;
             return false;
         }
 

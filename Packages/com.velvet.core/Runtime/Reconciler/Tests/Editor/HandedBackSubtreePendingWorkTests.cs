@@ -20,7 +20,7 @@ namespace Velvet.Tests
         private static VelvetTaskCompletionSource<int> s_source;
         private static ComponentFiber s_ownerFiber;
         private static int s_heldLeaves;
-        private static int s_heldLeafRenders;
+        private static ComponentFiber s_heldLeavesFiber;
 
         private VisualElement _root = null!;
 
@@ -34,7 +34,7 @@ namespace Velvet.Tests
             s_source = null;
             s_ownerFiber = null;
             s_heldLeaves = 0;
-            s_heldLeafRenders = 0;
+            s_heldLeavesFiber = null;
         }
 
         private static object PendingWorkBelow(ComponentFiber fiber)
@@ -90,15 +90,12 @@ namespace Velvet.Tests
         }
 
         [Component(Compiler = false)]
-        private static VNode HeldLeaf()
-        {
-            s_heldLeafRenders++;
-            return V.Label(text: "leaf");
-        }
+        private static VNode HeldLeaf() => V.Label(text: "leaf");
 
         [Component(Compiler = false)]
         private static VNode HeldLeaves()
         {
+            s_heldLeavesFiber = FiberAmbientStack.Current;
             var children = new VNode[s_heldLeaves];
             for (var i = 0; i < children.Length; i++)
             {
@@ -140,18 +137,20 @@ namespace Velvet.Tests
 
         [TestCase(200)]
         [TestCase(400)]
-        public void Given_AnElementHandedBackOverManyFibers_When_TheOwnerRendersAgain_Then_NoneOfThemRendersAgain(int leaves)
+        public void Given_AnElementHandedBackOverManyFibers_When_TheOwnerRendersAgain_Then_NothingInItIsReached(int leaves)
         {
             // Arrange
             s_heldLeaves = leaves;
             using var mounted = V.Mount(_root, V.Component(ManyFiberOwner, key: "owner"));
+            var treeBefore = s_heldLeavesFiber.SourceTree;
 
             // Act
             s_setOrder.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_heldLeafRenders, Is.EqualTo(leaves));
+            // Assert — a walk entering the held element reaches the component in it, which then names this render's
+            // tree; a component that bails on the node it was handed is reached all the same
+            Assert.That(s_heldLeavesFiber.SourceTree, Is.SameAs((object)treeBefore ?? new object()));
         }
 
         // Read by reflection so the fixture builds where the mark does not exist.
