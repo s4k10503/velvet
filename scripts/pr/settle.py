@@ -26,10 +26,13 @@ Nine preconditions:
   it.
 - **The branch must contain the base's newest release commit.** CONTRIBUTING.md's
   continuous-integration section owns why; `published_check.release_commit` finds the commit.
-- **No worktree may hold the branch.** The branch is deleted locally after the merge, and a worktree
-  holding it makes that delete fail once the merge has already happened — so the branch outlives the
-  pull request and has to be swept by hand later, when nothing in the checkout can still tell a
-  merged branch from an abandoned one.
+- **No worktree may hold the branch** unless `merge` can remove it first. The branch is deleted
+  locally after the merge, and a worktree holding it makes that delete fail once the merge has
+  already happened — so the branch outlives the pull request and has to be swept by hand later, when
+  nothing in the checkout can still tell a merged branch from an abandoned one. A holder whose
+  removal loses nothing — `removable` says which — is removed by `merge` ahead of the merge rather
+  than blocking it, since blocking on the worktree a pull request was written in kept that pull
+  request from ever reading ready.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
   Nor is a list complete while the head still has a workflow run to finish, carries a workflow
   whose newest run failed, or lacks a context its base requires; `expected_checks.py` owns what each
@@ -52,7 +55,12 @@ refused Edit and Write in sessions with nothing to do with that pull request, na
 as the way out when nothing could make that command take it. What a guard offers as the way out is
 worth only what the readiness that raised it means, so the two are one function.
 
-Run: python3 scripts/pr/settle.py watch
+`watch` alone prints until it retires, and a caller that ran it in the background hears of a process
+when it exits, so a READY line sat unread until then. `--until-actionable` exits once an open pull
+request is ready or has a failing check it has not already exited over, so the exit is what wakes
+that caller; `watcher_state.rearm_command` is the form the guards name.
+
+Run: python3 scripts/pr/settle.py watch [--until-actionable]
      python3 scripts/pr/settle.py merge <number>
 """
 
@@ -333,13 +341,50 @@ def check_results(runs, statuses, left_out=frozenset()):
     return results
 
 
+# One entry of `git worktree list --porcelain`. `primary` is the main working tree, which git lists
+# first.
+Worktree = collections.namedtuple("Worktree", "path head primary locked")
+
+
+def worktrees(project):
+    """Each branch checked out in a worktree, mapped to that worktree."""
+    held = {}
+    for number, block in enumerate(gh_git(project, "worktree", "list",
+                                          "--porcelain").strip().split("\n\n")):
+        fields = {}
+        for line in block.splitlines():
+            key, _, value = line.partition(" ")
+            fields[key] = value.strip()
+        if fields.get("branch") and "worktree" in fields:
+            held[fields["branch"].removeprefix("refs/heads/")] = Worktree(
+                fields["worktree"], fields.get("HEAD", ""), number == 0, "locked" in fields)
+    return held
+
+
 def worktree_branches(project):
     """Branch names currently checked out in a worktree, which cannot be deleted while they are."""
-    held = set()
-    for line in gh_git(project, "worktree", "list", "--porcelain").splitlines():
-        if line.startswith("branch "):
-            held.add(line.split(" ", 1)[1].strip().removeprefix("refs/heads/"))
-    return held
+    return set(worktrees(project))
+
+
+def worktree_clean(path):
+    """Whether git reports nothing modified or untracked at `path`; a status it cannot give is not
+    clean. Ignored paths are not reported, and `git worktree remove` deletes them unforced."""
+    status = run_quietly(["git", "-C", str(path), "status", "--porcelain"], GIT_TIMEOUT)
+    return status.returncode == 0 and not status.stdout.strip()
+
+
+def removable(project, tree, sha):
+    """Whether removing `tree` loses nothing the pull request whose head is `sha` does not carry.
+
+    Its HEAD is that head, so every commit in it is on origin, and it is clean, so nothing
+    uncommitted goes with it. The main working tree and a locked one are refused rather than forced,
+    since git removes neither unforced, and so is the tree this runs from.
+    """
+    if tree.primary or tree.locked or not sha or tree.head != sha:
+        return False
+    if Path(project).resolve().is_relative_to(Path(tree.path).resolve()):
+        return False
+    return worktree_clean(tree.path)
 
 
 def gh_git(project, *args):
@@ -444,15 +489,20 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append("its head is on another repository: this settles branches on origin")
 
     if held_by_worktree:
-        reasons.append(f"a worktree holds {branch}: remove it first, or the local branch outlives "
-                       f"the merge and has to be swept by hand later")
+        reasons.append(held_reason(branch))
 
     return reasons
 
 
+def held_reason(branch):
+    return (f"a worktree holds {branch}: remove it first, or the local branch outlives the merge "
+            f"and has to be swept by hand later")
+
+
 # What merge needs from the readings besides the verdict: the SHA the checks were read at, which the
 # merge request carries, the branch it deletes afterwards, and the check results, which `watch` prints.
-Blocking = collections.namedtuple("Blocking", "reasons head branch results base")
+Blocking = collections.namedtuple("Blocking", "reasons head branch results base worktree",
+                                  defaults=(None,))
 
 # The readings that answer for something wider than one pull request: the publication state of a
 # base, its newest release commit, its required workflows' last push verdicts, the contexts its
@@ -472,7 +522,7 @@ def project_state(project, base):
                                     rest_json(f"repos/{slug}/{red_base.runs_path(workflow, base)}"))
                for workflow in red_base.REQUIRED_WORKFLOWS)
            if failing]
-    return ProjectState(worktree_branches(project),
+    return ProjectState(worktrees(project),
                         published_check.unpublished_reason(project, f"origin/{base}", fetch=False),
                         red, release_commit(project, base), required_contexts(project, base))
 
@@ -526,8 +576,10 @@ def blocking_reasons(project, number, base=None, states=None):
     behind_release = (state.release if state.release and not before.fork
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
+    holder = state.held.get(before.branch)
+    freed = holder is not None and removable(project, holder, after)
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
-                                 held_by_worktree=before.branch in state.held,
+                                 held_by_worktree=holder is not None and not freed,
                                  unpublished_release=unpublished,
                                  draft=before.draft,
                                  merge_state=before.merge_state,
@@ -538,7 +590,7 @@ def blocking_reasons(project, number, base=None, states=None):
                                  runs_unfinished=expected_checks.unfinished(others, jobs, now),
                                  runs_failed=expected_checks.failed(others, jobs, now),
                                  required=state.required),
-                    after, before.branch, results, target)
+                    after, before.branch, results, target, holder.path if freed else None)
 
 
 def write_ready_state(ready, since):
@@ -638,7 +690,7 @@ def unasked_for(started, now=None):
     return now - started if ago is None else min(ago, now - started)
 
 
-def retire(lock, unasked, ever_asked=None):
+def retire(lock, unasked, ever_asked=None, project=Path(".")):
     """The lock goes back here rather than at the exit: `watch` returns to a caller, and one that
     went on to other work would hold it while nothing was watching.
 
@@ -657,13 +709,51 @@ def retire(lock, unasked, ever_asked=None):
           f"\nFrom here a pending check blocks a Stop again, and an edit is refused until something "
           f"is watching. Both are what a live watcher was forgiving. Start another when that is what "
           f"you want:\n"
-          f"\n  python3 scripts/pr/settle.py watch\n", flush=True)
+          f"\n  {watcher_state.rearm_command(project)}\n", flush=True)
     return 0
 
 
-def watch(project, base):
+def read_reported():
+    """The lines an earlier `--until-actionable` run exited over, carried only while the record was
+    written inside the staleness window. A wider gap is one nothing watched through, so a run armed
+    after it reports what stands rather than waiting for something newer.
+    """
+    try:
+        text = watcher_state.REPORTED.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return set()
+    if watcher_state.stamped(text, time.time()) is None:
+        return set()
+    return {line for line in text.splitlines()[1:] if line}
+
+
+def write_reported(lines):
+    watcher_state.REPORTED.write_text(
+        f"{int(time.time())}\n" + "".join(f"{line}\n" for line in sorted(lines)), encoding="utf-8")
+
+
+def reported_number(line):
+    """The pull request number a reported line opens on, or None for a line naming none."""
+    number = line.split(" ", 1)[0].removeprefix("PR#")
+    return int(number) if number.isdigit() else None
+
+
+def handed_off(lock, project, actionable):
+    """Ends an `--until-actionable` run over what it found, so the exit is what its caller hears."""
+    watcher_state.hand_off(os.getpid())
+    lock.close()
+    for line in sorted(actionable):
+        print(line, flush=True)
+    merging = ("Merge a READY one with `python3 scripts/pr/settle.py merge <pr>`, then watch"
+               if any(" READY: " in line for line in actionable) else "Watch")
+    print(f"\n{merging} again in the background:\n\n  {watcher_state.rearm_command(project)}\n",
+          flush=True)
+    return 0
+
+
+def watch(project, base, until_actionable=False):
     """Emit each check that reaches a terminal state, once, and hold the heartbeat open until
-    nothing reads it."""
+    nothing reads it — or, `until_actionable`, until a pull request is ready or failing."""
     lock, holder = hold_the_watch()
     if lock is None:
         print(f"Refusing to watch: process {holder or 'unknown'} already holds "
@@ -693,7 +783,7 @@ def watch(project, base):
         # watcher whose calls all fail goes unread like any other.
         unasked = unasked_for(started)
         if unasked >= watcher_state.RETIRE_AFTER:
-            return retire(lock, unasked, watcher_state.asked_ago() is not None)
+            return retire(lock, unasked, watcher_state.asked_ago() is not None, project)
         try:
             pull_requests = open_pull_requests(project)
         except RuntimeError as error:
@@ -708,6 +798,8 @@ def watch(project, base):
         states = {}
 
         ready = set()
+        actionable = []
+        read = set()
         for number in pull_requests:
             try:
                 blocking = blocking_reasons(project, number, base, states)
@@ -715,26 +807,44 @@ def watch(project, base):
                 print(f"! PR#{number}: {error}", flush=True)
                 continue
             beat()
+            read.add(number)
 
+            lines = []
             for result in blocking.results:
                 if result["bucket"] == "pending":
                     continue
                 line = "PR#{} {} {} => {}".format(number, blocking.head[:7], result["name"],
                                                   result["bucket"])
-                if line not in seen:
-                    seen.add(line)
-                    print(line, flush=True)
+                lines.append(line)
+                if result["bucket"] in TERMINAL_FAIL:
+                    actionable.append(line)
 
             if not blocking.reasons:
                 # A pull request that finished green and sits unmerged is what this exists for as much
                 # as a pending one: a watcher reporting only state CHANGES goes silent on it forever.
                 ready.add(number)
                 line = f"PR#{number} {blocking.head[:7]} READY: nothing blocks the merge"
+                lines.append(line)
+                actionable.append(line)
+
+            # A run that wakes its caller by exiting prints only the lines it exits over, which a
+            # page of passing checks would bury.
+            for line in ([] if until_actionable else lines):
                 if line not in seen:
                     seen.add(line)
                     print(line, flush=True)
 
         write_ready_state(ready, ready_since)
+        if until_actionable:
+            reported = read_reported()
+            # A pull request whose readings raised this poll keeps what was reported about it, or a
+            # failed reading would make the next poll's lines read as new and wake the caller.
+            unread = {line for line in reported
+                      if reported_number(line) in pull_requests and reported_number(line) not in read}
+            if any(line not in reported for line in actionable):
+                write_reported(unread | set(actionable))
+                return handed_off(lock, project, actionable)
+            write_reported(unread | {line for line in actionable if line in reported})
         time.sleep(watcher_state.POLL_SECONDS)
 
 
@@ -806,8 +916,19 @@ def merge(project, number, base, dry_run):
         return 1
 
     if dry_run:
-        print(f"PR#{number} would merge: no blocking reason")
+        removal = (f", once the worktree at {blocking.worktree} is removed"
+                   if blocking.worktree else "")
+        print(f"PR#{number} would merge: no blocking reason{removal}")
         return 0
+
+    # Before the merge rather than after it, for the reason the docstring gives about a holder: a
+    # removal failing after the merge leaves the branch outliving it.
+    if blocking.worktree:
+        refusal, done = remove_worktree(project, blocking)
+        if refusal:
+            print(f"Refusing to merge PR#{number}:\n  - {refusal}", file=sys.stderr)
+            return 1
+        print(f"PR#{number}: {done}")
 
     # REST, for the same reason as every other read here — `gh pr merge` is GraphQL, so under an
     # exhausted quota the whole merge path stopped working while the reads still could have answered.
@@ -829,6 +950,25 @@ def merge(project, number, base, dry_run):
     for failure in delete_merged_branch(project, blocking.branch):
         print(f"PR#{number} merged, but {failure}", file=sys.stderr)
     return 0
+
+
+def remove_worktree(project, blocking):
+    """Removes the worktree `blocking` names, unforced: (why not, or "", what was done).
+
+    Asked again rather than trusted from the decision: a commit made in it since then is on the
+    local branch, which `delete_merged_branch` deletes after the merge.
+    """
+    holder = worktrees(project).get(blocking.branch)
+    if holder is None:
+        return "", f"the worktree at {blocking.worktree} no longer holds {blocking.branch}"
+    if holder.path != blocking.worktree or not removable(project, holder, blocking.head):
+        return held_reason(blocking.branch), ""
+    removed = run_quietly(["git", "-C", str(project), "worktree", "remove", holder.path],
+                          GIT_TIMEOUT)
+    if removed.returncode != 0:
+        return f"{held_reason(blocking.branch)}. git declined to: {removed.stderr.strip()}", ""
+    return "", (f"removed the worktree at {holder.path}, which held {blocking.branch} clean at "
+                f"{blocking.head[:7]}")
 
 
 def reference_already_gone(stderr):
@@ -909,7 +1049,10 @@ def main():
     parser.add_argument("--project", default=".", help="repository root (default: cwd)")
     parser.add_argument("--base", help="branch merged into (default: each pull request's own)")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("watch", help="emit terminal check results for every open pull request")
+    watch_parser = sub.add_parser("watch",
+                                  help="emit terminal check results for every open pull request")
+    watch_parser.add_argument("--until-actionable", action="store_true",
+                              help="exit once a pull request is ready or has a failing check")
     merge_parser = sub.add_parser("merge", help="merge one pull request if nothing blocks it")
     merge_parser.add_argument("number", type=int)
     merge_parser.add_argument("--dry-run", action="store_true",
@@ -921,7 +1064,7 @@ def main():
 
     project = Path(args.project).resolve()
     if args.command == "watch":
-        return watch(project, args.base)
+        return watch(project, args.base, args.until_actionable)
     if args.command == "update":
         return update(project, args.number, args.base)
     return merge(project, args.number, args.base, args.dry_run)

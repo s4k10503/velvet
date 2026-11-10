@@ -36,7 +36,10 @@ sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 import tracked_writes
 from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable
-from watcher_state import READY_STATE, STALE_AFTER, alive, unreadable_beat
+from watcher_state import READY_STATE, STALE_AFTER, alive, rearm_command, unreadable_beat
+
+# The watcher as the refusals below name it, run from the checkout these hooks belong to.
+WATCH = rearm_command(HOOK_DIRECTORY.parent.parent)
 
 # A shell operand this cannot place is not a file it can say is tracked, so it drops out of the
 # reading and the command runs. That is the under-approximation `LIMITS` states.
@@ -153,8 +156,8 @@ def main():
                 "  ps -Ao pid=,command= | grep 'settle[.]py watch'\n"
                 "  kill <pid>\n"
                 f"  # its last heartbeat ages out within {STALE_AFTER}s, and until it does\n"
-                "  # `settle.py watch` refuses to start\n"
-                "  python3 scripts/pr/settle.py watch\n\n"
+                "  # `settle.py watch` refuses to start; run this in the background\n"
+                f"  {WATCH}\n\n"
                 "If the pause is deliberate, arm the deferral for what the WORK is waiting on; the "
                 "reason expires, so it gets re-read rather than forgotten:\n\n"
                 f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}\n'
@@ -165,9 +168,11 @@ def main():
             "green cannot be read.\n\n"
             "An unwatched pull request and none at all look identical from here, which is the state "
             "this guard exists to stop being invisible.\n\n"
-            "  python3 scripts/pr/settle.py watch\n\n"
-            "That reports what stops it starting, if anything does — a watcher already holding the "
-            "lock is named there with the command to end it. If the pause is deliberate, arm the "
+            f"  {WATCH}\n\n"
+            "Run it in the background: it exits once a pull request is ready or failing, and that "
+            "exit is what reaches you. It reports what stops it starting, if anything does — a "
+            "watcher already holding the lock is named there with the command to end it. If the "
+            "pause is deliberate, arm the "
             "deferral for what the WORK is waiting on rather than for the watcher being off; the "
             "reason expires, so it gets re-read rather than forgotten:\n\n"
             f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}\n'

@@ -16,6 +16,7 @@ still exists. That is all it establishes — `running` answers about a process i
 """
 
 import os
+import shlex
 import time
 from pathlib import Path
 
@@ -48,6 +49,23 @@ ASKED = Path.home() / ".velvet-pr-watch.asked"
 # was chosen. Neither bounds one, and what a session gets back past one is the command a guard
 # names.
 RETIRE_AFTER = 120 * POLL_SECONDS
+
+# Written by a `watch --until-actionable` run as it exits to report, naming its own pid. Its caller
+# is woken by the exit, so between that exit and the re-arm nothing is polling, and `alive` would
+# otherwise read the delivery itself as a dead watcher and refuse the edits that act on it.
+HANDED_OFF = Path.home() / ".velvet-pr-watch.handed-off"
+
+# The actionable lines a `watch --until-actionable` run has already exited to report, so a re-arm
+# waits for something new rather than exiting at once over a pull request its caller already heard
+# about. `settle.py` owns how long a record of them is carried.
+REPORTED = Path.home() / ".velvet-pr-watch.reported"
+
+
+def rearm_command(root):
+    """The watcher in the form an agent runs it: backgrounded, it exits — waking its caller — once
+    an open pull request is ready or has a failing check it has not already exited over. It says
+    where it runs, since `refuse/background_relative_path.py` refuses a backgrounded relative path."""
+    return f"cd {shlex.quote(str(root))} && python3 scripts/pr/settle.py watch --until-actionable"
 
 
 def beat(pid, now=None):
@@ -137,8 +155,28 @@ def beat_text():
         return None
 
 
+def hand_off(pid, now=None):
+    """Record that the watcher `pid` is exiting to report. A failed write is swallowed, as
+    `note_asked` swallows one: the report still reaches the caller through the exit."""
+    try:
+        HANDED_OFF.write_text(beat(pid, now), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def handed_off(pid, now):
+    """Whether `pid` recorded exiting to report inside the poll window."""
+    try:
+        text = HANDED_OFF.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    read = written(text)
+    return read is not None and read[1] == pid and stamped(text, now) is not None
+
+
 def alive(now=None):
-    """Whether the process that wrote the heartbeat is running and wrote it recently.
+    """Whether the process that wrote the heartbeat is running and wrote it recently, or exited
+    to report after writing it — the heartbeat's window bounds both.
 
     The asking is recorded here rather than in each reader, so a reader written later is counted
     without being told to.
@@ -147,10 +185,11 @@ def alive(now=None):
     text = beat_text()
     if text is None:
         return False
+    now = time.time() if now is None else now
     read = written(text)
     return (read is not None
-            and stamped(text, time.time() if now is None else now) is not None
-            and running(read[1]))
+            and stamped(text, now) is not None
+            and (running(read[1]) or handed_off(read[1], now)))
 
 
 def unreadable_beat(now=None):

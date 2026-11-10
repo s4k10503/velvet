@@ -285,6 +285,16 @@ def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
                                  required=(required or {}).get(base, REQUIRED))
 
 
+def holder(state):
+    """The linked worktree `state.held` says holds its branch, at the head the poll reads last.
+    `fabricated_readings` answers it clean only where `held` is `CLEAN`."""
+    return settle.Worktree(f"/trees/{state.branch}", state.after, False, False)
+
+
+# A `held` value for a holder `settle.py merge` may remove: clean, at the pull request's head.
+CLEAN = "clean"
+
+
 @contextlib.contextmanager
 def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
@@ -314,8 +324,11 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
                 else sha in by_branch[branch].holds)),
+            ("worktree_clean", lambda path: any(
+                state.held == CLEAN for state in states.values()
+                if f"/trees/{state.branch}" == str(path))),
             ("project_state", lambda _project, base: base_state(
-                {state.branch for state in states.values() if state.held}, base, red,
+                {state.branch: holder(state) for state in states.values() if state.held}, base, red,
                 releasing, required)),
         ):
             # `create`, so the table is posed to a settle that has not got a reading as well.
@@ -355,7 +368,9 @@ def poll(states, listing_answers=True):
             for name, path in (("READY_STATE", ready_state),
                                ("HEARTBEAT", heartbeat),
                                ("LOCK", Path(directory) / "lock"),
-                               ("ASKED", Path(directory) / "asked")):
+                               ("ASKED", Path(directory) / "asked"),
+                               ("HANDED_OFF", Path(directory) / "handed_off"),
+                               ("REPORTED", Path(directory) / "reported")):
                 # `create` so the redirect survives being carried onto a tree without the name, where
                 # the alternative is a case that stops before it disagrees.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name, path, create=True))
@@ -596,7 +611,7 @@ class ExpectedCheckTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for name, answer in (("gh_git", lambda *_: ""),
                                  ("repository", lambda *_: "owner/name"),
-                                 ("worktree_branches", lambda *_: set()),
+                                 ("worktrees", lambda *_: {}),
                                  ("rest_json", lambda path: answers[path] if "/rules/" in path
                                   else {"workflow_runs": []}),
                                  ("release_commit", lambda *_: None)):
@@ -812,13 +827,16 @@ CLOCK_BOUND = 180
 
 
 def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
-                states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None):
+                states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None,
+                until_actionable=False, seed_reported=None, readings=()):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
     `asked` sends the record somewhere else, for a case about it not being written; `bound` is how
     many polls the clock allows before it gives up. The `seed_` arguments write what a watcher that
-    has already stopped leaves behind: its ready record, when that record was written, and the
-    record of the last read.
+    has already stopped leaves behind: its ready record, when that record was written, the
+    record of the last read, and the record of what an `--until-actionable` run exited over.
+    `readings` are (name, wrap) pairs: each reading is replaced by what `wrap` makes of the
+    fabricated one.
     """
     clock = FakeClock(bound, between_polls)
     printed = io.StringIO()
@@ -837,8 +855,10 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             (Path(directory) / "asked").write_bytes(seed_asked)
         elif seed_asked is not None:
             (Path(directory) / "asked").write_text(f"{int(seed_asked)}\n", encoding="utf-8")
+        if seed_reported is not None:
+            (Path(directory) / "reported").write_text(seed_reported, encoding="utf-8")
         with fabricated_readings({1: fabricate(1)} if states is None else states) as stack:
-            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED"):
+            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED", "HANDED_OFF", "REPORTED"):
                 # `create` for the reason `poll` gives over the same redirect.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name,
                                                       Path(directory) / name.lower(), create=True))
@@ -848,13 +868,18 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             if not listing_answers:
                 stack.enter_context(mock.patch.object(settle, "open_pull_requests",
                                                      refuse_to_answer))
+            for name, wrap in readings:
+                stack.enter_context(mock.patch.object(settle, name, wrap(getattr(settle, name))))
             stack.enter_context(mock.patch.object(settle, "hold_the_watch",
                                                   keeping_the_lock(handles)))
             stack.enter_context(mock.patch.object(settle.time, "sleep", clock.sleep))
             stack.enter_context(mock.patch.object(settle.time, "time", clock.time))
             stack.enter_context(contextlib.redirect_stdout(printed))
             try:
-                code = settle.watch(Path("."), "main")
+                # Passed only where asked for, so the cases that do not ask still run on a tree
+                # whose `watch` takes no such argument.
+                code = settle.watch(Path("."), "main",
+                                    **({"until_actionable": True} if until_actionable else {}))
             except Polled:
                 code = None
             # Read before this closes it: what a case asks is whether the code let the lock go, so
@@ -1043,7 +1068,7 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
             ("repository", lambda *_: "owner/name"),
             ("pull_request", lambda *_: state),
             ("head_sha", lambda *_: GREEN),
-            ("project_state", lambda _project, base: base_state(set(), base)),
+            ("project_state", lambda _project, base: base_state({}, base)),
             ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
         ):
             stack.enter_context(mock.patch.object(settle, name, answer))
@@ -1506,6 +1531,8 @@ class HeartbeatTests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(settle.watcher_state, "HEARTBEAT", path))
                 stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED",
                                                      Path(directory) / "asked"))
+                stack.enter_context(mock.patch.object(settle.watcher_state, "HANDED_OFF",
+                                                     Path(directory) / "handed_off", create=True))
                 yield
 
 
@@ -1545,8 +1572,8 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
-    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
-    # This change only drops a double of a reading settle no longer takes; the arranged verdict is unchanged.
+    # GREEN_ON_BASE(refactor): an unlabelled head behind a green base still merges.
+    # Only the holders this arranges changed, from a set to a mapping.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
@@ -1562,7 +1589,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
-                ("project_state", lambda _project, base: base_state(set(), base)),
+                ("project_state", lambda _project, base: base_state({}, base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):
                 stack.enter_context(mock.patch.object(settle, name, answer, create=True))
@@ -1593,7 +1620,7 @@ class RedBaseMergeTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for name, answer in (("gh_git", lambda *_: ""),
                                  ("repository", lambda *_: "owner/name"),
-                                 ("worktree_branches", lambda *_: set()),
+                                 ("worktrees", lambda *_: {}),
                                  ("rest_json", listing)):
                 stack.enter_context(mock.patch.object(settle, name, answer))
             stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
@@ -1613,7 +1640,7 @@ def project_readings(release_commit):
     with contextlib.ExitStack() as stack:
         for name, answer in (("gh_git", lambda *_: ""),
                              ("repository", lambda *_: "owner/name"),
-                             ("worktree_branches", lambda *_: set()),
+                             ("worktrees", lambda *_: {}),
                              ("rest_json", lambda path: [] if "/rules/branches/" in path
                               else {"workflow_runs": []})):
             stack.enter_context(mock.patch.object(settle, name, answer))
@@ -1812,6 +1839,7 @@ class PullRequestBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON.replace("main", RED)])
 
+    # GREEN_ON_BASE(refactor): only the holders this arranges changed, from a set to a mapping.
     def test_Given_PullRequestsOnTwoBases_When_OnePollReadsThem_Then_EachBaseIsAskedOnce(self):
         # Arrange — the dict a poll carries, which is what keeps N pull requests at one fetch per
         # base rather than one per pull request.
@@ -1822,13 +1850,14 @@ class PullRequestBaseTests(unittest.TestCase):
         with fabricated_readings(states) as stack:
             stack.enter_context(mock.patch.object(
                 settle, "project_state",
-                lambda _project, base: (asked.append(base), base_state(set(), base))[1]))
+                lambda _project, base: (asked.append(base), base_state({}, base))[1]))
             for number in sorted(states):
                 settle.blocking_reasons(Path("."), number, None, states=shared)
 
         # Assert
         self.assertEqual(asked, ["main", "2.x"])
 
+    # GREEN_ON_BASE(refactor): only the holders this arranges changed, from a set to a mapping.
     def test_Given_TwoPollsOverOneBase_When_TheyRun_Then_TheSecondReadsItAgain(self):
         # Arrange — the cache is a poll's, not a watcher's: a base whose release is dispatched
         # between two polls has to stop blocking at the next poll rather than at the next watcher.
@@ -1842,7 +1871,7 @@ class PullRequestBaseTests(unittest.TestCase):
                     stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
                 stack.enter_context(mock.patch.object(
                     settle, "project_state",
-                    lambda _project, base: (asked.append(base), base_state(set(), base))[1]))
+                    lambda _project, base: (asked.append(base), base_state({}, base))[1]))
                 stack.enter_context(mock.patch.object(settle.time, "sleep",
                                                       side_effect=[None, Polled]))
                 stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
@@ -2368,6 +2397,322 @@ class BranchDeletionTests(unittest.TestCase):
     def test_Given_ARefDeleteRefusedForAnyOtherReason_When_Read_Then_ItIsReported(self):
         # Act / Assert
         self.assertFalse(settle.reference_already_gone("gh: Resource not accessible (HTTP 403)"))
+
+
+@contextlib.contextmanager
+def worktree_holding(branch="topic"):
+    """(project, tree, head): a repository on `main` ignoring `Library/`, with `branch` checked out
+    at `head` in the linked worktree `tree` beside it."""
+    with tempfile.TemporaryDirectory(prefix="settle-tree-") as directory:
+        root = Path(directory).resolve()
+        project, tree = root / "project", root / "tree"
+        subprocess.run(["git", "init", "-q", "-b", "main", str(project)], capture_output=True,
+                       check=True)
+        (project / ".gitignore").write_text("Library/\n", encoding="utf-8")
+        committed(project, ".gitignore")
+        subprocess.run(["git", "-C", str(project), "worktree", "add", "-q", "-b", branch, str(tree)],
+                       capture_output=True, check=True)
+        yield project, tree, head_of(tree)
+
+
+def committed(tree, *paths):
+    git = ["git", "-C", str(tree), "-c", "user.email=t@example.com", "-c", "user.name=t"]
+    subprocess.run(git + ["add", "--", *paths], capture_output=True, check=True)
+    subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "change"], capture_output=True,
+                   check=True)
+
+
+def head_of(tree):
+    return subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+# The real one, which `fabricated_readings` stubs and a case asking git puts back.
+REAL_WORKTREE_CLEAN = getattr(settle, "worktree_clean", None)
+
+
+class RemovableWorktreeTests(unittest.TestCase):
+    """Which holder of a pull request's branch `settle.py merge` may remove without losing anything."""
+
+    def removable(self, arrange=None, branch="topic", sha=None, project=None):
+        """`settle.removable` asked about the worktree on `branch`, after `arrange(project, tree)`."""
+        with worktree_holding() as (root, tree, head):
+            if arrange is not None:
+                arrange(root, tree)
+            listed = settle.worktrees(root)
+            return settle.removable(project(root, tree) if project else root, listed[branch],
+                                    head if sha is None else sha(root))
+
+    def test_Given_ACleanWorktreeAtTheHead_When_Asked_Then_ItIsRemovable(self):
+        # Act / Assert
+        self.assertTrue(self.removable())
+
+    def test_Given_AWorktreeHoldingOnlyIgnoredFiles_When_Asked_Then_ItIsRemovable(self):
+        # Arrange — `Library` is what a seeded worktree here holds, and it is ignored.
+        def library(_root, tree):
+            (tree / "Library").mkdir()
+            (tree / "Library" / "ArtifactDB").write_text("x", encoding="utf-8")
+
+        # Act / Assert
+        self.assertTrue(self.removable(library))
+
+    def test_Given_AWorktreeHoldingAnUntrackedFile_When_Asked_Then_ItIsNot(self):
+        # Arrange
+        def untracked(_root, tree):
+            (tree / "notes.txt").write_text("x", encoding="utf-8")
+
+        # Act / Assert
+        self.assertFalse(self.removable(untracked))
+
+    def test_Given_AWorktreeWithACommitThePullRequestLacks_When_Asked_Then_ItIsNot(self):
+        # Arrange — clean, so only the HEAD separates it from the removable one.
+        def ahead(_root, tree):
+            committed(tree)
+
+        # Act / Assert
+        self.assertFalse(self.removable(ahead))
+
+    def test_Given_ALockedWorktree_When_Asked_Then_ItIsNot(self):
+        # Arrange — what a running agent's worktree carries here.
+        def locked(root, tree):
+            subprocess.run(["git", "-C", str(root), "worktree", "lock", str(tree)],
+                           capture_output=True, check=True)
+
+        # Act / Assert
+        self.assertFalse(self.removable(locked))
+
+    def test_Given_TheMainWorkingTreeAtTheHead_When_Asked_Then_ItIsNot(self):
+        # Arrange — asked from the linked tree, so the main one is not also the tree this runs from.
+        # Act / Assert
+        self.assertFalse(self.removable(branch="main", sha=head_of,
+                                        project=lambda _root, tree: tree))
+
+    def test_Given_TheTreeThisRunsFrom_When_Asked_Then_ItIsNot(self):
+        # Act / Assert
+        self.assertFalse(self.removable(project=lambda _root, tree: tree))
+
+
+class WorktreeMergeTests(unittest.TestCase):
+    """What the decision and `settle.py merge` do about the worktree a pull request was written in."""
+
+    def merge(self, project, head, dry_run=False, arrange=None, between=None):
+        """(what `gh` was sent, the decision's reasons) for a merge of PR 1, whose head is `head` on
+        `topic`, with every reading but the worktrees fabricated. `between` runs after the
+        decision's worktree reading and before any later one."""
+        sent = []
+        listings = []
+
+        def worktrees(project):
+            listings.append(project)
+            if len(listings) == 2 and between is not None:
+                between()
+            return listed(project)
+
+        listed = settle.worktrees
+        state = fabricate(1, branch="topic")._replace(sha=head, after=head)
+        with fabricated_readings({1: state}) as stack:
+            stack.enter_context(mock.patch.object(settle, "worktrees", worktrees))
+            stack.enter_context(mock.patch.object(settle, "worktree_clean", REAL_WORKTREE_CLEAN))
+            stack.enter_context(mock.patch.object(
+                settle, "project_state",
+                lambda _project, base: base_state(settle.worktrees(project), base)))
+            stack.enter_context(mock.patch.object(settle, "pull_request_text",
+                                                  lambda *_: ("A title", "A body")))
+            stack.enter_context(mock.patch.object(settle, "gh", lambda *args: (sent.append(args),
+                                                                               "")[1]))
+            stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            refused = io.StringIO()
+            stack.enter_context(contextlib.redirect_stderr(refused))
+            settle.merge(project, 1, None, dry_run=dry_run)
+        return sent, refused.getvalue()
+
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_ItIsRemoved(self):
+        # Arrange — an ignored `Library` in it, which the unforced removal has to take as well.
+        with worktree_holding() as (project, tree, head):
+            (tree / "Library").mkdir()
+            (tree / "Library" / "ArtifactDB").write_text("x", encoding="utf-8")
+
+            # Act
+            self.merge(project, head)
+
+            # Assert
+            self.assertFalse(tree.exists())
+
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_TheMergeIsSent(self):
+        # Arrange
+        with worktree_holding() as (project, _tree, head):
+            # Act
+            sent, _ = self.merge(project, head)
+
+            # Assert
+            self.assertEqual(len(sent), 1)
+
+    def test_Given_AWorktreeHoldingAnUntrackedFile_When_Merged_Then_ItIsRefusedAsBefore(self):
+        # Arrange — refused rather than forced, with the reason a holder always had.
+        with worktree_holding() as (project, tree, head):
+            (tree / "notes.txt").write_text("x", encoding="utf-8")
+
+            # Act
+            _, refused = self.merge(project, head)
+
+            # Assert
+            self.assertIn(settle.held_reason("topic"), refused)
+
+    def test_Given_ACommitMadeInTheWorktreeAfterTheDecision_When_Merged_Then_NothingIsSent(self):
+        # Arrange — clean throughout, so git's own refusal to remove a dirty tree cannot be what
+        # stops it: only reading the HEAD again can.
+        with worktree_holding() as (project, tree, head):
+            # Act
+            sent, _ = self.merge(project, head, between=lambda: committed(tree))
+
+            # Assert
+            self.assertEqual(sent, [])
+
+    def test_Given_ACleanWorktreeHoldingTheBranch_When_DryRun_Then_ItIsLeftInPlace(self):
+        # Arrange
+        with worktree_holding() as (project, tree, head):
+            # Act
+            self.merge(project, head, dry_run=True)
+
+            # Assert
+            self.assertTrue(tree.exists())
+
+    def test_Given_ACleanHolderInATable_When_TheWatcherPolls_Then_ItIsRecordedAsReady(self):
+        # Arrange — the watcher reaches it through the same decision, so the READY it prints is
+        # one the merge then takes.
+        table = {5: fabricate(5, held=CLEAN)}
+
+        # Act / Assert
+        self.assertEqual(polled(table), {5})
+
+
+# The line a ready `fabricate(1)` prints, its sha being the number padded with zeros.
+READY_LINE = "PR#1 0000000 READY: nothing blocks the merge"
+
+
+def flaky_first(reading):
+    """A reading that raises the first time it is asked, as a dropped connection does."""
+    asked = []
+
+    def answer(*args):
+        asked.append(1)
+        if len(asked) == 1:
+            raise RuntimeError("the connection dropped")
+        return reading(*args)
+    return answer
+
+
+class UntilActionableTests(unittest.TestCase):
+    """`watch --until-actionable`: a backgrounded caller hears of it only when it exits."""
+
+    def test_Given_AReadyPullRequest_When_Watched_Then_ItExitsWithoutSleeping(self):
+        # Act
+        watched = watch_until(until_actionable=True)
+
+        # Assert — a run that did not exit retires with the same code 0, so the polls tell them apart.
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AFailingCheck_When_Watched_Then_ItExitsWithoutSleeping(self):
+        # Act
+        watched = watch_until(until_actionable=True,
+                              states={1: fabricate(1, results=[{"name": "Unity", "bucket": "fail"}])})
+
+        # Assert
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_OnlyAPendingCheck_When_Watched_Then_ItKeepsPolling(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3,
+                              states={1: fabricate(1, results=[{"name": "Unity",
+                                                                "bucket": "pending"}])})
+
+        # Assert — None is what a watcher still polling at the clock's bound leaves.
+        self.assertIsNone(watched.code)
+
+    def test_Given_AReadyPullRequest_When_ItExits_Then_ItPrintsTheReadyLine(self):
+        # Act
+        watched = watch_until(until_actionable=True)
+
+        # Assert
+        self.assertIn(READY_LINE, watched.output)
+
+    def test_Given_AReadyPullRequest_When_ItExits_Then_ItLeavesOutThePassingChecks(self):
+        # Act
+        watched = watch_until(until_actionable=True)
+
+        # Assert
+        self.assertNotIn("=> pass", watched.output)
+
+    def test_Given_AReadyLineReportedInsideTheWindow_When_ReArmed_Then_ItWaitsForSomethingNew(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3,
+                              seed_reported=f"{CLOCK_START}\n{READY_LINE}\n")
+
+        # Assert
+        self.assertIsNone(watched.code)
+
+    def test_Given_AReadyLineReportedOutsideTheWindow_When_ReArmed_Then_ItReportsItAgain(self):
+        # Arrange — nothing watched through the gap, so what stands is reported rather than assumed
+        # heard.
+        stale = f"{CLOCK_START - STALE_SECONDS}\n{READY_LINE}\n"
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, seed_reported=stale)
+
+        # Assert
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AReportedPullRequestWhoseReadingFailsOnce_When_ReArmed_Then_ItStillWaits(self):
+        # Arrange — the failed poll reads nothing about it, which is not the same as it having
+        # stopped being ready.
+        watched = watch_until(until_actionable=True, bound=3,
+                              seed_reported=f"{CLOCK_START}\n{READY_LINE}\n",
+                              readings=[("pull_request", flaky_first)])
+
+        # Act / Assert
+        self.assertIsNone(watched.code)
+
+
+class HandOffTests(unittest.TestCase):
+    """A watcher that exited to report is still a watcher for its heartbeat's window."""
+
+    def alive(self, handed_off, pid):
+        """`alive` at 1060 over a heartbeat `pid` wrote at 1000, beside the hand-off text given."""
+        with tempfile.TemporaryDirectory(prefix="settle-handoff-") as directory:
+            beat_file = Path(directory) / "beat"
+            beat_file.write_text(settle.watcher_state.beat(pid, now=1000))
+            record = Path(directory) / "handed_off"
+            record.write_text(handed_off)
+            with contextlib.ExitStack() as stack:
+                for name, path in (("HEARTBEAT", beat_file), ("HANDED_OFF", record),
+                                   ("ASKED", Path(directory) / "asked")):
+                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path,
+                                                          create=True))
+                return settle.watcher_state.alive(now=1060)
+
+    def test_Given_AWatcherThatExitedToReport_When_ReadInsideTheWindow_Then_ItIsAlive(self):
+        # Arrange
+        pid = exited_pid()
+
+        # Act / Assert
+        self.assertTrue(self.alive(settle.watcher_state.beat(pid, now=1000), pid))
+
+    # GREEN_ON_BASE(characterization): a gone writer was never alive; this pins the pid match.
+    def test_Given_AHandOffNamingAnotherProcess_When_Read_Then_TheGoneWriterIsNotAlive(self):
+        # Arrange
+        pid = exited_pid()
+
+        # Act / Assert
+        self.assertFalse(self.alive(settle.watcher_state.beat(pid + 1, now=1000), pid))
+
+    # GREEN_ON_BASE(characterization): a gone writer was never alive; this pins the window.
+    def test_Given_AHandOffOlderThanTheWindow_When_Read_Then_TheGoneWriterIsNotAlive(self):
+        # Arrange
+        pid = exited_pid()
+
+        # Act / Assert
+        self.assertFalse(self.alive(settle.watcher_state.beat(pid, now=1060 - STALE_SECONDS), pid))
 
 
 class TerminalStateTests(unittest.TestCase):

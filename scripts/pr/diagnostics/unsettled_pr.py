@@ -42,7 +42,7 @@ sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
 from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable  # noqa: E402
 from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
-from watcher_state import HEARTBEAT, alive, unreadable_beat  # noqa: E402
+from watcher_state import HEARTBEAT, alive, rearm_command, unreadable_beat  # noqa: E402
 import expected_checks  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
@@ -330,14 +330,15 @@ something that is itself on the critical path. Work that is off the critical pat
 
 A pending check stops blocking once a watcher writes {HEARTBEAT} on each
 poll. Run the committed one rather than writing another — the hand-written ones have been pinned to
-a single PR number, which leaves the next one unwatched behind a fresh heartbeat:
+a single PR number, which leaves the next one unwatched behind a fresh heartbeat. Run it in the
+background: it exits once a pull request is ready or failing, and that exit is what reaches you:
 
-  python3 scripts/pr/settle.py watch
+  {rearm_command(HOOK_DIRECTORY.parent.parent)}
 
 And merge through the same script. It reads the head SHA on both sides of the check list, so a
 force-push between them voids the answer instead of merging a SHA nothing tested, and it declines
 while the base holds a failed push run or a release the head's checks do not cover, or while a
-worktree holds the branch:
+worktree it cannot remove first holds the branch:
 
   python3 scripts/pr/settle.py merge <pr> --dry-run""", file=sys.stderr)
     return 2
