@@ -35,6 +35,7 @@ namespace Velvet.Tests
             s_start = default;
             s_setTick = default;
             s_target = null;
+            s_effectTarget = null;
             s_source = null;
             s_portalAt = 0;
             s_readerRenders = 0;
@@ -172,6 +173,7 @@ namespace Velvet.Tests
         {
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             s_target = new VisualElement { name = "portal-target" };
+            s_effectTarget = new VisualElement { name = "effect-target" };
             s_source = new VelvetTaskCompletionSource<int>();
             s_portalAt = portalAt;
             var mounted = V.Mount(_root, V.Component(TransitionHostRender, key: "transition-host"));
@@ -197,6 +199,7 @@ namespace Velvet.Tests
         private static TransitionStarter s_start;
         private static StateUpdater<int> s_setTick;
         private static VisualElement s_target;
+        private static VisualElement s_effectTarget;
         private static VelvetTaskCompletionSource<int> s_source;
         private static int s_portalAt;
         private static int s_readerRenders;
@@ -205,7 +208,8 @@ namespace Velvet.Tests
         private static int s_rowEffectSetups;
 
         // Tick zero is one row. The transition's write makes it forty-one, with the Portal at s_portalAt and a
-        // component with an effect at EffectRowAt.
+        // component with an effect at EffectRowAt. That component sits in a Portal of its own: a component row would
+        // take the whole list down the general path, which never parks, and no slice of the pass would park at all.
         [Component]
         private static VNode TransitionHostRender()
         {
@@ -230,7 +234,8 @@ namespace Velvet.Tests
                 }
                 else if (tick != 0 && i == EffectRowAt)
                 {
-                    children[i] = V.Component(TransitionEffectRowRender, key: "effect-row");
+                    children[i] = V.Portal(s_effectTarget,
+                        new VNode[] { V.Component(TransitionEffectRowRender, key: "effect-row") });
                 }
                 else
                 {
