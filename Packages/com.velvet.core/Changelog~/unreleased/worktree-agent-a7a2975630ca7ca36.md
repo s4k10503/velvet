@@ -8,6 +8,9 @@
   Tailwind emits the size with the `/N` first: `shadow-lg/150 shadow-lg` draws `shadow-lg`'s layers at their own
   10%. The size with the `/N` used to win wherever its name sorted after the other's. The same applies to
   `inset-shadow-*`.
+- A `-none` with an opacity modifier (`shadow-none/50`), which Tailwind writes no rule for, no longer stops the
+  size before it from reading a rejected colour: `shadow-lg shadow-none/50 shadow-[color:0_4px_8px]` draws no
+  box-shadow, as the browser does, where it used to draw `shadow-lg`. The same applies to `inset-shadow-*`.
 - The bare `shadow` with an opacity modifier (`shadow/50`) draws its layers at that alpha. It used to draw
   nothing.
 - The outer box-shadow of an element that clips its content (`overflow-hidden`) takes `shadow-current` and `em`

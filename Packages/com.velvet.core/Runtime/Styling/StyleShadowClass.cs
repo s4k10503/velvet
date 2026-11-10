@@ -645,8 +645,7 @@ namespace Velvet
             var suffix = body.Substring(root.Length + 1);
             if (suffix == "none")
             {
-                layer.Offer(important, false);
-                return true;
+                return TryOfferNone(slash, important, ref layer);
             }
             if (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix))
             {
@@ -674,6 +673,17 @@ namespace Velvet
                 return true;
             }
             return false;
+        }
+
+        // A -none, which writes a layer reading no colour, and takes no modifier, as TryReadSize declines it.
+        private static bool TryOfferNone(int slash, bool important, ref BoxShadowSlot layer)
+        {
+            if (slash >= 0)
+            {
+                return false;
+            }
+            layer.Offer(important, false);
+            return true;
         }
 
         // A size's /N, which Tailwind writes as the family's alpha variable, a declaration apart from the layers.

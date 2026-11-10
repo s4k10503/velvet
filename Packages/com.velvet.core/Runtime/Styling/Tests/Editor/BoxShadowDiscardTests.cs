@@ -212,6 +212,22 @@ namespace Velvet.Tests
             Assert.That(colour, Is.EqualTo("unbound"));
         }
 
+        // Tailwind writes no rule for a -none with a modifier, so the size before it keeps the layers and reads the
+        // rejected colour.
+        [TestCase("shadow-lg shadow-none/50", "shadow-[color:0_4px_8px]")]
+        [TestCase("inset-shadow-2xs inset-shadow-none/50", "inset-shadow-[color:0_4px_8px]")]
+        public void Given_ANoneWithAModifierAfterASizeBesideARejectedColour_When_Reconciled_Then_TheShadowIsDiscarded(
+            string sizes, string rejectedColour)
+        {
+            // Act — the control is the sizes alone, which draw.
+            var colour = ReconciledLayerColour(sizes) != "unbound"
+                ? ReconciledLayerColour(sizes + " " + rejectedColour)
+                : "control unbound";
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("unbound"));
+        }
+
         [Test]
         public void Given_TheBareShadowWithAnOpacityModifier_When_Reconciled_Then_ItsLayersTakeTheModifiersAlpha()
         {
