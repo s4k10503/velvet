@@ -370,7 +370,8 @@ def poll(states, listing_answers=True):
                                ("LOCK", Path(directory) / "lock"),
                                ("ASKED", Path(directory) / "asked"),
                                ("HANDED_OFF", Path(directory) / "handed_off"),
-                               ("REPORTED", Path(directory) / "reported")):
+                               ("REPORTED", Path(directory) / "reported"),
+                               ("ACTIONABLE", Path(directory) / "actionable")):
                 # `create` so the redirect survives being carried onto a tree without the name, where
                 # the alternative is a case that stops before it disagrees.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name, path, create=True))
@@ -805,9 +806,9 @@ class FakeClock:
 
 
 # How a run of `watch` ended: its exit code, or None where it was still polling when the clock gave
-# up, how many polls it took, what it printed on the way out, whether the lock was free by then, and
-# the ready record it left.
-Watched = collections.namedtuple("Watched", "code polls output lock_released ready")
+# up, how many polls it took, what it printed on the way out, whether every lock it took was free by
+# then, the ready record it left, and the actionable lines it left for a follower.
+Watched = collections.namedtuple("Watched", "code polls output lock_released ready actionable")
 
 
 def keeping_the_lock(handles):
@@ -828,7 +829,8 @@ CLOCK_BOUND = 180
 
 def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
                 states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None,
-                until_actionable=False, seed_reported=None, readings=()):
+                until_actionable=False, seed_reported=None, readings=(), required=None,
+                holder=False, holder_stops_after=None, seed_actionable=None):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
     `asked` sends the record somewhere else, for a case about it not being written; `bound` is how
@@ -836,12 +838,31 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
     has already stopped leaves behind: its ready record, when that record was written, the
     record of the last read, and the record of what an `--until-actionable` run exited over.
     `readings` are (name, wrap) pairs: each reading is replaced by what `wrap` makes of the
-    fabricated one.
+    fabricated one; `required` is what `fabricated_readings` takes by that name.
+
+    `holder` starts another process holding the lock, beating at the clock's start, and
+    `holder_stops_after` ends it after that many polls; `seed_actionable` is the text that process
+    left for a follower.
     """
-    clock = FakeClock(bound, between_polls)
     printed = io.StringIO()
     handles = []
-    with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory:
+    with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory, \
+            contextlib.ExitStack() as holding:
+        other = None
+        if holder:
+            other = holding.enter_context(another_watcher_holding(Path(directory) / "lock"))
+            (Path(directory) / "heartbeat").write_text(f"{CLOCK_START} {other.pid}\n",
+                                                       encoding="utf-8")
+        if seed_actionable is not None:
+            (Path(directory) / "actionable").write_text(seed_actionable, encoding="utf-8")
+
+        def between(now):
+            if other is not None and clock.polls == holder_stops_after:
+                other.kill()
+                other.wait()
+            if between_polls is not None:
+                between_polls(now)
+        clock = FakeClock(bound, between)
         ready_state = Path(directory) / "ready_state"
         if isinstance(seed_ready, bytes):
             ready_state.write_bytes(seed_ready)
@@ -857,8 +878,10 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             (Path(directory) / "asked").write_text(f"{int(seed_asked)}\n", encoding="utf-8")
         if seed_reported is not None:
             (Path(directory) / "reported").write_text(seed_reported, encoding="utf-8")
-        with fabricated_readings({1: fabricate(1)} if states is None else states) as stack:
-            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED", "HANDED_OFF", "REPORTED"):
+        with fabricated_readings({1: fabricate(1)} if states is None else states,
+                                 required=required) as stack:
+            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED", "HANDED_OFF", "REPORTED",
+                         "ACTIONABLE"):
                 # `create` for the reason `poll` gives over the same redirect.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name,
                                                       Path(directory) / name.lower(), create=True))
@@ -884,11 +907,15 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
                 code = None
             # Read before this closes it: what a case asks is whether the code let the lock go, so
             # the handle is held until the reading rather than left to fall out of scope.
-            released = handles[0].closed
-            handles[0].close()
+            released = all(handle.closed for handle in handles if handle is not None)
+            for handle in handles:
+                if handle is not None:
+                    handle.close()
         recorded = (ready_state.read_text(encoding="utf-8", errors="replace")
                     if ready_state.exists() else "")
-    return Watched(code, clock.polls, printed.getvalue(), released, recorded)
+        left = Path(directory) / "actionable"
+        standing = left.read_text(encoding="utf-8") if left.exists() else ""
+    return Watched(code, clock.polls, printed.getvalue(), released, recorded, standing)
 
 
 class RetirementTests(unittest.TestCase):
@@ -1867,8 +1894,10 @@ class PullRequestBaseTests(unittest.TestCase):
             with fabricated_readings(states) as stack:
                 for name, path in (("READY_STATE", Path(directory) / "ready"),
                                    ("HEARTBEAT", Path(directory) / "beat"),
-                                   ("LOCK", Path(directory) / "lock")):
-                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
+                                   ("LOCK", Path(directory) / "lock"),
+                                   ("ACTIONABLE", Path(directory) / "actionable")):
+                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path,
+                                                          create=True))
                 stack.enter_context(mock.patch.object(
                     settle, "project_state",
                     lambda _project, base: (asked.append(base), base_state({}, base))[1]))
@@ -2672,6 +2701,106 @@ class UntilActionableTests(unittest.TestCase):
 
         # Act / Assert
         self.assertIsNone(watched.code)
+
+
+# A head whose `Test` run failed before it put a check on the head, on a base requiring nothing, so
+# the failed run is the only thing wrong with it.
+FAILED_RUN = dict(TEST_PENDING, status="completed", conclusion="startup_failure")
+FAILED_RUN_STATES = {1: fabricate(1, results=GENERATOR_CHECKS, runs=(GENERATORS_DONE, FAILED_RUN))}
+
+
+class FailedRunTests(unittest.TestCase):
+    """A failed workflow run with no check run blocks the merge, so it has to wake the caller too."""
+
+    def test_Given_AFailedRunWithNoCheck_When_WatchedUntilActionable_Then_ItExitsWithoutSleeping(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states=FAILED_RUN_STATES,
+                              required={"main": ()})
+
+        # Assert
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AFailedRunWithNoCheck_When_Watched_Then_ItPrintsTheRun(self):
+        # Act
+        watched = watch_until(bound=0, states=FAILED_RUN_STATES, required={"main": ()})
+
+        # Assert
+        self.assertIn("PR#1 0000000 Test (startup_failure, run 36512896182) => failed run",
+                      watched.output)
+
+
+def stamped_lines(*lines):
+    """A record of lines as `settle.write_lines` leaves it, written at the clock's start."""
+    return "".join(f"{line}\n" for line in (str(CLOCK_START), *lines))
+
+
+class FollowerTests(unittest.TestCase):
+    """`--until-actionable` while another process holds the lock: refusing would end the run with
+    nothing actionable said, so it follows what that process writes instead."""
+
+    def test_Given_AWatcherPolling_When_ItEndsAPoll_Then_ItLeavesItsActionableLines(self):
+        # Act
+        watched = watch_until(bound=0)
+
+        # Assert
+        self.assertIn(READY_LINE, watched.actionable)
+
+    def test_Given_APullRequestWhoseReadingFails_When_APollEnds_Then_ItsLastLinesStand(self):
+        # Arrange — a follower pruning on a failed reading would read the next poll's line as new.
+        # The second pull request reads, so the record compared is one this poll wrote rather than
+        # the seed left standing.
+        seeded = stamped_lines(READY_LINE)
+
+        # Act
+        watched = watch_until(bound=0, seed_actionable=seeded, states={1: fabricate(1),
+                                                                       2: fabricate(2)},
+                              readings=[("pull_request", flaky_first)])
+
+        # Assert
+        self.assertEqual(watched.actionable,
+                         stamped_lines(READY_LINE, "PR#2 0000000 READY: nothing blocks the merge"))
+
+    def test_Given_AHolderThatWroteAReadyLine_When_WatchedUntilActionable_Then_ItExits(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True,
+                              seed_actionable=stamped_lines(READY_LINE))
+
+        # Assert — 1 is the refusal, None a run still following at the clock's bound.
+        self.assertEqual(watched.code, 0)
+
+    def test_Given_AHolderWhoseLineWasReported_When_WatchedUntilActionable_Then_ItWaits(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, holder=True,
+                              seed_actionable=stamped_lines(READY_LINE),
+                              seed_reported=stamped_lines(READY_LINE))
+
+        # Assert
+        self.assertIsNone(watched.code)
+
+    def test_Given_AHolderThatWritesOnlyTheReadyRecord_When_Followed_Then_ItsReadyOneIsReported(self):
+        # Arrange — a watcher from a checkout predating the actionable record.
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True,
+                              seed_ready=f"1 {CLOCK_START}\n", seed_ready_at=CLOCK_START)
+
+        # Assert
+        self.assertIn("PR#1 READY: recorded by the watcher holding the lock", watched.output)
+
+    def test_Given_AHolderThatStopsBeating_When_Followed_Then_ItExitsOnceTheWindowPasses(self):
+        # Arrange — it keeps the lock, so nothing else can take the watch over.
+        # Act
+        watched = watch_until(until_actionable=True, bound=5, holder=True)
+
+        # Assert — three polls are the window; still following, the run would reach the bound.
+        self.assertEqual(watched.polls, 3)
+
+    def test_Given_AHolderThatExits_When_Followed_Then_ItTakesTheWatchOver(self):
+        # Arrange — nothing written for it to follow, so a READY line is its own poll's.
+        # Act
+        watched = watch_until(until_actionable=True, bound=4, holder=True, holder_stops_after=1)
+
+        # Assert
+        self.assertIn(READY_LINE, watched.output)
 
 
 class HandOffTests(unittest.TestCase):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Refuse a backgrounded loop over the watcher's state while the heartbeat says one is watching.
 
-`scripts/pr/settle.py watch` refuses a second `watch`, and that refusal reaches only a process that
-spells itself `watch`. A loop doing the same job is not one, so nothing stopped several running at
+`scripts/pr/settle.py watch` refuses a second polling `watch` — an `--until-actionable` one follows
+the first instead of polling — and that refusal reaches only a process that spells itself `watch`. A loop doing the same job is not one, so nothing stopped several running at
 once against the quota the watcher shares, on their own cycles, past the pull requests they waited
 for. The advice existed on both sides of it — `settle.py`'s docstring says an instruction is
 re-derived each time — and being read is all an instruction can do.

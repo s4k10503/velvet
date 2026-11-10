@@ -60,11 +60,16 @@ HANDED_OFF = Path.home() / ".velvet-pr-watch.handed-off"
 # about. `settle.py` owns how long a record of them is carried.
 REPORTED = Path.home() / ".velvet-pr-watch.reported"
 
+# The actionable lines of the watcher's last poll, written by every watcher, so a
+# `watch --until-actionable` run that finds the lock held follows the holder instead of refusing.
+ACTIONABLE = Path.home() / ".velvet-pr-watch.actionable"
+
 
 def rearm_command(root):
     """The watcher in the form an agent runs it: backgrounded, it exits — waking its caller — once
-    an open pull request is ready or has a failing check it has not already exited over. It says
-    where it runs, since `refuse/background_relative_path.py` refuses a backgrounded relative path."""
+    an open pull request is ready or has a failing check or failed run it has not already exited
+    over. It says where it runs, since `refuse/background_relative_path.py` refuses a backgrounded
+    relative path."""
     return f"cd {shlex.quote(str(root))} && python3 scripts/pr/settle.py watch --until-actionable"
 
 
@@ -182,6 +187,12 @@ def alive(now=None):
     without being told to.
     """
     note_asked(now)
+    return beating(now)
+
+
+def beating(now=None):
+    """`alive` without recording the asking, for a follower: a stamp from it would hold off the
+    retirement of the watcher it follows, and its own retirement reads the same stamp."""
     text = beat_text()
     if text is None:
         return False
