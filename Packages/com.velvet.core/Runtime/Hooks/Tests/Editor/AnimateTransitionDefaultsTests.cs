@@ -78,6 +78,21 @@ namespace Velvet.Tests
             Assert.That(controls.IsFinished, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base already eases it out; deleting `_ease = EaseOut;` from ScopedTrack's constructor reddens it.
+        [Test]
+        public void Given_ASequenceSegmentWithNoTransition_When_HalfOfThreeTenthsOfASecondPasses_Then_ItIsHalfwayAlongTheEaseOut()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[] { new AnimateSegment(element, new AnimateValues { X = new[] { 0f, 100f } }) });
+
+            // Act
+            controls.Tick(0.15f);
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(100f * UssEasing.Evaluate(EasingMode.EaseOut, 0.5f)).Within(1e-3f));
+        }
+
         [Test]
         public void Given_ThreeKeyframesOnAnEaseOutSecond_When_AQuarterSecondPasses_Then_TheFirstPairIsHalfwayAlongItsOwnEase()
         {

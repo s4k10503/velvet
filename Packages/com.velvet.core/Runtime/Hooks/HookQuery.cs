@@ -842,6 +842,7 @@ namespace Velvet
             {
                 return false;
             }
+            // MUTANT_SURVIVES(equivalent, clause removed): a suspending query has no placeholder and clears a select error once the entry has no data, so its result holds data only where the entry it was read from does.
             if (Suspense) return !result.HasData || !entry.HasData;
             return ThrowOnError.Throws(result.Error!, entry);
         }

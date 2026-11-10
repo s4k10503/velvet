@@ -150,6 +150,44 @@ namespace Velvet.Tests
             Assert.That((stretched, undistorted), Is.EqualTo((true, true)));
         }
 
+        // RotatedInStretchedRender's pair, the inner Motion taking a clip at step 1 while the frame stays as it is.
+        [Component]
+        private static VNode RotatedGainingAClipRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(name: "frame", layoutId: "frame", transition: s_slow,
+                    className: "absolute left-[0px] top-[0px] w-[100px] h-[100px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner", transition: s_slow,
+                            className: "absolute left-[10px] top-[10px] w-[40px] h-[40px] rotate-[45deg]"
+                                + (step == 0 ? "" : " clip-path-[circle(50%)]")),
+                    }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base already hands the wrapper to the clip; writing `wrapped = true;` after the correction comes off in ApplyClipPathOnPatch reddens it.
+        [Test]
+        public void Given_ARotatedLayoutIdMotionInsideAnother_When_ItTakesAClip_Then_TheWrapperItHoldsCarriesTheClip()
+        {
+            // Arrange
+            _mounted = V.Mount(Root, V.Component(RotatedGainingAClipRender, key: "root"));
+            Tick();
+            var inner = Root.Q<VisualElement>("inner");
+            var correctedFirst = _mounted.Root.Reconciler.Context.ClipPathBindings[inner].Correction;
+
+            // Act
+            s_setStep.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert — an inner Motion that held no correction wrapper at step 0 reads null, which the expected value is not.
+            Assert.That(correctedFirst ? _mounted.Root.Reconciler.Context.ClipPathBindings[inner].Spec?.Source : null,
+                Is.EqualTo("clip-path-[circle(50%)]"));
+        }
+
         // A frame holding a presence whose card, rotated and holding a layoutId, leaves with a fade.
         [Component]
         private static VNode RotatedCardInPresenceRender()

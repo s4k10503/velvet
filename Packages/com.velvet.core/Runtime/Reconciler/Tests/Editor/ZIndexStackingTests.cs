@@ -353,6 +353,24 @@ namespace Velvet.Tests
             Assert.That((whileHovered, ZBandProbe.PaintOrder(parent)), Is.EqualTo(("b,a", "a,b")));
         }
 
+        // GREEN_ON_BASE(characterization): the base already takes a second pin; deleting `ctx.PinnedGhosts.Remove(ghost);` from PinGhost reddens it.
+        [Test]
+        public void Given_AGhostAlreadyPinned_When_ItIsPinnedAgain_Then_ItStaysPinned()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.Div(name: "ghost") });
+            var ghost = scope.Root.Q<VisualElement>("ghost");
+            var ctx = scope.Reconciler.Context;
+            FiberZLayerCoordinator.PinGhost(ctx, ghost);
+
+            // Act
+            FiberZLayerCoordinator.PinGhost(ctx, ghost);
+
+            // Assert
+            Assert.That(ctx.PinnedGhosts.TryGetValue(ghost, out _), Is.True);
+        }
+
         [Test]
         public void Given_AHoverFlexParent_When_HoverStartsAndEnds_Then_ItsChildrenTakeAndLoseTheirFlexOrder()
         {

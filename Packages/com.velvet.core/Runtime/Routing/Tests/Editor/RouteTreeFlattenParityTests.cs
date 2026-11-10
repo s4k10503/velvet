@@ -62,6 +62,21 @@ namespace Velvet.Tests
             Assert.That(result?[0].Route.Path, Is.EqualTo("/"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already collapses the run; spelling RouteTree.JoinPaths' relative-path test `<= 0` reddens it.
+        [Test]
+        public void Given_ARootPathOpeningOnARunOfSlashesDeclaredAfterItsPlainSpelling_When_BothMatch_Then_TheEarlierDeclarationWins()
+        {
+            // Arrange — React Router's joinPaths makes the run one slash, so `//a` joins to `/a` and scores what
+            // its sibling does.
+            var tree = new RouteTree(new[] { Route("a"), Route("//a") });
+
+            // Act
+            var result = tree.Match("/a");
+
+            // Assert
+            Assert.That(result?[0].Route.Path, Is.EqualTo("a"));
+        }
+
         [Test]
         public void Given_ARequiredPairDeclaredBeforeAnOptionalPair_When_BothMatch_Then_TheEarlierDeclarationWins()
         {
