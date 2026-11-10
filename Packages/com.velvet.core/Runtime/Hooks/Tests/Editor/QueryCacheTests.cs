@@ -498,7 +498,7 @@ namespace Velvet.Tests
         public void Given_TwoEntriesSharingAnOpaquePart_When_BothAreRemovedAndAnEntryTakesThePartAgain_Then_ItIsGivenANewNumber()
         {
             // Arrange
-            var part = new object();
+            var part = new OpaquePart();
             s_client.SetQueryData(new QueryKey("a", part), 1);
             s_client.SetQueryData(new QueryKey("b", part), 1);
             s_client.RemoveQueries();
@@ -981,6 +981,11 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(held, Is.SameAs(options));
+        }
+
+        // A class of its own, compared by reference: a part the hash writes as a number.
+        private sealed class OpaquePart
+        {
         }
 
         private static Query Find() => s_client.GetQueryCache().Find(new QueryFilters { QueryKey = Todos })!;

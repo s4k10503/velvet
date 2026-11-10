@@ -226,7 +226,7 @@ namespace Velvet.Tests
             };
             using var mounted = Mount();
             s_first!.Mutate(1, new MutateOptions<int, int> { CancellationToken = s_cancel.Token });
-            s_second!.Mutate(2);
+            s_second!.Mutate(2, new MutateOptions<int, int> { CancellationToken = s_cancel.Token });
             s_gates[1].TrySetException(new InvalidOperationException("first attempt"));
             var cache = s_client.GetMutationCache();
             cache.Remove(cache.GetAll()[0]);
