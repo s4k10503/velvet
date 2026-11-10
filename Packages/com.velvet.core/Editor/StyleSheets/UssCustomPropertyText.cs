@@ -16,12 +16,13 @@ namespace Velvet.Editor
     /// </summary>
     internal static class UssCustomPropertyText
     {
-        // The functions StyleValueImporter reads besides resource(), matched as written; it drops every other one but
-        // url() with a warning.
-        private static readonly HashSet<string> s_importerFunctions = new(StringComparer.Ordinal)
+        // The functions StyleValueImporter reads by a name in any case, besides filter(), rgb() and rgba(), which it
+        // reads only as written, and resource(); it drops every other one its lexer does not take as a path with a
+        // warning.
+        private static readonly HashSet<string> s_importerFunctions = new(StringComparer.OrdinalIgnoreCase)
         {
-            "rgb", "rgba", "none", "filter", "var", "env", "linear-gradient", "tint", "opacity", "invert", "grayscale",
-            "sepia", "blur", "contrast", "hue-rotate", "prop",
+            "var", "env", "linear-gradient", "none", "tint", "opacity", "invert", "grayscale", "sepia", "blur",
+            "contrast", "hue-rotate", "prop",
         };
 
         // The units StyleValueImporter's unit table maps; every other one is an error that leaves the sheet empty.
@@ -143,9 +144,10 @@ namespace Velvet.Editor
             var valueStart = colon + 1;
             var valueEnd = ValueEnd(uss, valueStart);
             var value = StripComments(uss.Substring(valueStart, valueEnd - valueStart));
-            var important = SplitImportant(ref value);
+            var important = SplitImportant(ref value, out var importantAsWritten);
             value = value.Trim();
-            if (!NeedsQuoting(value))
+            var quoted = NeedsQuoting(value);
+            if (!quoted && importantAsWritten)
             {
                 return;
             }
@@ -154,13 +156,14 @@ namespace Velvet.Editor
             {
                 newlines += uss[k] == '\n' ? 1 : 0;
             }
-            output.Append(uss, i, valueStart - i).Append(" \"");
+            var quote = quoted ? "\"" : string.Empty;
+            output.Append(uss, i, valueStart - i).Append(' ').Append(quote);
             foreach (var ch in value)
             {
                 output.Append(ch is '\r' or '\n' ? ' ' : ch);
             }
             // The line breaks the value held, so an importer message names the line the author wrote.
-            output.Append('"').Append(important).Append('\n', newlines);
+            output.Append(quote).Append(important).Append('\n', newlines);
             i = valueEnd;
         }
 
@@ -212,15 +215,18 @@ namespace Velvet.Editor
             return text.ToString();
         }
 
-        // The `!important` that closes a declaration, which stays outside the quotes.
-        private static string SplitImportant(ref string value)
+        // The `!important` that closes a declaration, which stays outside the quotes and is written in lower case, the
+        // only spelling UI Toolkit's parser takes for it; asWritten says whether the declaration already spells it so.
+        private static string SplitImportant(ref string value, out bool asWritten)
         {
+            asWritten = true;
             var bang = value.LastIndexOf('!');
-            // MUTANT_SURVIVES(equivalent, boundary): a bang at 0 leaves NeedsQuoting either an empty value or `!important`, declining both.
-            if (bang < 0 || !string.Equals(value.Substring(bang + 1).Trim(), "important", StringComparison.OrdinalIgnoreCase))
+            var keyword = bang < 0 ? string.Empty : value.Substring(bang + 1).Trim();
+            if (!string.Equals(keyword, "important", StringComparison.OrdinalIgnoreCase))
             {
                 return string.Empty;
             }
+            asWritten = string.Equals(keyword, "important", StringComparison.Ordinal);
             value = value.Substring(0, bang);
             return " !important";
         }
@@ -233,8 +239,9 @@ namespace Velvet.Editor
 
         // Reads value token by token as UI Toolkit's lexer does, and answers whether one is a token the importer fails
         // the sheet on or drops: a delimiter, a bracket no function name opens, a colon, a function it does not know
-        // (a CSS math function, cubic-bezier(), steps()), a hex colour it cannot parse or CSS reads further, a number it
-        // misreads, or a full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere.
+        // (a CSS math function, cubic-bezier(), steps()), one with no arguments, an rgb() or rgba() whose arguments it
+        // does not read as a colour, a hex colour it cannot parse or CSS reads further, a number it misreads, or a
+        // full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere.
         // A value of identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all
         // the same. What resource() encloses is left unread, as the importer takes it as a path whatever it holds.
         // UssValueImportTests holds each of those. What url() encloses is left unread too.
@@ -287,7 +294,8 @@ namespace Velvet.Editor
             return !MisreadsNumber(value, ref i);
         }
 
-        // An identifier or a function name: digits inside it are no number.
+        // An identifier or a function name: digits inside it are no number. A function the importer is handed with
+        // nothing between its parentheses fails the sheet.
         private static bool ReadsHeldName(string value, ref int i, ref int functions)
         {
             var start = i;
@@ -297,19 +305,67 @@ namespace Velvet.Editor
                 return true;
             }
             var name = value.Substring(start, i - start);
+            if (i + 1 == value.Length || value[i + 1] == ')')
+            {
+                // MUTANT_SURVIVES(equivalent, literal): i is left at the parenthesis, which the caller then reads as one no function name opens.
+                return false;
+            }
             if (EnclosesAPath(name))
             {
-                var close = value.IndexOf(')', i);
-                i = close < 0 ? value.Length : close + 1;
+                i = CloseOf(value, i) + 1;
                 return true;
+            }
+            if (name is "rgb" or "rgba")
+            {
+                var close = CloseOf(value, i);
+                var arguments = value.Substring(i + 1, close - i - 1);
+                i = close + 1;
+                return HoldsChannels(arguments, name == "rgb" ? 3 : 4);
             }
             functions++;
             i++;
-            return s_importerFunctions.Contains(name);
+            return name == "filter" || s_importerFunctions.Contains(name);
         }
 
+        // The `)` after the `(` at open, or the end of value where none follows.
+        private static int CloseOf(string value, int open)
+        {
+            var close = value.IndexOf(')', open);
+            // MUTANT_SURVIVES(equivalent, boundary): the search starts at a parenthesis after a name, so a match is never at 0.
+            return close < 0 ? value.Length : close;
+        }
+
+        // The importer's lexer takes url(), url-prefix() and domain() in any case as a path, and its importer takes
+        // resource() as one as written.
         private static bool EnclosesAPath(string name)
-            => string.Equals(name, "url", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "resource", StringComparison.Ordinal);
+            => name.Equals("url", StringComparison.OrdinalIgnoreCase) || name.Equals("url-prefix", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("domain", StringComparison.OrdinalIgnoreCase) || name == "resource";
+
+        // The arguments of rgb() or rgba(): the importer counts the plain numbers among them, a percentage or a unit
+        // counting as none, and where they are not as many as the colour's channels it fails the sheet or drops those
+        // past the fourth.
+        private static bool HoldsChannels(string arguments, int channels)
+        {
+            var numbers = arguments.Replace(',', ' ').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var number in numbers)
+            {
+                if (!IsPlainNumber(number))
+                {
+                    return false;
+                }
+            }
+            return numbers.Length == channels;
+        }
+
+        private static bool IsPlainNumber(string text)
+        {
+            if (!StartsNumber(text, 0))
+            {
+                return false;
+            }
+            var i = text[0] is '+' or '-' ? 1 : 0;
+            return !MisreadsNumber(text, ref i) && i == text.Length && IsDigit(text[i - 1]);
+        }
 
         private static bool StartsIdentifier(string value, int i)
         {

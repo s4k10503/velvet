@@ -349,10 +349,10 @@ namespace Velvet
 #endif
             var committed = _committed;
             _committed = true;
-            if (_changedWhileSyncing && AnyQueryNotifies()) Notify();
-            else if (!structural && !ResultsChanged()) return;
-            else if (committed) Notify();
-            else RecordResults();
+            var notify = _changedWhileSyncing && AnyQueryNotifies();
+            if (!notify && !structural && !ResultsChanged()) return;
+            RecordResults();
+            if (notify || committed) Notify();
         }
 
         private bool ResultsChanged()
@@ -373,17 +373,22 @@ namespace Velvet
             _resultVersion++;
         }
 
-        // TanStack's #onUpdate: an observer the hook holds changed, so the results are replaced and the listeners
-        // told.
+        // TanStack's #onUpdate, for an observer the hook holds that told of a change its own query notifies of: that
+        // observer's result alone is recorded and the listeners told. Recording every observer here would record one
+        // over the same entry that the entry has not yet told of the change.
         private void OnObserverChanged(QueryObserver observer)
         {
-            if (Array.IndexOf(_observers, observer) < 0) return;
+            var index = Array.IndexOf(_observers, observer);
+            if (index < 0) return;
             if (_syncing)
             {
                 _changedWhileSyncing = true;
                 return;
             }
-            if (AnyQueryNotifies()) Notify();
+            if (!Notifies(_items[index])) return;
+            observer.RecordResult();
+            _resultVersion++;
+            Notify();
         }
 
         // TanStack's trackResult: a property read from one result is tracked for them all, and a result whose query
@@ -392,22 +397,28 @@ namespace Velvet
 
         private Action<QueryProperties>? TrackOf(QueriesItem item) => item.ListsNotifyProps ? null : _trackProperty;
 
-        // TanStack's shouldNotifyListeners, asked of each query's own result: its listed properties, an empty list
-        // included, else the ones read from any result, else any change. Every query's result is computed afresh, so the next comparison starts from
-        // it.
+        // Every query is asked, not only those before the first that notifies, so every result is computed afresh.
         private bool AnyQueryNotifies()
         {
             var notifies = false;
             foreach (var item in _items)
             {
-                var changed = item.RefreshChanges();
-                if (changed == QueryProperties.None) continue;
-                item.AnnounceResultsUpdated();
-                var listed = item.NotifyOnChangeProps;
-                if (listed == null && _tracked == QueryProperties.None) notifies = true;
-                else if ((changed & ((listed ?? _tracked) | item.ErrorWatch)) != QueryProperties.None) notifies = true;
+                if (Notifies(item)) notifies = true;
             }
             return notifies;
+        }
+
+        // TanStack's shouldNotifyListeners, asked of a query's own result: its listed properties, an empty list
+        // included, else the ones read from any result, else any change. The result is computed afresh, so the next
+        // comparison starts from it.
+        private bool Notifies(QueriesItem item)
+        {
+            var changed = item.RefreshChanges();
+            if (changed == QueryProperties.None) return false;
+            item.AnnounceResultsUpdated();
+            var listed = item.NotifyOnChangeProps;
+            if (listed == null && _tracked == QueryProperties.None) return true;
+            return (changed & ((listed ?? _tracked) | item.ErrorWatch)) != QueryProperties.None;
         }
 
         // TanStack's #notify: without a combine the component re-renders; with one, while a suspending query holds no
@@ -415,7 +426,6 @@ namespace Velvet
         // what the combine returns changed.
         private void Notify()
         {
-            RecordResults();
             var invokeCombine = _invokeCombine;
             if (_combine == null || invokeCombine == null || ShouldSkipCombine())
             {

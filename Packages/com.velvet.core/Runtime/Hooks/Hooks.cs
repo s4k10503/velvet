@@ -3274,9 +3274,10 @@ namespace Velvet
         /// <summary>
         /// TanStack Query's <c>useQueries({ queries })</c> over a list of queries of one data type, so the number of
         /// queries can change from render to render: <see cref="UseQuery{TQueryFnData, TData}"/> over each of
-        /// <paramref name="queries"/> in one hook. Each query keeps its observer across renders while some query of the
-        /// list reads the same entry, whatever its position, and the component re-renders when a property of a result
-        /// it has read changes in any of them: a property read from one result is tracked for all of them. The first
+        /// <paramref name="queries"/> in one hook. An observer is kept across renders while a query of the list reads its
+        /// entry, whatever the query's position, and the queries over one entry are handed the ones held over it in the
+        /// list's order. The component re-renders when a property of a result it has read changes in any of them: a
+        /// property read from one result is tracked for all of them. The first
         /// query whose error <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from
         /// this call. The overloads taking each query as its own argument keep each query's data types.
         /// </summary>

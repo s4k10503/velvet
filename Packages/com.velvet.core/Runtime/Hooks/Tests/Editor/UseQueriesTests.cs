@@ -15,7 +15,7 @@ namespace Velvet.Tests
     /// <c>useSuspenseQueries</c>.
     /// <list type="bullet">
     /// <item>Each query is read as <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> reads it, the results in the
-    /// list's order; a query keeps its observer while some query reads its entry, whatever its position, and one
+    /// list's order; an observer is kept while a query reads its entry, whatever its position, and one
     /// that leaves the list leaves its entry.</item>
     /// <item>A property read from one result is tracked for every result.</item>
     /// <item>Combine runs again only when a result changed, and its output keeps its instance where it is deeply
@@ -508,6 +508,43 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_renders.Count, Is.EqualTo(renders + 1),
                 "Each query takes the observer it held, so v5's setQueries finds no structural change to notify of");
+        }
+
+        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change told one observer and
+        // rendered once; an observer for each query must still render once, which recording every observer at the
+        // first one's change does not.
+        [Test]
+        public void Given_TwoQueriesOverOneEntry_When_ItsDataLands_Then_TheComponentRendersOnce()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(Reader);
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+            var renders = s_renders.Count;
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders + 1),
+                "v5's #onUpdate records each observer's own result, so the commit after the change finds nothing new");
+        }
+
+        [Test]
+        public void Given_TwoQueries_When_TheSecondTurnsToTheFirstsEntry_Then_ItTakesAnObserverOfItsOwn()
+        {
+            // Arrange
+            using var mounted = Mount(Reader);
+            s_keys = new[] { "a", "a" };
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
+                Is.EqualTo(2), "v5 creates an observer for a query no observer held over its entry is left for");
         }
 
         [Test]

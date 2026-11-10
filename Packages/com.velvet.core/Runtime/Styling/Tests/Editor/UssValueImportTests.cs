@@ -105,8 +105,10 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
         // The tokens UssCustomPropertyText.HasUnheldToken takes for ones that fail the sheet: a delimiter, at the top
-        // level or among a function's arguments, a bracket no function name opens, and a hex colour whose digits
-        // number other than three, four, six or eight.
+        // level or among a function's arguments, a bracket no function name opens, a hex colour whose digits number
+        // other than three, four, six or eight, an rgb() or rgba() whose plain numbers are not as many as its
+        // channels, and a function with no arguments; and an `!important` in another case, which
+        // UssCustomPropertyText writes in lower case.
         [TestCase("16 / 9")]
         [TestCase(".5.p")]
         [TestCase("3.5.p")]
@@ -116,6 +118,12 @@ namespace Velvet.Tests
         [TestCase("(1)")]
         [TestCase("#zzz")]
         [TestCase("#12345")]
+        [TestCase("rgb(100%, 0%, 0%)")]
+        [TestCase("rgba(0, 0, 0)")]
+        [TestCase("rgb(255, 0, 0, 0.5)")]
+        [TestCase("blur()")]
+        [TestCase("var()")]
+        [TestCase("4px !IMPORTANT")]
         public void Given_ATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
         {
             // Arrange
@@ -127,8 +135,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
-        // UssCustomPropertyText.HasUnheldToken quotes a function outside the ones it lists, matched as written,
-        // because the importer drops it.
+        // UssCustomPropertyText.HasUnheldToken quotes a function outside the ones it lists because the importer drops
+        // it: rgb() is read only as written.
         [TestCase("mysteps(3)")]
         [TestCase("RGB(0, 0, 0)")]
         public void Given_AFunctionTheImporterDoesNotKnow_When_TheStockImporterReadsTheRawSheet_Then_ItStoresNothing(string value)
@@ -142,9 +150,11 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
-        // UssCustomPropertyText.HasUnheldToken leaves a function it lists and a hex colour of three, four, six or eight
-        // digits unquoted because the importer stores them.
+        // UssCustomPropertyText.HasUnheldToken leaves a function it lists, whatever its case, and a hex colour of
+        // three, four, six or eight digits unquoted because the importer stores them.
         [TestCase("blur(4px)", "blur(4px)")]
+        [TestCase("BLUR(4px)", "blur(4px)")]
+        [TestCase("Var(--b)", "var(--b)")]
         [TestCase("#ff0066", "#ff0066ff")]
         public void Given_AKnownFunctionOrAParsableHexColour_When_TheStockImporterReadsTheRawSheet_Then_ItStoresIt(
             string value, string expected)
@@ -155,6 +165,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText quotes an rgba() of more numbers than its channels because the importer drops those
+        // past the fourth.
+        [Test]
+        public void Given_AnRgbaOfFiveNumbers_When_TheStockImporterReadsTheRawSheet_Then_ItStoresTheColourOfTheFirstFour()
+        {
+            // Arrange
+            // Act
+            var stored = StoredText("rgba(255, 0, 0, 1, 9)");
+
+            // Assert
+            Assert.That(stored, Is.EqualTo("#ff0000ff"));
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.

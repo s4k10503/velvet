@@ -47,6 +47,13 @@ namespace Velvet.Tests
         [TestCase(":root { --f: _a \u00e9; }")]
         [TestCase(":root { --f: blur(4px) var(--a) linear-gradient(to right, #fff, #000); }")]
         [TestCase(":root { --h: #abc #abcd #aabbcc #aabbccdd; }")]
+        [TestCase(":root { --x: auto; }")]
+        [TestCase(":root { --x: Var(--b); --y: BLUR(4px) Linear-Gradient(red, blue); }")]
+        [TestCase(":root { --u: URL-prefix(a/b) domain(a.b); }")]
+        [TestCase(":root { --x: rgb(0 0 0) rgba(0, 0, 0, .5); }")]
+        [TestCase(":root{--x:!important}")]
+        [TestCase(":root{--x:4px}")]
+        [TestCase(".a { --x: rgb(0, 0, 0")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -187,7 +194,31 @@ namespace Velvet.Tests
         [TestCase(":root { --x: #zzz; }", ":root { --x: \"#zzz\"; }")]
         [TestCase(":root { --x: #12345; }", ":root { --x: \"#12345\"; }")]
         [TestCase(":root { --x: #abcxyz; }", ":root { --x: \"#abcxyz\"; }")]
+        [TestCase(":root { --x: a); }", ":root { --x: \"a)\"; }")]
+        [TestCase(":root { --x: var(--a)); }", ":root { --x: \"var(--a))\"; }")]
+        [TestCase(":root { --x: rgb(100%, 0%, 0%); }", ":root { --x: \"rgb(100%, 0%, 0%)\"; }")]
+        [TestCase(":root { --x: rgba(0, 0, 0); }", ":root { --x: \"rgba(0, 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(255, 0, 0, 0.5); }", ":root { --x: \"rgb(255, 0, 0, 0.5)\"; }")]
+        [TestCase(":root { --x: blur(); }", ":root { --x: \"blur()\"; }")]
+        [TestCase(":root { --x: var(); }", ":root { --x: \"var()\"; }")]
+        [TestCase(":root { --x: rgb(5., 0, 0); }", ":root { --x: \"rgb(5., 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(var(--r), 0, 0); }", ":root { --x: \"rgb(var(--r), 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(a, 0, 0); }", ":root { --x: \"rgb(a, 0, 0)\"; }")]
+        [TestCase(":root { --x: rgba(255, 0, 0, 1, 9); }", ":root { --x: \"rgba(255, 0, 0, 1, 9)\"; }")]
         public void Given_ATokenTheImporterRejectsOrDrops_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: 4px !IMPORTANT; }", ":root { --x: 4px !important; }")]
+        [TestCase(":root { --x: red ! Important; }", ":root { --x: red !important; }")]
+        public void Given_AnImportantSpelledInAnotherCase_When_TheSheetIsRewritten_Then_ItIsWrittenInLowerCase(
             string uss, string expected)
         {
             // Arrange
