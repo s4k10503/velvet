@@ -72,16 +72,6 @@ namespace Velvet.CodeGen
             return null;
         }
 
-        public bool RangeReads(int first, int last, HashSet<string> keys)
-        {
-            for (var i = first; i <= last; i++)
-            {
-                var read = ReadKey(i);
-                if (read != null && keys.Contains(read)) return true;
-            }
-            return false;
-        }
-
         public CompilerWeaver.CallKind KindAt(int index)
         {
             var instruction = _flow.Instructions[index];

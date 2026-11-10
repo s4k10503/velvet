@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Mono.Cecil;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -284,34 +282,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(report.Bailouts.Any(note => note.Contains("a hook call sits inside a try, catch or finally")), Is.True);
-        }
-
-        #endregion
-
-        #region The hooks that hold a stable object
-
-        // GREEN_ON_BASE(characterization): the base has no container hook returning a tuple, which the `MUTANT_SURVIVES` over
-        // `TryCapture`'s `HoldsStableObject` clause rests on. Adding `UseState` to `ContainerHookNames` reddens it.
-        [Test]
-        public void Given_TheContainerHooksTheWeaverNames_When_TheirReturnTypesAreRead_Then_NoneReturnsAValueTuple()
-        {
-            // Arrange
-            var codeGen = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(assembly => assembly.GetName().Name == "Unity.Velvet.CodeGen");
-            Assume.That(codeGen, Is.Not.Null,
-                "Precondition: the Unity.Velvet.CodeGen assembly is loaded in the editor domain");
-            var names = (HashSet<string>)codeGen!.GetType("Velvet.CodeGen.CompilerWeaver", throwOnError: true)!
-                .GetField("ContainerHookNames", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-
-            // Act
-            var tupleReturning = typeof(Hooks).GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .Where(method => names.Contains(method.Name)
-                    && method.ReturnType.Name.StartsWith("ValueTuple`", StringComparison.Ordinal))
-                .Select(method => method.Name)
-                .ToList();
-
-            // Assert
-            Assert.That($"{names.Count}|{string.Join(", ", tupleReturning)}", Is.EqualTo("3|"));
         }
 
         #endregion

@@ -181,8 +181,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base keys a label on the object when the property it reads has a type the caller cannot name.
-        // The component renders. Removing the `IsStorable` clause from `IsKeyableGetter` keys it on a value of the
-        // generic parameter, and mounting throws a BadImageFormatException.
+        // The component renders.
         [Test]
         public void Given_APropertyOfAGenericClassReadByALabel_When_Mounted_Then_TheLabelShowsTheValue()
         {
