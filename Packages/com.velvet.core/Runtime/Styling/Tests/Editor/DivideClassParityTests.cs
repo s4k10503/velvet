@@ -2681,6 +2681,27 @@ namespace Velvet.Tests
             Assert.That(eased, Is.EqualTo(expected).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base eases the dash by the keyword, which stands at its start at 0.
+        // Clamping DivideDashPainter.Eased's progress at 0 asks the jump-start steps for their first step, which
+        // reddens this case.
+        [Test]
+        public void Given_ADashOnAChildTransitioningItsColoursOnJumpStartStepsAfterADelay_When_InsideTheDelay_Then_ItHasNotMoved()
+        {
+            // Arrange
+            var (child, _) = MountColoredDashRow("border-default transition-colors duration-1000 ease-[steps(4,jump-start)]");
+            child.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            var binding = _mounted.Root.Reconciler.Context.DivideDashBindings[child];
+
+            // Act
+            var eased = DivideDashPainter.Eased(binding, binding.StartTime + 0.25, out _);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(0f));
+        }
+
         // A dash on a child carrying border-default transition-colors, just after its class changed to
         // border-accent, and the two colors the classes resolve to.
         private (VisualElement Child, DivideDashChildBinding Binding, Color Old, Color New) MountChangedColorClassDash()

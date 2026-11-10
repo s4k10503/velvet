@@ -14,3 +14,6 @@
   those transitions on UI Toolkit's curve for the keyword.
 - A Motion's tween on an element carrying an `ease-[…]` class, or a theme's `ease-<name>`, now runs on the Motion's own
   `Easing` where that is the keyword nearest the class's function. The class's function replaced it.
+- A `transition-filter` tween whose `ease-[…]` class runs `steps(…, jump-start)` or `steps(…, jump-both)` holds its
+  start through a positive `transition-delay`, as CSS does; it took its first step as the delay began. A change back
+  made inside the delay is shortened from that start, not from the step.

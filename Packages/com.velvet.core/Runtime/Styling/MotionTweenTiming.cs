@@ -113,11 +113,18 @@ namespace Velvet
         internal static bool Playing(VisualElement element) =>
             s_holds.TryGetValue(element, out var hold) && hold.Plays.Count > 0;
 
+        // PlaysCurve and OwnCurve read a slot code has written since this last did as Adopt would take it, without taking
+        // it: StyleEaseCurve asks on every transition it sees start, and a write its writer puts back, as DndSortable does
+        // around a drag, would otherwise stay the element's own
+        // (Given_ATransitionUtilityOnATweenedElementWhoseCodeWritesATimingAndPutsItBack_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere).
         internal static bool PlaysCurve(VisualElement element)
+            => s_holds.TryGetValue(element, out var hold) && Same(element.style.transitionTimingFunction, hold.WrittenCurve)
+                && hold.Plays.Exists(play => play.Curve != null);
+
+        internal static StyleList<EasingFunction> OwnCurve(VisualElement element)
         {
-            if (!s_holds.TryGetValue(element, out var hold)) return false;
-            Adopt(element.style, hold);
-            return hold.Plays.Exists(play => play.Curve != null);
+            var slot = element.style.transitionTimingFunction;
+            return s_holds.TryGetValue(element, out var hold) && Same(slot, hold.WrittenCurve) ? hold.Own.Curve!.Value : slot;
         }
 
         internal static void Forget(VisualElement element) => s_holds.Remove(element);

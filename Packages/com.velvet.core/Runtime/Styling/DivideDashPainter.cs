@@ -386,8 +386,7 @@ namespace Velvet
         // zero duration jumps to the end once the delay has passed.
         internal static float Eased(DivideDashChildBinding binding, double now, out bool ended)
         {
-            var t = Mathf.Clamp01((float)((now - binding.StartTime - binding.DelaySec)
-                / Math.Max(binding.DurationSec, 1e-6)));
+            var t = Mathf.Min((float)((now - binding.StartTime - binding.DelaySec) / Math.Max(binding.DurationSec, 1e-6)), 1f);
             ended = t >= 1f;
             return StyleEaseCurve.Evaluate(binding.Curve, binding.Easing, t);
         }

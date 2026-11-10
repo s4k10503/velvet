@@ -128,6 +128,50 @@ namespace Velvet.Tests
             Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
         }
 
+        // GREEN_ON_BASE(characterization): the base's CurveFor reads the inline slot alone, so a list code writes and puts
+        // back leaves nothing behind. Calling `Adopt` from MotionTweenTiming.OwnCurve keeps the list as the element's own
+        // once it is put back, which reddens this case.
+        [Test]
+        public void Given_ATransitionUtilityOnATweenedElementWhoseCodeWritesATimingAndPutsItBack_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere()
+        {
+            // Arrange — as a sortable list's drag writes its own timing around a shift and puts the element's back.
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.25f);
+
+            // Act
+            var fraction = QuarterSecondByRule("ease-in-out-test", element =>
+            {
+                StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+                MotionTweenTiming.End(element, MotionTweenTiming.Begin(element));
+                element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Ease) };
+                StyleEaseCurve.CurveFor(element, EasingMode.Ease);
+                element.style.transitionTimingFunction = StyleKeyword.Null;
+            });
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's CurveFor reads the inline slot, where code's keyword stands.
+        // Dropping `Same(slot, hold.WrittenCurve)` from MotionTweenTiming.OwnCurve reads the tween's own list beneath it,
+        // which reddens this case.
+        [Test]
+        public void Given_ATransitionUtilityOnATweenedElementWhoseCodeHoldsATimingInline_When_AWidthTransitionRunsAQuarterSecond_Then_TheKeywordEasesIt()
+        {
+            // Arrange
+            var expected = UssEasing.Evaluate(EasingMode.EaseInOut, 0.25f);
+
+            // Act
+            var fraction = QuarterSecondByRule("ease-in-out-test", element =>
+            {
+                StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+                MotionTweenTiming.End(element, MotionTweenTiming.Begin(element));
+                element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseInOut) };
+            });
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
         [Test]
         public void Given_AnEaseLayerUnderAMotionTweenNamingItsKeyword_When_AWidthTransitionRunsAQuarterSecond_Then_TheKeywordEasesIt()
         {

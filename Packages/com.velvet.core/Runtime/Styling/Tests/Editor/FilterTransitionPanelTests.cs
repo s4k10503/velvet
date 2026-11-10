@@ -838,6 +838,41 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionFilterOnJumpStartStepsAfterADelay_When_ABlurStarts_Then_ItsStartFrameHasNotMoved()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter duration-1000 ease-[steps(4,jump-start)]");
+            element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base asks the steps for their value at 0, the first step. Holding
+        // StyleEaseCurve.Evaluate's start at `t <= 0f` rather than below 0 keeps the start frame unblurred, which
+        // reddens this case.
+        [Test]
+        public void Given_TransitionFilterOnJumpStartStepsWithNoDelay_When_ABlurStarts_Then_ItsStartFrameIsTheFirstStep()
+        {
+            // Arrange — a held clock, so the start frame is read at the very start.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "card", className: "transition-filter duration-1000 ease-[steps(4,jump-start)]"),
+                new MountOptions { MotionClock = new HeldMotionClock() });
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(3f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_RunningTweenAtMidFrame_When_DetachedWhileMounted_Then_SettlesToTarget()
         {
             // Arrange — a tween running to blur-12, advanced to a mid-frame so the inline value is neither end.

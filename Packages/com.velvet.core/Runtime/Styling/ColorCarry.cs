@@ -38,8 +38,9 @@ namespace Velvet
         {
             if (!Same(target, Target)) Retarget(target, element, property, shorthand);
             _elapsedSec += dtSec;
-            var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
-            _eased = StyleEaseCurve.Evaluate(_function, _easing, t);
+            var progress = (_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec);
+            var t = Mathf.Clamp01(progress);
+            _eased = StyleEaseCurve.Evaluate(_function, _easing, progress);
             Value = t < 1f ? Color.LerpUnclamped(_from, Target, _eased) : Target;
             return Value;
         }

@@ -286,12 +286,12 @@ namespace Velvet
         private static float Eased(StyleFilterTransitionBinding b, float t)
             => StyleEaseCurve.Evaluate(b.Curve, b.Easing, t);
 
-        // The pre-easing progress at this moment, 0 through the delay and 1 from the end of the run: a zero duration
-        // jumps to the end once the delay has passed, as a USS transition does.
+        // The pre-easing progress at this moment, below 0 through the delay and 1 from the end of the run: a zero
+        // duration jumps to the end once the delay has passed, as a USS transition does.
         private static float Progress(StyleFilterTransitionBinding b)
         {
             var active = b.Clock.NowSec - b.StartTime - b.DelaySec;
-            return Mathf.Clamp01((float)(active / Math.Max(b.DurationSec, 1e-6)));
+            return Mathf.Min((float)(active / Math.Max(b.DurationSec, 1e-6)), 1f);
         }
 
         // Applies one frame at progress t (pre-easing). Pure: builds a FRESH list every call (UI Toolkit's
