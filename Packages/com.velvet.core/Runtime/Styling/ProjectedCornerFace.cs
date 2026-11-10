@@ -412,7 +412,11 @@ namespace Velvet
             if (clips && (foreign || !state.Clips)) state.RewriteClip = true;
             if (!clips && state.Clips) HandBackPlacement(element, state);
             state.Clips = clips;
-            if (!clips) style.backgroundImage = state.WrittenImage = new StyleBackground(StyleKeyword.None);
+            if (clips) return true;
+            style.backgroundImage = new StyleBackground(StyleKeyword.None);
+            // What the slot reads back, which is not the keyword written
+            // (Given_AnInlineImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
+            state.WrittenImage = style.backgroundImage;
             return true;
         }
 

@@ -147,6 +147,61 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInlineImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack()
+        {
+            // Arrange — an image given inline, then moving, drawn at a quarter across and a half down for several frames.
+            s_classes = "rounded-[20px]";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var texture = new Texture2D(4, 4);
+            try
+            {
+                box.style.backgroundImage = new StyleBackground(texture);
+                Tick();
+                Step(mounted, 1);
+                for (var i = 0; i < 3; i++) Tick();
+                var moved = ProjectedCornerFace.TryGetRadii(box, out _);
+
+                // Act — until the move hands its face back.
+                for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+
+                // Assert — null where the move never painted the face, which the texture never is.
+                Assert.That(moved ? box.style.backgroundImage.value.texture : null, Is.SameAs(texture));
+            }
+            finally
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands the background-repeat slot back as the move lands. Dropping
+        // the background-repeat write from ProjectedCornerFace.HandBackPlacement reddens this case.
+        [Test]
+        public void Given_AnOverflowHiddenRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsBackgroundRepeatIsHandedBack()
+        {
+            // Arrange — clipping, moving, drawn at a quarter across and a half down, its clip written over its image and
+            // placement slots.
+            s_classes = "rounded-[20px] overflow-hidden";
+            VelvetStyleUtilities.AttachTo(Root);
+            using var mounted = V.Mount(Root, V.Component(BoxRender, key: "root"));
+            Tick();
+            var box = Root.Q<VisualElement>("box");
+            var own = box.style.backgroundRepeat;
+            Step(mounted, 1);
+            for (var i = 0; i < 3; i++) Tick();
+            var clipped = box.style.backgroundImage.value.vectorImage != null;
+
+            // Act — until the move hands its face back.
+            for (var i = 0; i < 600 && ProjectedCornerFace.TryGetRadii(box, out _); i++) Tick();
+
+            // Assert — space and round where the clip was never written, which the slot never held.
+            Assert.That(clipped ? box.style.backgroundRepeat : new StyleBackgroundRepeat(new BackgroundRepeat(Repeat.Space, Repeat.Round)),
+                Is.EqualTo(own));
+        }
+
+        [Test]
         public void Given_ADashedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsOutlineIsLaidOut_Then_ItsCornersTakeTheProjectedRadii()
         {
             // Arrange — dashed, drawn at a quarter across and a half down.
