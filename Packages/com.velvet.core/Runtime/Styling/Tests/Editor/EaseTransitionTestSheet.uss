@@ -1,5 +1,4 @@
-/* Rules StyleEaseCurveTransitionTests runs transitions by: a keyword timing function each, and one pairing two
-   durations with two properties, whose narrowing writes the timing lists inline. */
+/* Rules whose timing function is a keyword, which StyleEaseCurveTransitionTests runs width transitions by. */
 .ease-in-out-test {
     transition-property: width;
     transition-duration: 1s;
@@ -10,10 +9,4 @@
     transition-property: width;
     transition-duration: 1s;
     transition-timing-function: ease-in;
-}
-
-.paired-timing-test {
-    transition-property: background-color, opacity;
-    transition-duration: 0.2s, 1s;
-    transition-timing-function: linear;
 }

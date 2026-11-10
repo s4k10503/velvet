@@ -18,6 +18,9 @@ namespace Velvet.Tests
 
         private const string Sheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/EaseTransitionTestSheet.uss";
 
+        // Holds layout-id-test-two, whose two durations pair with two properties, so a narrowing writes the timing lists.
+        private const string PairedSheet = "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LayoutIdTestRules.uss";
+
         // The fraction of its way a width has covered a quarter of a second into a second-long transition from 0 to
         // 100, on an element whose transition list names inlineMode and which hold arranges.
         private static float QuarterSecondIn(EasingMode inlineMode, Action<VisualElement> hold)
@@ -217,9 +220,9 @@ namespace Velvet.Tests
         private static StyleKeyword TimingLeftInlineAfterADrag(Action<VisualElement> midDrag)
         {
             using var host = new HeadlessEditorPanelHost();
-            host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Sheet));
+            host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(PairedSheet));
             var element = new VisualElement();
-            element.AddToClassList("paired-timing-test");
+            element.AddToClassList("layout-id-test-two");
             host.Root.Add(element);
             EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
             var owner = new object();

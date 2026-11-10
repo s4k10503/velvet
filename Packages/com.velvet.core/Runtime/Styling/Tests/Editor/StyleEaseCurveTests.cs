@@ -232,7 +232,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's CurveFor reads no tween's timing state. Calling `Adopt` from
-        // MotionTweenTiming.OwnCurve copies the list code holds inline on every read, which reddens this case.
+        // MotionTweenTiming.PeekOwn copies the list code holds inline on every read, which reddens this case.
         [Test]
         public void Given_ATweenedClassedElementWhoseCodeHoldsATimingInline_When_ItsCurveIsAskedFor_Then_NothingIsAllocated()
         {
