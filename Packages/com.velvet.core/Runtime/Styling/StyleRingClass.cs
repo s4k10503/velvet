@@ -379,7 +379,9 @@ namespace Velvet
                 slots.Width.Offer(important, false);
                 return;
             }
-            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            // A bracketed modifier closes a bracket of its own, which is not the value's.
+            if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) != -1
+                || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
                 // A modifier outside 0..100% makes the colour's color-mix() invalid; a palette name Velvet does not know
                 // is offered to neither slot.
@@ -702,7 +704,7 @@ namespace Velvet
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the
         // colour branch's unless HintSelectsNonColour says otherwise for root, either one followed by an opacity
-        // modifier (ring-red-500/50, ring-offset-[#fff]/50) where the bracket is not the whole suffix.
+        // modifier (ring-red-500/50, ring-offset-[#fff]/50, ring-[#f00]/[50%]).
         private static bool TryParseColorValue(string root, string? suffix, bool longhand, out Color color)
         {
             color = default;
@@ -710,7 +712,9 @@ namespace Velvet
             {
                 return false;
             }
-            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            // A bracketed modifier closes a bracket of its own, which is not the value's.
+            if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) == -1
+                && StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
                 return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
                     && !StyleColorValueParser.HintSelectsNonColour(root, hint)

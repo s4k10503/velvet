@@ -252,6 +252,7 @@ namespace Velvet.Tests
         [TestCase("shadow-[0_0_5px_red]/[0.5]", "FF000080")]
         [TestCase("inset-shadow-[0_0_5px_red]/[50%]", "FF000080")]
         [TestCase("shadow-lg shadow-[#f00]/[50%]", "FF000080")]
+        [TestCase("inset-ring-2 inset-ring-[#f00]/[50%]", "FF000080")]
         public void Given_ABracketShadowOrColourWithABracketModifier_When_Reconciled_Then_ItIsDrawnAtTheModifiersAlpha(
             string classes, string expected)
         {
@@ -282,6 +283,32 @@ namespace Velvet.Tests
             // Act
             var drawn = StyleRingClass.TryExtract(
                 StyleSpacingPrecedence.Normalize("ring-2 shadow-[0_0_5px_red]/[50%]".Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
+
+        // A ring's, a ring offset's and an outline's bracketed colour with a bracketed modifier.
+        [TestCase("ring-2 ring-[#f00]/[50%]", "ring")]
+        [TestCase("ring-2 ring-[#f00]/[0.5]", "ring")]
+        [TestCase("ring-2 ring-offset-2 ring-offset-[#f00]/[50%]", "offset")]
+        [TestCase("outline-2 outline-[#f00]/[50%]", "outline")]
+        public void Given_ABracketColourWithABracketModifier_When_TheRingIsExtracted_Then_ItsBandIsDrawnAtTheModifiersAlpha(
+            string classes, string band)
+        {
+            // Act
+            var drawn = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out var spec);
+            var colour = band == "ring" ? spec.Ring.Color : band == "offset" ? spec.OffsetColor : spec.Outline.Color;
+
+            // Assert — red at 50%.
+            Assert.That(drawn ? ColorUtility.ToHtmlStringRGBA(colour) : "not drawn", Is.EqualTo("FF000080"));
+        }
+
+        [Test]
+        public void Given_ARingWidthBracketWithAModifier_When_Extracted_Then_TheRingIsDrawn()
+        {
+            // Act — Tailwind writes no rule for ring-[2px]/[50%], so ring-2 is drawn as it stands.
+            var drawn = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize("ring-2 ring-[2px]/[50%]".Split(' ')), out _);
 
             // Assert
             Assert.That(drawn, Is.True);
