@@ -573,6 +573,8 @@ namespace Velvet.Tests
                 "The resolve retries the outermost pass that suspended, which renders the inner one's too");
         }
 
+        // GREEN_ON_BASE(characterization): the base builds the element again on every render and so reaches the child.
+        // This pins that a parent handing the element back still reaches a child whose own pass suspended.
         [Test]
         public void Given_AChildPassSuspendedUnderAnElementTheParentHandsBack_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
         {
@@ -593,6 +595,8 @@ namespace Velvet.Tests
                 "The parent's pass reaches the child whose own pass suspended, and suspends with it");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the wrapper again on every render and so reaches the child.
+        // This pins that a wrapper handed back, which renders nothing, still lets the pass reach that child.
         [Test]
         public void Given_AChildPassSuspendedUnderAComponentTheParentHandsBack_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
         {

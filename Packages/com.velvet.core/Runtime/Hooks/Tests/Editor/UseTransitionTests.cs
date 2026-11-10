@@ -1169,14 +1169,14 @@ namespace Velvet.Tests
                 "The indicator comes down on the commit that renders the transition's content");
         }
 
-        // GREEN_ON_BASE(refactor): the second flush drains the lane the pending render's flush leaves behind, and
-        // finds the child clean on the base.
+        // GREEN_ON_BASE(characterization): the base renders the child pending and then cleared, as this still does.
+        // The parent is built without the compiler, so its commit hands the child a new node and renders it.
         [Test]
         public void Given_AChildsTransitionOnTheParentsState_When_TheParentCommitsIt_Then_TheChildRendersPendingAndCleared()
         {
             // Arrange — the child is pending, so this commit owes it both the parent's new output and the
             // render that takes its indicator down
-            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            using var mounted = V.Mount(_root, V.Component(UncompiledPropSetterParentRender, key: "prop-setter-parent"));
             s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
             s_propSetterChildSetTick.Invoke(1);
             FiberWorkLoop.FlushState(s_propSetterChildFiber);
@@ -1342,9 +1342,20 @@ namespace Velvet.Tests
         private static bool s_propSetterChildLastIsPending;
         private static int s_propSetterChildRenderCount;
 
-        // Without the compiler the child is reached with a new node on every render, so the parent's commit renders it.
-        [Component(Compiler = false)]
+        [Component]
         private static VNode PropSetterParentRender()
+        {
+            s_propSetterParentFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Div(children: new VNode[]
+            {
+                V.Label(name: "prop-setter-out", text: count.ToString()),
+                V.Component(PropSetterChildRender, setCount, key: "prop-setter-child"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UncompiledPropSetterParentRender()
         {
             s_propSetterParentFiber = FiberAmbientStack.Current;
             var (count, setCount) = Hooks.UseState(0);

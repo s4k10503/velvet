@@ -157,6 +157,8 @@ namespace Velvet.Tests
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
         }
 
+        // GREEN_ON_BASE(characterization): the base contains the retry as it does here, now with the Outlet at the root.
+        // A compiled parent hands the Outlet back and asks for no retry, which the case below pins.
         [Test]
         public void Given_AnOutletLeftWithoutAScope_When_ItIsPatchedAtTheSameRoute_Then_TheRetryIsContainedToo()
         {

@@ -276,11 +276,13 @@ namespace Velvet.Tests
                 "Live tracking reaches the consumer through a memoized subtree");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders a plain sibling again with its parent, as this still does.
+        // The parent is built without the compiler, so it hands the sibling a new node on every render.
         [Test]
         public void Given_PlainNonConsumerSibling_When_ProviderValueChanges_Then_SiblingReRendersWithParent()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(MixedChildrenParentRender, key: "parent"));
+            using var mounted = V.Mount(_root, V.Component(UncompiledMixedChildrenParentRender, key: "parent"));
             Assume.That(s_consumerHasMounted, Is.True, "Precondition: the consumer mounted");
             Assume.That(s_nonConsumerHasMounted, Is.True, "Precondition: the sibling mounted");
             var nonConsumerRenderCountAtStart = s_nonConsumerRenderCount;
@@ -441,9 +443,8 @@ namespace Velvet.Tests
             });
         }
 
-        // Without the compiler the sibling is reached with a new node on every render, which is what lets a parent render reach it.
         [Component(Compiler = false)]
-        private static VNode MixedChildrenParentRender()
+        private static VNode UncompiledMixedChildrenParentRender()
         {
             var (value, setValue) = Hooks.UseState("initial");
             s_parentSetValue = setValue;
