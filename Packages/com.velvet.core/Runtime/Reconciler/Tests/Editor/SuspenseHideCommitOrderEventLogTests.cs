@@ -24,6 +24,11 @@ namespace Velvet.Tests
             PortalChildEmpty,
             PortalChildRelocated,
             PortalIntoOwnElement,
+            PortalIntoOwnElementRelocated,
+            PortalIntoOwnElementAfterEmpty,
+            TopLevelPortalEmpty,
+            PortalInPortalRow,
+            PortalToMissingTarget,
         }
 
         private sealed record Named(string Name, string? ClassName = null);
@@ -33,7 +38,7 @@ namespace Velvet.Tests
             internal VisualElement? Element;
         }
 
-        private sealed record HostProps(Shape Shape, VisualElement Target, Holder Own);
+        private sealed record HostProps(Shape Shape, VisualElement Target, VisualElement Second, Holder Own);
 
         [Component]
         private static VNode Probed(Named props)
@@ -73,6 +78,7 @@ namespace Velvet.Tests
             {
                 Shape.PortalChildEmpty => V.Component(Empty, new Named("PC"), key: "pc"),
                 Shape.PortalChildRelocated => V.Div(className: "absolute z-10", refCallback: refPZ, key: "pz"),
+                Shape.PortalInPortalRow => V.Component(InnerPortal, props, key: "inner"),
                 _ => V.Component(Probed, new Named("PC"), key: "pc"),
             };
             return V.Div(refCallback: refO, children: new VNode[]
@@ -83,23 +89,32 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode InnerPortal(HostProps props)
+            => V.Portal(props.Second, new VNode[] { V.Component(Probed, new Named("PC"), key: "pc") });
+
+        [Component]
         private static VNode PortalIntoOwnOuter(HostProps props)
         {
             var (show, _) = EventLog.UseState("Show", false);
             EventLog.UseEffects("O", Array.Empty<object>());
             var refO = EventLog.UseRefCallback("O");
+            var refPZ = EventLog.UseRefCallback("PZ");
             var keepTarget = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
             {
                 props.Own.Element = element;
                 return null;
             }, Array.Empty<object>());
+            VNode portalChild = props.Shape == Shape.PortalIntoOwnElementRelocated
+                ? V.Div(className: "absolute z-10", refCallback: refPZ, key: "pz")
+                : V.Component(Probed, new Named("PC"), key: "pc");
+            var targetChildren = props.Shape == Shape.PortalIntoOwnElementAfterEmpty
+                ? new VNode[] { V.Component(Empty, new Named("TN"), key: "tn") }
+                : Array.Empty<VNode>();
             return V.Div(refCallback: refO, children: new VNode[]
             {
-                V.Div(refCallback: keepTarget, key: "target"),
+                V.Div(refCallback: keepTarget, key: "target", children: targetChildren),
                 V.Component(Probed, new Named("B"), key: "b"),
-                show
-                    ? V.Portal(props.Own.Element!, new VNode[] { V.Component(Probed, new Named("PC"), key: "pc") }, key: "portal")
-                    : null,
+                show ? V.Portal(props.Own.Element!, new VNode[] { portalChild }, key: "portal") : null,
             });
         }
 
@@ -174,7 +189,22 @@ namespace Velvet.Tests
                     {
                         V.Component(Probed, new Named("G", "absolute z-10"), key: "outer"), reader,
                     },
-                    Shape.PortalIntoOwnElement => new VNode[] { V.Component(PortalIntoOwnOuter, props, key: "outer"), reader },
+                    Shape.PortalIntoOwnElement or Shape.PortalIntoOwnElementRelocated or Shape.PortalIntoOwnElementAfterEmpty
+                        => new VNode[] { V.Component(PortalIntoOwnOuter, props, key: "outer"), reader },
+                    Shape.PortalToMissingTarget => new VNode[]
+                    {
+                        V.Div(children: new VNode[]
+                        {
+                            V.Portal("suspense-hide-missing-target", new VNode[] { V.Component(Probed, new Named("PC"), key: "pc") }),
+                        }),
+                        reader,
+                    },
+                    Shape.TopLevelPortalEmpty => new VNode[]
+                    {
+                        V.Portal(props.Target, new VNode[] { V.Component(Empty, new Named("PC"), key: "pc") }, key: "portal"),
+                        V.Component(Probed, new Named("B"), key: "b"),
+                        reader,
+                    },
                     _ => new VNode[] { V.Component(PortalOuter, props, key: "outer"), reader },
                 });
         }
@@ -182,7 +212,15 @@ namespace Velvet.Tests
         private static MountedTree MountShown(EventLog log, Shape shape)
         {
             var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement(), new Holder()))));
+                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement(), new VisualElement(), new Holder()))));
+            mounted.DrainForTest();
+            return mounted;
+        }
+
+        private static MountedTree MountShownWithItsPortal(EventLog log, Shape shape)
+        {
+            var mounted = MountShown(log, shape);
+            log.Setter<bool>("Show").Invoke(true);
             mounted.DrainForTest();
             return mounted;
         }
@@ -317,9 +355,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var log = new EventLog();
-            using var mounted = MountShown(log, Shape.PortalIntoOwnElement);
-            log.Setter<bool>("Show").Invoke(true);
-            mounted.DrainForTest();
+            using var mounted = MountShownWithItsPortal(log, Shape.PortalIntoOwnElement);
 
             // Act
             Suspend(log, mounted);
@@ -327,6 +363,78 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "lay-x:O ref-x:O lay-x:B ref-x:B lay-x:PC ref-x:PC ins:F ref:F lay:F eff:F"));
+        }
+        [Test]
+        public void Given_APortalIntoAnEarlierElementWhoseRowItsZClassRelocates_When_ItSuspendsAgain_Then_ThatRowsRefDetachesWhereThePortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShownWithItsPortal(log, Shape.PortalIntoOwnElementRelocated);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:O ref-x:O lay-x:B ref-x:B ref-x:PZ ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalIntoAnElementWhoseOwnChildRendersNothing_When_ItSuspendsAgain_Then_ThatChildIsTakenDownInItsElement()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShownWithItsPortal(log, Shape.PortalIntoOwnElementAfterEmpty);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "lay-x:O ref-x:O lay-x:TN lay-x:B ref-x:B lay-x:PC ref-x:PC ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APrimaryWhosePortalChildRendersNothing_When_ItSuspendsAgain_Then_TheChildIsTakenDownWhereThePortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.TopLevelPortalEmpty);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:PC lay-x:B ref-x:B ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalInsideAnotherPortalsChildren_When_ItSuspendsAgain_Then_ItsChildIsTakenDownWhereTheInnerPortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalInPortalRow);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:O ref-x:O lay-x:PC ref-x:PC ref-x:O2 ins:F ref:F lay:F eff:F"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes a hidden Portal with no target down without reading rows.
+        // What this pins is that the walk, which reads a Portal's rows where it sits, reads none there.
+        [Test]
+        public void Given_APortalWhoseRegisteredTargetIsMissing_When_ItsPrimarySuspendsAgain_Then_OnlyTheFallbackCommits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalToMissingTarget);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins:F ref:F lay:F eff:F"));
         }
     }
 }

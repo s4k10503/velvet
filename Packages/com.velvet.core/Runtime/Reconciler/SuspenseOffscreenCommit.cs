@@ -26,6 +26,8 @@ namespace Velvet
         private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingIn = new();
         private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingInPortal = new();
         private readonly Stack<List<ComponentFiber>> _spareFiberLists = new();
+        private readonly Dictionary<VisualElement, List<VisualElement>> _renderedChildren = new();
+        private readonly Stack<List<VisualElement>> _spareElementLists = new();
         private readonly HashSet<VisualElement> _visited = new();
         private readonly List<List<VisualElement>> _childrenAtDepth = new();
         private int _depth;
@@ -133,17 +135,47 @@ namespace Velvet
                 AddInTreeOrder(_endingInPortal, placeholder, fiber);
                 return;
             }
-            var start = LogicalElementTree.StartOf(fiber, out var endOf);
-            if (start != null)
+            var mount = fiber.MountPoint;
+            if (mount == null) return;
+            // LogicalElementTree.StartOf's reading, from the container's rendered children resolved once per Apply.
+            var rendered = RenderedChildrenOf(mount);
+            var slot = fiber.MountSlotStart;
+            // A fiber holding no row in front of another Portal's row in its container sits behind the container's
+            // own children, where the walk ends the container: that row is reached at its Portal.
+            if (slot < 0 || slot >= rendered.Count || (fiber.MountSlotCount == 0 && IsAnotherPortalsRow(fiber, mount, slot)))
             {
-                // At the element a placeholder stands for, which is what the walk reaches: as a root, as a Portal's
-                // row, or right after the placeholder.
-                AddInTreeOrder(_startingAt, _ctx.ZLayerPlaceholders.TryGetValue(start, out var real) ? real : start, fiber);
+                AddInTreeOrder(_endingIn, mount, fiber);
+                return;
             }
-            else if (endOf != null)
+            // At the element a placeholder stands for, which is what the walk reaches: as a root, as a Portal's row,
+            // or right after the placeholder.
+            var start = rendered[slot];
+            AddInTreeOrder(_startingAt, _ctx.ZLayerPlaceholders.TryGetValue(start, out var real) ? real : start, fiber);
+        }
+
+        private List<VisualElement> RenderedChildrenOf(VisualElement container)
+        {
+            if (_renderedChildren.TryGetValue(container, out var rendered)) return rendered;
+            rendered = _spareElementLists.Count > 0 ? _spareElementLists.Pop() : new List<VisualElement>();
+            var count = container.childCount;
+            for (var i = 0; i < count; i++)
             {
-                AddInTreeOrder(_endingIn, endOf, fiber);
+                var child = container[i];
+                if (!LogicalChildSlots.IsInvisible(child)) rendered.Add(child);
             }
+            _renderedChildren[container] = rendered;
+            return rendered;
+        }
+
+        private bool IsAnotherPortalsRow(ComponentFiber fiber, VisualElement container, int slot)
+        {
+            foreach (var (placeholder, portal) in _ctx.PortalState)
+            {
+                if (!ReferenceEquals(portal.Target, container)) continue;
+                if (slot < portal.SlotStart || slot >= portal.SlotStart + portal.SlotLength) continue;
+                return !ReferenceEquals(placeholder, fiber.OwningPortalPlaceholder);
+            }
+            return false;
         }
 
         // The fibers taken down at one place, enclosing ones ahead of those inside them and siblings in their order.
@@ -177,20 +209,25 @@ namespace Velvet
             TakeDown(_startingAt, element);
             _ctx.DetachRefWhileHidden(element);
             if (_depth == _childrenAtDepth.Count) _childrenAtDepth.Add(new List<VisualElement>());
-            // Copied first: a cleanup can change the children.
             var children = _childrenAtDepth[_depth++];
-            var hierarchy = element.hierarchy;
-            for (var i = 0; i < hierarchy.childCount; i++) children.Add(hierarchy[i]);
             try
             {
+                // Copied first: a cleanup can change the children.
+                var hierarchy = element.hierarchy;
+                for (var i = 0; i < hierarchy.childCount; i++) children.Add(hierarchy[i]);
                 foreach (var child in children)
                 {
                     // Reached where it is declared instead: a relocated element at its placeholder, and a Portal's row,
-                    // which the hide made a root of its own, at its Portal.
+                    // which the hide made a root of its own, at its Portal, relocated or not.
                     if (_hiddenSet.Contains(child) || FiberZLayerCoordinator.PlaceholderOf(_ctx, child) != null) continue;
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(child, out var real))
+                    {
+                        if (_hiddenSet.Contains(real)) continue;
+                        Visit(child);
+                        Visit(real);
+                        continue;
+                    }
                     Visit(child);
-                    if (_ctx.ZLayerPlaceholders.TryGetValue(child, out var real)) Visit(real);
-                    VisitPortalRows(child);
                 }
             }
             finally
@@ -198,19 +235,23 @@ namespace Velvet
                 children.Clear();
                 _depth--;
             }
+            VisitPortalRows(element);
             TakeDown(_endingIn, element);
         }
 
-        // The rows GeneralPathReconciler.AddWithPortalChildren makes roots of, read as it reads them: an entry with
-        // no target holds no slot.
+        // The rows GeneralPathReconciler.AddWithPortalChildren makes roots of. A Portal whose registered target is
+        // missing has an entry with no target, and no rows.
         private void VisitPortalRows(VisualElement placeholder)
         {
             if (!_ctx.PortalState.TryGetValue(placeholder, out var portal)) return;
-            for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
+            if (portal.Target != null)
             {
-                if (!LogicalChildSlots.TryGetPhysical(portal.Target!, slot, out var physical)) break;
-                var row = portal.Target![physical];
-                Visit(_ctx.ZLayerPlaceholders.TryGetValue(row, out var real) ? real : row);
+                var rows = RenderedChildrenOf(portal.Target);
+                for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength && slot < rows.Count; slot++)
+                {
+                    var row = rows[slot];
+                    Visit(_ctx.ZLayerPlaceholders.TryGetValue(row, out var real) ? real : row);
+                }
             }
             TakeDown(_endingInPortal, placeholder);
         }
@@ -233,6 +274,12 @@ namespace Velvet
             ReturnLists(_startingAt);
             ReturnLists(_endingIn);
             ReturnLists(_endingInPortal);
+            foreach (var rendered in _renderedChildren.Values)
+            {
+                rendered.Clear();
+                _spareElementLists.Push(rendered);
+            }
+            _renderedChildren.Clear();
             _visited.Clear();
         }
 
