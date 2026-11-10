@@ -328,8 +328,16 @@ namespace Velvet
         // which: the drain follows a walk that returned, or one that threw and is still unwinding.
         private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
-            _ctx.PointerEventsWalkHeld++;
             LastTopLevelWasAborted = _ctx.IsAborted;
+            FinishPass(reconciledInto, walked);
+        }
+
+        // FinishTopLevelPass less the aborted-pass reading its callers take of the pass they ran: a VirtualList range
+        // rendered outside a pass ends with this (EndRangeForController), and can end inside the end of one of those
+        // passes.
+        private void FinishPass(VisualElement? reconciledInto, bool walked)
+        {
+            _ctx.PointerEventsWalkHeld++;
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
             // rollback detaches its failed subtree's placeholders (the drain's per-entry
@@ -595,27 +603,35 @@ namespace Velvet
         void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
             => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
 
-        // A range rendered inside a pass is placed where that pass ends. One rendered outside a pass ends here as a
-        // top-level pass ends, its rows now in the list, as ContinueReconcile ends a resumed slice: what the rows'
-        // creation deferred — a relocated element, a Portal's or WorldSpace's host — is placed within the range
-        // render rather than at whichever pass comes next.
-        // What FinishTopLevelPass records of an aborted pass is read by the caller of the pass it ends, which a range
-        // ending inside that pass's end must leave as it found it.
-        void IReconcilerBridge.EndRowPlacementForController(VisualElement container)
+        // A range rendered inside a pass is that pass's to end. One rendered outside a pass is bracketed as a pass is,
+        // as an in-pass range already is: a Component row's mount is then no top-level pass of its own, whose end
+        // would drain the mounts the rows ahead of it deferred before the range has placed them, and the range's end
+        // drains them all, in the order they were queued, once the rows are in the list. Returns whether this range
+        // opened the bracket, which EndRangeForController closes.
+        bool IReconcilerBridge.BeginRangeForController()
         {
-            if (_ctx.SharedReconcileDepth > 0) return;
-            var aborted = LastTopLevelWasAborted;
+            if (_ctx.SharedReconcileDepth > 0) return false;
+            _ctx.SharedReconcileDepth++;
             VNodePool.BeginReleaseScope();
+            return true;
+        }
+
+        // Ends the bracket BeginRangeForController opened as a top-level pass ends, as ContinueReconcile ends a resumed
+        // slice — what the rows' creation deferred, a relocated element or a Portal's or WorldSpace's host, is placed
+        // here — except that it records no aborted pass (FinishPass).
+        void IReconcilerBridge.EndRangeForController(VisualElement container, bool opened)
+        {
+            if (!opened) return;
+            _ctx.SharedReconcileDepth--;
             try
             {
                 // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange is the only catch of
                 // what this throws, and it hands either signal to the list's host alike.
-                FinishTopLevelPass(container, walked: true);
+                FinishPass(container, walked: true);
             }
             finally
             {
                 VNodePool.EndReleaseScope();
-                LastTopLevelWasAborted = aborted;
             }
         }
 

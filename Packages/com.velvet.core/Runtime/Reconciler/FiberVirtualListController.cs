@@ -286,6 +286,33 @@ namespace Velvet
 
         private void PlaceRange(int newFirst, int newLast)
         {
+            var opened = _reconciler.BeginRangeForController();
+            try
+            {
+                PlaceRows(newFirst, newLast);
+            }
+            finally
+            {
+                // Once the buffers name the rows placed, or the range has given them up.
+                try
+                {
+                    _reconciler.EndRangeForController(_visibleContainer, opened);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    // A child of a Portal a row placed suspended as the range's end mounted it. The list's host owns a
+                    // range rendered outside a pass as a fiber owns its own pass, so the suspend goes where a pass
+                    // owner's does.
+                    if (_hostFiber != null)
+                    {
+                        FiberRenderer.SuspendPassOwner(_hostFiber, transitionPass: false);
+                    }
+                }
+            }
+        }
+
+        private void PlaceRows(int newFirst, int newLast)
+        {
             var newCount = newLast - newFirst + 1;
 
             IndexOldRenderedItems();
@@ -325,19 +352,6 @@ namespace Velvet
             if (_isDisposed)
             {
                 ClearRenderedItems();
-                return;
-            }
-
-            // Last, once the buffers name the rows placed: outside a pass this ends the range as a pass ends.
-            try
-            {
-                _reconciler.EndRowPlacementForController(_visibleContainer);
-            }
-            catch (FiberSuspendSignal)
-            {
-                // A child of a Portal a row placed suspended as the end mounted it. The list's host owns a range
-                // rendered outside a pass as a fiber owns its own pass, so the signal goes where a pass owner's does.
-                if (_hostFiber != null) FiberRenderer.SuspendPassOwner(_hostFiber, transitionPass: false);
             }
         }
 
@@ -474,16 +488,6 @@ namespace Velvet
                             _reconciler.CleanupElementForController(existing.element);
                         }
                         newElements[i] = replacement;
-                    }
-
-                    // In the list as soon as it is built. Outside a pass a Component row's render is a top-level pass of
-                    // its own, whose end drains the mounts the rows ahead of it deferred and drops one whose placeholder
-                    // has no parent; in the list, they drain there in the order they were queued, as a pass drains
-                    // them. RebuildVisibleContainer puts the rows in their order afterwards.
-                    var occupant = _reconciler.SlotOccupantForController(newElements[i]);
-                    if (occupant.parent != _visibleContainer)
-                    {
-                        _visibleContainer.Add(occupant);
                     }
 
                     // The prior row leaves its table only once the slot holds an element, the order

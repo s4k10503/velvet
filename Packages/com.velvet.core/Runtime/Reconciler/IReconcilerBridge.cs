@@ -38,10 +38,14 @@ namespace Velvet
         // store this return value, not its stale pre-patch reference.
         VisualElement PatchNodeForController(VisualElement row, VNode oldNode, VNode newNode);
 
-        // Bracket the controller's rewrite of the container's rows, which leaves standing what holds no slot of
-        // its own: Begin before the first row is removed, End once every row is placed.
+        // Called before the controller's rewrite of the container's rows, which leaves standing what holds no slot
+        // of its own.
         void BeginRowPlacementForController(VisualElement container);
-        void EndRowPlacementForController(VisualElement container);
+
+        // Bracket a range render: Begin before its first row is built, End once the buffers name the rows placed.
+        // End can throw the suspend of a Portal child it mounts.
+        bool BeginRangeForController();
+        void EndRangeForController(VisualElement container, bool opened);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the

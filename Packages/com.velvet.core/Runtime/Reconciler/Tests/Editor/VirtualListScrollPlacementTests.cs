@@ -11,8 +11,9 @@ namespace Velvet.Tests
     /// places before the scroll returns: the children of each row that is a <c>V.Portal</c> mount in its target, in
     /// the rows' order, a Component row between them included, and in the order a pass mounts them where a Component
     /// row renders a Portal of its own. A Portal a range that failed had built mounts nothing when the range renders
-    /// again. A child of such a Portal that suspends with no Suspense above the list leaves the list's host waiting on
-    /// the read rather than leaving the scroll.
+    /// again. A child of such a Portal that suspends with no Suspense above the list — a Portal row's own, or one a row
+    /// holds — leaves the list's host waiting on the read, outside a transition, rather than leaving the scroll, alone
+    /// in the range or ahead of a Component row, and the rows that scroll built stay in the list.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
@@ -22,14 +23,18 @@ namespace Velvet.Tests
         private static int s_refusals;
         private static VelvetTaskCompletionSource<string> s_resource;
         private static ComponentFiber s_listHost;
+        // The suspending list's items, "c" a Component row and any other a Portal round PendingRead, held by a row of its
+        // own where s_portalHeld.
+        private static string[] s_suspendingRows;
+        private static bool s_portalHeld;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
             FiberStrictMode.Enabled = false;
-            (s_target, s_refusals, s_resource, s_listHost) =
-                (new VisualElement(), 0, new VelvetTaskCompletionSource<string>(), null);
+            (s_target, s_refusals, s_resource, s_listHost, s_suspendingRows, s_portalHeld) =
+                (new VisualElement(), 0, new VelvetTaskCompletionSource<string>(), null, new[] { "a" }, false);
         }
 
         [Component]
@@ -46,12 +51,16 @@ namespace Velvet.Tests
         {
             s_listHost = FiberAmbientStack.Current;
             return V.VirtualList(
-                items: new[] { "a" },
+                items: s_suspendingRows,
                 keySelector: item => item,
                 itemHeight: 10f,
-                renderer: _ => V.Portal(s_target, new VNode[] { V.Component(PendingRead) }),
+                renderer: item => item == "c" ? V.Component(ComponentRow, item, key: item)
+                    : s_portalHeld ? V.Div(name: item, children: new VNode[] { SuspendingPortal() })
+                    : SuspendingPortal(),
                 overscan: 0);
         }
+
+        private static VNode SuspendingPortal() => V.Portal(s_target, new VNode[] { V.Component(PendingRead) });
 
         private ScrollView List => _root.Q<ScrollView>();
 
@@ -125,6 +134,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_listHost.SuspendedOn, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_AVirtualListRowThatIsAPortalWhoseChildSuspendsWithNoSuspenseAbove_When_AScrollBringsItIntoTheRange_Then_TheHostWaitsOutsideATransition()
+        {
+            // Arrange — the list renders no range until a scroll asks for one.
+            using var mounted = V.Mount(_root, V.Component(SuspendingPortalListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — null where the host waits on nothing, which false never equals.
+            bool? inTransition = s_listHost.SuspendedOn != null ? s_listHost.SuspendedInTransition : null;
+            Assert.That(inTransition, Is.EqualTo(false));
+        }
+
+        [Test]
+        public void Given_APortalRowWhoseChildSuspendsAheadOfAComponentRow_When_AScrollBringsBothIntoTheRange_Then_TheListsHostWaitsOnTheRead()
+        {
+            // Arrange — the list renders no range until a scroll asks for one; "c" is a Component row, which mounts
+            // through a render of its own.
+            s_suspendingRows = new[] { "b", "c" };
+            using var mounted = V.Mount(_root, V.Component(SuspendingPortalListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_listHost.SuspendedOn, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_ARowHoldingAPortalWhoseChildSuspendsAheadOfAComponentRow_When_AScrollBringsBothIntoTheRange_Then_TheListsHostWaitsOnTheRead()
+        {
+            // Arrange — the list renders no range until a scroll asks for one; "c" is a Component row, which mounts
+            // through a render of its own.
+            (s_suspendingRows, s_portalHeld) = (new[] { "b", "c" }, true);
+            using var mounted = V.Mount(_root, V.Component(SuspendingPortalListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_listHost.SuspendedOn, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base places both rows, never mounting the Portal outside a pass.
+        // Mounting it there, and so its child's suspend, must not cost the range the rows it built.
+        [Test]
+        public void Given_APortalRowWhoseChildSuspendsAheadOfAComponentRow_When_AScrollBringsBothIntoTheRange_Then_BothRowsAreInTheList()
+        {
+            // Arrange — the list renders no range until a scroll asks for one.
+            s_suspendingRows = new[] { "b", "c" };
+            using var mounted = V.Mount(_root, V.Component(SuspendingPortalListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(LogicalChildSlots.Count(List.contentContainer.ElementAt(1)), Is.EqualTo(2));
         }
 
         [Test]
