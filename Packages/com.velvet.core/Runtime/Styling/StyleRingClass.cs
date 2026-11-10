@@ -281,7 +281,7 @@ namespace Velvet
         // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
         // ring and every shadow-* with it: a ring or inset ring whose colour or width the browser rejects, a ring
         // offset colour it rejects beside an offset width, or a shadow-* or inset-shadow-* layer it rejects or whose
-        // colour it rejects (StyleShadowClass.TryReadBoxShadowClass). Each value is the one of the class that holds
+        // colour it rejects (StyleShadowClass.ReadBoxShadowClass). Each value is the one of the class that holds
         // its property (StyleShadowClass.BoxShadowSlot), which the composed class source puts last.
         internal static bool DiscardsBoxShadow(string[]? classNames) => ReadBoxShadow(classNames).Discards;
 
@@ -311,10 +311,10 @@ namespace Velvet
             var offset = default(BandSlots);
             var shadow = default(StyleShadowClass.BoxShadowSlot);
             var shadowColour = default(StyleShadowClass.BoxShadowSlot);
-            var shadowAlpha = default(StyleShadowClass.BoxShadowSlot);
+            var shadowAlpha = default(StyleShadowClass.AlphaSlot);
             var insetShadow = default(StyleShadowClass.BoxShadowSlot);
             var insetShadowColour = default(StyleShadowClass.BoxShadowSlot);
-            var insetShadowAlpha = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadowAlpha = default(StyleShadowClass.AlphaSlot);
             foreach (var cls in classNames)
             {
                 if (string.IsNullOrEmpty(cls))
@@ -342,10 +342,13 @@ namespace Velvet
                 {
                     ReadBoxShadowPart(suffix!, "inset-ring", important, ref insetRing);
                 }
-                else if (!StyleShadowClass.TryReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour,
-                    ref shadowAlpha))
+                else if (core.StartsWith("shadow", StringComparison.Ordinal))
                 {
-                    StyleShadowClass.TryReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
+                    StyleShadowClass.ReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour, ref shadowAlpha);
+                }
+                else if (core.StartsWith("inset-shadow", StringComparison.Ordinal))
+                {
+                    StyleShadowClass.ReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
                         ref insetShadowColour, ref insetShadowAlpha);
                 }
             }

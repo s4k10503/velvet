@@ -549,6 +549,11 @@ namespace Velvet
                 current.a *= tint.a;
                 tint = current;
             }
+            // A NaN alpha compares false against the bound below, so it is refused apart.
+            if (float.IsNaN(tint.a))
+            {
+                return;
+            }
             if (tint.a <= 0.004f)
             {
                 return;

@@ -114,6 +114,7 @@ namespace Velvet.Tests
         [TestCase("shadow shadow/50", "shadow/50 shadow")]
         [TestCase("shadow-[0_0_5px_#000] shadow-lg/50", "shadow-lg/50 shadow-[0_0_5px_#000]")]
         [TestCase("inset-shadow-sm inset-shadow-xs/50", "inset-shadow-xs/50 inset-shadow-sm")]
+        [TestCase("shadow-2xl shadow-[0_0_5px_#000]/50", "shadow-[0_0_5px_#000]/50 shadow-2xl")]
         public void Given_AShadowSizeWrittenBeforeOneWithAnOpacityModifier_When_ClassNamesAreParsed_Then_TheOneWithTheModifierIsPutFirst(
             string className, string expected)
         {

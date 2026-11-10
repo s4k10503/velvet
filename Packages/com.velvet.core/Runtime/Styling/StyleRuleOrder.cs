@@ -443,8 +443,9 @@ namespace Velvet
                 && (!inline || StyleNamedTextSize.TryParseSlashFontSize(core, out _));
 
         // The Tailwind property-order indexes of what the utility writes, ascending, and how many declarations
-        // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, except
-        // where a variable beside the property adds to them (TransformVariablesOf).
+        // Tailwind counts for it: its longhands, plus the line-height a named or slash text size also declares, and the
+        // alpha variable a shadow size's /N declares (StyleShadowClass.DeclaresAlpha), except where a variable beside
+        // the property adds to them (TransformVariablesOf).
         private static (List<int> Order, int Count) PropertySortOf(string utility)
         {
             var core = StyleArbitraryValueResolver.StripImportant(utility, out _);
@@ -518,6 +519,10 @@ namespace Velvet
             var variables = TransformVariablesOf(core, inline, property, set);
             count += variables.Length;
             order.AddRange(variables);
+            if (StyleShadowClass.DeclaresAlpha(core))
+            {
+                count++;
+            }
             order.Sort();
             return (order, count);
         }

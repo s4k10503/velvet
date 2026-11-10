@@ -26,9 +26,10 @@ namespace Velvet
 
         // A token belongs to the first family that claims it. The families on s_byKey carry declarations the sort key counts
         // and are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
-        // a nine-slice inset writes as many longhands as the edges it names, and a skew-<n> declares --tw-skew-y, which
-        // property-order.ts lists ahead of the transform a skew-x-* declares next. The others are ordered by their
-        // lane, then by candidate name, where Tailwind's sort ends for two utilities that declare the same properties.
+        // a nine-slice inset writes as many longhands as the edges it names, a skew-<n> declares --tw-skew-y, which
+        // property-order.ts lists ahead of the transform a skew-x-* declares next, and a shadow size's /N declares its
+        // family's alpha variable. The others are ordered by their lane, then by candidate name, where Tailwind's sort
+        // ends for two utilities that declare the same properties.
         private static readonly (Func<string, bool> Claims, Func<string, int> Lane)[] s_families =
         {
             (IsTextToken, s_byKey),
@@ -39,8 +40,8 @@ namespace Velvet
             (StyleGapClass.IsGapToken, s_noLane),
             (StyleGridClass.IsGridToken, s_noLane),
             (StyleDivideClass.IsDivideToken, s_noLane),
-            (StyleShadowClass.IsShadowClass, ShadowLane),
-            (StyleShadowClass.IsInsetBoxShadowClass, ShadowLane),
+            (StyleShadowClass.IsShadowClass, s_byKey),
+            (StyleShadowClass.IsInsetBoxShadowClass, s_byKey),
             (StyleRingClass.IsRingClass, RingLane),
             (StyleBackdropClass.IsBackdropClass, s_noLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
@@ -190,9 +191,6 @@ namespace Velvet
         }
 
         private static string Core(string token) => StyleArbitraryValueResolver.StripImportant(token, out _);
-
-        // A size whose /N declares its family's alpha variable declares one property more than a size without one.
-        private static int ShadowLane(string core) => StyleShadowClass.DeclaresAlpha(core) ? 0 : 1;
 
         // Same list: the ring's box-shadow properties come before the outline ones.
         private static int RingLane(string core)

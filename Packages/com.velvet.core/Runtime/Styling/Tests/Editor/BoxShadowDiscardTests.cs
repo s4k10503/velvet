@@ -202,6 +202,7 @@ namespace Velvet.Tests
         [TestCase("!shadow-lg shadow-md/150 shadow-red-500", "!shadow-lg shadow-md/50 shadow-red-500")]
         [TestCase("inset-shadow-sm/150 inset-shadow-xs inset-shadow-red-500",
             "inset-shadow-sm/50 inset-shadow-xs inset-shadow-red-500")]
+        [TestCase("shadow-[0_0_5px_red]/150 shadow-xl shadow-red-500", "shadow-[0_0_5px_red]/50 shadow-xl shadow-red-500")]
         public void Given_ASizeModifierPast100AndAnotherSizeHoldingTheLayersBesideAShadowColour_When_Reconciled_Then_TheShadowIsDiscarded(
             string classes, string control)
         {
@@ -244,6 +245,68 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(colour, Is.EqualTo("unbound"));
+        }
+
+        // A bracket opacity modifier closes a bracket of its own after the value's.
+        [TestCase("shadow-[0_0_5px_red]/[50%]", "FF000080")]
+        [TestCase("shadow-[0_0_5px_red]/[0.5]", "FF000080")]
+        [TestCase("inset-shadow-[0_0_5px_red]/[50%]", "FF000080")]
+        [TestCase("shadow-lg shadow-[#f00]/[50%]", "FF000080")]
+        public void Given_ABracketShadowOrColourWithABracketModifier_When_Reconciled_Then_ItIsDrawnAtTheModifiersAlpha(
+            string classes, string expected)
+        {
+            // Act
+            var colour = ReconciledLayerColour(classes);
+
+            // Assert
+            Assert.That(colour, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the ring where shadow-none holds the layers beside a rejected colour.
+        [Test]
+        public void Given_ShadowNoneHoldingTheLayersBesideARejectedColour_When_TheRingIsExtracted_Then_ItIsDrawn()
+        {
+            // Act — shadow-none's layer reads no colour; the control is the same classes without it, which discard the ring.
+            var drawn = !StyleRingClass.TryExtract(
+                    StyleSpacingPrecedence.Normalize("ring-2 shadow-lg shadow-[color:0_4px_8px]".Split(' ')), out _)
+                && StyleRingClass.TryExtract(
+                    StyleSpacingPrecedence.Normalize("ring-2 shadow-lg shadow-none shadow-[color:0_4px_8px]".Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
+
+        [Test]
+        public void Given_ARingBesideABracketShadowWithABracketModifier_When_Extracted_Then_TheRingIsDrawn()
+        {
+            // Act
+            var drawn = StyleRingClass.TryExtract(
+                StyleSpacingPrecedence.Normalize("ring-2 shadow-[0_0_5px_red]/[50%]".Split(' ')), out _);
+
+            // Assert
+            Assert.That(drawn, Is.True);
+        }
+
+        // Tailwind emits a size with a /N ahead of one without under a variant as well; the base shadow-2xl is the
+        // control that the hover applied.
+        [TestCase("shadow-2xl hover:shadow-lg hover:shadow-lg/150")]
+        [TestCase("shadow-2xl hover:shadow-md/50 hover:shadow-lg")]
+        public void Given_HoverSizesWithAndWithoutAModifier_When_Hovered_Then_TheSizeWithoutOneHoldsTheLayers(string classes)
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
+            var element = scope.Root[0];
+
+            // Act
+            using (var over = UnityEngine.UIElements.PointerOverEvent.GetPooled())
+            {
+                element.SimulateEvent(over);
+            }
+            var bound = scope.Reconciler.Context.ShadowBindings.TryGetValue(element, out var binding);
+
+            // Assert — shadow-lg's own colour, black at 10%.
+            Assert.That(bound ? ColorUtility.ToHtmlStringRGBA(binding.Layers[0].Color) : "unbound", Is.EqualTo("0000001A"));
         }
 
         [Test]

@@ -538,5 +538,19 @@ namespace Velvet.Tests
             // Assert
             Assert.That(radius, Is.EqualTo(4f));
         }
+
+        [Test]
+        public void Given_AVarBracketHoldingTheLayersAfterASizeModifierPast100AndAColour_When_Read_Then_NeitherReaderDrawsOrDiscards()
+        {
+            // Arrange — the var() bracket is Tailwind's last size, whose value neither reader can judge.
+            var classes = StyleSpacingPrecedence.Normalize("shadow-lg/150 shadow-[var(--x)] shadow-red-500".Split(' '));
+
+            // Act
+            var outcome = StyleRingClass.DiscardsBoxShadow(classes) ? "discarded"
+                : StyleShadowClass.TryExtract(classes, out _) ? "drawn" : "neither";
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo("neither"));
+        }
     }
 }

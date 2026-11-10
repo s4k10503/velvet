@@ -6,8 +6,11 @@
   to reset the scale to 100%. The same applies to `inset-shadow-*`.
 - A shadow size without a `/N` takes the layers from a plain size with one, whichever is written first, as
   Tailwind emits the size with the `/N` first: `shadow-lg/150 shadow-lg` draws `shadow-lg`'s layers at their own
-  10%. The size with the `/N` used to win wherever its name sorted after the other's. The same applies to
-  `inset-shadow-*`.
+  10%, and so does `hover:shadow-lg hover:shadow-lg/150` while hovered. The size with the `/N` used to win
+  wherever its name sorted after the other's. The same applies to `inset-shadow-*`.
+- A bracketed shadow, or a bracketed shadow colour beside a size, with a bracketed opacity modifier
+  (`shadow-[0_0_5px_red]/[50%]`, `shadow-lg shadow-[#f00]/[50%]`) is drawn at that alpha. It used to discard the
+  whole box-shadow, a ring beside it included. The same applies to `inset-shadow-*`.
 - A `-none` with an opacity modifier (`shadow-none/50`), which Tailwind writes no rule for, no longer stops the
   size before it from reading a rejected colour: `shadow-lg shadow-none/50 shadow-[color:0_4px_8px]` draws no
   box-shadow, as the browser does, where it used to draw `shadow-lg`. The same applies to `inset-shadow-*`.

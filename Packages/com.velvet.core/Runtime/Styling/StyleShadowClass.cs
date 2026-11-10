@@ -415,7 +415,8 @@ namespace Velvet
         }
 
         // A size of the family: its -none (which takes no modifier), a preset, or a bracketed shadow list. Tailwind
-        // writes `inset` ahead of each layer of an inset-shadow-[…].
+        // writes `inset` ahead of each layer of an inset-shadow-[…]. A bracket holding a var() this cannot read is a
+        // size with nothing to draw, as ReadBoxShadowClass takes it for one whose value it cannot judge.
         private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
             out ShadowSpec[] layers)
         {
@@ -430,7 +431,8 @@ namespace Velvet
                 return true;
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers);
+                && (TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers)
+                    || inner.IndexOf("var(".AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         // inset-ring (1px), inset-ring-<n>, inset-ring-[<length>] and inset-ring-<colour>, as Tailwind reads them.
@@ -579,12 +581,8 @@ namespace Velvet
             // initial.
             public bool MixesAlpha { get; private set; }
 
-            // The alpha variable holds a percentage outside 0..100%, which makes a colour mixed through it invalid.
-            public bool ScaleInvalid { get; private set; }
-
             // Takes the slot for a class read after the one holding it, unless that one is important and this is not.
-            public void Offer(bool important, bool rejected, bool readsColour = false, bool scaleInvalid = false,
-                bool mixesAlpha = false)
+            public void Offer(bool important, bool rejected, bool readsColour = false, bool mixesAlpha = false)
             {
                 if (Set && _important && !important)
                 {
@@ -594,8 +592,28 @@ namespace Velvet
                 _important = important;
                 Rejected = rejected;
                 ReadsColour = readsColour;
-                ScaleInvalid = scaleInvalid;
                 MixesAlpha = mixesAlpha;
+            }
+        }
+
+        // The family's alpha variable and the class holding it, held as BoxShadowSlot holds a property. A size's /N
+        // declares it; a size without one does not.
+        internal struct AlphaSlot
+        {
+            private bool _important;
+
+            public bool Set { get; private set; }
+
+            // A percentage outside 0..100%, which makes a colour mixed through it invalid.
+            public bool ScaleInvalid { get; private set; }
+
+            public void Offer(bool important, bool scaleInvalid)
+            {
+                if (Takes(ref _important, important))
+                {
+                    Set = true;
+                    ScaleInvalid = scaleInvalid;
+                }
             }
         }
 
@@ -607,53 +625,55 @@ namespace Velvet
         // Whether a family's layer, colour and alpha variable discard the box-shadow: a layer the browser rejects, or one
         // reading the family's colour variable where the colour is one the browser rejects or one mixed through an alpha
         // outside 0..100%.
-        internal static bool Discards(in BoxShadowSlot layer, in BoxShadowSlot colour, in BoxShadowSlot alpha)
+        internal static bool Discards(in BoxShadowSlot layer, in BoxShadowSlot colour, in AlphaSlot alpha)
             => layer.Set && (layer.Rejected || (layer.ReadsColour && (colour.Rejected || (colour.MixesAlpha && alpha.ScaleInvalid))));
 
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
 
-        // Offers core, a class without its important modifier, to the slots of root's family it writes, root being
+        // Offers core, a class of root's family without its important modifier, to the slots it writes, root being
         // "shadow" or "inset-shadow", as Tailwind writes it: a size, none or a bracket it does not type as a colour
         // writes the layer, and a size's /N the alpha variable as well, and a palette name, a keyword or a bracket it
-        // types as a colour writes the colour variable alone. False for any other class.
-        internal static bool TryReadBoxShadowClass(string core, string root, bool important, ref BoxShadowSlot layer,
-            ref BoxShadowSlot colour, ref BoxShadowSlot alpha)
+        // types as a colour writes the colour variable alone. A -none, -inherit or -initial with a modifier, which
+        // Tailwind writes no rule for, writes nothing.
+        internal static void ReadBoxShadowClass(string core, string root, bool important, ref BoxShadowSlot layer,
+            ref BoxShadowSlot colour, ref AlphaSlot alpha)
         {
-            if (!core.StartsWith(root, StringComparison.Ordinal))
-            {
-                return false;
-            }
             var inset = root == "inset-shadow";
             var slash = StyleColorValueParser.ColorModifierSlashIndex(core, 0);
-            // MUTANT_SURVIVES(equivalent, boundary): core starts with root, checked above, so its first character is no slash and the index is never 0.
-            var body = slash < 0 ? core : core.Substring(0, slash);
-            if (slash >= 0 && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
+            var modified = slash != -1;
+            var body = modified ? core.Substring(0, slash) : core;
+            if (modified && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
             {
-                return false;
+                return;
             }
             if (body == root && !inset)
             {
                 layer.Offer(important, false, readsColour: true);
-                OfferSizeAlpha(core, slash, important, ref alpha);
-                return true;
+                OfferSizeAlpha(core, modified, important, ref alpha);
+                return;
             }
             if (!body.StartsWith(root + "-", StringComparison.Ordinal))
             {
-                return false;
+                return;
             }
             var suffix = body.Substring(root.Length + 1);
             if (suffix == "none")
             {
-                return TryOfferNone(slash, important, ref layer);
+                // -none takes no modifier, as TryReadSize declines it.
+                if (!modified)
+                {
+                    layer.Offer(important, false);
+                }
+                return;
             }
             if (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix))
             {
                 layer.Offer(important, false, readsColour: true);
-                OfferSizeAlpha(core, slash, important, ref alpha);
-                return true;
+                OfferSizeAlpha(core, modified, important, ref alpha);
+                return;
             }
-            if (TryReadBracket(core, root, out var hint, out var value))
+            if (TryReadBracket(body, root, out var hint, out var value))
             {
                 if (hint != null ? hint == "color" : TailwindDataTypes.IsColor(value.AsSpan()))
                 {
@@ -663,43 +683,30 @@ namespace Velvet
                 else
                 {
                     layer.Offer(important, RejectsAsBoxShadow(value, inset), ReadsShadowColour(value));
-                    OfferSizeAlpha(core, slash, important, ref alpha);
+                    OfferSizeAlpha(core, modified, important, ref alpha);
                 }
-                return true;
+                return;
             }
-            return TryOfferNamedColour(core, suffix, slash, important, ref colour);
+            OfferNamedColour(core, suffix, modified, important, ref colour);
         }
 
         // A colour the class names rather than brackets: a palette name, current or transparent, or inherit or initial,
         // which take no modifier, as TryRead declines them.
-        private static bool TryOfferNamedColour(string core, string suffix, int slash, bool important, ref BoxShadowSlot colour)
+        private static void OfferNamedColour(string core, string suffix, bool modified, bool important, ref BoxShadowSlot colour)
         {
             var keyword = suffix is "inherit" or "initial";
-            if (keyword ? slash >= 0 : suffix is not ("current" or "transparent") && !VelvetPalette.TryResolveColorToken(suffix, out _))
+            if (keyword ? !modified : suffix is "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
             {
-                return false;
+                colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: !keyword);
             }
-            colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: !keyword);
-            return true;
-        }
-
-        // A -none, which writes a layer reading no colour, and takes no modifier, as TryReadSize declines it.
-        private static bool TryOfferNone(int slash, bool important, ref BoxShadowSlot layer)
-        {
-            if (slash >= 0)
-            {
-                return false;
-            }
-            layer.Offer(important, false);
-            return true;
         }
 
         // A size's /N, which Tailwind writes as the family's alpha variable, a declaration apart from the layers.
-        private static void OfferSizeAlpha(string core, int slash, bool important, ref BoxShadowSlot alpha)
+        private static void OfferSizeAlpha(string core, bool modified, bool important, ref AlphaSlot alpha)
         {
-            if (slash >= 0)
+            if (modified)
             {
-                alpha.Offer(important, false, scaleInvalid: SizeScaleInvalid(core, 0));
+                alpha.Offer(important, SizeScaleInvalid(core, 0));
             }
         }
 
@@ -707,11 +714,15 @@ namespace Velvet
         // the family's alpha variable.
         internal static bool DeclaresAlpha(string core)
         {
-            var layer = default(BoxShadowSlot);
-            var colour = default(BoxShadowSlot);
-            var alpha = default(BoxShadowSlot);
-            var root = core.StartsWith("inset-shadow", StringComparison.Ordinal) ? "inset-shadow" : "shadow";
-            TryReadBoxShadowClass(core, root, false, ref layer, ref colour, ref alpha);
+            var alpha = default(AlphaSlot);
+            var inset = core.StartsWith("inset-shadow", StringComparison.Ordinal);
+            if (inset || core.StartsWith("shadow", StringComparison.Ordinal))
+            {
+                var layer = default(BoxShadowSlot);
+                var colour = default(BoxShadowSlot);
+                // MUTANT_SURVIVES(equivalent, literal): the slots are fresh, and an important offer takes an empty slot as a plain one does.
+                ReadBoxShadowClass(core, inset ? "inset-shadow" : "shadow", false, ref layer, ref colour, ref alpha);
+            }
             return alpha.Set;
         }
 
