@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 18 case(s) that ran the site: Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted, Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
+ "file": "fe9b28a9bb2e0507bda18a8954533ed8970f2e647b5d4b0ca3f436ee5c9e81f3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+   }
+  }
+ ],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 38,
+  "line": 633,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

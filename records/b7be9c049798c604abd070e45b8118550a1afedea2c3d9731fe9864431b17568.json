@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 2 failed among the 313 case(s) that ran the site: Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox, Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
+ "detail": "EditMode: 2 failed among the 314 case(s) that ran the site: Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox, Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
  "file": "3ea61f672c5b27502a13640a8d0a1788d5b034400e138358ecd9642cd20efd3e",
  "killers": [
   {
    "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e8f58a9f1bd78da0ee2b626934cf117d9e5618aa556e3390a1dc8f9610ac607d",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "d403f74ee4e62a1f551afff7dabd0a0e854e3fdc19bfebd51ecb03089121e24f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
@@ -13,13 +13,13 @@
   {
    "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e8f58a9f1bd78da0ee2b626934cf117d9e5618aa556e3390a1dc8f9610ac607d",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "d403f74ee4e62a1f551afff7dabd0a0e854e3fdc19bfebd51ecb03089121e24f",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
    }
   }
  ],
- "measured_by": "42345200801",
+ "measured_by": "42609496466",
  "mutant": {
   "after": ";",
   "before": "SetEntry(ctx, layoutId, null, box);",
@@ -33,6 +33,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
  "verdict": "killed"
 }

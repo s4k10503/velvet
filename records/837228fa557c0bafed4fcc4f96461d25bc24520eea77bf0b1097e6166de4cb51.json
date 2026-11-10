@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 8 case(s) that ran the site: Given_ARingOfHalfAnEm_When_Settled_Then_TheBandIsTenPixelsWide",
+ "file": "66c9b8fc9b164fa08d561b56ad8d4f5c6d5bc2dae54a38e3b71bea8a471c4c55",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MeasuredLengthPanelTests.Given_ARingOfHalfAnEm_When_Settled_Then_TheBandIsTenPixelsWide",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MeasuredLengthPanelTests.cs": "52b3649208b556c50fab6d571faa44ca23569949ff67921bc70575b9ce750d3f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/RenderedTextProbe.cs": "1eb2072fc3aef248a139379b3ca65d395e5e267af058df5603edf70feaab20f8"
+   }
+  }
+ ],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": ";",
+  "before": "ApplySpec(binding, element);",
+  "column": 16,
+  "line": 407,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/RingOverlay.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

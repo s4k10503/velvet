@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "0811ca377b58ca499c22e02c872eeaecd5738c673a3b3cb2b885ddb9b1095ba6",
+ "killers": [],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 27,
+  "line": 242,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleBackdropClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

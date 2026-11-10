@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_TwoGradientsOfOneShape_When_HalfwayThere_Then_EachStopIsItsOwnMean",
+ "file": "575e060f3a368c0291e1d4decad21997f58e276e2f641c08d199df9029b4facc",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionPaintInterpolationTests.Given_TwoGradientsOfOneShape_When_HalfwayThere_Then_EachStopIsItsOwnMean",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPaintInterpolationTests.cs": "1405ec5dfbbef9b1bc592f0723e718d94f8057ddd512c7369384b5caec622149"
+   }
+  }
+ ],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 40,
+  "line": 111,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionPaintInterpolation.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

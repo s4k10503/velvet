@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 11 case(s) that ran the site: Given_AFresherSpinPhaseBesideADelayedBezierEnter_When_TheTickStartsWithoutPreRoll_Then_TheCachedLoopFrameStays",
+ "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionNegativeDelayTests.Given_AFresherSpinPhaseBesideADelayedBezierEnter_When_TheTickStartsWithoutPreRoll_Then_TheCachedLoopFrameStays",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionNegativeDelayTests.cs": "988a989210ff757309bd5f76e0dc9ca8a9a50b7bdccb76342bc9b19879e190c6",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 2021,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

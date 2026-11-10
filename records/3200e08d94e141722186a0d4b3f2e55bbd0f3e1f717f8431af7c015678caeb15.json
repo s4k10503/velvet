@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "fe9b28a9bb2e0507bda18a8954533ed8970f2e647b5d4b0ca3f436ee5c9e81f3",
+ "killers": [],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": ";",
+  "before": "_running.Add(controls);",
+  "column": 16,
+  "line": 256,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

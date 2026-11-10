@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 9 case(s) that ran the site: Given_AnOutlineWidthTheBrowserDropsBesideOutline_When_Extracted_Then_OutlinesWidthHolds",
+ "file": "e7884837bb3fc48791197b9a078149490299655c2c24c940b72c727a67b12eef",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BareNumberBracketTests.Given_AnOutlineWidthTheBrowserDropsBesideOutline_When_Extracted_Then_OutlinesWidthHolds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BareNumberBracketTests.cs": "97c32364aa0d10b96a7d7c44d3caa3a9d8f95eda7ff1004cc830b660f3c682bf"
+   }
+  }
+ ],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 36,
+  "line": 452,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}

@@ -2,7 +2,7 @@
  "detail": "EditMode survived; PlayMode: -",
  "file": "d1af8778622b04aa14f0f54465ef5d2c0d95e08c910d88aeac24462af2abe914",
  "killers": [],
- "measured_by": "41345847163",
+ "measured_by": "42609496466",
  "mutant": {
   "after": ";",
   "before": "DetachManipulator(element, _ctx.CompositeFlowManipulators);",
@@ -16,6 +16,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
  "verdict": "survived"
 }

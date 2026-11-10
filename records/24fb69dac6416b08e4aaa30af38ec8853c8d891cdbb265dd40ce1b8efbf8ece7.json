@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1b0695d54b5db602b91a9353f95430c3e256e00d69f6c2f3ff31b9c1e7c59062",
+ "killers": [],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 66,
+  "line": 318,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

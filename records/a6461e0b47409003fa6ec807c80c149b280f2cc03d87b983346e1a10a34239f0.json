@@ -1,0 +1,24 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "57ba6d8698d360f43822abb5ee56b9fd92da7d4a03734d5004dc224f9f50f369",
+ "killers": [],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 69,
+  "line": 95,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/SnappedBorderSheets.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "survived"
+}

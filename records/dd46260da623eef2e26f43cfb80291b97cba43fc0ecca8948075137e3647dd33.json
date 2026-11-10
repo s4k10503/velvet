@@ -1,0 +1,55 @@
+{
+ "detail": "EditMode: 4 failed among the 109 case(s) that ran the site: Given_AMountedQuery_When_GetObserversCountIsAsked_Then_ItCountsTheReader, Given_AMountedQuery_When_ItsEntryIsInvalidated_Then_ItsReaderIsToldBeforeTheCache, Given_AMountedQuery_When_TheQueryIsInvalidated_Then_ItIsInvalidated",
+ "file": "b262d14f32f7a9883b7e86bad22d30754e3d1359b9ed844d5e05f2af6f8a9d1e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_GetObserversCountIsAsked_Then_ItCountsTheReader",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "3e36cd320b4d68c4be9887b8651bca60e5e9ac07f51e13c417e5eed2d4f6e7bd",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_ItsEntryIsInvalidated_Then_ItsReaderIsToldBeforeTheCache",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "3e36cd320b4d68c4be9887b8651bca60e5e9ac07f51e13c417e5eed2d4f6e7bd",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_TheQueryIsInvalidated_Then_ItIsInvalidated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "3e36cd320b4d68c4be9887b8651bca60e5e9ac07f51e13c417e5eed2d4f6e7bd",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_TheQueryIsInvalidated_Then_NothingIsFetched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "3e36cd320b4d68c4be9887b8651bca60e5e9ac07f51e13c417e5eed2d4f6e7bd",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42609496466",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 28,
+  "line": 80,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/QueryFilters.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "verdict": "killed"
+}
