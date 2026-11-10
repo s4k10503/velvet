@@ -112,6 +112,63 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATransitionUtilityWhoseRulesANarrowingWritesInline_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere()
+        {
+            // Arrange
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.25f);
+
+            // Act
+            var fraction = QuarterSecondByRule("ease-in-out-test", element =>
+            {
+                StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+                MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
+            });
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AnEaseLayerUnderAMotionTweenNamingItsKeyword_When_AWidthTransitionRunsAQuarterSecond_Then_TheKeywordEasesIt()
+        {
+            // Arrange
+            var expected = UssEasing.Evaluate(EasingMode.EaseOut, 0.25f);
+
+            // Act
+            var fraction = QuarterSecondIn(EasingMode.EaseOut, element =>
+            {
+                StyleEaseCurve.SetLayer(element, s_curve, EasingMode.EaseOut);
+                MotionTweenTiming.Begin(element);
+                MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseOut) }, null);
+            });
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base retimes by the layer whatever wrote the keyword it left.
+        // Dropping `Adopt` from MotionTweenTiming.PlaysCurve leaves the Motion tween's list holding the slot after
+        // code writes over it, which reddens this case.
+        [Test]
+        public void Given_AnEaseLayerWhoseKeywordCodeWritesOverAMotionTweens_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTheCurveStandsThere()
+        {
+            // Arrange
+            var expected = StyleEaseCurve.Evaluate(s_curve, 0.25f);
+
+            // Act
+            var fraction = QuarterSecondIn(EasingMode.EaseOut, element =>
+            {
+                StyleEaseCurve.SetLayer(element, s_curve, EasingMode.EaseOut);
+                MotionTweenTiming.Begin(element);
+                MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseIn) }, null);
+                element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseOut) };
+            });
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
         public void Given_NoClassThatGivesATimingKeyword_When_ARuleResolvesEaseInOut_Then_ItEasesByTheKeyword()
         {
             // Arrange

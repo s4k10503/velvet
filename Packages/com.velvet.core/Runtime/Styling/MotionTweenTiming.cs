@@ -113,6 +113,13 @@ namespace Velvet
         internal static bool Playing(VisualElement element) =>
             s_holds.TryGetValue(element, out var hold) && hold.Plays.Count > 0;
 
+        internal static bool PlaysCurve(VisualElement element)
+        {
+            if (!s_holds.TryGetValue(element, out var hold)) return false;
+            Adopt(element.style, hold);
+            return hold.Plays.Exists(play => play.Curve != null);
+        }
+
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
 
         // A slot that differs from the value this class last wrote there is code's: it becomes the element's own, and

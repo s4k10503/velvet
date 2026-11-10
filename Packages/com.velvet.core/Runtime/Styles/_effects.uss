@@ -45,8 +45,8 @@
  * Listing `transform` would silently animate nothing.
  *
  * Each property utility bundles a default duration + curve (Tailwind ships
- * transition-duration/timing-function inside every transition-* utility) so the class works
- * standalone — UI Toolkit's initial transition-duration is 0s, which would otherwise snap.
+ * transition-duration/timing-function inside each utility setting a transition-property other than none) so the
+ * class works standalone — UI Toolkit's initial transition-duration is 0s, which would otherwise snap.
  * The default curve is the ease-in-out keyword, which Velvet runs along Tailwind's default,
  * cubic-bezier(0.4, 0, 0.2, 1) (StyleEaseCurve). The explicit .duration-* / .ease-* classes in _state_variants.uss are declared later and override.
  *

@@ -8,3 +8,9 @@
   them by UI Toolkit's own curve for the keyword the element resolves instead: half way through a
   `transition-colors`, a dashed divider's colour stood half way where Tailwind's curve stands at about 78%. A change
   back part way through is shortened by the curve it ran on.
+- An element whose classes give its transitions `ease-in`, `ease-out` or `ease-in-out`, and whose rules give them more
+  than one duration, delay or timing function, keeps Tailwind's curve while a Motion narrows its transitions around
+  the properties it drives. The timing lists the narrowing writes inline were read as the element's own, which left
+  those transitions on UI Toolkit's curve for the keyword.
+- A Motion's tween on an element carrying an `ease-[…]` class, or a theme's `ease-<name>`, now runs on the Motion's own
+  `Easing` where that is the keyword nearest the class's function. The class's function replaced it.
