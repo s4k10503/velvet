@@ -9,7 +9,7 @@ namespace Velvet.Tests
     /// the <see cref="MemoizationReportAttribute"/> the weaver leaves on each component method.
     /// <list type="bullet">
     /// <item>A run may write into an object it creates, from its first instruction on; a run that writes a static
-    /// field is declined.</item>
+    /// field is declined, unless the field is the one the C# compiler caches a static method group's delegate in.</item>
     /// <item>Each note is one entry of the report, with nothing ahead of the first.</item>
     /// </list>
     /// </summary>
@@ -50,8 +50,8 @@ namespace Velvet.Tests
             => V.Div("static", V.Text(s_last = name), V.Text(Convert.ToString(other)));
 
         // GREEN_ON_BASE(characterization): the base declines a run that writes a static field of the component's class.
-        // Reading `==` as `!=` where `IsLambdaCache` compares the declaring type's name with `<>c` takes the field
-        // for a lambda cache and caches the run.
+        // Reading `==` as `!=` where `ReactiveScopeVolatility.IsDelegateCache` compares the declaring type's name with
+        // `<>c` takes the field for a delegate cache and caches the run.
         [Test]
         public void Given_ARunThatWritesAStaticField_When_Compiled_Then_TheReportSaysItWritesAStatic()
         {
@@ -61,6 +61,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(declined, Is.True);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode Leaf() => V.Text("leaf");
+
+        [Component]
+        private static VNode BuildsAComponentFromAMethodGroup(int other)
+            => V.Div("group", V.Component(Leaf), V.Text(Convert.ToString(other)));
+
+        [Test]
+        public void Given_ARunThatBuildsAComponentFromAStaticMethodGroup_When_Compiled_Then_TheReportHoldsNoEntry()
+        {
+            // Act
+            var notes = ReportOf(nameof(BuildsAComponentFromAMethodGroup))?.Bailouts.Count;
+
+            // Assert
+            Assert.That(notes, Is.EqualTo(0));
         }
 
         [Component]

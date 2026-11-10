@@ -376,7 +376,9 @@ namespace Velvet.Tests
         [Component]
         private static VNode OtherRouteBody() => V.Label(text: "other");
 
-        [Component]
+        // Without the compiler the Outlet is reached with a new node on every render, so a render at the same
+        // location renders it again.
+        [Component(Compiler = false)]
         private static VNode RoutedApp(RouterLocation location)
             => Spine(location);
 

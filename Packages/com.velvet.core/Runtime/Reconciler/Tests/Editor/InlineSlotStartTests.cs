@@ -683,14 +683,16 @@ namespace Velvet.Tests
             return V.Label(name: "bomb", key: "bomb");
         }
 
-        [Component(IsErrorBoundary = true)]
+        // The compiler is left off this boundary and the host rendering it, so each of their renders reaches the
+        // component that throws with a new node, which is what renders it again.
+        [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode GuardRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "guard-fallback", key: "fallback"));
             return V.Component(BombRender, key: "bomb");
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode CatchingMoveHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
@@ -743,14 +745,16 @@ namespace Velvet.Tests
             return Rows("g", s_parkedRows);
         }
 
-        [Component(IsErrorBoundary = true)]
+        // The compiler is left off this boundary and the host rendering it, so each of their renders reaches the
+        // component that throws with a new node, which is what renders it again.
+        [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode ParkGuardRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "s-fallback", key: "fallback"));
             return V.Component(BombRender, key: "bomb");
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode ParkHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
@@ -919,7 +923,9 @@ namespace Velvet.Tests
             Assert.That(Names(_root.Q(name: "box")), Is.EqualTo("f0,f1,f2,tail0-1,tail1-1"));
         }
 
-        [Component(IsErrorBoundary = true)]
+        // The compiler is left off this boundary and the host rendering it, so each of their renders reaches the
+        // component that throws with a new node, which is what renders it again.
+        [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode SelfRenderingGuardRender()
         {
             var (_, setTick) = Hooks.UseState(0);
@@ -935,7 +941,7 @@ namespace Velvet.Tests
             return Rows("g", 3);
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode SelfCatchHostRender()
             => V.Div(name: "box", children: new VNode[]
             {
@@ -1862,7 +1868,9 @@ namespace Velvet.Tests
             return V.Label(name: "thrower", key: "thrower");
         }
 
-        [Component(IsErrorBoundary = true)]
+        // The compiler is left off this boundary and the host rendering it, so each of their renders reaches the
+        // component that throws with a new node, which is what renders it again.
+        [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode MidWalkGuardRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "g-fallback", key: "fallback"));
@@ -1879,7 +1887,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode MidWalkXRender() => V.Label(name: "x", key: "x");
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode MidWalkHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);

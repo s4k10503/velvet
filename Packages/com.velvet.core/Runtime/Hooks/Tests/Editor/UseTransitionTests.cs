@@ -1342,7 +1342,8 @@ namespace Velvet.Tests
         private static bool s_propSetterChildLastIsPending;
         private static int s_propSetterChildRenderCount;
 
-        [Component]
+        // Without the compiler the child is reached with a new node on every render, so the parent's commit renders it.
+        [Component(Compiler = false)]
         private static VNode PropSetterParentRender()
         {
             s_propSetterParentFiber = FiberAmbientStack.Current;

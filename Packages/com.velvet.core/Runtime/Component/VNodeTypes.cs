@@ -304,10 +304,9 @@ namespace Velvet
         /// <summary>
         /// Whether this component opted into the props-bail. <c>true</c> when the component method
         /// carries <c>[Component(Memoize = true)]</c>, or when the node was created via <c>V.Memoized</c>
-        /// (a custom <see cref="AreEqual"/> implies memoization). When <c>false</c> the component re-renders
-        /// on every parent re-render regardless of props equality: only an opted-in
-        /// component bails on shallow-equal props; a plain component always re-renders when its parent does.
-        /// The reconcile-boundary bail in <c>ComponentRegistry</c> is gated on
+        /// (a custom <see cref="AreEqual"/> implies memoization). When <c>false</c> props equality is not
+        /// consulted: a parent re-render renders the component again unless it hands back the node the component
+        /// last rendered from and the component has no work pending. The reconcile-boundary props bail in <c>ComponentRegistry</c> is gated on
         /// <c>Memoize || AreEqual != null</c>.
         /// </summary>
         internal bool Memoize { get; init; }

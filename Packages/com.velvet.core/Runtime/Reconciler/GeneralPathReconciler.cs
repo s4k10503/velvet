@@ -1142,17 +1142,8 @@ namespace Velvet
                 walk.NewFibers.Add(fiber);
                 fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
-                var enclosingInBailedOutput = _ctx.InBailedOutput;
-                _ctx.InBailedOutput = RendersNothingHere(walk, reusedAsIs);
-                try
-                {
-                    if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
-                    else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
-                }
-                finally
-                {
-                    _ctx.InBailedOutput = enclosingInBailedOutput;
-                }
+                if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
+                else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else

@@ -441,7 +441,8 @@ namespace Velvet.Tests
             });
         }
 
-        [Component]
+        // Without the compiler the sibling is reached with a new node on every render, which is what lets a parent render reach it.
+        [Component(Compiler = false)]
         private static VNode MixedChildrenParentRender()
         {
             var (value, setValue) = Hooks.UseState("initial");

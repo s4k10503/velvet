@@ -14,8 +14,9 @@ namespace Velvet.Tests
     /// opt-in memoization gates the props-equality bail.
     /// <list type="bullet">
     /// <item>A matched route Component renders exactly once on the initial Outlet mount.</item>
-    /// <item>A plain (non-memo) route Component re-renders exactly once per location-invariant, slot-stable
-    /// Outlet reconcile: the churn is bounded to one render per reconcile and never compounds.</item>
+    /// <item>A plain (non-memo) route Component is not rendered again by a location-invariant, slot-stable Outlet
+    /// reconcile: the Outlet hands it the node the route table holds, which is the one it last rendered from, as
+    /// React Router hands a route's element over again.</item>
     /// <item>A memoized (<c>Memoize = true</c>) route Component with shallow-equal props bails the re-render of
     /// a preserved fiber on a location-invariant, slot-stable Outlet reconcile.</item>
     /// <item>Memoization bails a preserved fiber's re-render, not a mount: when a slot shift remounts the route
@@ -23,9 +24,7 @@ namespace Velvet.Tests
     /// </list>
     /// </summary>
     /// <remarks>
-    /// The matched route Component is a child of the Outlet's own fiber. A non-memo Component re-renders
-    /// whenever its parent does, so each Outlet reconcile renders the route once; a memoized Component bails
-    /// on shallow-equal props. The slot-stable layout (<c>LayoutWithOutletRender</c>) keeps the Outlet at the
+    /// The matched route Component is a child of the Outlet's own fiber. The slot-stable layout (<c>LayoutWithOutletRender</c>) keeps the Outlet at the
     /// same position so its fiber and the route's are preserved, while the slot-shifting layout
     /// (<c>LayoutWithShiftingOutletRender</c>) drops the leading sibling so the unkeyed position mismatch
     /// remounts the Outlet's fiber and the route's with it.
@@ -151,10 +150,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_NonMemoRoute_When_LocationInvariantReconcile_Then_ReRendersExactlyOnce()
+        public void Given_NonMemoRoute_When_LocationInvariantReconcile_Then_ItDoesNotRenderAgain()
         {
-            // The slot-stable layout keeps the Outlet at the same position, so the route fiber is preserved;
-            // a non-memo Component re-renders once per reconcile of its parent.
+            // The slot-stable layout keeps the Outlet at the same position, so the route fiber is preserved.
             // Arrange
             var router = BuildRouterFor(NonMemoRouteRender);
             using var mounted = MountLayoutWithRouter(router, LayoutWithOutletRender);
@@ -165,28 +163,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(s_nonMemoRouteRenderCount, Is.EqualTo(2),
-                "A non-memo route Component re-renders once per location-invariant Outlet reconcile");
-        }
-
-        [Test]
-        public void Given_NonMemoRoute_When_SecondLocationInvariantReconcile_Then_ChurnStaysBounded()
-        {
-            // Each subsequent location-invariant reconcile adds exactly one render; the churn does not compound.
-            // Arrange
-            var router = BuildRouterFor(NonMemoRouteRender);
-            using var mounted = MountLayoutWithRouter(router, LayoutWithOutletRender);
-            s_layoutSetTick!.Invoke(1);
-            mounted.FlushStateForTest();
-            Assume.That(s_nonMemoRouteRenderCount, Is.EqualTo(2), "Precondition: one reconcile added one render");
-
-            // Act
-            s_layoutSetTick!.Invoke(2);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(s_nonMemoRouteRenderCount, Is.EqualTo(3),
-                "A second reconcile adds exactly one more render (bounded, non-compounding churn)");
+            Assert.That(s_nonMemoRouteRenderCount, Is.EqualTo(1),
+                "A non-memo route Component handed the node it last rendered from is not rendered again");
         }
 
         [Test]

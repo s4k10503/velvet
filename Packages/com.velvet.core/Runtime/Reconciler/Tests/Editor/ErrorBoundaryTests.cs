@@ -841,14 +841,16 @@ namespace Velvet.Tests
                 : null);
         }
 
-        [Component(IsErrorBoundary = true)]
+        // This boundary and the hosts below leave the compiler off, so each of their renders reaches the thrower
+        // with a new node, which is what renders it again.
+        [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode MovedBoundaryRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "moved-fallback", text: "caught"));
             return V.Component(MovedThrowerRender, key: "thrower");
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode ReorderHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
@@ -866,7 +868,7 @@ namespace Velvet.Tests
                 });
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode GrowHostRender()
         {
             var (leading, setGrow) = Hooks.UseState(1);
@@ -874,7 +876,7 @@ namespace Velvet.Tests
             return LeadingRowsBefore(leading);
         }
 
-        [Component]
+        [Component(Compiler = false)]
         private static VNode ShrinkHostRender()
         {
             var (leading, setLeading) = Hooks.UseState(3);

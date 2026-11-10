@@ -171,11 +171,9 @@ namespace Velvet
             existingFiber.Body = node.Body;
             existingFiber.SourceNode = node;
             existingFiber.SourceTree = _ctx.CurrentFiberTree;
-            // Only a memoized component bails a parent-driven re-render on
-            // shallow-equal props. A plain component re-renders whenever its parent does, so the
-            // props-equality bail is gated on opt-in memoization. Memoization is opted into either by
-            // [Component(Memoize = true)] (node.Memoize) or by V.Memo (custom areEqual, node.AreEqual).
-            // When NOT memoized, props are treated as changed so the component always re-renders.
+            // Only a memoized component bails a parent-driven re-render on shallow-equal props. Memoization is
+            // opted into either by [Component(Memoize = true)] (node.Memoize) or by V.Memo (custom areEqual,
+            // node.AreEqual).
             bool isMemoized = node.Memoize || node.AreEqual != null;
             bool propsChanged;
             if (isMemoized)
@@ -187,11 +185,10 @@ namespace Velvet
             }
             else
             {
-                // Non-memo component: the props bail never applies, so a parent re-render re-renders it, except
-                // inside the committed output of a fiber that rendered nothing in this pass: there the node is
-                // the instance the fiber last rendered from, which the parent did not produce again, and only a
-                // pending update renders it. Props are still synced below for the next render.
-                propsChanged = !(_ctx.InBailedOutput && renderedFromThisNode);
+                // A plain component bails only when reached with the node it last rendered from, as React bails an
+                // element whose props object is the one it last rendered with — a node the parent's compiler cache
+                // returned, say, or one in the committed output of a fiber that rendered nothing in this pass.
+                propsChanged = !(renderedFromThisNode && HasNothingPending(existingFiber));
             }
             if (propsChanged)
             {
@@ -248,6 +245,15 @@ namespace Velvet
             }
             return existingFiber;
         }
+
+        // React bails an element it is handed again only where the fiber has no work pending. IsDirty and RenderOwed
+        // are read beside the bail; this adds a pass of its own that suspended, a reconcile parked partway and a read
+        // still waiting, on which SuspendWithoutBoundaryTests, InlineSlotStartTests and SuspenseHiddenPrimaryTests
+        // each hold a case that fails when such a fiber bails.
+        private static bool HasNothingPending(ComponentFiber fiber)
+            => fiber.SuspendedOn == null
+                && fiber.Reconciler?.HasPendingWork != true
+                && !ComponentBoundarySearch.HasPendingAsyncSlot(fiber);
 
         private ComponentFiber CreateAndMountFiber(ComponentNode node, object identity, in FiberMountSite site)
         {
@@ -310,8 +316,7 @@ namespace Velvet
         // Props-bail comparison, reached only for memoized nodes (see ReconcileExistingFiber's isMemoized gate).
         // With a custom areEqual predicate (V.Memo(component, props, areEqual)) the predicate decides equality;
         // otherwise ComponentPropsComparer decides. Both-null props (a memoized props-less
-        // overload) are trivially equal, so such a component bails unless dirty. Non-memo components never reach
-        // here: their props are unconditionally treated as changed so a parent re-render re-renders the child.
+        // overload) are trivially equal, so such a component bails unless dirty.
         private static bool PropsEqual(object? prev, object? next, Func<object?, object?, bool>? areEqual)
         {
             if (areEqual != null)
