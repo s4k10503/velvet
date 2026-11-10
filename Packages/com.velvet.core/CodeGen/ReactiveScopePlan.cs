@@ -38,8 +38,8 @@ namespace Velvet.CodeGen
 
         // A value is cached where code that is itself cached reads it as a whole: that code would otherwise be keyed on
         // an object rebuilt on every render. The values arrive in the order of their stores, and the last is settled
-        // first: a value that is kept makes the values it reads worth keeping, and those are stored before it. A scope
-        // inside the value's own run reads what the local held before that run, so it is no reader of the value.
+        // first: a value that is kept makes the values it reads worth keeping, and those are stored before it. Nothing
+        // inside the value's own run can observe the store at the run's end, so a scope there is no reader of the value.
         private static void KeepValues(List<ScopeRegion> values, List<ScopeRegion> kept)
         {
             for (var i = values.Count - 1; i >= 0; i--)
