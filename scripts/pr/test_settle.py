@@ -2521,8 +2521,9 @@ class HolderStateTests(unittest.TestCase):
         # Arrange — the head is a commit on top of the worktree's, so every commit in it is in the
         # head and removing it loses none of them.
         def descendant(root):
-            return subprocess.run(["git", "-C", str(root), "commit-tree", "topic^{tree}", "-p",
-                                   "topic", "-m", "later"], capture_output=True, text=True,
+            return subprocess.run(["git", "-C", str(root), "-c", "user.email=t@example.com", "-c",
+                                   "user.name=t", "commit-tree", "topic^{tree}", "-p", "topic",
+                                   "-m", "later"], capture_output=True, text=True,
                                   check=True).stdout.strip()
 
         # Act / Assert
