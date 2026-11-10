@@ -387,6 +387,18 @@ namespace Velvet.Tests
                 Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps an important inset-ring colour over a later plain one.
+        [Test]
+        public void Given_AnImportantInsetRingColourBeforeAPlainOne_When_Extracted_Then_TheImportantColourHolds()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(
+                new[] { "inset-ring", "!inset-ring-red-500", "inset-ring-blue-500" }, out var spec);
+
+            // Assert
+            Assert.That(found ? Colours(spec) : "none", Is.EqualTo("FB2C36FF"));
+        }
+
         [Test]
         public void Given_AnInsetShadowAnInsetRingAndAShadow_When_Extracted_Then_TheyAreListedInThatOrder()
         {

@@ -914,6 +914,76 @@ namespace Velvet.Tests
             Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base reads a sheet's initial border width as no border.
+        [Test]
+        public void Given_ALabelWhoseClassRuleSetsAnInitialBorderWidth_When_Resolved_Then_ItIsNotMarked()
+        {
+            // Act
+            var tag = MountLabel("pf-initial text-red-500");
+
+            // Assert
+            Assert.That(tag.ClassListContains(ColorReferenceWatch.MarkerClass), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets the colour it wrote once its class is given up.
+        [Test]
+        public void Given_ABorderColourClassGivenUp_When_CodeWritesTheSameColourInlineAndTheTextColourChanges_Then_TheInlineColourStands()
+        {
+            // Arrange — the class's colour is written inline, and cleared when the class goes.
+            var tag = MountSwitchable("border border-blue-500 text-red-500");
+            var written = tag.style.borderTopColor.value;
+            tag = Patch("border text-red-500");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(written);
+            ForcePanelUpdate(tag.panel);
+            tag.style.color = new StyleColor(Color.green);
+            ForcePanelUpdate(tag.panel);
+
+            // Assert
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.EqualTo(written));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets a border colour transition run once its preflight has landed.
+        [Test]
+        public void Given_ABorderedLabelWithAColourTransitionWhoseInlineBorderColourCodeClears_When_Settled_Then_TheBorderTransitionsBack()
+        {
+            // Arrange — the inline colour is shown whole before it is cleared.
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border transition-colors duration-1000 text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            Settled("tag");
+            now += 2.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(tag.panel);
+            Settled("tag");
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            now += 0.1;
+            EditorPanelTestHelpers.DriveSchedulerOnce(tag.panel);
+            Settled("tag");
+
+            // Assert — the colour preflight shows again is one the element has shown, so it is reached by a transition.
+            Assert.That(tag.resolvedStyle.borderTopColor, Is.Not.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a shadow face the sheet colour its preflight lets go to.
+        [Test]
+        public void Given_AShadowedLabelWhoseBorderClassGoes_When_ADefaultStylesheetStillGivesItABorder_Then_TheFaceTakesThatSheetsColour()
+        {
+            // Arrange
+            MountSwitchable("w-[40px] h-[40px] border pf-theme pf-theme-width shadow-md text-red-500");
+
+            // Act
+            var tag = Patch("w-[40px] h-[40px] pf-theme pf-theme-width shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert
+            Assert.That(face, Is.EqualTo(new Color(1f, 0f, 1f, 1f)));
+        }
+
         [Test]
         public void Given_ALabelListeningForARuleWidth_When_CodeWritesABorderWidthInline_Then_ItsBorderIsTheTextColour()
         {

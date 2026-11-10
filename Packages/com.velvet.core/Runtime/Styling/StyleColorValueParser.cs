@@ -362,6 +362,7 @@ namespace Velvet
                 return false;
             }
             var colour = token.Substring(start, slash - start);
+            // MUTANT_SURVIVES(equivalent, boundary): this arm is taken only where colour opens with '[', so var( never starts at index 0 and `> 0` accepts the same set.
             return colour[0] == '['
                 ? colour.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
                 : colour != "transparent" && VelvetPalette.TryResolveColorToken(colour, out _);

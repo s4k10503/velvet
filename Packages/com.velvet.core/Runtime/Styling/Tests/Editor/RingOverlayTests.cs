@@ -1096,6 +1096,33 @@ namespace Velvet.Tests
             Assert.That(ChildOrder(card), Is.EqualTo("band,late"));
         }
 
+        private static StateUpdater<bool> s_setInset;
+
+        [Component]
+        private static VNode RenderTurningInset()
+        {
+            var (inset, setInset) = Hooks.UseState(false);
+            s_setInset = setInset;
+            return V.Div(name: "card", className: inset ? "w-[100px] h-[40px] ring-2 ring-inset" : "w-[100px] h-[40px] ring-2");
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears an outset ring band's height when it turns inset.
+        [Test]
+        public void Given_AnOutsetRingLaidOut_When_ItTurnsInset_Then_ItsBandIsTheElementsHeight()
+        {
+            // Arrange — outset, the ring band was sized 44px tall, two pixels past each edge of the 40px box.
+            var card = MountCard(V.Component(RenderTurningInset));
+
+            // Act
+            s_setInset.Invoke(true);
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card).RingElement.resolvedStyle.height, Is.EqualTo(40f));
+        }
+
         [Test]
         public void Given_AnInsetRingOnABorderedElement_When_LaidOut_Then_TheBandCoversThePaddingBox()
         {

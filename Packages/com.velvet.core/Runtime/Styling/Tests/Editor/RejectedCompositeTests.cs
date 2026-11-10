@@ -315,5 +315,40 @@ namespace Velvet.Tests
             Assert.That(ringDiscarded ? root.Q("box").style.filter.value?.Count ?? 0 : -1, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Given_ABracketOpeningOnAParenthesis_When_Composed_Then_TheFamilyDrawsNothing()
+        {
+            // Arrange — `(2)` is no function and no number, so brightness((2)) is a declaration the browser rejects.
+            const string classes = "blur-sm brightness-[(2)]";
+
+            // Act
+            var composed = Composed(classes);
+
+            // Assert
+            Assert.That(composed, Is.EqualTo("- - 0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no utility of a negated filter, which Tailwind does not negate.
+        [Test]
+        public void Given_ANegatedFilterThatTailwindDoesNotNegate_When_ReadForRejection_Then_NothingIsRejected()
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected("-blur-[4px]", out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no value out of a bracket left unclosed.
+        [Test]
+        public void Given_AnUnclosedFilterBracket_When_ReadForRejection_Then_NothingIsRejected()
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected("blur-[4px", out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
     }
 }

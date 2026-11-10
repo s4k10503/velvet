@@ -875,8 +875,6 @@ namespace Velvet
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
                 var target = pending.Target ?? element;
-                // MUTANT_SURVIVES(equivalent): a callback left registered finds its element's wait gone, or finds
-                // the wait that replaced it, which that wait's own callback settles on the same event.
                 target.UnregisterCallback(pending.Callback);
             }
         }

@@ -25,6 +25,17 @@ namespace Velvet.Tests
     {
         #region Parse
 
+        // GREEN_ON_BASE(characterization): the base reads no divide axis out of a bracket whose type hint holds no value.
+        [Test]
+        public void Given_ADivideWidthWithAnEmptyTypeHintValue_When_Extracted_Then_NoDivideIsRead()
+        {
+            // Act — Tailwind generates nothing for a hint with no value after it.
+            var ok = StyleDivideClass.TryExtract(new[] { "divide-x-[length:]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         [Test]
         public void Given_DivideX_When_Extracted_Then_HorizontalOnePixel()
         {

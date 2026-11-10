@@ -26,6 +26,17 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.EqualTo(expected));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes an order bracket reading a custom property as an order utility.
+        [Test]
+        public void Given_AnOrderBracketReadingACustomProperty_When_Parsed_Then_ItIsAnOrderUtility()
+        {
+            // Act — its value is the custom property's, read on the element rather than here.
+            var parsed = StyleOrderClass.TryParse("order-[var(--n)]", out _);
+
+            // Assert
+            Assert.That(parsed, Is.True);
+        }
+
         [TestCase("order-03")]
         [TestCase("order-1.5")]
         [TestCase("-order-first")]

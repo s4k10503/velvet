@@ -291,6 +291,7 @@ namespace Velvet
             {
                 // Keep the face stash synced with this patch's styling (the shared inline bg/border slot is also
                 // written by the arbitrary-value resolver).
+                // MUTANT_SURVIVES(equivalent, literal): classesChanged gates only a MarkDirtyRepaint inside SyncOnPatch, and this method marks the element dirty below whatever it passes.
                 binding.Face.SyncOnPatch(element, classesChanged: true);
             }
 

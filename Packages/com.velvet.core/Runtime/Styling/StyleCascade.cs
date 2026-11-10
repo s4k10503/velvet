@@ -293,6 +293,7 @@ namespace Velvet
 #if !ENABLE_IL2CPP
             if (s_compiledLayer is { } layer) return layer(element);
 #endif
+            // MUTANT_SURVIVES(unreachable, equality): in the Mono editor CI's suites run in, the background layer reader compiles (Given_TheEditor_When_StyleCascadeLoads_Then_TheBackgroundLayerReaderIsCompiled) and BackgroundOf returns through it above, so this arm runs only under IL2CPP.
             if (s_backgroundImage == null || s_backgroundPositionX == null || s_backgroundPositionY == null
                 || s_backgroundRepeat == null || s_backgroundSize == null || Of(element) is not { } style)
             {

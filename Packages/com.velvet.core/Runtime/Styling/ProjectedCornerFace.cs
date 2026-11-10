@@ -539,6 +539,7 @@ namespace Velvet
             {
                 var next = (state.ClipIndex + 1) % 2;
                 var baked = state.ClipImages[next] ??= ScriptableObject.CreateInstance<VectorImage>();
+                // MUTANT_SURVIVES(equivalent, line removed): the name labels the baked asset, and nothing in Velvet reads a VectorImage's name.
                 baked.name = "VelvetProjectedCornerClip";
                 using (var painter = new Painter2D())
                 {

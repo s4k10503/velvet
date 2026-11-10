@@ -120,7 +120,7 @@ namespace Velvet
                 return AcceptsMath(function, StyleLengthExpression.TypeOf(value.AsSpan()));
             }
             // A var() or another function this does not read may come to anything.
-            if (value.IndexOf('(') >= 0)
+            if (value.IndexOf('(') > 0)
             {
                 return true;
             }

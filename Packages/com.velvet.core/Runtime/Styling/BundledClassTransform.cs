@@ -164,6 +164,7 @@ namespace Velvet
                     rotateAt = at;
                     if (!TryRotateOf(cls, out declared.Rotate)) unread |= RotateBit;
                 }
+                // MUTANT_SURVIVES(equivalent, boundary): `at` equals originAt only where one class name is read twice, since the generated table gives every class its own position, and TryOriginOf reads the name alone, so a second read writes the same origin and the same unread bit.
                 if (rule.Properties.Contains(StyleLonghand.TransformOrigin) && at > originAt)
                 {
                     originAt = at;

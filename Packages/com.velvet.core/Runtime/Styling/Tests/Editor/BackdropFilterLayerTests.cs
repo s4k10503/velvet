@@ -420,6 +420,22 @@ namespace Velvet.Tests
                 Is.EqualTo((4, 3, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base places a backdrop layer against its host's padding box.
+        [Test]
+        public void Given_ABackdropElementUnderAHostsTopBorder_When_Mounted_Then_ItsLayerTopResolvesAgainstThePaddingBox()
+        {
+            // Arrange — the margin keeps the expected top off zero, which is where a layer placed before layout sits.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "host", className: "w-[100px] h-[100px] border-t-[6px]",
+                children: new VNode[] { V.Div(name: "glass", className: "w-[40px] h-[40px] mt-[10px] backdrop-blur-sm") }));
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+
+            // Act
+            ForcePanelUpdate(glass.panel);
+
+            // Assert
+            Assert.That(LayerBefore(glass).style.top.value.value, Is.EqualTo(glass.layout.y - 6f).Within(1e-3f));
+        }
+
         [Test]
         public void Given_AHoverBackdropVariant_When_ThePointerIsOver_Then_TheLayerIsHosted()
         {

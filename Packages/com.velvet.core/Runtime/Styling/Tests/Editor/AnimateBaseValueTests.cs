@@ -338,6 +338,26 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.value.y.value, Is.EqualTo(20f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): a loop's first frame lifts from the translation already written, which the base seeds.
+        [Test]
+        public void Given_ABounceAttachedOverATranslation_When_ASpringWritesTheTranslateFirst_Then_TheLiftIsFromThatTranslation()
+        {
+            // Arrange — a 1000 s loop stays at its first keyframe, a quarter of the 40px height up.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: "w-[40px] h-[40px] bg-red-500 translate-y-[40px]", name: "card"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var element = _window.rootVisualElement[0];
+            _attachedTo = element;
+            _attached = StyleAnimateDriver.Attach(element, new AnimateSpec(AnimateMode.Bounce, 1000f), panVertical: false);
+            var slide = MotionSpringDriver.Create(
+                MotionSpringClassParser.Resolve(new[] { "translate-x-0" }, new[] { "translate-x-4" }), 100f, 20f, 1f)!;
+
+            // Act
+            MotionSpringDriver.ApplyCurrentValues(element, slide);
+
+            // Assert
+            Assert.That(element.style.translate.value.y.value, Is.EqualTo(30f).Within(0.5f));
+        }
+
         [Test]
         public void Given_APulseUnderACrossfadeThatDrawsTheElement_When_ItsFrameIsWritten_Then_TheCrossfadesFrameIsNotItsOwn()
         {
