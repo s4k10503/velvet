@@ -7,7 +7,8 @@ namespace Velvet.Editor
 {
     /// <summary>
     /// Rewrites the custom properties of a USS file that UI Toolkit's importer cannot hold: a value with a unit
-    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) fails the whole sheet, one with a CSS math function,
+    /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …) or, in most values, a delimiter (the <c>/</c> of
+    /// <c>16 / 9</c>) fails the whole sheet, one with a CSS math function,
     /// <c>cubic-bezier()</c> or <c>steps()</c> is dropped, and one with a number its lexer reads otherwise than CSS
     /// does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>). Such a value becomes a quoted
     /// string of its own text, which the importer stores as written and the theme readers take back as CSS
@@ -216,16 +217,16 @@ namespace Velvet.Editor
             return " !important";
         }
 
-        // Whether the importer would fail, drop or split value: a number its lexer reads otherwise than CSS does or with
-        // a unit it does not keep, or a math function. A value holding a quote or a backslash is left as written, so a
-        // unit in it still fails the importer.
+        // Whether the importer would fail, drop or split value: a token it rejects or drops, a number its lexer reads
+        // otherwise than CSS does or with a unit it does not keep, or a math function. A value holding a quote or a
+        // backslash is left as written, so such a token in it still fails the importer.
         internal static bool NeedsQuoting(string value)
         {
             if (value.IndexOfAny(new[] { '"', '\'', '\\' }) >= 0)
             {
                 return false;
             }
-            return TailwindMathSpacing.HasMathFunction(value) || HasEasingFunction(value) || HasMisreadNumber(value);
+            return TailwindMathSpacing.HasMathFunction(value) || HasEasingFunction(value) || HasUnheldToken(value);
         }
 
         // cubic-bezier() and steps(), which the importer drops from a custom property as it does a math function.
@@ -243,49 +244,95 @@ namespace Velvet.Editor
             return at >= 0;
         }
 
-        private static bool HasMisreadNumber(string value)
+        // Reads value token by token as UI Toolkit's lexer does, and answers whether one is a token the importer fails
+        // the sheet on or drops: a delimiter, a bracket no function name opens, a colon, a number it misreads, or a
+        // full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere. A value of
+        // identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all the same.
+        // What resource() encloses is left unread, as the importer takes it as a path whatever it holds.
+        // UssValueImportTests holds each of those. What url() encloses is left unread too.
+        private static bool HasUnheldToken(string value)
         {
+            var functions = 0;
             var i = 0;
             while (i < value.Length)
             {
-                if (StartsIdentifier(value, i))
+                var c = value[i];
+                if (char.IsWhiteSpace(c) || c == ',')
+                {
+                    i++;
+                }
+                else if (c == '#' || StartsIdentifier(value, i))
                 {
                     // An identifier, a function name or a hex colour: digits inside it are no number.
-                    i++;
-                    while (i < value.Length && IsIdentChar(value[i]))
+                    var start = i;
+                    i = NameEnd(value, i + 1);
+                    if (i < value.Length && value[i] == '(')
                     {
-                        i++;
+                        if (EnclosesAPath(value.Substring(start, i - start)))
+                        {
+                            var close = value.IndexOf(')', i);
+                            i = close < 0 ? value.Length : close + 1;
+                        }
+                        else
+                        {
+                            functions++;
+                            i++;
+                        }
                     }
                 }
                 else if (StartsNumber(value, i))
                 {
+                    if (value[i] is '+' or '-')
+                    {
+                        i++;
+                    }
                     if (MisreadsNumber(value, ref i))
                     {
                         return true;
                     }
                 }
+                else if (c == ')' && functions > 0)
+                {
+                    functions--;
+                    i++;
+                }
                 else
                 {
-                    i++;
+                    return true;
                 }
             }
             return false;
         }
+
+        private static bool EnclosesAPath(string name)
+            => string.Equals(name, "url", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "resource", StringComparison.Ordinal);
 
         private static bool StartsIdentifier(string value, int i)
         {
             var c = value[i];
             if (c == '-')
             {
-                return i + 1 < value.Length && (char.IsLetter(value[i + 1]) || value[i + 1] is '-' or '_');
+                return i + 1 < value.Length && IsNameStart(value[i + 1]);
             }
-            return c == '#' || c == '_' || char.IsLetter(c) || c > 127;
+            return IsNameStart(c);
         }
 
-        // A sign is not read: the lexer reads the number it would open as it reads the one after it.
+        private static int NameEnd(string value, int i)
+        {
+            while (i < value.Length && IsIdentChar(value[i]))
+            {
+                i++;
+            }
+            return i;
+        }
+
         private static bool StartsNumber(string value, int i)
         {
-            if (value[i] == '.')
+            if (value[i] is '+' or '-')
+            {
+                i++;
+            }
+            if (i < value.Length && value[i] == '.')
             {
                 i++;
             }
@@ -293,23 +340,23 @@ namespace Velvet.Editor
         }
 
         // Reads the number at i as UI Toolkit's lexer does, moving i past it, and answers whether that reading is not
-        // CSS's or its unit is not one the importer keeps. The lexer reads no exponent, drops a full stop no digit
-        // follows where the number has no fraction yet, starts a unit at a `-`, a `_` or a non-ASCII character as well
-        // as at an ASCII letter, and ends one at its first character that is not an ASCII letter, where CSS reads on
-        // through digits, `-`, `_` and non-ASCII characters. UssNumberImportTests holds each of those.
+        // CSS's or its unit is not one the importer keeps. The lexer reads no exponent, starts a unit at a `-`, a `_`
+        // or a non-ASCII character as well as at an ASCII letter, and ends one at its first character that is not an
+        // ASCII letter, where CSS reads on through digits, `-`, `_` and non-ASCII characters. UssValueImportTests
+        // holds each of those.
         private static bool MisreadsNumber(string value, ref int i)
         {
-            var fraction = value[i] == '.';
-            i = DigitsEnd(value, fraction ? i + 1 : i);
-            if (!fraction && i < value.Length && value[i] == '.')
+            i = DigitsEnd(value, i);
+            if (i + 1 < value.Length && value[i] == '.' && IsDigit(value[i + 1]))
             {
-                if (i + 1 == value.Length || !IsDigit(value[i + 1]))
-                {
-                    return true;
-                }
                 i = DigitsEnd(value, i + 1);
             }
-            if (i == value.Length || !StartsUnit(value[i]))
+            if (i < value.Length && value[i] == '%')
+            {
+                i++;
+                return false;
+            }
+            if (i == value.Length || !IsNameStart(value[i]))
             {
                 return false;
             }
@@ -334,6 +381,6 @@ namespace Velvet.Editor
 
         private static bool IsAsciiLetter(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
 
-        private static bool StartsUnit(char c) => IsAsciiLetter(c) || c is '-' or '_' || c > 127;
+        private static bool IsNameStart(char c) => IsAsciiLetter(c) || c is '-' or '_' || c > 127;
     }
 }

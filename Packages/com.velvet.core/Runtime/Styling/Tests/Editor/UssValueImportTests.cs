@@ -8,10 +8,10 @@ using Velvet.Editor;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins how UI Toolkit's own importer reads a number in a custom property, which UssCustomPropertyText reads the
+    /// Pins how UI Toolkit's own importer reads the tokens of a custom property, which UssCustomPropertyText reads the
     /// same way to decide what it quotes.
     /// </summary>
-    internal sealed class UssNumberImportTests
+    internal sealed class UssValueImportTests
     {
         private const string Name = "--x";
 
@@ -87,8 +87,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a number is an engine fact the base meets too.
-        // The readings of UssCustomPropertyText.MisreadsNumber that split the value: a full stop no digit follows is
-        // dropped after an integer, signed or not, and a unit ends at its first character that is not an ASCII letter.
+        // The splits UssCustomPropertyText quotes for: a full stop no digit follows is dropped after an integer, signed
+        // or not, and a unit ends at its first character that is not an ASCII letter.
         [TestCase("3.px", "3 px")]
         [TestCase("-3.px", "-3 px")]
         [TestCase("1px_a", "1px _a")]
@@ -101,6 +101,66 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // The tokens UssCustomPropertyText.HasUnheldToken takes for ones that fail the sheet: a delimiter, at the top
+        // level or among a function's arguments, and a bracket no function name opens.
+        [TestCase("16 / 9")]
+        [TestCase(".5.p")]
+        [TestCase("3.5.p")]
+        [TestCase("4px -")]
+        [TestCase("a !b")]
+        [TestCase("var(--a, 1 / 2)")]
+        [TestCase("(1)")]
+        public void Given_ATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
+        {
+            // Arrange
+            // Act
+            var failed = FailsTheSheet(value);
+
+            // Assert
+            Assert.That(failed, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText.HasUnheldToken quotes such a value all the same.
+        [Test]
+        public void Given_IdentifiersAndDelimitersAlone_When_TheStockImporterReadsTheRawSheet_Then_ItStoresThemAsOneString()
+        {
+            // Arrange
+            // Act
+            var stored = StoredText("a.b");
+
+            // Assert
+            Assert.That(stored, Is.EqualTo("a.b"));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText.HasUnheldToken quotes a colon because the importer drops it.
+        [Test]
+        public void Given_AColon_When_TheStockImporterReadsTheRawSheet_Then_ItStoresTheTokensAroundIt()
+        {
+            // Arrange
+            // Act
+            var stored = StoredText("a:b");
+
+            // Assert
+            Assert.That(stored, Is.EqualTo("a b"));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
+        // UssCustomPropertyText.HasUnheldToken leaves what resource() encloses unread because the importer stores it
+        // as the path whatever delimiters it holds.
+        [Test]
+        public void Given_AResourcePathHoldingDelimiters_When_TheStockImporterReadsTheRawSheet_Then_ItStoresThePath()
+        {
+            // Arrange
+            // Act
+            var stored = StoredText("resource(a/b.png)");
+
+            // Assert
+            Assert.That(stored, Is.EqualTo("resource(\"a/b.png\")"));
         }
     }
 }

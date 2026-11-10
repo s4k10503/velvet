@@ -42,6 +42,9 @@ namespace Velvet.Tests
         [TestCase("/* :root { --spacing: 1rem; } */ .a { color: red; }")]
         [TestCase(".a { background-image: url(\"b.png?--x:1rem;\"); }")]
         [TestCase(".a { background-image: url(--x:1rem); }")]
+        [TestCase(":root { --bg: resource(a/b.png); --img: url(a/b.png); }")]
+        [TestCase(":root { --a: +1; --b: -.5; --c: rgba(0, 0, 0, .5); }")]
+        [TestCase(":root { --f: _a \u00e9; }")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -85,9 +88,6 @@ namespace Velvet.Tests
         [TestCase("\"abc")]
         [TestCase(".a{--x")]
         [TestCase(".a { --x ")]
-        [TestCase(":root { --x: 4px -; }")]
-        [TestCase(":root { --x: 4px +; }")]
-        [TestCase(":root { --x: 4px .; }")]
         [TestCase(":root { --x: 4; }")]
         [TestCase(":root { --x: 4.5; }")]
         public void Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
@@ -104,7 +104,6 @@ namespace Velvet.Tests
         [TestCase(".a { --x\u007f: 1rem; }")]
         [TestCase(":root { --x: \"a\" 1rem; }")]
         [TestCase(":root { --x: mysteps(3); }")]
-        [TestCase(":root { --x: .5.p; }")]
         public void Given_ADeclarationTheRewriteDeclines_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -161,6 +160,27 @@ namespace Velvet.Tests
         [TestCase(":root { --x: 1e3px; }", ":root { --x: \"1e3px\"; }")]
         [TestCase(":root { --x: 1e+3px; }", ":root { --x: \"1e+3px\"; }")]
         public void Given_ANumberTheImportersLexerReadsOtherwiseThanCss_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --aspect-video: 16 / 9; }", ":root { --aspect-video: \"16 / 9\"; }")]
+        [TestCase(":root { --x: .5.p; }", ":root { --x: \".5.p\"; }")]
+        [TestCase(":root { --x: 3.5.p; }", ":root { --x: \"3.5.p\"; }")]
+        [TestCase(":root { --x: 4px -; }", ":root { --x: \"4px -\"; }")]
+        [TestCase(":root { --x: 4px +; }", ":root { --x: \"4px +\"; }")]
+        [TestCase(":root { --x: 4px .; }", ":root { --x: \"4px .\"; }")]
+        [TestCase(":root { --x: a !b; }", ":root { --x: \"a !b\"; }")]
+        [TestCase(":root { --x: var(--a, 1 / 2); }", ":root { --x: \"var(--a, 1 / 2)\"; }")]
+        [TestCase(":root { --x: (1); }", ":root { --x: \"(1)\"; }")]
+        [TestCase(":root { --x: a:b; }", ":root { --x: \"a:b\"; }")]
+        public void Given_ATokenTheImporterRejectsOrDrops_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
             string uss, string expected)
         {
             // Arrange
