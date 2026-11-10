@@ -46,7 +46,6 @@ namespace Velvet.Editor
                 ctx.LogImportError("IOException : " + exception.Message);
             }
             var sheet = ScriptableObject.CreateInstance<StyleSheet>();
-            sheet.hideFlags = HideFlags.NotEditable;
             try
             {
                 if (!string.IsNullOrEmpty(uss))

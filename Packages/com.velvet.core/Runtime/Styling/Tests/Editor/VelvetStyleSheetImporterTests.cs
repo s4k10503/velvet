@@ -20,9 +20,9 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown() => AssetDatabase.DeleteAsset(SheetPath);
 
-        // GREEN_ON_BASE(characterization): the base already marks the sheet it imports as not editable.
+        // GREEN_ON_BASE(characterization): pins that Unity marks an imported object not editable, which the importer relies on.
         [Test]
-        public void Given_AStylesheetVelvetsImporterImports_When_ItIsLoaded_Then_ItIsNotEditable()
+        public void Given_AStylesheetVelvetsImporterImports_When_ItIsLoaded_Then_UnityHasMarkedItNotEditable()
         {
             // Arrange
             var sheet = RemSheetImport.Import(SheetPath, RemSheet);
