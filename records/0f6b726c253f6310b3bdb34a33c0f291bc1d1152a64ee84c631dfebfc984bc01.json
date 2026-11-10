@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed: Given_ACopyOfAStableRefHandedToACall_When_Compiled_Then_TheLabelReadingTheCopyIsDeclined",
+ "file": "08c78df4ca284a6c8d81a9421597f6511fb962dd4c4a79e5e36c981db3ee9f55",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeMutationReachTests.Given_ACopyOfAStableRefHandedToACall_When_Compiled_Then_TheLabelReadingTheCopyIsDeclined",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeMutationReachTests.cs": "c49aeb9bc3dd1db85e48b4f92a8f517f6abcbf4c54ccda8d7339c6ab1a7fa225",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 24,
+  "line": 178,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeVolatility.cs",
+  "shadowed": [
+   "clause removed",
+   "guard removed",
+   "literal",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

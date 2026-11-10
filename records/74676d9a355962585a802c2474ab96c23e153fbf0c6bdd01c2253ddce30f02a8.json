@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 128 case(s) that ran the site: Given_ALaidOutShadowCaster_When_ItsClassesGainALeftBorder_Then_TheSpacerMovesLeftByTheBorder",
+ "file": "943b5b331f47095c1866bd7b2782b3638ab0f2eee68ae8691e14055a1bf5ed3c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowSpacerBorderTests.Given_ALaidOutShadowCaster_When_ItsClassesGainALeftBorder_Then_TheSpacerMovesLeftByTheBorder",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowSpacerBorderTests.cs": "3e4d3ce08db57251694d5a7d225b4dabc7231f652ad3bdc6b8b898d56186103f",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ";",
+  "before": "aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);",
+  "column": 12,
+  "line": 275,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.PreviewInspectOverlayTests.Given_AMeasuredElementWithARightMargin_When_TheOverlayDraws_Then_TheMarginBandIsPaintedRightOfIt",
    "files": {
-    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/PreviewInspectOverlayTests.cs": "4f89aa88d20125db5d633bd5efb7c4e14bcd749f21148373e4c3e6927cf68621",
+    "Packages/com.velvet.core/Editor/Preview/Tests/Editor/PreviewInspectOverlayTests.cs": "cd217d2487b33c92adbbd72495528852e34f89df5d5edd4025cade8ef8a82cd4",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -16,7 +16,7 @@
    }
   }
  ],
- "measured_by": "41159467569",
+ "measured_by": "42757427640",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -32,6 +32,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

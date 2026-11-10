@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AJsonPostOfAStringWithSpaceAfterAMembersValue_When_TheActionReadsJson_Then_ItIsTheParsedObject",
  "file": "5aa66ff8abd21fdbed70ad1b9c5c3d86363ceb0a82d3131779dd9b0399abd760",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteRequestTests.Given_AJsonPostOfAStringWithSpaceAfterAMembersValue_When_TheActionReadsJson_Then_ItIsTheParsedObject",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteRequestTests.cs": "67310534e29f69381da1c892fdbbbfffb0cea6c5ae4ae3f42c5ae053b3229dbd",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "SkipWhitespace();",
@@ -13,9 +22,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

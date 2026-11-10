@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 9 failed among the 11 case(s) that ran the site: Given_AComponentBelowABoundary_When_ItsOwnTransitionSuspendsIt_Then_TheBoundaryKeepsItsPrimary, Given_AHostUnderAnOuterBoundary_When_ATransitionSuspendsItsRevealedPrimary_Then_NeitherFallbackIsShown, Given_APendingTransitionSuspendingARevealedPrimary_When_AnUrgentUpdateRendersAndTheResourceResolves_Then_TheUrgentUpdateAndTheTransitionBothShow",
+ "detail": "EditMode: 11 failed among the 13 case(s) that ran the site: Given_AComponentBelowABoundary_When_ItsOwnTransitionSuspendsIt_Then_TheBoundaryKeepsItsPrimary, Given_AHostUnderAnOuterBoundary_When_ATransitionSuspendsItsRevealedPrimary_Then_NeitherFallbackIsShown, Given_APendingTransitionSuspendingARevealedPrimary_When_AnUrgentUpdateRendersAndTheResourceResolves_Then_TheUrgentUpdateAndTheTransitionBothShow",
  "file": "79d1a9124f2772835ee7dbbc424fa53d435fb0e34c68daa7a684f21a038e8002",
  "killers": [
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_AComponentBelowABoundary_When_ItsOwnTransitionSuspendsIt_Then_TheBoundaryKeepsItsPrimary",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -14,7 +14,7 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_AHostUnderAnOuterBoundary_When_ATransitionSuspendsItsRevealedPrimary_Then_NeitherFallbackIsShown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -23,7 +23,7 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_APendingTransitionSuspendingARevealedPrimary_When_AnUrgentUpdateRendersAndTheResourceResolves_Then_TheUrgentUpdateAndTheTransitionBothShow",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -32,7 +32,7 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_ARevealedPrimary_When_ATransitionSuspendsIt_Then_ThePrimaryStaysShown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -41,7 +41,16 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_ARevealedPrimary_When_ATransitionSuspendsIt_Then_TheTransitionIsStillPending",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseTransitionTests.Given_ATransitionGivenUpOnOneBoundarysRead_When_AnotherBoundarysReadResolves_Then_ThatBoundaryShowsItsContent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -50,7 +59,7 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_ATransitionThatSuspendedARevealedPrimary_When_AnotherTransitionSupersedesItAndTheFirstResolves_Then_ThePrimaryStaysShown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -59,7 +68,7 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_ATransitionThatSuspendedARevealedPrimary_When_AnotherTransitionSupersedesIt_Then_ThePrimaryStaysShown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -68,7 +77,7 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_ATransitionThatSuspendedARevealedPrimary_When_TheResourceFaults_Then_TheErrorBoundaryShowsItsFallback",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
@@ -77,14 +86,14 @@
   {
    "case": "Velvet.Tests.SuspenseTransitionTests.Given_ATransitionThatSuspendedARevealedPrimary_When_TheResourceResolves_Then_TheNewContentIsShown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "0cc97ef34f8ed75359e8d003817d200b69561c4e267bd6fbddd09cf0ca4d19df",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseTransitionTests.cs": "59c9192ec4f14817419740d05458c75bac50a6874de2a624add0ecd76e0abb03",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42757427640",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -98,6 +107,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

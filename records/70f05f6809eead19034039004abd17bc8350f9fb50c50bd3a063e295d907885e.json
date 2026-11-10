@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 68 case(s) that ran the site: Given_ADragInsideAScrollView_When_ThePointerMovesIntoItsBottomEdgeZone_Then_ItScrollsDown",
+ "detail": "EditMode: 1 failed among the 69 case(s) that ran the site: Given_ADragInsideAScrollView_When_ThePointerMovesIntoItsBottomEdgeZone_Then_ItScrollsDown",
  "file": "59dbef93eff9c314aa38e7d0091277bf8fd706e6f6c65cd2a4cca3f5d91b80cb",
  "killers": [
   {
    "case": "Velvet.Tests.DndParityTests.Given_ADragInsideAScrollView_When_ThePointerMovesIntoItsBottomEdgeZone_Then_ItScrollsDown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "e01d0b4539e0b880e73066c8c6fd7d456a9b4209101dd789e7302cdba84523de",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "bf89a59e0a2725fbf8f77e1c04d2203bd7adfb331c5e7242e5a5870519c00c45",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "40578290426",
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "_settings = settings;",
@@ -28,6 +28,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

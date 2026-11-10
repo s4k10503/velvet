@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 7 failed among the 885 case(s) that ran the site: Given_ADraggableMotionWhoseDraggingClassPaints_When_ItIsDragged_Then_ItPaints, Given_ADraggingClassThatGainsAPaintOnARerender_When_ItIsDragged_Then_ItPaints, Given_ADraggingClassThatPaints_When_ItIsDragged_Then_ThePaintIsBound",
+ "detail": "EditMode: 7 failed among the 886 case(s) that ran the site: Given_ADraggableMotionWhoseDraggingClassPaints_When_ItIsDragged_Then_ItPaints, Given_ADraggingClassThatGainsAPaintOnARerender_When_ItIsDragged_Then_ItPaints, Given_ADraggingClassThatPaints_When_ItIsDragged_Then_ThePaintIsBound",
  "file": "dce543cd216a1fadb2c0a6bf6107b5ce4ec8a1c51f11fc9d94f1b14319826135",
  "killers": [
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ADraggableMotionWhoseDraggingClassPaints_When_ItIsDragged_Then_ItPaints",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -16,7 +16,7 @@
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ADraggingClassThatGainsAPaintOnARerender_When_ItIsDragged_Then_ItPaints",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -27,7 +27,7 @@
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ADraggingClassThatPaints_When_ItIsDraggedAndDropped_Then_ThePaintGoes",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -38,7 +38,7 @@
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ADraggingClassThatPaints_When_ItIsDragged_Then_ThePaintIsBound",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -49,7 +49,7 @@
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ADroppableWhoseActiveClassPaints_When_ADragIsActive_Then_ItPaints",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -60,7 +60,7 @@
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_ADroppableWhoseOverClassPaints_When_TheItemIsOverIt_Then_ItPaints",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -71,7 +71,7 @@
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_AnOverClassThatArrivesWithAPaintOnARerender_When_TheItemIsOverIt_Then_ItPaints",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -80,7 +80,7 @@
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42757427640",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -94,6 +94,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

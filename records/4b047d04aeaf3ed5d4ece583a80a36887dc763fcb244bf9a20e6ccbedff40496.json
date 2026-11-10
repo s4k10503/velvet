@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "d80502e89e0f8a9efabe98ec28c36bdfaad636307b8648c2e09453a829cc6ec7",
+ "killers": [],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ";",
+  "before": "style.backgroundRepeat = state.WrittenRepeat = state.Own.Repeat;",
+  "column": 12,
+  "line": 425,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "survived"
+}

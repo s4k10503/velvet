@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "1dd004a24ccf33ff87d2152aa7712682fcfdd651909a43572a519bb46a8c2a51",
+ "killers": [],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ";",
+  "before": "SilhouetteFaceStash.NoteLetGo(element, i);",
+  "column": 20,
+  "line": 356,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BorderPreflight.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "survived"
+}

@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_AFollowedElement_When_Unfollowed_Then_ItsWatchIsNoLongerHeld",
  "file": "79252ce6bcbc6f095dc0add00ef6aad34380b9fce848d456a49e8400b379d82f",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ThemeTokenFollowTests.Given_AFollowedElement_When_Unfollowed_Then_ItsWatchIsNoLongerHeld",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenFollowTests.cs": "3d34bdc1a7220d0a1e2f5309deeb9a0933c3dc92b81fa082c270dfc9fe84f69f"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "s_followed.Remove(element);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

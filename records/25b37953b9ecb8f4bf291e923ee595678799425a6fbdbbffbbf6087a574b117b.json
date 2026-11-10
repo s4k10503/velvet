@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
  "file": "bc6fa410041b2213832daedbfb63be350490813204230ac95c17467cf6877e6b",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierChannelHandBackTests.Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "d416518c568f1ae8f5ca3d53f92a74c46412d04afb3bc6ec66c065f4fb203159"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

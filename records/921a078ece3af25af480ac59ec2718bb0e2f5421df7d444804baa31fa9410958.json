@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.DividerEdgePanelTests.Given_ARunningDashTransition_When_TheDashIsDetached_Then_ItsTickStops",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DivideClassParityTests.cs": "dc53d0a3e0b333be5ee76fbc9ba196a571f8c40ed50b5b3ecfaa31e7328afeac",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DivideClassParityTests.cs": "71b88f729857c2ef28aafd149853f940609ac7351c941e72035c182700bd6bb9",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -17,7 +17,7 @@
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "binding.Tick.Pause();",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

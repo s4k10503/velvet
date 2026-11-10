@@ -1,8 +1,17 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 28 case(s) that ran the site: Given_AComponentRenderedAheadOfASuspendNothingCaught_When_ItRendersAloneBeforeTheResolve_Then_ItReadsTheProvidersValue",
  "file": "767cbc84287fa7b4afe4f156f81611035600ba06316fa57ea889b08dbefbf4c1",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbandonedPassContextTests.Given_AComponentRenderedAheadOfASuspendNothingCaught_When_ItRendersAloneBeforeTheResolve_Then_ItReadsTheProvidersValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AbandonedPassContextTests.cs": "6fd93c9a176dfa811cb195499b6ab6c0327be98e9e7fe06caa49afff6b436605",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "fiber.SourceNode = SourceNode;",
@@ -13,9 +22,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

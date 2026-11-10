@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "76dddc4ad826e9b7322f4105b584459492650e7f6604d4e4233ffedd53cf3cbe",
+ "killers": [],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 46,
+  "line": 636,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "survived"
+}

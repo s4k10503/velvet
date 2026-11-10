@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 2 case(s) that ran the site: Given_ANegatedFilterThatTailwindDoesNotNegate_When_ReadForRejection_Then_NothingIsRejected, Given_AnUnclosedFilterBracket_When_ReadForRejection_Then_NothingIsRejected",
+ "file": "e683b334e5730c2cca172bed13162408509092561089f92d0db5dda8dd4880fe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RejectedCompositeTests.Given_ANegatedFilterThatTailwindDoesNotNegate_When_ReadForRejection_Then_NothingIsRejected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedCompositeTests.cs": "27b5af4388ca3ae914d38107adcb6ca83df47fd790de51f4f3d00a65c4f353f4",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RejectedCompositeTests.Given_AnUnclosedFilterBracket_When_ReadForRejection_Then_NothingIsRejected",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedCompositeTests.cs": "27b5af4388ca3ae914d38107adcb6ca83df47fd790de51f4f3d00a65c4f353f4",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 31,
+  "line": 53,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleCompositeRejection.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

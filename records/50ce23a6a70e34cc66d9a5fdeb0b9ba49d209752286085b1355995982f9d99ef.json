@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_APlayBetweenTwoGradients_When_ItDrawsHalfway_Then_TheBoundGradientIsTheBlend",
  "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
- "killers": [],
- "measured_by": "42609496466",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PaintLeaseTests.Given_APlayBetweenTwoGradients_When_ItDrawsHalfway_Then_TheBoundGradientIsTheBlend",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PaintLeaseTests.cs": "bd1de0268d18962a8546cbdc1fe75692fccedbe5e131948ad6f63e864fb0f3c5",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "binding.Spec = spec;",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

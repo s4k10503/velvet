@@ -1,0 +1,37 @@
+{
+ "detail": "EditMode: 2 failed among the 45 case(s) that ran the site: Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: 4; }\"), 5; }\")",
+ "file": "6dba4563fce048d4b7794c4c4f3bef90e0d79977b47ce55086f984d46876ba0b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: 4.5; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "0dd329e0dd31658cc3fd3c605e901143bb575ed7a66b75194b52a2a4415c92e3"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ATextEndingInsideWhatTheRewriteReads_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: 4; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "0dd329e0dd31658cc3fd3c605e901143bb575ed7a66b75194b52a2a4415c92e3"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 17,
+  "line": 314,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

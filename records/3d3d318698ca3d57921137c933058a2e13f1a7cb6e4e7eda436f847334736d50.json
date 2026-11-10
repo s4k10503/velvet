@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 5 case(s) that ran the site: Given_ASpringPlayWithAnOpacityEntryOfNegativeZeroDurationAfterADelay_When_SteppedWithinTheDelay_Then_OpacityIsAtItsOrigin",
+ "file": "81040eece23a0133e02fffd13af3cae3364ea39d6b00c02b8cf5bc51c1c1ba2d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionPropertyChannelTests.Given_ASpringPlayWithAnOpacityEntryOfNegativeZeroDurationAfterADelay_When_SteppedWithinTheDelay_Then_OpacityIsAtItsOrigin",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionPropertyChannelTests.cs": "b1ac86ed06c06b62f4d6f4af958cbe4382997eb3cef06868d962c4955cdab863",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 42,
+  "line": 640,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

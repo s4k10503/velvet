@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AHookInTheFilterOfACatchBlockAfterATryThatThrows_When_Woven_Then_TheReportSaysTheComponentIsNotCached",
+ "file": "ffd17bd9f1ce6c25b8c3b4880313d37289c85dba331cf6ed18c82674fe8dc1f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_AHookInTheFilterOfACatchBlockAfterATryThatThrows_When_Woven_Then_TheReportSaysTheComponentIsNotCached",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "6267daf88c4fce5b8c8b65f53484f1beef9b2aff528a6368c2ca9e6779dad073",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 90,
+  "line": 164,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

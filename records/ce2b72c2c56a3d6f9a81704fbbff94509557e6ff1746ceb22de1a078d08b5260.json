@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_ASortableContextGivenAnId_When_AnItemInItRenders_Then_ItReadsThatIdAsItsContainer",
  "file": "ee5a815b9896f2c57ae140ca5e830eaa2c967a21bdefe92c6ed5f4ead6e11c9e",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SortableContextIdTests.Given_ASortableContextGivenAnId_When_AnItemInItRenders_Then_ItReadsThatIdAsItsContainer",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SortableContextIdTests.cs": "93d0d687667bffac9f4fee3e761d177fff75b6e33a267e6a2fc1301702ca0edc"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 145 case(s) that ran the site: Given_ATransformOriginPair_When_Parsed_Then_ItIsNoRejectedValue",
  "file": "febeeaef91c0c1bd8ca13607b5ab99e0b7b47753329a4e22e07115fef69f382a",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ArbitraryStyleLayerTests.Given_ATransformOriginPair_When_Parsed_Then_ItIsNoRejectedValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryStyleLayerTests.cs": "5396c4f36df9c12b7533abcedeabc788f32b01e45bf10678f8bc7037c6563e7a"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

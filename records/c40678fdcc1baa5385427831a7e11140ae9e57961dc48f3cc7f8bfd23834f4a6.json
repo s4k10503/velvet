@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 2 failed among the 533 case(s) that ran the site: Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItPaintsInItsDeclaredPlaceAgain, Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsAfterTheSiblingsDeclaredAfterIt",
+ "detail": "EditMode: 2 failed among the 540 case(s) that ran the site: Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItPaintsInItsDeclaredPlaceAgain, Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsAfterTheSiblingsDeclaredAfterIt",
  "file": "f75b800333028dd165e8cb6991a947a9d8f50de17494efef2e3f71415e030783",
  "killers": [
   {
    "case": "Velvet.Tests.AnimatePresencePopLayoutTests.Given_APopLayoutExitInFlight_When_TheKeyReturnsBeforeItFinishes_Then_ItPaintsInItsDeclaredPlaceAgain",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePopLayoutTests.cs": "45b36194a571b07892de14bc1dbfb9c69a31d3ca0640701c5ed64ea2452d450f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePopLayoutTests.cs": "d042ddf12f29e91a313a18e19213107fad7d16600a29d78a5501113600d68d34",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -16,7 +16,7 @@
   {
    "case": "Velvet.Tests.AnimatePresencePopLayoutTests.Given_APopLayoutModeChild_When_ItStartsExiting_Then_ItPaintsAfterTheSiblingsDeclaredAfterIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePopLayoutTests.cs": "45b36194a571b07892de14bc1dbfb9c69a31d3ca0640701c5ed64ea2452d450f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresencePopLayoutTests.cs": "d042ddf12f29e91a313a18e19213107fad7d16600a29d78a5501113600d68d34",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -25,7 +25,7 @@
    }
   }
  ],
- "measured_by": "41604882667",
+ "measured_by": "42757427640",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -41,6 +41,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "2b453bd34baf8bb66ff9eca57d239a03e3aac1f03143a4640207791fdd6a8fbc",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

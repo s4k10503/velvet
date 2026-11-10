@@ -1,0 +1,39 @@
+{
+ "detail": "EditMode survived; PlayMode: 2 failed: Given_ARoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsClassesChangeItsBackgroundMidMove_Then_TheFaceIsPaintedInTheNewColour, Given_AProjectedFaceOnABoxWithNoWidth_When_Rendered_Then_NoPixelIsPainted",
+ "file": "d80502e89e0f8a9efabe98ec28c36bdfaad636307b8648c2e09453a829cc6ec7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFacePlaybackTests.Given_ARoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsClassesChangeItsBackgroundMidMove_Then_TheFaceIsPaintedInTheNewColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ProjectedCornerFacePlaybackTests.cs": "5b09fc745114f839ba1826c722f7b2fed6489862fe01b9389690a3c3cf2ac136",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceZeroWidthTests.Given_AProjectedFaceOnABoxWithNoWidth_When_Rendered_Then_NoPixelIsPainted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ProjectedCornerFaceZeroWidthTests.cs": "1306e3d3bf51ba1f9bf6d03c6e5624a7f2b0c6240d7dd1b792e4947f7984aeea",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ";",
+  "before": "state.OnGenerate = mgc => Paint(mgc, element, state);",
+  "column": 12,
+  "line": 252,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AnOrderBracketReadingACustomProperty_When_Parsed_Then_ItIsAnOrderUtility",
  "file": "4800dee61d3d11dc172d765ae8f2d537fce5d7b45bcea76df62a0945e66c076b",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleOrderClassTests.Given_AnOrderBracketReadingACustomProperty_When_Parsed_Then_ItIsAnOrderUtility",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleOrderClassTests.cs": "8b513f82817ed4d0d04083610aeaf016e3dfdf43ac37e0c5fb379191c3e53d18"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 136 case(s) that ran the site: Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger",
+ "file": "76dddc4ad826e9b7322f4105b584459492650e7f6604d4e4233ffedd53cf3cbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InstantSpringStaggerTests.Given_AStaggeredChildMidwayOnABezier_When_ItsLabelChangesToAnInstantSpring_Then_ItHoldsTheValueDrawnThroughItsStagger",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/InstantSpringStaggerTests.cs": "c4e4f1a76802c72b5348b1cf5028ae5f0503c05cdde82bf90412aae00d6d5486",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 29,
+  "line": 207,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringClassParser.cs",
+  "shadowed": [
+   "clause removed",
+   "equality",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

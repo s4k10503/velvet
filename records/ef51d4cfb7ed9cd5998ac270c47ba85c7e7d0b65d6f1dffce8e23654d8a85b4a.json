@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 144 case(s) that ran the site: Given_ANarrowedElementWhoseTransitionClassIsRemoved_When_TheNarrowingIsSynced_Then_NoTransitionPropertyIsLeftInline",
  "file": "78f683a351f73e4e992b1f29a5e7e9e02b6cde9c75dbc1dcee2481f308513b8f",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionNativeTransitionGuardNarrowingTests.Given_ANarrowedElementWhoseTransitionClassIsRemoved_When_TheNarrowingIsSynced_Then_NoTransitionPropertyIsLeftInline",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionNativeTransitionGuardNarrowingTests.cs": "55c6ec701b2c88789b1aa9b8898bb613f3c9cc3eb8f4389d46108c8ad0604237"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "Release(element, owner);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

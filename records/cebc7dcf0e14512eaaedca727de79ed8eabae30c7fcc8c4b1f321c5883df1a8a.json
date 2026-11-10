@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 487 case(s) that ran the site: Given_RowsWhosePropsAreUnchangedAfterAnAnimatePresence_When_TheirParentReRenders_Then_NoRowElementIsPatched",
  "file": "608119debf9a14ca390d5995cdb43071fccaf383373370eb47eee6eb8aaff98e",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BailedRowSubtreeTests.Given_RowsWhosePropsAreUnchangedAfterAnAnimatePresence_When_TheirParentReRenders_Then_NoRowElementIsPatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BailedRowSubtreeTests.cs": "bf29255becd3195a6506ed7cf2d4ec6d2bf2f6f54c376a74eee2a69390c8e6a9",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "walk.ReuseSuspended--;",
@@ -13,9 +21,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

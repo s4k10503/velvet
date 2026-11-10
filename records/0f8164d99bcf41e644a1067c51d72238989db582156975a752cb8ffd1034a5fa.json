@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed: Given_AValueComputedInsideTheRunThatStoresAnotherLocal_When_Compiled_Then_OnlyTheValueAScopeReadsIsGated",
+ "file": "56f8fbe1d87f4f24c5ac8d61f80421dd2531596ee5f78cd7964b40d8c4a4d2cb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueCandidateTests.Given_AValueComputedInsideTheRunThatStoresAnotherLocal_When_Compiled_Then_OnlyTheValueAScopeReadsIsGated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueCandidateTests.cs": "dc37dbb19e91326c2ff001421220e4720dfdad45942e4235ad146fa18db650e1"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 112,
+  "line": 49,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopePlan.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

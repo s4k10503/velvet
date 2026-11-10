@@ -1,0 +1,25 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "33a4e28a48aee64de0dfac06def4122a3fec9220fbfda4ca92e216f35161568d",
+ "killers": [],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 23,
+  "line": 336,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "survived"
+}

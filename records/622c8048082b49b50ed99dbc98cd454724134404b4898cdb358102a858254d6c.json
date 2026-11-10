@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "cf75e499b74b07eeefaf955898ab4dd18fc7dcfd945ee263d440f97e46a458d9",
+ "killers": [],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 20,
+  "line": 61,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DurationSpring.cs",
+  "shadowed": [
+   "boundary"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "survived"
+}

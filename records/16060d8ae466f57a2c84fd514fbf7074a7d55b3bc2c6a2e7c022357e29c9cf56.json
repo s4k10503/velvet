@@ -1,0 +1,35 @@
+{
+ "detail": "EditMode: 2 failed: Given_AnAssemblyCarryingOnlyAnUnrelatedAttribute_When_ABodyHasANote_Then_NoWarningIsReported, Given_AnAssemblyNotAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_NoBuildWarningIsRaised",
+ "file": "ffd17bd9f1ce6c25b8c3b4880313d37289c85dba331cf6ed18c82674fe8dc1f0",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_AnAssemblyCarryingOnlyAnUnrelatedAttribute_When_ABodyHasANote_Then_NoWarningIsReported",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "6267daf88c4fce5b8c8b65f53484f1beef9b2aff528a6368c2ca9e6779dad073",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  },
+  {
+   "case": "Velvet.Tests.WeaverReflectionProbeTests.Given_AnAssemblyNotAskingForTheReport_When_CompilerWeaverLeavesSomethingUncached_Then_NoBuildWarningIsRaised",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/WeaverReflectionProbeTests.cs": "b51eb819d9f244a91d978d8d98e7d43638e47ff65680d688fcbc6a5824885ae5"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 19,
+  "line": 426,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/CodeGen/CompilerWeaver.Plan.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

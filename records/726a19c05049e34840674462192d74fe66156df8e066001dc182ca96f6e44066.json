@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AnIsolatedLayerPortalReRenderedAsAppended_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst",
  "file": "54407e9af91f715d0d83b21f3c867fa2f26b14e8cd0ecb8f2284a2424013e4ef",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FocusChainedPortalTests.Given_AnIsolatedLayerPortalReRenderedAsAppended_When_TabDispatchesFromTheDeclaringPanelsLastFocusable_Then_FocusEntersTheHostAtItsFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/FocusChainedPortalTests.cs": "6e6921bbd78702ac9309608608289ea3884836ad40ed24e13af6fd32c796c125",
+    "Packages/com.velvet.core/TestUtilities/FocusScopeElement.cs": "caee04a0e47cefaac0d9a6a30491bbf026426ccdbc1185e3ac842f7d698edb34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "FiberFocusNavigator.ConfigurePortalFocusOrder(placeholder, layerHost, newNode.FocusOrder, _ctx);",
@@ -16,6 +27,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

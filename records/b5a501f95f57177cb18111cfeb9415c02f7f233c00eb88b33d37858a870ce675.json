@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 334 case(s) that ran the site: Given_AnIdWhoseBoxMovedToAnotherParent_When_TheFirstParentIsForgotten_Then_TheBoxStaysUnderTheSecond",
+ "file": "e1547c05cb7139d54aea11bee58866124ad95a481b4634af42629217fca1521c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdBookkeepingTests.Given_AnIdWhoseBoxMovedToAnotherParent_When_TheFirstParentIsForgotten_Then_TheBoxStaysUnderTheSecond",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdBookkeepingTests.cs": "c665735ea67b87e063be40b30afdab521f71e959058ef16deabdfa9094af8112",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ";",
+  "before": "ids.Remove(layoutId);",
+  "column": 12,
+  "line": 1149,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

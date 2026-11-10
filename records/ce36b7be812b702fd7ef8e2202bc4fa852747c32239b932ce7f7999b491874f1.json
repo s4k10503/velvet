@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_NoAncestorRecordsAColour_When_ARingOffsetInherits_Then_ItTakesWhite",
  "file": "6fefcfbf79fba07a1e665ed32b02141c0da25bc57ca78ed8a0f7aeeab076b26f",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BandColourInheritanceTests.Given_NoAncestorRecordsAColour_When_ARingOffsetInherits_Then_ItTakesWhite",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BandColourInheritanceTests.cs": "91fae0f7ef7e96938992a782e4c78825dec7ce8dd78387c151640e94617d020e"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

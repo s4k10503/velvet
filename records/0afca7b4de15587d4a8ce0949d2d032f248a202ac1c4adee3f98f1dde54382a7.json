@@ -1,8 +1,16 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AnAppliedOnlyVariant_When_ARerenderLeavesOnlyAPlainClass_Then_ItsPayloadIsTakenOff",
  "file": "54407e9af91f715d0d83b21f3c867fa2f26b14e8cd0ecb8f2284a2424013e4ef",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MountHostStructuralVariantTests.Given_AnAppliedOnlyVariant_When_ARerenderLeavesOnlyAPlainClass_Then_ItsPayloadIsTakenOff",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MountHostStructuralVariantTests.cs": "802a88319559dadae6ae078dca9254e4d81e65c87d292ef8faeff481c22110a8",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": "",
   "before": " || _ctx.StructuralVariants.ContainsKey(element)",
@@ -15,9 +23,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 278 case(s) that ran the site: Given_ALabelWithALegacyFont_When_ItsLinesAreMeasured_Then_TheMeasurementIsKeyedOnThatFont",
  "file": "65df063b882f2b7c6cc315db90fffb2ee010e63912a80a90fdd16e04ee2177a5",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextLineBoxMeasureCacheTests.Given_ALabelWithALegacyFont_When_ItsLinesAreMeasured_Then_TheMeasurementIsKeyedOnThatFont",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextLineBoxMeasureCacheTests.cs": "b3db421dedb74d3a8f0e087486184d5be014f5eab52773b098290fec9c6ba70c",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "_legacyFont = style.unityFont;",
@@ -13,9 +24,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

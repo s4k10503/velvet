@@ -1,0 +1,49 @@
+{
+ "detail": "EditMode: 3 failed among the 204 case(s) that ran the site: Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheShadowFaceAdoptsTheBorderColor, Given_AShadowedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked, Given_AShadowedBorderDashedElement_When_ThePatchMakesItDotted_Then_TheShadowRepaintsTheBorderDotted",
+ "file": "ce84a2c6b2f19949a79014fe83501d8d0a4c5938610f2dfb06010d05994da524",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BorderStylePatchTests.Given_ABorderDashedColoredElement_When_ShadowIsAddedInOnePatch_Then_TheShadowFaceAdoptsTheBorderColor",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BorderStylePatchTests.cs": "4381bed9143ccdc5a85ffaf1622abfe01adc0454930c660bc433057c0b73c270",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BorderStylePatchTests.Given_AShadowedBorderDashedElement_When_Reconciled_Then_NoBorderStyleBindingIsTracked",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BorderStylePatchTests.cs": "4381bed9143ccdc5a85ffaf1622abfe01adc0454930c660bc433057c0b73c270",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BorderStylePatchTests.Given_AShadowedBorderDashedElement_When_ThePatchMakesItDotted_Then_TheShadowRepaintsTheBorderDotted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/BorderStylePatchTests.cs": "4381bed9143ccdc5a85ffaf1622abfe01adc0454930c660bc433057c0b73c270",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/VariantCleanupTestsBase.cs": "e292c5a83d0e9576da98c8fede4b3f88e954505b61c1d5f86977cb9746879f11",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 502,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

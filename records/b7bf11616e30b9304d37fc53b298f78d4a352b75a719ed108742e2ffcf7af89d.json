@@ -1,8 +1,21 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 2 failed among the 2 case(s) that ran the site: Given_SaturateAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications, Given_SepiaAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
  "file": "f9ab82e03f919ae443bb5fbc7ddc3124a8c224df601116df83e13c4ceab29a16",
- "killers": [],
- "measured_by": "42609496466",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BackdropColorStepTests.Given_SaturateAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropColorStepTests.cs": "eabe9941af9fdaec02196c902f99c466cf52fb93692d55f1fa832a7d4b907a32"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BackdropColorStepTests.Given_SepiaAtHalf_When_ItsMatrixIsBuilt_Then_TheGreenRowsRedWeightIsTheSpecifications",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropColorStepTests.cs": "eabe9941af9fdaec02196c902f99c466cf52fb93692d55f1fa832a7d4b907a32"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "m.SetRow(1, new Vector4(g.x, g.y, g.z, 0f));",
@@ -13,9 +26,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

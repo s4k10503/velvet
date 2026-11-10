@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 60 case(s) that ran the site: Given_AnActiveTranslateDrag_When_ThePointerMovesByADelta_Then_TheInlineTranslateFollowsIt",
+ "detail": "EditMode: 1 failed among the 62 case(s) that ran the site: Given_AnActiveTranslateDrag_When_ThePointerMovesByADelta_Then_TheInlineTranslateFollowsIt",
  "file": "c3ab513274926d934e20bb80caca62d79e758c94289697ff53062cee4661cb65",
  "killers": [
   {
    "case": "Velvet.Tests.DndInteractionTests.Given_AnActiveTranslateDrag_When_ThePointerMovesByADelta_Then_TheInlineTranslateFollowsIt",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "ea8ca718885a778f46bb72bf1c75f59220eca65b1b8c5dd10d533e20faaf7b0f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndInteractionTests.cs": "3c465e5f5463e023b04766527d1163b0645a7667120e32537c6d5e95b726d747",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
@@ -14,7 +14,7 @@
    }
   }
  ],
- "measured_by": "40578290426",
+ "measured_by": "42757427640",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -30,6 +30,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "f0f54c82d3ca893336a40a025d355db20d632e034618ec6f8c84a1ac2befec0e",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

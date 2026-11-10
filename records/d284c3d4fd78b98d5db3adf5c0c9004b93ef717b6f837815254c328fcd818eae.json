@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_ATryBlockThatRunsToTheEndOfTheBody_When_Woven_Then_TheMethodCarriesAReport",
+ "file": "51a8fff7fa7c9b94ce30e5cbdcce83ed9b767cfa969723196c2d7bbcf8fbc224",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeSyntheticBodyTests.Given_ATryBlockThatRunsToTheEndOfTheBody_When_Woven_Then_TheMethodCarriesAReport",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSyntheticBodyTests.cs": "6267daf88c4fce5b8c8b65f53484f1beef9b2aff528a6368c2ca9e6779dad073",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 30,
+  "line": 465,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

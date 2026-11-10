@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "81040eece23a0133e02fffd13af3cae3364ea39d6b00c02b8cf5bc51c1c1ba2d",
+ "killers": [],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": ";",
+  "before": "c.StartVelocity = 0f;",
+  "column": 16,
+  "line": 349,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "survived"
+}

@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 157 case(s) that ran the site: Given_AComponentPlacedAtARowAndOneMountedInsideIt_When_TheRowsCommitTheirOrder_Then_ThePlacedOneComesFirst, Given_AWrapperMountedComponentInALaterRow_When_TheRowsCommitTheirOrder_Then_ItFollowsTheComponentPlacedInAnEarlierRow",
+ "file": "cdaf2b3a139c84c97f7b9a00e18f355b841831a976c2d1da3e0ccb1854badce7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentRegistryTableTests.Given_AComponentPlacedAtARowAndOneMountedInsideIt_When_TheRowsCommitTheirOrder_Then_ThePlacedOneComesFirst",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRegistryTableTests.cs": "1c249a34f98230c532ecac241d95ea9f5bb1e6036233e9945d0fb39d4accf11f"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ComponentRegistryTableTests.Given_AWrapperMountedComponentInALaterRow_When_TheRowsCommitTheirOrder_Then_ItFollowsTheComponentPlacedInAnEarlierRow",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentRegistryTableTests.cs": "1c249a34f98230c532ecac241d95ea9f5bb1e6036233e9945d0fb39d4accf11f"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 26,
+  "line": 564,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

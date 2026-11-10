@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_TwoInterleavingRunsOfThirtyTwo_When_Sorted_Then_TheMergeOrdersEveryElement",
  "file": "90e648d5178901458d570fc6cc8ef0982cb708aa7e5e1796bc786cb3797cfd24",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.JsArraySortTests.Given_TwoInterleavingRunsOfThirtyTwo_When_Sorted_Then_TheMergeOrdersEveryElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/JsArraySortTests.cs": "3c6910ecb29c36aebf33a57a83fb5f01a1c15fb46032f35e6c0f8ab6ab344c63"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "Array.Copy(_work, baseA, temp, 0, lengthA);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

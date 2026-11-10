@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 51 case(s) that ran the site: Given_AWrapForwardedOntoAScrollViewsContent_When_TheManipulatorIsRemoved_Then_TheWrapIsTakenBack",
  "file": "735b3de675bd99c6b0895255b6bf8b568fa1f1f5b28e9bdfe6318b94610003b8",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CompositeFlowTakeBackTests.Given_AWrapForwardedOntoAScrollViewsContent_When_TheManipulatorIsRemoved_Then_TheWrapIsTakenBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CompositeFlowTakeBackTests.cs": "f7bb41c394b095f98c73652476f281ee42ee0cd526a192c703fdd931987f85b7"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "TakeBackWrap(_inner);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

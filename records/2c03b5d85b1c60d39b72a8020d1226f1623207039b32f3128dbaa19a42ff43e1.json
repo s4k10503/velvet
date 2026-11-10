@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone",
  "file": "8ddb4a0def1afa9c87c360f99ae3f8ec5bfa54e7d0faac081fc2ea11088ec203",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTests.Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTests.cs": "30afe191f2f85668c4a9ae976e9e1fb156118ac0c9ab6617b4d10c29dce793a3"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": "",
   "before": " && !s_bindings.TryGetValue(element, out _)",
@@ -15,9 +22,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }

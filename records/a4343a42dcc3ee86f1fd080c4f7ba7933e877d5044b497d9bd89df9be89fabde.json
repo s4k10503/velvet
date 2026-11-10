@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.StyleRingClassTests.Given_ANegativeOutlineOffset_When_Extracted_Then_TheOffsetIsNegative(\"outline-offset-[-2px]\",-2.0f)",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleRingClassTests.cs": "797296251c2538a085ff95f22e8cc61ec6335fb6732868cda4ed014460467283",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleRingClassTests.cs": "040c988eeb18f73966b6b7d32e2c61c812aa5ac3c7dcbd6fbec6235fe9a647ca",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -13,7 +13,7 @@
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42757427640",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -27,6 +27,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
  "verdict": "killed"
 }

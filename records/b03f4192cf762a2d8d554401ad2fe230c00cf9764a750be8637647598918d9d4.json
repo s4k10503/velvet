@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_ARememberedSlot_When_ASlotPastTheLastRenderedChildIsAsked_Then_ItIsEmptyAtTheAppendPositionAheadOfATrailingSpacer; 1 other editor(s) were up",
+ "file": "33a4e28a48aee64de0dfac06def4122a3fec9220fbfda4ca92e216f35161568d",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LogicalSlotCursorTests.Given_ARememberedSlot_When_ASlotPastTheLastRenderedChildIsAsked_Then_ItIsEmptyAtTheAppendPositionAheadOfATrailingSpacer",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/LogicalSlotCursorTests.cs": "8064fe281eea2d39b7938c69de03837054c9ee6b46d2146e9043675b76d3122c"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
+ "mutant": {
+  "after": "",
+  "before": " && !IsInvisible(container[physical])",
+  "column": 15,
+  "line": 84,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/LogicalChildSlots.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
+}

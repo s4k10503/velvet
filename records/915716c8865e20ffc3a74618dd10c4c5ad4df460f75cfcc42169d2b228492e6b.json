@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_AColourChannel_When_WhatItDrawsIsRead_Then_ItsColourIsTheOneDrawn",
  "file": "c5f2abea8c9de079eae24514bdf841825965494227eb2996253e93230f99d97d",
- "killers": [],
- "measured_by": "42606036406",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionDrawnValuesTests.Given_AColourChannel_When_WhatItDrawsIsRead_Then_ItsColourIsTheOneDrawn",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionDrawnValuesTests.cs": "98112d560ec1537b233bdc8885e9752ac940bcdb2237c8d60fef81e64b55bb92"
+   }
+  }
+ ],
+ "measured_by": "42757427640",
  "mutant": {
   "after": ";",
   "before": "drawn.Colors = colors.ConvertAll(drawnColor.Invoke);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
- "verdict": "survived"
+ "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "verdict": "killed"
 }
