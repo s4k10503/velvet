@@ -2273,6 +2273,7 @@ namespace Velvet
                     throw resource.Error!;
                 default:
                     fiber.Reconciler!.Context.SuspendingReader = fiber;
+                    FiberPendingWork.MarkAncestors(fiber);
                     throw FiberSuspendSignal.Instance;
             }
         }

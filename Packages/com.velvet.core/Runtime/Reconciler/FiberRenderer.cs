@@ -237,6 +237,7 @@ namespace Velvet
             fiber.Reconciler = parentCtx != null
                 ? new Reconciler(parentCtx)
                 : new Reconciler();
+            fiber.Reconciler.Owner = fiber;
             fiber.IsMounted = true;
             if (fiber.Reconciler.Context.ThemeRoot == null)
             {
@@ -947,7 +948,7 @@ namespace Velvet
         // one the outer retry would bail on, memoized with equal props, would otherwise never render what it
         // suspended on. The outer retry subsumes the inner ones it reaches, since they are then dirty.
         // The reading fiber is asked last, when any pass was retried: the abandoned pass never committed it, and
-        // a retry bailing on a memoized ancestor must still find it dirty (GeneralPathReconciler.HoldsDirtyFiberBelow)
+        // a retry bailing on a memoized ancestor must still find it dirty (FiberPendingWork.Below)
         // to reach it.
         private static void RetrySuspendedPasses(ComponentFiber fiber)
         {

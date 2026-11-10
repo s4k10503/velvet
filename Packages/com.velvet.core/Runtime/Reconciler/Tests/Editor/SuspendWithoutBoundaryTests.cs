@@ -577,22 +577,40 @@ namespace Velvet.Tests
         public void Given_AChildPassSuspendedUnderAnElementTheParentHandsBack_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
         {
             // Arrange — the parent's compiler hands back the element holding the child, so only the child's own
-            // suspended pass sends this pass into it; the second warning is that pass suspending in turn
+            // suspended pass sends this pass into it
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
             using var mounted = V.Mount(_root, V.Component(WrappedOuterPassRender, key: "outer"));
             s_innerSetOwn.Invoke(1);
             FiberWorkLoop.FlushState(s_innerFiber);
+
+            // Act
             s_outerSetTick.Invoke(1);
             FiberWorkLoop.FlushState(s_outerFiber);
 
-            // Act
-            s_source.TrySetResult(5);
-            mounted.FlushStateForTest();
+            // Assert — the parent's pass suspends with the child, so its label keeps the old tick
+            Assert.That(Texts(), Is.EqualTo("child:0|outer:0"),
+                "The parent's pass reaches the child whose own pass suspended, and suspends with it");
+        }
 
-            // Assert
-            Assert.That(Texts(), Is.EqualTo("child:5|outer:1"),
-                "The resolve retries the outermost pass that suspended, which renders the inner one's too");
+        [Test]
+        public void Given_AChildPassSuspendedUnderAComponentTheParentHandsBack_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
+        {
+            // Arrange — the parent's compiler hands back the component wrapping the child, which renders nothing
+            // in this pass, so only the child's own suspended pass sends this pass into the wrapper's output
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(BailedWrapOuterPassRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            FiberWorkLoop.FlushState(s_innerFiber);
+
+            // Act
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert — the parent's pass suspends with the child, so its label keeps the old tick
+            Assert.That(Texts(), Is.EqualTo("child:0|outer:0"),
+                "The parent's pass reaches the child whose own pass suspended, and suspends with it");
         }
 
         [Test]
@@ -1698,6 +1716,23 @@ namespace Velvet.Tests
                 s_innerMemoized
                     ? V.Component(MemoizedInnerPassRender, tick, key: "inner")
                     : V.Component(InnerPassRender, key: "inner"),
+                V.Label(text: "outer:" + tick),
+            });
+        }
+
+        [Component]
+        private static VNode WrapRender()
+            => V.Div(name: "wrap", children: new VNode[] { V.Component(InnerPassRender, key: "inner") });
+
+        [Component]
+        private static VNode BailedWrapOuterPassRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(WrapRender, key: "wrap"),
                 V.Label(text: "outer:" + tick),
             });
         }

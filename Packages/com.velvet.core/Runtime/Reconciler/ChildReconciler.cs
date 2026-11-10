@@ -82,8 +82,12 @@ namespace Velvet
             else
             {
                 _ctx.ParkedDiffParents[this] = parent;
+                Parked?.Invoke();
             }
         }
+
+        // Told when this instance parks a diff, so the fiber owning it marks its ancestors (FiberPendingWork).
+        internal Action? Parked { get; init; }
 
         // The boundary reproductions the state above still owes a removal pass, carried until the slice
         // that resumes it runs them. Instance state rather than context state like the lists it feeds,
@@ -926,21 +930,18 @@ namespace Velvet
             _stopwatch!.Stop();
         }
 
-        private enum IdentitySkip { Unasked, Skips, Descends }
-
         // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
-        // drops the render this pass owes a fiber below with work pending (FiberPendingWork). The answer is about the
-        // fiber reconciling, so it is asked once per call, and only when an identical node turns up.
-        private bool SkipsIdentical(ref IdentitySkip memo)
+        // drops the render this pass owes a fiber there with work pending (FiberPendingWork). Reads one bit of the
+        // fiber reconciling unless something below it has work.
+        private bool SkipsIdenticalAt(VisualElement parent, int logicalSlot)
         {
-            if (memo == IdentitySkip.Unasked)
-            {
-                memo = _ctx.FiberStack.Current is { } owner && FiberPendingWork.Below(owner)
-                    ? IdentitySkip.Descends
-                    : IdentitySkip.Skips;
-            }
-            return memo == IdentitySkip.Skips;
+            if (_ctx.FiberStack.Current is not { PendingWorkBelow: true } owner) return true;
+            return LogicalChildSlots.TryGetPhysical(parent, logicalSlot, out var physical)
+                && SkipsIdentical(owner, parent.ElementAt(physical));
         }
+
+        private static bool SkipsIdentical(ComponentFiber owner, VisualElement element)
+            => !FiberPendingWork.HoldsPendingUnder(owner, element);
 
         // Returns false only on a yield (this phase parked its resume point); true when the phase is done
         // with the range — including when an abort cut it short, which the dispatcher detects separately.
@@ -953,7 +954,6 @@ namespace Velvet
             var slotLimit = inputs.SlotLimit;
             var commonLength = inputs.CommonLength;
             var budgeted = frameBudgetMs > 0;
-            var identitySkip = IdentitySkip.Unasked;
 
             for (var i = startIndex; i < commonLength; i++)
             {
@@ -962,7 +962,7 @@ namespace Velvet
                 // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
                 // lookup and DiffProps invocation suppresses outlier GC allocations on the
                 // no-change path.
-                if (ReferenceEquals(oldNodes[i], newNodes[i]) && SkipsIdentical(ref identitySkip))
+                if (ReferenceEquals(oldNodes[i], newNodes[i]) && SkipsIdenticalAt(parent, slotStart + i))
                 {
                     if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                     {
@@ -1162,7 +1162,6 @@ namespace Velvet
             List<ChildKey>? oldKeys, int slotStart, out int linearEnd)
         {
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
-            var identitySkip = IdentitySkip.Unasked;
             linearEnd = 0;
             for (var i = 0; i < commonLength; i++)
             {
@@ -1176,7 +1175,7 @@ namespace Velvet
                 // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
                 // back the cached instance). Skip the DOM lookup and PatchNode, so the prefix advances and
                 // the in-place DOM slot stays valid.
-                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(ref identitySkip))
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdenticalAt(parent, slotStart + i))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
@@ -1279,7 +1278,6 @@ namespace Velvet
         {
             var oldMidEnd = oldNodes.Length - suffix;
             var newMidEnd = newNodes.Length - suffix;
-            var identitySkip = IdentitySkip.Unasked;
             // Patch the matched suffix in place at its OLD DOM positions (Pass 1 left the tail untouched,
             // so oldNodes[oldMidEnd + k] is still at slotStart + oldMidEnd + k). The middle insert/remove
             // below then shifts these elements to their final positions via UI Toolkit's auto-shift.
@@ -1287,7 +1285,7 @@ namespace Velvet
             {
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
-                if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(ref identitySkip)) continue;
+                if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdenticalAt(parent, slotStart + oi)) continue;
                 var actualElement = _patcher.ResolveWrapped(parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oi)));
                 _patcher.PatchNode(actualElement, oldNodes[oi], newNodes[ni]);
                 if (_ctx.IsAborted) return;
@@ -1520,7 +1518,6 @@ namespace Velvet
             var newNodes = state.NewNodes!;
             var slotStart = state.SlotStart;
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
-            var identitySkip = IdentitySkip.Unasked;
 
             for (var i = state.ResumeIndex; i < commonLength; i++)
             {
@@ -1532,7 +1529,7 @@ namespace Velvet
                 {
                     break;
                 }
-                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(ref identitySkip))
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdenticalAt(parent, slotStart + i))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
@@ -1926,7 +1923,9 @@ namespace Velvet
                 {
                     // Reference-identical VNodes are diff-free; reuse the existing element without patching.
                     // A same-instance node cannot trigger a WrapElement swap, so no re-fetch is needed.
-                    if (!ReferenceEquals(old.node, newNode))
+                    if (!ReferenceEquals(old.node, newNode)
+                        || (_ctx.FiberStack.Current is { PendingWorkBelow: true } owner
+                            && !SkipsIdentical(owner, existingDomElement)))
                     {
                         var actualElement = _patcher.ResolveWrapped(existingDomElement);
                         _patcher.PatchNode(actualElement, old.node, newNode);

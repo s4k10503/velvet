@@ -186,7 +186,17 @@ namespace Velvet
         /// caught it. Cleared where a pass of this fiber next commits its tree, and where a resource of that
         /// fiber resolves and asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
         /// </summary>
-        internal ComponentFiber? SuspendedOn { get; set; }
+        internal ComponentFiber? SuspendedOn
+        {
+            get => _suspendedOn;
+            set
+            {
+                _suspendedOn = value;
+                if (value != null) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private ComponentFiber? _suspendedOn;
 
         // Set on a fiber a suspended mount abandoned
         // (ComponentRegistry.DiscardSuspendedMountUnder); it waits for its reader's resolve to ask for the retry,
@@ -199,7 +209,22 @@ namespace Velvet
         /// because a flush that visits dirty fibers would render a component the pass mounted before the parent
         /// that places it has.
         /// </summary>
-        internal bool RenderOwed { get; set; }
+        internal bool RenderOwed
+        {
+            get => _renderOwed;
+            set
+            {
+                _renderOwed = value;
+                if (value) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private bool _renderOwed;
+
+        // Set on each ancestor of a fiber that takes work of its own (FiberPendingWork.MarkAncestors), and cleared
+        // only by FiberPendingWork when it finds nothing pending below, as React clears childLanes. A set bit
+        // may be stale; a clear one is not: every ancestor of a fiber with pending work carries it.
+        internal bool PendingWorkBelow { get; set; }
 
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition { get; set; }
@@ -435,7 +460,17 @@ namespace Velvet
         /// Whether re-render is needed at the next FlushState (an update was requested via Hook setter / dispatch /
         /// store subscription). Marks the fiber dirty so it is re-rendered on the next flush.
         /// </summary>
-        public bool IsDirty { get; internal set; }
+        public bool IsDirty
+        {
+            get => _isDirty;
+            internal set
+            {
+                _isDirty = value;
+                if (value) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private bool _isDirty;
 
         /// <summary>
         /// Whether the component is already disposed. Used as a no-op guard on paths such as calling a setter
@@ -1115,6 +1150,7 @@ namespace Velvet
             child.Parent = this;
             child.Sibling = null;
             child._previousSibling = _lastChild;
+            if (child.PendingWorkBelow || FiberPendingWork.IsPendingItself(child)) FiberPendingWork.MarkAncestors(child);
 
             if (_lastChild == null)
             {
