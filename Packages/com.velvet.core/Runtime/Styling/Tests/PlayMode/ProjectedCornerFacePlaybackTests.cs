@@ -279,19 +279,6 @@ namespace Velvet.Tests
                 Is.EqualTo("black"));
         }
 
-        // GREEN_ON_BASE(characterization): the base hides the native image with a keyword, which draws nothing.
-        // Dropping the clear pixel's write from ProjectedCornerFace.Hidden reddens this case.
-        [UnityTest]
-        public IEnumerator Given_ARoundedLayoutIdMotionWithNoBackgroundDrawnAQuarterAcross_When_ItsFaceIsPainted_Then_NothingIsPaintedInsideIt()
-        {
-            // Arrange / Act — no background colour and no image.
-            yield return MountAndWiden("NoFace");
-
-            // Assert — black well inside it, where the pixel the face hides the native image with would show were it not clear.
-            Assert.That(DrawnOverItsOldBox ? IsBlack(Interior) ? "black" : $"other {Interior}" : "not drawn over its old box",
-                Is.EqualTo("black"));
-        }
-
         [UnityTest]
         public IEnumerator Given_ARingedRoundedLayoutIdMotionDrawnAQuarterAcross_When_ItsBandIsPainted_Then_NothingIsPaintedOutsideItsCornersPerAxis()
         {

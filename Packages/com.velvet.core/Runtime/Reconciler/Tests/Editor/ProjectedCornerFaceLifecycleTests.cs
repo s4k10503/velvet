@@ -244,8 +244,6 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base reads the image slot through IStyle's getter alone.
-        // Hiding the native image with StyleKeyword.None in place of ProjectedCornerFace.Hidden reddens this case.
         [Test]
         public void Given_AnInlineImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsDrawnAndReassertedAgain_Then_NothingIsAllocated()
         {
@@ -263,7 +261,7 @@ namespace Velvet.Tests
                 Tick();
                 Step(mounted, 1);
                 for (var i = 0; i < 3; i++) Tick();
-                var painting = ProjectedCornerFace.TryGetProjection(box, out var radii, out var scale);
+                ProjectedCornerFace.TryGetProjection(box, out var radii, out var scale);
                 const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic
                     | System.Reflection.BindingFlags.Static;
                 var face = typeof(ProjectedCornerFace);
@@ -279,6 +277,7 @@ namespace Velvet.Tests
                     reassert();
                 };
                 pass();
+                var imaged = lookup[1]?.GetType().GetField("Image")!.GetValue(lookup[1]) != null;
                 System.Action canary = () => System.GC.KeepAlive(new byte[16]);
                 canary();
 
@@ -287,10 +286,61 @@ namespace Velvet.Tests
                 var counted = GCAllocationProbe.MedianBlocksDuring(canary) > 0;
 
                 // Assert — none, where the face paints the image and the canary's are counted.
-                Assert.That(painting && counted ? blocks : -1, Is.Zero, $"{blocks} blocks per pass; the canary's counted: {counted}");
+                Assert.That(imaged && counted ? blocks : -1, Is.Zero, $"{blocks} blocks per pass; the image painted: {imaged}; the canary's counted: {counted}");
             }
             finally
             {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base hides the slot with StyleKeyword.None, which the getter reads as Null.
+        // Writing Hidden's pixel in ProjectedCornerFace.SyncImage where the element has no image reddens this case.
+        [Test]
+        public void Given_ARoundedLayoutIdMotionWithNoImageDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsPainted_Then_ItsImageSlotIsLeftAlone()
+        {
+            // Arrange / Act — blue, no image, drawn at a quarter across and a half down.
+            s_classes = "rounded-[20px] bg-blue-500";
+            using var mounted = MountAndWiden();
+            for (var i = 0; i < 3; i++) Tick();
+            var box = Root.Q<VisualElement>("box");
+            var moved = ProjectedCornerFace.TryGetRadii(box, out _);
+
+            // Assert — Undefined where the face never painted, which an untouched slot never reads.
+            Assert.That(moved ? box.style.backgroundImage.keyword : StyleKeyword.Undefined, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands back no inline image, having read it as none from the start.
+        // Comparing the slot through IStyle's getter alone in ProjectedCornerFace.SyncImage before it settles reddens this case.
+        [Test]
+        public void Given_AClippingFaceNotYetClipped_When_ItsInlineRenderTextureIsRemoved_Then_NoImageIsHandedBack()
+        {
+            // Arrange — clipping, laid out at no size, so that no clip is written over its image slot, with a render texture
+            // given inline, and its face drawn at a quarter across and a half down.
+            var element = new VisualElement();
+            element.style.overflow = Overflow.Hidden;
+            Root.Add(element);
+            var texture = new RenderTexture(4, 4, 0);
+            try
+            {
+                element.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(texture));
+                Tick();
+                var radii = CornerRadii.Circular(20f, 20f, 20f, 20f);
+                var scale = new Vector2(0.25f, 0.5f);
+                var drawn = ProjectedCornerFace.Draw(element, radii, 0f, scale);
+
+                // Act — the render texture removed, a pass, then the face handed back.
+                element.style.backgroundImage = new StyleBackground(StyleKeyword.Null);
+                ProjectedCornerFace.Draw(element, radii, 0f, scale);
+                ProjectedCornerFace.End(element);
+                Tick();
+
+                // Assert — the texture where the face never drew, which no hand-back of a removed image leaves.
+                Assert.That(drawn ? element.resolvedStyle.backgroundImage.renderTexture : texture, Is.Null);
+            }
+            finally
+            {
+                ProjectedCornerFace.Forget(element);
                 Object.DestroyImmediate(texture);
             }
         }

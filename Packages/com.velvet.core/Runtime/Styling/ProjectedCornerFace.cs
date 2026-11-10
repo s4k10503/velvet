@@ -71,6 +71,11 @@ namespace Velvet
 
             public FaceImage? Image;
             public bool Clips;
+            // The image slot holds what WrittenImage records, as the getter reads it: Hidden's pixel, the clip, or, with no
+            // image to hide, the element's own. Until it does, the slot holds the element's own value, which the getter
+            // reads as none where it is a keyword or a RenderTexture, so it is compared as InlineImage reads it instead
+            // (Given_AClippingFaceNotYetClipped_When_ItsInlineRenderTextureIsRemoved_Then_NoImageIsHandedBack).
+            public bool Settled;
             // Something else wrote an image or placement slot, or clipping began, since the clip's slots were written.
             public bool RewriteClip;
             // The callback list as this last left it, with the face first.
@@ -246,6 +251,9 @@ namespace Velvet
             }
             var style = element.style;
             state.Own.Take(element);
+            // MUTANT_SURVIVES(equivalent, line removed): SyncImage compares the slot through InlineImage until it settles
+            // the slot, which writes WrittenImage; before then only WrittenElsewhere reads it, where a default value only
+            // has a panel update start the SyncImage the next pass runs anyway.
             state.WrittenImage = style.backgroundImage;
             state.WrittenPositionX = style.backgroundPositionX;
             state.WrittenPositionY = style.backgroundPositionY;
@@ -395,13 +403,17 @@ namespace Velvet
         // Takes back each image slot something else wrote since this did, and reads whether the element clips its content
         // now; reads the element's own image off its own slots and, beneath them, its rules. Where it clips, a slot
         // something else wrote has the clip's written over it again (SyncClip); where it does not, the image slot holds
-        // Hidden's pixel and the placement slots their own. False where the element's own image is one this does not paint.
+        // Hidden's pixel where the face paints an image, and the placement slots their own. False where the element's own
+        // image is one this does not paint.
         private static bool SyncImage(VisualElement element, State state)
         {
             var style = element.style;
             var own = state.Own;
             var foreign = false;
-            if (style.backgroundImage != state.WrittenImage) (own.Image, foreign) = (InlineImage(element), true);
+            if (state.Settled ? style.backgroundImage != state.WrittenImage : InlineImage(element) != own.Image)
+            {
+                (own.Image, foreign) = (InlineImage(element), true);
+            }
             if (style.backgroundPositionX != state.WrittenPositionX) (own.X, foreign) = (style.backgroundPositionX, true);
             if (style.backgroundPositionY != state.WrittenPositionY) (own.Y, foreign) = (style.backgroundPositionY, true);
             if (style.backgroundRepeat != state.WrittenRepeat) (own.Repeat, foreign) = (style.backgroundRepeat, true);
@@ -412,12 +424,18 @@ namespace Velvet
             if (clips && (foreign || !state.Clips)) state.RewriteClip = true;
             if (!clips && state.Clips) HandBackPlacement(element, state);
             state.Clips = clips;
-            if (!clips) style.backgroundImage = state.WrittenImage = Hidden();
+            if (clips) return true;
+            // With no image of the element's own the slot is left as it is, since the element's own placement draws the
+            // pixel, a tile to every pixel of the box under `background-repeat: repeat` and `background-size: auto`
+            // (Given_ARoundedLayoutIdMotionWithNoImageDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsPainted_Then_ItsImageSlotIsLeftAlone).
+            if (image != null) style.backgroundImage = Hidden();
+            state.WrittenImage = style.backgroundImage;
+            state.Settled = true;
             return true;
         }
 
-        // A clear pixel only this writes, which hides the native image where the face paints its own: any other value in
-        // the slot, a keyword included, was written elsewhere
+        // A clear pixel only this writes, which hides the native image of an element that does not clip while the face
+        // paints its image: any other value in that slot, a keyword included, was written elsewhere
         // (Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_ItsOverrideTurnsToNoneMidMove_Then_NoImageIsHandedBack).
         private static Texture2D? s_hidden;
 
@@ -425,7 +443,7 @@ namespace Velvet
         {
             if (s_hidden == null)
             {
-                s_hidden = new Texture2D(1, 1);
+                s_hidden = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
                 s_hidden.SetPixel(0, 0, Color.clear);
                 s_hidden.Apply();
             }
@@ -625,6 +643,7 @@ namespace Velvet
             state.RewriteClip = false;
             var style = element.style;
             style.backgroundImage = state.WrittenImage = Background.FromVectorImage(image);
+            state.Settled = true;
             style.backgroundPositionX = state.WrittenPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, 0f);
             style.backgroundPositionY = state.WrittenPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, 0f);
             style.backgroundRepeat = state.WrittenRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
