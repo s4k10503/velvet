@@ -401,6 +401,10 @@ namespace Velvet
                 try
                 {
                     StyleArbitraryValueResolver.ClearInline(element, layer.Property);
+                    // MUTANT_SURVIVES(equivalent): the resolve placing the side records it or writes it again after this.
+                    // NoteWritten records it where the side's own property was resolved; elsewhere a connected layer of
+                    // Velvet's, keyed above preflight's, writes the inline value again. Left set, Seen keeps that value,
+                    // which decides whether preflight's layer stays under the inline value shown, not the colour shown.
                     state.Seen[side] = NoColour;
                     state.Rule.Show(element, side, colour);
                 }
