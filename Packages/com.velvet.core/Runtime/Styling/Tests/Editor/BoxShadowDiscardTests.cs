@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -133,6 +134,41 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(discarded, Is.False);
+        }
+
+        // The colour of the first layer a reconciled element with classes paints, or why there is none.
+        private static string ReconciledLayerColour(string classes)
+        {
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[] { V.Div(className: classes) });
+            return scope.Reconciler.Context.ShadowBindings.TryGetValue(scope.Root[0], out var binding)
+                ? ColorUtility.ToHtmlStringRGBA(binding.Layers[0].Color)
+                : "unbound";
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a palette colour Tailwind emits after shadow-initial.
+        [TestCase("shadow-lg shadow-red-500 shadow-initial")]
+        [TestCase("shadow-lg shadow-initial shadow-red-500")]
+        public void Given_ShadowInitialBesideAColourTailwindEmitsAfterIt_When_Reconciled_Then_TheColourStands(string classes)
+        {
+            // Arrange — Tailwind emits .shadow-initial ahead of .shadow-red-500, whatever order the classes are written in.
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+
+            // Act
+            var colour = ReconciledLayerColour(classes);
+
+            // Assert
+            Assert.That(colour, Is.EqualTo(ColorUtility.ToHtmlStringRGBA(red)));
+        }
+
+        [Test]
+        public void Given_ShadowInitialBesideAColourTailwindEmitsBeforeIt_When_Reconciled_Then_TheLayerKeepsItsOwnColour()
+        {
+            // Act — Tailwind emits .shadow-black ahead of .shadow-initial, which then leaves shadow-lg its own colour.
+            var colour = ReconciledLayerColour("shadow-lg shadow-initial shadow-black");
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("0000001A"));
         }
 
         [Test]

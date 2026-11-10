@@ -121,11 +121,6 @@ namespace Velvet
                 if (s_byElement.TryGetValue(child, out var binding) && InheritsColour(binding.Layers))
                 {
                     child.MarkDirtyRepaint();
-                    if (RingOverlay.TryGet(child) is { } ring)
-                    {
-                        ring.RingElement.MarkDirtyRepaint();
-                        ring.OffsetElement.MarkDirtyRepaint();
-                    }
                 }
                 RepaintInheritors(child);
             }
@@ -408,15 +403,15 @@ namespace Velvet
             }
             if (!clips)
             {
-                DrawLayers(mgc, binding, box, inset: false, unscale);
+                DrawLayers(mgc, ve, binding, box, inset: false, unscale);
             }
             if (native && !binding.Face.SuppressionApplied)
             {
-                DrawLayers(mgc, binding, box, inset: true, unscale);
+                DrawLayers(mgc, ve, binding, box, inset: true, unscale);
                 return;
             }
             RepaintUprightFill(mgc, ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: true, unscale);
+            DrawLayers(mgc, ve, binding, box, inset: true, unscale);
             if (!clips)
             {
                 RepaintUprightBorder(mgc, ve, binding, w, h);
@@ -466,7 +461,7 @@ namespace Velvet
             float h)
         {
             var (box, unscale) = LayerBox(ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: false, unscale);
+            DrawLayers(mgc, ve, binding, box, inset: false, unscale);
             var shearing = new SilhouetteFace.Shearing(w, h, 0f, 0f);
             if (binding.Face.SuppressionApplied)
             {
@@ -490,10 +485,10 @@ namespace Velvet
 
         // unscale maps the box the layers are baked against back onto the element's own: Vector2.one but while a
         // layoutId projection draws the element scaled differently on each axis (ProjectedBox).
-        private static void DrawLayers(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowBox box, bool inset,
-            Vector2 unscale)
+        private static void DrawLayers(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding, in ShadowBox box,
+            bool inset, Vector2 unscale)
         {
-            if (DiscardedByInheritance(mgc.visualElement))
+            if (DiscardedByInheritance(ve))
             {
                 return;
             }
