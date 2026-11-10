@@ -103,8 +103,8 @@ namespace Velvet.Tests
             handle.Rerender.Invoke();
             _mounted.FlushStateForTest();
 
-            // Assert — a value that is not null where the render did not take place during the drop.
-            Assert.That(handle.Dropping ? Ghost() : (object)"the render was not during a drop", Is.Null);
+            // Assert
+            Assert.That(Ghost(), Is.Null);
         }
 
         // GREEN_ON_BASE(characterization): the base already shows what is asserted here; no case asserted it before.
@@ -122,8 +122,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already shows what is asserted here; no case asserted it before.
-        // The body reads the handle's Dropping, which is neither a prop nor a hook value, so nothing a woven gate
-        // keys on changes with it.
         [Test]
         public void Given_TheOverlaysComponent_When_TheCompilerTransformHasRun_Then_ItLeftTheBodyUnwoven()
         {

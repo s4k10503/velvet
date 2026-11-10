@@ -1131,7 +1131,7 @@ namespace Velvet
         internal void CommitChildOrder(IReadOnlyList<ComponentFiber> children)
         {
             // Every Sibling link is cleared before any is written, so no reordering can leave a sibling chain that
-            // loops back on itself. The loop below writes every child's previous link, so none is cleared here.
+            // loops back on itself.
             Child = null;
             foreach (var child in children)
             {

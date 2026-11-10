@@ -59,7 +59,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already stashes, restores and disposes as asserted here; no case asserted it before.
         [Test]
-        public void Given_AStashedResourceOfAKey_When_ATransitionsRenderAsksForAnotherKey_Then_ItIsDisposed()
+        public void Given_AStashedResourceOfAnotherType_When_ATransitionsRenderAsksForTheSlot_Then_ItIsDisposed()
         {
             // Arrange
             var fiber = new ComponentFiber();
