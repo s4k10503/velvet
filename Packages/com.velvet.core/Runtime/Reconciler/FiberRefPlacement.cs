@@ -154,14 +154,46 @@ namespace Velvet
     // maps are built once for a commit, and the tree does not change while the commit places setups.
     internal sealed class LogicalElementTree
     {
-        private readonly ReconcilerContext _ctx;
+        // An instance per holder on the stack, so a commit nested in another takes one of its own.
+        private static readonly Stack<LogicalElementTree> s_pool = new();
+
+        private ReconcilerContext _ctx = null!;
         private readonly Dictionary<VisualElement, VisualElement> _standInOf = new();
         private readonly Dictionary<VisualElement, List<(VisualElement Placeholder, int Start, int Length)>> _portalsOf
             = new();
+        private readonly Stack<List<(VisualElement Placeholder, int Start, int Length)>> _spareRanges = new();
         private readonly List<VisualElement> _chainA = new();
         private readonly List<VisualElement> _chainB = new();
+        private readonly RenderedChildrenCache _rendered = new();
 
-        internal LogicalElementTree(ReconcilerContext ctx)
+        internal LogicalElementTree(ReconcilerContext ctx) => Fill(ctx);
+
+        private LogicalElementTree()
+        {
+        }
+
+        internal static LogicalElementTree Rent(ReconcilerContext ctx)
+        {
+            var tree = s_pool.Count > 0 ? s_pool.Pop() : new LogicalElementTree();
+            tree.Fill(ctx);
+            return tree;
+        }
+
+        internal void Return()
+        {
+            _ctx = null!;
+            _standInOf.Clear();
+            foreach (var ranges in _portalsOf.Values)
+            {
+                ranges.Clear();
+                _spareRanges.Push(ranges);
+            }
+            _portalsOf.Clear();
+            _rendered.Clear();
+            s_pool.Push(this);
+        }
+
+        private void Fill(ReconcilerContext ctx)
         {
             _ctx = ctx;
             foreach (var pair in ctx.ZLayerPlaceholders) _standInOf[pair.Value] = pair.Key;
@@ -171,7 +203,9 @@ namespace Velvet
                 if (target == null) continue;
                 if (!_portalsOf.TryGetValue(target, out var ranges))
                 {
-                    ranges = new List<(VisualElement Placeholder, int Start, int Length)>();
+                    ranges = _spareRanges.Count > 0
+                        ? _spareRanges.Pop()
+                        : new List<(VisualElement Placeholder, int Start, int Length)>();
                     _portalsOf[target] = ranges;
                 }
                 ranges.Add((pair.Key, pair.Value.SlotStart, pair.Value.SlotLength));
@@ -202,18 +236,8 @@ namespace Velvet
             return Precedes(parent, element);
         }
 
-        // Where the fiber's output starts: its first row, or the row a fiber holding none sits in front of. Null for
-        // a fiber holding none behind the last row of a container, which endOf names, and for a fiber mounted
-        // nowhere.
-        internal static VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf)
-        {
-            endOf = null;
-            var mount = fiber.MountPoint;
-            if (mount == null) return null;
-            if (LogicalChildSlots.TryGetPhysical(mount, fiber.MountSlotStart, out var physical)) return mount[physical];
-            endOf = mount;
-            return null;
-        }
+        // RenderedChildrenCache.StartOf, each container read once while the tree is held.
+        internal VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf) => _rendered.StartOf(fiber, out endOf);
 
         // Whether element, or with atEnd the place behind its last child, comes after everything inside subtree.
         internal bool ComesAfter(VisualElement subtree, VisualElement element, bool atEnd)

@@ -8,7 +8,7 @@ namespace Velvet
     // mutation case: one pre-order walk of the hidden tree first (disappearLayoutEffects), in which a component's
     // layout cleanups run where the walk reaches the component and an element's ref detaches where the walk reaches
     // the element, and the display: none after it (hideOrUnhideAllChildren). A component is reached ahead of the
-    // element its output starts at (LogicalElementTree.StartOf), and a Portal's children and an element
+    // element its output starts at (RenderedChildrenCache.StartOf), and a Portal's children and an element
     // FiberZLayerCoordinator relocated are reached where they are declared.
     internal sealed class SuspenseOffscreenCommit
     {
@@ -26,8 +26,7 @@ namespace Velvet
         private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingIn = new();
         private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingInPortal = new();
         private readonly Stack<List<ComponentFiber>> _spareFiberLists = new();
-        private readonly Dictionary<VisualElement, List<VisualElement>> _renderedChildren = new();
-        private readonly Stack<List<VisualElement>> _spareElementLists = new();
+        private readonly RenderedChildrenCache _rendered = new();
         private readonly HashSet<VisualElement> _visited = new();
         private readonly List<List<VisualElement>> _childrenAtDepth = new();
         private int _depth;
@@ -137,8 +136,7 @@ namespace Velvet
             }
             var mount = fiber.MountPoint;
             if (mount == null) return;
-            // LogicalElementTree.StartOf's reading, from the container's rendered children resolved once per Apply.
-            var rendered = RenderedChildrenOf(mount);
+            var rendered = _rendered.Of(mount);
             var slot = fiber.MountSlotStart;
             // A fiber holding no row in front of another Portal's row in its container sits behind the container's
             // own children, where the walk ends the container: that row is reached at its Portal.
@@ -151,20 +149,6 @@ namespace Velvet
             // or right after the placeholder.
             var start = rendered[slot];
             AddInTreeOrder(_startingAt, _ctx.ZLayerPlaceholders.TryGetValue(start, out var real) ? real : start, fiber);
-        }
-
-        private List<VisualElement> RenderedChildrenOf(VisualElement container)
-        {
-            if (_renderedChildren.TryGetValue(container, out var rendered)) return rendered;
-            rendered = _spareElementLists.Count > 0 ? _spareElementLists.Pop() : new List<VisualElement>();
-            var count = container.childCount;
-            for (var i = 0; i < count; i++)
-            {
-                var child = container[i];
-                if (!LogicalChildSlots.IsInvisible(child)) rendered.Add(child);
-            }
-            _renderedChildren[container] = rendered;
-            return rendered;
         }
 
         private bool IsAnotherPortalsRow(ComponentFiber fiber, VisualElement container, int slot)
@@ -246,7 +230,7 @@ namespace Velvet
             if (!_ctx.PortalState.TryGetValue(placeholder, out var portal)) return;
             if (portal.Target != null)
             {
-                var rows = RenderedChildrenOf(portal.Target);
+                var rows = _rendered.Of(portal.Target);
                 for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength && slot < rows.Count; slot++)
                 {
                     var row = rows[slot];
@@ -274,12 +258,7 @@ namespace Velvet
             ReturnLists(_startingAt);
             ReturnLists(_endingIn);
             ReturnLists(_endingInPortal);
-            foreach (var rendered in _renderedChildren.Values)
-            {
-                rendered.Clear();
-                _spareElementLists.Push(rendered);
-            }
-            _renderedChildren.Clear();
+            _rendered.Clear();
             _visited.Clear();
         }
 

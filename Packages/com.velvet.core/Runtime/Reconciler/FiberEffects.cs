@@ -441,32 +441,40 @@ namespace Velvet
         {
             if (ctx.PortalState.Count == 0) return;
             LogicalElementTree? tree = null;
-            var i = 0;
-            while (i < deduped.Count)
+            try
             {
-                var placeholder = deduped[i].Fiber.OwningPortalPlaceholder;
-                if (placeholder == null || !ctx.PortalState.ContainsKey(placeholder))
+                var i = 0;
+                while (i < deduped.Count)
                 {
-                    i++;
-                    continue;
+                    var placeholder = deduped[i].Fiber.OwningPortalPlaceholder;
+                    if (placeholder == null || !ctx.PortalState.ContainsKey(placeholder))
+                    {
+                        i++;
+                        continue;
+                    }
+                    var end = i + 1;
+                    while (end < deduped.Count && ReferenceEquals(deduped[end].Fiber.OwningPortalPlaceholder, placeholder)) end++;
+                    var at = i;
+                    while (at > 0 && OutputComesAfter(tree ??= LogicalElementTree.Rent(ctx), placeholder, deduped[at - 1].Fiber)) at--;
+                    if (at < i)
+                    {
+                        // Rotated in place, the run ahead of what it passed.
+                        deduped.Reverse(at, i - at);
+                        deduped.Reverse(i, end - i);
+                        deduped.Reverse(at, end - at);
+                    }
+                    i = end;
                 }
-                var end = i + 1;
-                while (end < deduped.Count && ReferenceEquals(deduped[end].Fiber.OwningPortalPlaceholder, placeholder)) end++;
-                var at = i;
-                while (at > 0 && OutputComesAfter(tree ??= new LogicalElementTree(ctx), placeholder, deduped[at - 1].Fiber)) at--;
-                if (at < i)
-                {
-                    var run = deduped.GetRange(i, end - i);
-                    deduped.RemoveRange(i, end - i);
-                    deduped.InsertRange(at, run);
-                }
-                i = end;
+            }
+            finally
+            {
+                tree?.Return();
             }
         }
 
         private static bool OutputComesAfter(LogicalElementTree tree, VisualElement placeholder, ComponentFiber fiber)
         {
-            var start = LogicalElementTree.StartOf(fiber, out var endOf);
+            var start = tree.StartOf(fiber, out var endOf);
             if (start != null) return tree.ComesAfter(placeholder, start, atEnd: false);
             return endOf != null && tree.ComesAfter(placeholder, endOf, atEnd: true);
         }
