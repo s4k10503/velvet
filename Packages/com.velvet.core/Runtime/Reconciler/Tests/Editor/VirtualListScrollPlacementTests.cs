@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -8,29 +9,129 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what a <see cref="V.VirtualList{T}"/> range rendered from a scroll, outside any reconcile pass,
     /// places before the scroll returns: the children of each row that is a <c>V.Portal</c> mount in its target, in
-    /// the rows' order, a Component row between them included.
+    /// the rows' order, a Component row between them included, and in the order a pass mounts them where a Component
+    /// row renders a Portal of its own. A Portal a range that failed had built mounts nothing when the range renders
+    /// again. A child of such a Portal that suspends with no Suspense above the list leaves the list's host waiting on
+    /// the read rather than leaving the scroll.
     /// </summary>
     [TestFixture]
     internal sealed class VirtualListScrollPlacementTests
     {
         private VisualElement _root;
+        private static VisualElement s_target;
+        private static int s_refusals;
+        private static VelvetTaskCompletionSource<string> s_resource;
+        private static ComponentFiber s_listHost;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
             FiberStrictMode.Enabled = false;
+            (s_target, s_refusals, s_resource, s_listHost) =
+                (new VisualElement(), 0, new VelvetTaskCompletionSource<string>(), null);
         }
 
         [Component]
         private static VNode ComponentRow(string item) => V.Div(name: item);
+
+        [Component(Compiler = false)]
+        private static VNode PortalComponentRow(string item) => V.Portal(s_target, new VNode[] { V.Label(text: item, name: item) });
+
+        [Component(Compiler = false)]
+        private static VNode PendingRead() => V.Label(name: "pending", text: Hooks.Use(_ => s_resource.Task));
+
+        [Component(Compiler = false)]
+        private static VNode SuspendingPortalListHost()
+        {
+            s_listHost = FiberAmbientStack.Current;
+            return V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 10f,
+                renderer: _ => V.Portal(s_target, new VNode[] { V.Component(PendingRead) }),
+                overscan: 0);
+        }
+
+        private ScrollView List => _root.Q<ScrollView>();
+
+        [Test]
+        public void Given_APortalRowAheadOfAComponentRowThatRendersAPortalToTheSameTarget_When_AScrollBringsThemIntoTheRange_Then_TheirChildrenMountInTheRowsOrder()
+        {
+            // Arrange — the list renders no range until a scroll asks for one.
+            using var mounted = V.Mount(_root, V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: new[] { "b", "c" },
+                    keySelector: item => item,
+                    itemHeight: 10f,
+                    renderer: item => item == "c"
+                        ? V.Component(PortalComponentRow, item, key: item)
+                        : V.Portal(s_target, new VNode[] { V.Label(text: item, name: item) }),
+                    overscan: 0),
+            }));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(string.Join(",", s_target.Children().Select(child => child.name)), Is.EqualTo("b,c"));
+        }
+
+        [Test]
+        public void Given_ARangeThatFailedAfterBuildingARowHoldingAPortal_When_TheRangeIsRenderedAgain_Then_ThePortalsChildrenMountOnce()
+        {
+            // Arrange — the renderer refuses "b" once, after "a" has been built around a Portal.
+            s_refusals = 1;
+            using var mounted = V.Mount(_root, V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: new[] { "a", "b" },
+                    keySelector: item => item,
+                    itemHeight: 10f,
+                    renderer: item => item == "b" && s_refusals-- > 0
+                        ? throw new InvalidOperationException("row refused")
+                        : item == "a"
+                            ? V.Div(name: item, children: new VNode[] { V.Portal(s_target, new VNode[] { V.Label(text: item) }) })
+                            : V.Div(name: item),
+                    overscan: 0),
+            }));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_target.childCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowThatIsAPortalWhoseChildSuspendsWithNoSuspenseAbove_When_AScrollBringsItIntoTheRange_Then_TheListsHostWaitsOnTheRead()
+        {
+            // Arrange — the list renders no range until a scroll asks for one.
+            using var mounted = V.Mount(_root, V.Component(SuspendingPortalListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_listHost.SuspendedOn, Is.Not.Null);
+        }
 
         [Test]
         public void Given_VirtualListRowsThatArePortalsAroundAComponentRow_When_AScrollBringsThemIntoTheRange_Then_TheirChildrenMountInTheTarget()
         {
             // Arrange — the list renders no range until a scroll asks for one. "c" is a Component, whose render
             // outside a pass is a top-level pass of its own.
-            var target = new VisualElement();
             using var mounted = V.Mount(_root, V.Div(children: new VNode[]
             {
                 V.VirtualList(
@@ -39,19 +140,19 @@ namespace Velvet.Tests
                     itemHeight: 10f,
                     renderer: item => item switch
                     {
-                        "b" or "d" => V.Portal(target, new VNode[] { V.Label(text: item, name: item) }),
+                        "b" or "d" => V.Portal(s_target, new VNode[] { V.Label(text: item, name: item) }),
                         "c" => V.Component(ComponentRow, item, key: item),
                         _ => V.Div(name: item),
                     },
                     overscan: 0),
             }));
-            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[List];
 
             // Act
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
 
             // Assert
-            Assert.That(string.Join(",", target.Children().Select(child => child.name)), Is.EqualTo("b,d"));
+            Assert.That(string.Join(",", s_target.Children().Select(child => child.name)), Is.EqualTo("b,d"));
         }
     }
 

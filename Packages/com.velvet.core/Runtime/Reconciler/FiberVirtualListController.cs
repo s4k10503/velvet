@@ -220,8 +220,8 @@ namespace Velvet
             CancelScrollRequest();
             for (var i = 0; i < _renderedElements.Length; i++)
             {
-                if (_renderedElements[i] == null) continue;
-                var row = _reconciler.RowBoxForController(_renderedElements[i]);
+                var row = _renderedElements[i];
+                if (row == null) continue;
                 if (_horizontal) row.style.width = StyleKeyword.Null;
                 else row.style.height = StyleKeyword.Null;
             }
@@ -328,9 +328,17 @@ namespace Velvet
                 return;
             }
 
-            // Last, once the buffers name the rows placed: outside a pass this ends the range as a pass ends, which
-            // can throw.
-            _reconciler.EndRowPlacementForController(_visibleContainer);
+            // Last, once the buffers name the rows placed: outside a pass this ends the range as a pass ends.
+            try
+            {
+                _reconciler.EndRowPlacementForController(_visibleContainer);
+            }
+            catch (FiberSuspendSignal)
+            {
+                // A child of a Portal a row placed suspended as the end mounted it. The list's host owns a range
+                // rendered outside a pass as a fiber owns its own pass, so the signal goes where a pass owner's does.
+                if (_hostFiber != null) FiberRenderer.SuspendPassOwner(_hostFiber, transitionPass: false);
+            }
         }
 
         // Indexes the still-rendered items into the two old-row tables, for RenderRange's reuse/patch
@@ -468,6 +476,16 @@ namespace Velvet
                         newElements[i] = replacement;
                     }
 
+                    // In the list as soon as it is built. Outside a pass a Component row's render is a top-level pass of
+                    // its own, whose end drains the mounts the rows ahead of it deferred and drops one whose placeholder
+                    // has no parent; in the list, they drain there in the order they were queued, as a pass drains
+                    // them. RebuildVisibleContainer puts the rows in their order afterwards.
+                    var occupant = _reconciler.SlotOccupantForController(newElements[i]);
+                    if (occupant.parent != _visibleContainer)
+                    {
+                        _visibleContainer.Add(occupant);
+                    }
+
                     // The prior row leaves its table only once the slot holds an element, the order
                     // GeneralPathReconciler.CommitLeaf keeps for an old leaf it marks taken: a throw from the create
                     // or the patch above leaves it there for DiscardFailedPass to release.
@@ -572,11 +590,12 @@ namespace Velvet
             _lastRenderedIndex = -1;
         }
 
-        // Repopulates _visibleContainer from newElements at its new scroll offset. Only the rows go and come back: what
-        // holds no slot of its own (LogicalChildSlots.IsInvisible) is left standing — an element FiberZLayerCoordinator
-        // relocated out of a row's slot, whose placeholder is what newElements names, and a band or layer hosted
-        // beside a row, which its attach callback puts beside the row again as the row comes back onto the panel.
-        // The coordinator arranges the relocated elements again where the range ends.
+        // Repopulates _visibleContainer from newElements at its new scroll offset. What holds each row's slot goes and
+        // comes back; what holds no slot of its own (LogicalChildSlots.IsInvisible) is left standing — a row
+        // FiberZLayerCoordinator relocated, whose placeholder holds its slot, an element retired for the end of the
+        // range or of the pass it renders in to release, and a band or layer hosted beside a row, which its attach
+        // callback puts beside the row again as the row comes back onto the panel. The coordinator arranges the
+        // relocated rows again at that same end.
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
             _reconciler.BeginRowPlacementForController(_visibleContainer);
@@ -600,10 +619,9 @@ namespace Velvet
                 if (newElements[i] != null)
                 {
                     var length = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
-                    var box = _reconciler.RowBoxForController(newElements[i]);
-                    if (_horizontal) box.style.width = length;
-                    else box.style.height = length;
-                    _visibleContainer.Add(newElements[i]);
+                    if (_horizontal) newElements[i].style.width = length;
+                    else newElements[i].style.height = length;
+                    _visibleContainer.Add(_reconciler.SlotOccupantForController(newElements[i]));
                 }
             }
         }

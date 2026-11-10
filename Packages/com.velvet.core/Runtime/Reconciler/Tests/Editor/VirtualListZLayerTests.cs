@@ -194,6 +194,63 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AVirtualListRowAMotionPlayHoldsTheZIndexOf_When_TheListRendersTheRangeAgain_Then_ItStillPaintsInFrontOfTheRowsAfterIt()
+        {
+            // Arrange — "b" relocated in front; a play opened on it holds its z, so the patch leaves its stacking to
+            // the play.
+            s_classes = "relative z-10";
+            using var mounted = Mount();
+            Render(mounted);
+            var b = _root.Q<VisualElement>("b");
+            mounted.Root.Reconciler.Context.PaintLeases.Open(b, new[] { "relative", "z-10" }, new[] { "relative", "z-20" }, isExit: false);
+
+            // Act
+            Render(mounted);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,c,b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base empties the row container on each range render, so no departed
+        // row stays in it. Leaving what holds no slot standing has to leave no departed row there either.
+        [Test]
+        public void Given_AVirtualListRowLiftedInFrontOfTheRowsAfterIt_When_AScrollJumpsToARangeWithoutIt_Then_ItIsNoLongerInTheList()
+        {
+            // Arrange — "a" is positioned with no z, which paints it in front of the unpositioned rows after it.
+            (s_items, s_classedRow, s_classes) = (new[] { "a", "b", "c", "d", "e", "f" }, "a", "relative");
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 30f, viewportHeight: 30f);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("a"), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps each row where its range renders it, the positioned one
+        // included. Lifting it in front and back again as the rows after it come and go must keep it there.
+        [Test]
+        public void Given_AVirtualListRowLiftedThenLoweredAsTheRowsAfterItLeave_When_AScrollBringsThemBack_Then_ItIsStillInTheList()
+        {
+            // Arrange — "r5" is positioned with no z: in front of "r6" while that row is in the range, and in its
+            // own slot once a scroll up one row takes "r6" out.
+            (s_items, s_classedRow, s_classes) =
+                (new[] { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9" }, "r5", "relative");
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 40f, viewportHeight: 30f);
+            controller.UpdateVisibleRange(scrollY: 30f, viewportHeight: 30f);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 40f, viewportHeight: 30f);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("r5")?.parent, Is.SameAs(Rows));
+        }
+
+        [Test]
         public void Given_AVirtualListRowARenderGaveAZIndex_When_ItLeavesTheList_Then_NoPlaceholderIsKeptForIt()
         {
             // Arrange

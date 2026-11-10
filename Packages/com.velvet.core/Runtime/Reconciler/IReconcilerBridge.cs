@@ -6,8 +6,12 @@ namespace Velvet
     // Bridge interface that decouples FiberVirtualListController from Reconciler.
     internal interface IReconcilerBridge
     {
+        // The controller keeps rows, not what holds their slots: CreateElementForController and
+        // PatchNodeForController return the row's outermost element (a shadow-* / clip-path-* row's structural
+        // WRAPPER), and SlotOccupantForController answers what holds its slot at the time it is asked.
         VisualElement CreateElementForController(VNode node);
-        void CleanupElementForController(VisualElement element);
+        void CleanupElementForController(VisualElement row);
+        VisualElement SlotOccupantForController(VisualElement row);
 
         // A row the item loop creates or patches attaches its refs and commits its layout work once the controller
         // has placed it in the list, rather than where the row was created, for the reason
@@ -29,21 +33,15 @@ namespace Velvet
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.
         void CommitStrandedLayoutWorkForController();
 
-        // Patches an item element previously returned by CreateElementForController or by this
-        // method. element may be a structural WRAPPER (shadow-* / clip-path-* item roots —
-        // CreateElement returns the wrapper) or the placeholder of an element FiberZLayerCoordinator
-        // relocated: the implementation patches what ChildReconciler would. Returns the slot's CURRENT
-        // occupant — a class-driven wrap/unwrap or relocation during the patch swaps which element must
-        // be (re)mounted, so the controller must store this return value, not its stale pre-patch reference.
-        VisualElement PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode);
+        // Patches a row previously returned by CreateElementForController or by this method. Returns the row's
+        // outermost element now — a class-driven wrap/unwrap during the patch swaps it, so the controller must
+        // store this return value, not its stale pre-patch reference.
+        VisualElement PatchNodeForController(VisualElement row, VNode oldNode, VNode newNode);
 
         // Bracket the controller's rewrite of the container's rows, which leaves standing what holds no slot of
         // its own: Begin before the first row is removed, End once every row is placed.
         void BeginRowPlacementForController(VisualElement container);
         void EndRowPlacementForController(VisualElement container);
-
-        // The element that is the row, given the occupant of its slot: the one a placeholder stands for.
-        VisualElement RowBoxForController(VisualElement occupant);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
