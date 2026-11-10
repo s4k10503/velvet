@@ -48,6 +48,34 @@ namespace Velvet.Tests
                 Is.SameAs(_binding.Texture));
         }
 
+        // GREEN_ON_BASE(characterization): the base shows a play's own texture as soon as the play draws it.
+        [Test]
+        public void Given_AGradientShownThroughTheCache_When_APlayDrawsItsOwnTexture_Then_TheElementShowsThatTexture()
+        {
+            // Act
+            GradientBackground.RebindOwned(_element, _binding, s_spec);
+
+            // Assert
+            Assert.That(StyleArbitraryValueResolver.UtilityBackgroundImage(_element).value.texture,
+                Is.SameAs(_binding.Owned));
+        }
+
+        // GREEN_ON_BASE(characterization): the base destroys a play's texture once the next frame's replaces it.
+        [Test]
+        public void Given_APlaysOwnTexture_When_TheNextFrameDrawsAnother_Then_TheFirstIsDestroyed()
+        {
+            // Arrange
+            GradientBackground.RebindOwned(_element, _binding, s_spec);
+            var first = _binding.Owned;
+
+            // Act
+            GradientBackground.RebindOwned(_element, _binding, s_spec);
+
+            // Assert — Unity's own equality, which a destroyed texture compares null under; false where the first play
+            // drew no texture at all.
+            Assert.That(first is not null && first == null, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base stops a detached gradient's relative-length poll.
         [Test]
         public void Given_ABindingPollingItsRelativeLengths_When_ItIsDetached_Then_ItKeepsNoPoll()

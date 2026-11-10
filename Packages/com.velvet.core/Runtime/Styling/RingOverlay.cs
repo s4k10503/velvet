@@ -179,8 +179,8 @@ namespace Velvet
             outlineOverlay.AddToClassList(OutlineMarkerClass);
             RingBinding binding = null!;
             binding = new RingBinding(overlay,
-                NewBand(overlay, RingBandName, mgc => PaintRing(mgc, binding, binding.Spec.RingSpread, binding.RingTint)),
-                NewBand(overlay, OffsetBandName, mgc => PaintRing(mgc, binding, binding.Spec.OffsetSpread, binding.OffsetTint)),
+                NewBand(overlay, RingBandName, mgc => PaintRing(mgc, element, binding, binding.Spec.RingSpread, binding.RingTint)),
+                NewBand(overlay, OffsetBandName, mgc => PaintRing(mgc, element, binding, binding.Spec.OffsetSpread, binding.OffsetTint)),
                 outlineOverlay,
                 NewBand(outlineOverlay, OutlineBandName, mgc => PaintOutline(mgc, binding)))
             {
@@ -607,9 +607,10 @@ namespace Velvet
         // The ring or its offset fill: an outset box-shadow band, the element's box grown by spread less the
         // element's box, its outer corners rounded as RingBandShape.SpreadRadius gives them; inside the padding box
         // for an inset ring, the padding box less the padding box shrunk by spread.
-        private static void PaintRing(MeshGenerationContext mgc, RingBinding binding, float spread, Color tint)
+        private static void PaintRing(MeshGenerationContext mgc, VisualElement element, RingBinding binding, float spread,
+            Color tint)
         {
-            if (spread <= 0f)
+            if (spread <= 0f || BoxShadowSilhouette.DiscardedByInheritance(element))
             {
                 return;
             }

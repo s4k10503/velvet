@@ -54,6 +54,21 @@ namespace Velvet.Tests
             Assert.That(FaceBorderOverlay.Has(element), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base puts back no overlay for a binding handed off before its settle.
+        [Test]
+        public void Given_AClippingDashedElementHandedOffWithASettleQueued_When_TheSettleRuns_Then_NoOverlayIsPutBack()
+        {
+            // Arrange — the hand-off keeps the suppression a plain detach releases, and is torn down all the same.
+            var (element, binding) = AttachToClippingElement();
+            BorderStyleSilhouette.DetachPreservingSuppression(element, binding);
+
+            // Act
+            Settle(element, binding);
+
+            // Assert
+            Assert.That(FaceBorderOverlay.Has(element), Is.False);
+        }
+
         // GREEN_ON_BASE(characterization): the base clears the pending mark once its settle runs.
         [Test]
         public void Given_ASettleQueued_When_ItRuns_Then_TheBindingNoLongerMarksOnePending()

@@ -608,6 +608,23 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the base paints a shadow a play shows on a text field on its input box.
+        [Test]
+        public void Given_ATextField_When_APlayShowsAShadowClassOnIt_Then_TheShadowIsPaintedOnTheInputBox()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[] { V.TextField() });
+            var field = scope.Root[0];
+
+            // Act
+            StyleAnimationClassUtils.AddClasses(field, new[] { "shadow-lg" }, StyleLayerPriority.Animation,
+                scope.Reconciler.Context);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.ShadowBindings.ContainsKey(Box(field)), Is.True);
+        }
+
         [Test]
         public void Given_ARingOnATextField_When_Reconciled_Then_TheRingSitsBesideTheInputBox()
         {
