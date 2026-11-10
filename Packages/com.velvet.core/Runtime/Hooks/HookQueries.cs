@@ -243,6 +243,8 @@ namespace Velvet
         // of once they all have, as v5's setQueries notifies once at its end.
         private bool _syncing;
         private bool _changedWhileSyncing;
+        // The mount's commit records the results without telling of them, since the render it commits read them.
+        private bool _committed;
         private Delegate? _combine;
         private Func<object[], TCombined>? _invokeCombine;
         // TanStack's #lastCombine, #lastResult, #lastQueryHashes and #combinedResult.
@@ -342,8 +344,12 @@ namespace Velvet
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             WarnOnDuplicates(read.Keys);
 #endif
+            var committed = _committed;
+            _committed = true;
             if (_changedWhileSyncing && AnyQueryNotifies()) Notify();
-            else if (structural || ResultsChanged()) RecordResults();
+            else if (!structural && !ResultsChanged()) return;
+            else if (committed) Notify();
+            else RecordResults();
         }
 
         private bool ResultsChanged()

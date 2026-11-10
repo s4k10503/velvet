@@ -278,6 +278,24 @@ namespace Velvet.Tests
             Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true));
         }
 
+        [Test]
+        public void Given_ARenderedCombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersOnce_Then_ItsCommitRendersWhatTheCombineMakesOfIt()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(StaleReader);
+            Rerender(mounted);
+            s_now = TimeSpan.FromSeconds(2);
+
+            // Act
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true), "v5's setQueries runs combine over the result it replaced and re-renders for what changed");
+        }
+
         #endregion
 
         #region Queries of their own types
