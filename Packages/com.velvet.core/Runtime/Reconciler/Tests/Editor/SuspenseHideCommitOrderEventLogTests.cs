@@ -20,17 +20,26 @@ namespace Velvet.Tests
             EmptyLast,
             EmptyMountedFirst,
             Relocated,
+            RelocatedFirst,
+            PortalChildEmpty,
+            PortalChildRelocated,
+            PortalIntoOwnElement,
         }
 
-        private sealed record Named(string Name);
+        private sealed record Named(string Name, string? ClassName = null);
 
-        private sealed record HostProps(Shape Shape, VisualElement Target);
+        private sealed class Holder
+        {
+            internal VisualElement? Element;
+        }
+
+        private sealed record HostProps(Shape Shape, VisualElement Target, Holder Own);
 
         [Component]
         private static VNode Probed(Named props)
         {
             EventLog.UseEffects(props.Name, Array.Empty<object>());
-            return V.Div(refCallback: EventLog.UseRefCallback(props.Name));
+            return V.Div(className: props.ClassName, refCallback: EventLog.UseRefCallback(props.Name));
         }
 
         [Component]
@@ -59,10 +68,38 @@ namespace Velvet.Tests
             EventLog.UseEffects("O", Array.Empty<object>());
             var refO = EventLog.UseRefCallback("O");
             var refO2 = EventLog.UseRefCallback("O2");
+            var refPZ = EventLog.UseRefCallback("PZ");
+            VNode portalChild = props.Shape switch
+            {
+                Shape.PortalChildEmpty => V.Component(Empty, new Named("PC"), key: "pc"),
+                Shape.PortalChildRelocated => V.Div(className: "absolute z-10", refCallback: refPZ, key: "pz"),
+                _ => V.Component(Probed, new Named("PC"), key: "pc"),
+            };
             return V.Div(refCallback: refO, children: new VNode[]
             {
-                V.Portal(props.Target, new VNode[] { V.Component(Probed, new Named("PC"), key: "pc") }, key: "portal"),
+                V.Portal(props.Target, new VNode[] { portalChild }, key: "portal"),
                 V.Div(refCallback: refO2, key: "o2"),
+            });
+        }
+
+        [Component]
+        private static VNode PortalIntoOwnOuter(HostProps props)
+        {
+            var (show, _) = EventLog.UseState("Show", false);
+            EventLog.UseEffects("O", Array.Empty<object>());
+            var refO = EventLog.UseRefCallback("O");
+            var keepTarget = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
+            {
+                props.Own.Element = element;
+                return null;
+            }, Array.Empty<object>());
+            return V.Div(refCallback: refO, children: new VNode[]
+            {
+                V.Div(refCallback: keepTarget, key: "target"),
+                V.Component(Probed, new Named("B"), key: "b"),
+                show
+                    ? V.Portal(props.Own.Element!, new VNode[] { V.Component(Probed, new Named("PC"), key: "pc") }, key: "portal")
+                    : null,
             });
         }
 
@@ -95,11 +132,16 @@ namespace Velvet.Tests
             EventLog.UseEffects("O", Array.Empty<object>());
             var refO = EventLog.UseRefCallback("O");
             var refZ = EventLog.UseRefCallback("Z");
-            return V.Div(className: "relative", refCallback: refO, children: new VNode[]
+            // The positioned parent is kept apart from O's element: the case is about Z's slot, and the case whose
+            // first element is relocated owns what becomes of a component starting there.
+            return V.Div(refCallback: refO, children: new VNode[]
             {
-                V.Component(Probed, new Named("A"), key: "a"),
-                V.Div(className: "absolute -z-10", refCallback: refZ, key: "z"),
-                V.Component(Probed, new Named("B"), key: "b"),
+                V.Div(className: "relative", children: new VNode[]
+                {
+                    V.Component(Probed, new Named("A"), key: "a"),
+                    V.Div(className: "absolute -z-10", refCallback: refZ, key: "z"),
+                    V.Component(Probed, new Named("B"), key: "b"),
+                }),
             });
         }
 
@@ -122,20 +164,25 @@ namespace Velvet.Tests
                 children: props.Shape switch
                 {
                     Shape.Nested => new VNode[] { V.Component(Outer, key: "outer"), reader },
-                    Shape.PortalInside => new VNode[] { V.Component(PortalOuter, props, key: "outer"), reader },
                     Shape.EmptyLast => new VNode[]
                     {
                         V.Component(TrailingOuter, key: "outer"), V.Component(Probed, new Named("Z"), key: "z"), reader,
                     },
                     Shape.EmptyMountedFirst => new VNode[] { V.Component(LeadingOuter, key: "outer"), reader },
-                    _ => new VNode[] { V.Component(RelocatingOuter, key: "outer"), reader },
+                    Shape.Relocated => new VNode[] { V.Component(RelocatingOuter, key: "outer"), reader },
+                    Shape.RelocatedFirst => new VNode[]
+                    {
+                        V.Component(Probed, new Named("G", "absolute z-10"), key: "outer"), reader,
+                    },
+                    Shape.PortalIntoOwnElement => new VNode[] { V.Component(PortalIntoOwnOuter, props, key: "outer"), reader },
+                    _ => new VNode[] { V.Component(PortalOuter, props, key: "outer"), reader },
                 });
         }
 
         private static MountedTree MountShown(EventLog log, Shape shape)
         {
             var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement()))));
+                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement(), new Holder()))));
             mounted.DrainForTest();
             return mounted;
         }
@@ -222,6 +269,64 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "lay-x:O ref-x:O lay-x:A ref-x:A ref-x:Z lay-x:B ref-x:B ins:F ref:F lay:F eff:F"));
+        }
+        [Test]
+        public void Given_ARevealedPrimaryWhoseFirstElementItsZClassRelocates_When_ItSuspendsAgain_Then_ItsComponentIsTakenDownAheadOfItsRef()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.RelocatedFirst);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:G ref-x:G ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalWhoseChildRendersNothingInsideAnElement_When_ItSuspendsAgain_Then_TheChildIsTakenDownWhereThePortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalChildEmpty);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:O ref-x:O lay-x:PC ref-x:O2 ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalWhoseElementItsZClassRelocates_When_ItSuspendsAgain_Then_ThatElementsRefDetachesWhereThePortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalChildRelocated);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("lay-x:O ref-x:O ref-x:PZ ref-x:O2 ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalIntoAnEarlierElementOfTheSamePrimary_When_ItSuspendsAgain_Then_ItsChildIsTakenDownWhereThePortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalIntoOwnElement);
+            log.Setter<bool>("Show").Invoke(true);
+            mounted.DrainForTest();
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "lay-x:O ref-x:O lay-x:B ref-x:B lay-x:PC ref-x:PC ins:F ref:F lay:F eff:F"));
         }
     }
 }

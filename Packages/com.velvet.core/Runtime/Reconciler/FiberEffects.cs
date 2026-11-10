@@ -489,7 +489,7 @@ namespace Velvet
 
         // Of two branches under one parent, the one earlier in its child list precedes. A fiber and its ancestor
         // or descendant read false both ways, as do two fibers with no common ancestor.
-        private static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
+        internal static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
         {
             for (var branchOfA = a; branchOfA.Parent != null; branchOfA = branchOfA.Parent)
             {

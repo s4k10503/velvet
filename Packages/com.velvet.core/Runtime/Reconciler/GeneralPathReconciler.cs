@@ -1807,7 +1807,11 @@ namespace Velvet
                 for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
                 {
                     if (!LogicalChildSlots.TryGetPhysical(slots.Target!, slot, out var physical)) break;
-                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden);
+                    // A relocated row is hidden or revealed as the element it stands for, as SetPrimaryHidden takes a
+                    // row of the walk's own.
+                    var portalRow = slots.Target![physical];
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(portalRow, out var relocated)) portalRow = relocated;
+                    AddWithPortalChildren(portalRow, roots, row, commit, walk, hidden);
                 }
             }
         }
@@ -1964,67 +1968,7 @@ namespace Velvet
         }
 
         private void ApplyOffscreenChanges(GeneralCommitState commit)
-        {
-            var hiddenRoots = new List<VisualElement>();
-            if (commit.DisplayChanges != null)
-            {
-                foreach (var (_, element, hidden) in commit.DisplayChanges)
-                {
-                    if (hidden) hiddenRoots.Add(element);
-                }
-            }
-            // The walk takes a fiber's first hide out of the list's order, so what the list holds for that fiber
-            // before the hide is applied ahead of the walk and what it holds after, behind it.
-            var hiddenFibers = new List<ComponentFiber>();
-            List<(ComponentFiber Fiber, bool Hidden)>? afterTheWalk = null;
-            if (commit.OffscreenChanges != null)
-            {
-                var hiding = new HashSet<ComponentFiber>();
-                foreach (var (fiber, hidden) in commit.OffscreenChanges)
-                {
-                    if (hiding.Contains(fiber))
-                    {
-                        (afterTheWalk ??= new()).Add((fiber, hidden));
-                    }
-                    else if (!hidden)
-                    {
-                        FiberEffects.ShowLayoutEffects(fiber, _ctx);
-                    }
-                    else
-                    {
-                        hiding.Add(fiber);
-                        hiddenFibers.Add(fiber);
-                    }
-                }
-            }
-            // Ahead of the hide, as React's disappearLayoutEffects runs ahead of hideOrUnhideAllChildren.
-            SuspenseDisappearWalk.Run(_ctx, hiddenRoots, hiddenFibers);
-            foreach (var element in hiddenRoots) SuspenseHiddenElements.Hide(element);
-            // After the hides: a reveal attaches the refs below it short of an element a Suspense hides, and the walk
-            // has just taken those of the elements hidden here off.
-            if (commit.DisplayChanges != null)
-            {
-                foreach (var (_, element, hidden) in commit.DisplayChanges)
-                {
-                    if (hidden) continue;
-                    SuspenseHiddenElements.Reveal(element);
-                    _ctx.AttachRefsHiddenUnder(element);
-                }
-            }
-            foreach (var element in hiddenRoots)
-            {
-                // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
-                // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
-                var focused = element.focusController?.focusedElement as VisualElement;
-                if (SuspenseHiddenElements.IsAtOrUnderHidden(focused)) focused!.Blur();
-            }
-            if (afterTheWalk == null) return;
-            foreach (var (fiber, hidden) in afterTheWalk)
-            {
-                if (hidden) FiberEffects.HideLayoutEffects(fiber);
-                else FiberEffects.ShowLayoutEffects(fiber, _ctx);
-            }
-        }
+            => SuspenseOffscreenCommit.Apply(_ctx, commit.DisplayChanges, commit.OffscreenChanges);
 
         // Walks what the boundary's record says is in the container — the fallback, behind the primary where that
         // is kept hidden, or else the primary — and says whether the fallback is shown.

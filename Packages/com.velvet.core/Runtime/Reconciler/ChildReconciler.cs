@@ -545,8 +545,12 @@ namespace Velvet
             {
                 if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
                 {
-                    SuspenseHiddenElements.Hide(target[physical]);
-                    _ctx.DetachRefsWhileHidden(target[physical]);
+                    // A relocated row is hidden as the element it stands for, as
+                    // GeneralPathReconciler.AddWithPortalChildren hides it.
+                    var row = target[physical];
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
+                    SuspenseHiddenElements.Hide(row);
+                    _ctx.DetachRefsWhileHidden(row);
                 }
             }
             _general.HideFibersMountedUnder(placeholder, declaringFiber);
