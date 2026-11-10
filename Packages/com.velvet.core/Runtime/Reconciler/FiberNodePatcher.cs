@@ -498,7 +498,7 @@ namespace Velvet
             }
             if (rowsBehindRanges != null)
             {
-                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindRanges.Value);
+                _ctx.HostCommit.FollowOwnRows(childContainer, rowsBehindRanges.Value);
             }
 
             _ctx.SyncRefCallback(element, newNode.RefCallback);
@@ -1501,8 +1501,7 @@ namespace Velvet
             _ctx.PortalState.Anchor(placeholder);
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, placeholder, prevState, unshifted);
-            FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
+            _ctx.HostCommit.ShiftBehindPortalRange(target, placeholder, prevState, unshifted);
             FiberCommitWork.RebaseOwnRows(_ctx, target);
         }
 

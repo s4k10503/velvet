@@ -445,7 +445,7 @@ namespace Velvet
         }
 
         // Disposes an inline-mounted fiber identified by reference and removes its registry entry.
-        // Called by GeneralPathReconciler.SweepOrphans when its per-call old/new fiber-set diff detects
+        // Called by HostCommitQueue.DisposeOrphans when a container's per-call old/new fiber-set diff detects
         // an orphan (ComponentNode present on the old side but absent on the new side). The orphan
         // fiber's rendered VEs were already removed from anchor.children by the reconcile's
         // Remove ops; this method releases fiber-side resources (effects, ref cleanups, hook state).

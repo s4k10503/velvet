@@ -31,11 +31,12 @@ namespace Velvet
     /// container with no invisible child still pays it: the walk is proportional to the slot index, not to
     /// the whole list, so a loop calling these once per child is quadratic in the child count. The general
     /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
-    /// it resolved, and the removal loops, which visit slots from the last downward, hold a
+    /// it resolved, and the desync recovery's removal loop, which visits slots from the last downward, holds a
     /// <see cref="DescendingSlotCursor"/>. The loops in <c>ChildReconciler</c> that add rows at ascending
     /// slots insert through <see cref="LogicalSlotCursor.Insert"/>. A diff reads its old rows once, at the
-    /// container's entry (<see cref="OldSlotOccupants"/>); the removal and insert of <c>PatchOrReplaceAtSlot</c>
-    /// still walk from slot zero per child, and the fix for them is a cursor too, not a cached count, which
+    /// container's entry (<see cref="OldSlotOccupants"/>), and removes them by element, which
+    /// <c>HostCommitQueue</c> finds from where it last removed one; the insert of <c>PatchOrReplaceAtSlot</c>
+    /// still walks from slot zero per child, and the fix for it is a cursor too, not a cached count, which
     /// every insert and remove would have to invalidate.
     /// </para>
     /// </remarks>
@@ -150,6 +151,39 @@ namespace Velvet
                 || child.ClassListContains(RingOverlay.InsetMarkerClass);
 
         /// <summary>
+        /// Where an append lands: what <see cref="ToPhysical"/> answers for any slot at or past <see cref="Count"/>.
+        /// </summary>
+        internal static int AppendIndex(VisualElement container) => ToPhysical(container, int.MaxValue);
+
+        /// <summary>
+        /// Whether <paramref name="physical"/> is <see cref="AppendIndex"/>, read from the children around it rather
+        /// than by a walk from the start: everything at or after it is invisible and not <see cref="StaysFirst"/>,
+        /// and the child before it is not.
+        /// </summary>
+        internal static bool IsAppendIndex(VisualElement container, int physical)
+        {
+            var count = container.childCount;
+            if (physical < 0 || physical > count) return false;
+            if (physical > 0 && TrailsTheAppend(container[physical - 1])) return false;
+            for (var i = physical; i < count; i++)
+            {
+                if (!TrailsTheAppend(container[i])) return false;
+            }
+            return true;
+        }
+
+        private static bool TrailsTheAppend(VisualElement child) => IsInvisible(child) && !StaysFirst(child);
+
+        /// <summary>
+        /// The rendered child at <paramref name="physical"/>, or null where that index holds an invisible child or
+        /// none.
+        /// </summary>
+        internal static VisualElement? RenderedAt(VisualElement container, int physical)
+            => physical >= 0 && physical < container.childCount && !IsInvisible(container[physical])
+                ? container[physical]
+                : null;
+
+        /// <summary>
         /// The logical slot a physical child index occupies — the number of rendered children before it.
         /// For an invisible child this is the slot it sits in front of.
         /// </summary>
@@ -214,17 +248,18 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Inserts <paramref name="element"/>, a rendered child, where <see cref="LogicalChildSlots.ToPhysical"/> puts
-        /// a child at <paramref name="logical"/>, and remembers it as the slot's occupant. A caller inserting at
-        /// ascending slots pays the distance from the slot it last inserted at rather than the slot's index; an
-        /// append, past the last rendered child, is the common case.
+        /// Inserts <paramref name="element"/>, a rendered child, through <paramref name="host"/> where
+        /// <see cref="LogicalChildSlots.ToPhysical"/> puts a child at <paramref name="logical"/> — in front of the
+        /// slot's occupant, or at the append position where the slot has none — and remembers it as the slot's
+        /// occupant. A caller inserting at ascending slots pays the distance from the slot it last inserted at rather
+        /// than the slot's index; an append, past the last rendered child, is the common case.
         /// </summary>
-        internal void Insert(VisualElement container, int logical, VisualElement element)
+        internal void Insert(HostCommitQueue host, VisualElement container, int logical, VisualElement element)
         {
             var physical = IsCurrentFor(container) && logical > _logical
                 ? InsertIndexFrom(container, logical)
                 : LogicalChildSlots.ToPhysical(container, logical);
-            container.Insert(physical, element);
+            host.Insert(container, element, LogicalChildSlots.RenderedAt(container, physical), physical);
             // An insert into a container on a panel can put a sibling ahead of the element before this returns (a
             // layer hosted before its element), which moves it past where it was put; the slot is remembered only
             // while the element still stands there, and the next call walks from the start otherwise.
@@ -343,17 +378,6 @@ namespace Velvet
                 _container = null;
             }
             return physical;
-        }
-
-        /// <summary>
-        /// Same answer as <see cref="LogicalChildSlots.TryGetPhysical"/>, including its append position on the
-        /// false branch.
-        /// </summary>
-        internal bool TryGetPhysical(VisualElement container, int logical, out int physical)
-        {
-            physical = ToPhysical(container, logical);
-            return logical >= 0 && physical < container.childCount
-                && !LogicalChildSlots.IsInvisible(container[physical]);
         }
 
         private bool IsCurrentFor(VisualElement container)
