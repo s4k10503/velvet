@@ -752,6 +752,7 @@ namespace Velvet
                     fiber.ParkedPassSuspended = true;
                     FiberRenderer.SuspendPassOwner(fiber, fiber.PendingReconcileDrainsTransitionWork);
                     var parkedContext = fiber.Reconciler?.Context;
+                    // MUTANT_SURVIVES(equivalent, equality): the walk is still parked here, so everything the slice queued carries the parked pass and is held, and CommitStrandedLayoutWork finds nothing attachable — ParkedTransitionPassSuspendTests' later-slice cases reach this branch.
                     if (parkedContext != null) FiberEffects.CommitStrandedLayoutWork(parkedContext);
                     return;
                 }
