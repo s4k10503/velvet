@@ -415,8 +415,9 @@ namespace Velvet
         }
 
         // A size of the family: its -none (which takes no modifier), a preset, or a bracketed shadow list. Tailwind
-        // writes `inset` ahead of each layer of an inset-shadow-[…]. A bracket holding a var() this cannot read is a
-        // size with nothing to draw, as ReadBoxShadowClass takes it for one whose value it cannot judge.
+        // writes `inset` ahead of each layer of an inset-shadow-[…]. A bracket Tailwind does not type as a colour that
+        // holds a var() this cannot read is a size with nothing to draw, as ReadBoxShadowClass takes it for a size whose
+        // value it cannot judge; one it types as a colour is no size.
         private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
             out ShadowSpec[] layers)
         {
@@ -432,7 +433,7 @@ namespace Velvet
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
                 && (TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers)
-                    || inner.IndexOf("var(".AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0);
+                    || (!TailwindDataTypes.IsColor(inner) && inner.IndexOf("var(".AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0));
         }
 
         // inset-ring (1px), inset-ring-<n>, inset-ring-[<length>] and inset-ring-<colour>, as Tailwind reads them.
@@ -752,27 +753,69 @@ namespace Velvet
             return false;
         }
 
-        // Whether Tailwind writes the family's colour variable into a bracket's layers (replace-shadow-colors.ts): a
-        // layer does where two of its space-separated parts open as a length does, a sign then a digit or a point and
-        // a digit, whatever follows; it then takes the first other part for the colour, or appends one.
+        // Whether Tailwind writes the family's colour variable into a bracket's layers (replace-shadow-colors.ts as 4.3.3
+        // has it). A layer does where one of its space-separated parts is a colour: a #hex, a named colour or a colour
+        // function. Otherwise it does where two parts are lengths, a part opening as one does (a sign then a digit or a
+        // point and a digit, whatever follows) or calc(), clamp(), min(), max() or --spacing(), and at most one part
+        // is anything else, which it takes for the colour or appends one beside. A keyword (inset and the CSS-wide
+        // ones) is no part.
         private static bool ReadsShadowColour(string value)
         {
             foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
-                var offsets = 0;
-                foreach (var part in StyleGradientClass.SplitTopLevel(layer.Trim(), ' '))
-                {
-                    if (OpensAsLength(part))
-                    {
-                        offsets++;
-                    }
-                }
-                if (offsets >= 2)
+                if (LayerReadsShadowColour(layer))
                 {
                     return true;
                 }
             }
             return false;
+        }
+
+        private static readonly HashSet<string> s_shadowKeywords = new(StringComparer.Ordinal)
+        {
+            "inset", "inherit", "initial", "revert", "unset",
+        };
+
+        private static readonly HashSet<string> s_shadowLengthFunctions = new(StringComparer.Ordinal)
+        {
+            "calc", "clamp", "max", "min", "--spacing",
+        };
+
+        private static readonly HashSet<string> s_shadowColourFunctions = new(StringComparer.Ordinal)
+        {
+            "color", "color-mix", "contrast-color", "device-cmyk", "hsl", "hsla", "hwb", "lab", "lch", "light-dark",
+            "oklab", "oklch", "rgb", "rgba", "--alpha",
+        };
+
+        private static bool LayerReadsShadowColour(string layer)
+        {
+            var lengths = 0;
+            var others = 0;
+            foreach (var part in StyleGradientClass.SplitTopLevel(layer.Trim(), ' '))
+            {
+                var name = part.ToLowerInvariant();
+                var open = name.IndexOf('(');
+                var function = open == -1 ? null : name.Substring(0, open);
+                if (name.Length == 0 || s_shadowKeywords.Contains(name))
+                {
+                    continue;
+                }
+                if (name[0] == '#' || (function == null
+                    ? TailwindDataTypes.IsNamedColor(name)
+                    : s_shadowColourFunctions.Contains(function)))
+                {
+                    return true;
+                }
+                if (function == null ? OpensAsLength(name) : s_shadowLengthFunctions.Contains(function))
+                {
+                    lengths++;
+                }
+                else
+                {
+                    others++;
+                }
+            }
+            return lengths >= 2 && others <= 1;
         }
 
         // Tailwind's /^-?(\d+|\.\d+)/.

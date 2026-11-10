@@ -18,7 +18,9 @@ namespace Velvet.Tests
         [TestCase("ring-2 shadow-[0_4_8_#000] shadow-[#ff0000]")]
         [TestCase("ring-2 shadow-[0_4_8_#000] shadow-[color:red]")]
         [TestCase("ring-[length:2] ring-4")]
-        [TestCase("ring shadow-[0_0_var(--a)_var(--b)] shadow-[#ggg]")]
+        [TestCase("ring shadow-[calc(1px)_4px] shadow-[#ggg]")]
+        [TestCase("ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]")]
+        [TestCase("ring-2 shadow-2xl/150 shadow-[calc(1px)_calc(2px)_red] shadow-red-500")]
         public void Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(string classes)
         {
             // Act
@@ -28,7 +30,7 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base drew these rings, whose box-shadow holds no value the browser rejects.
+        // GREEN_ON_BASE(characterization): the base drew these rings, whose box-shadow reads no value the browser rejects.
         [TestCase("ring ring-[var(--brand)]")]
         [TestCase("ring-2 ring-[oklch(62.3%_0.214_259.815)]")]
         [TestCase("ring ring-[currentColor]")]
@@ -41,11 +43,21 @@ namespace Velvet.Tests
         [TestCase("ring-2 ring-[5PX] ring-current")]
         [TestCase("ring ring-offset-2 ring-offset-[2] ring-offset-inherit")]
         [TestCase("ring inset-ring inset-ring-[2] inset-ring-transparent")]
-        [TestCase("ring shadow-[calc(1px)_4px] shadow-[#ggg]")]
         public void Given_ARingWhoseBoxShadowHoldsNoValueTheBrowserRejects_When_Extracted_Then_TheRingIsDrawn(string classes)
         {
             // Act
             var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
+        [Test]
+        public void Given_ARejectedShadowColourBesideALayerThatReadsNoColour_When_Extracted_Then_TheRingIsDrawn()
+        {
+            // Act — Tailwind writes a layer with two parts besides its lengths as it stands, without the colour variable.
+            var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(
+                "[--a:5px] [--b:red] ring shadow-[0_0_var(--a)_var(--b)] shadow-[#ggg]".Split(' ')), out _);
 
             // Assert
             Assert.That(ok, Is.True);

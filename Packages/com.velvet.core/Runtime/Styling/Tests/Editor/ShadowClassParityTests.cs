@@ -552,5 +552,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That(outcome, Is.EqualTo("neither"));
         }
+
+        // GREEN_ON_BASE(characterization): the base drew a size beside a colour bracket holding a var() in the size's own colour.
+        // Tailwind types the bracket as the family's colour, which the drawing reader cannot parse, so the size keeps its
+        // own, as the browser draws it while the variable is undeclared.
+        [TestCase("shadow-2xl shadow-[rgb(var(--c))]", "00000040")]
+        [TestCase("shadow shadow-[hsl(var(--h))]", "0000001A")]
+        [TestCase("shadow-lg/50 shadow-[hsl(var(--h))]", "00000080")]
+        [TestCase("shadow-[0_0_5px_red] shadow-[rgb(var(--c))]", "FF0000FF")]
+        [TestCase("inset-shadow-2xs inset-shadow-[rgb(var(--c))]", "0000000D")]
+        public void Given_ASizeBesideAColourBracketHoldingAVar_When_Extracted_Then_TheSizeIsDrawnInItsOwnColour(
+            string classes, string expected)
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out var spec);
+
+            // Assert
+            Assert.That(found ? UnityEngine.ColorUtility.ToHtmlStringRGBA(spec[0].Color) : "none", Is.EqualTo(expected));
+        }
     }
 }
