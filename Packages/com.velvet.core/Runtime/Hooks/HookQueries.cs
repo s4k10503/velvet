@@ -243,7 +243,8 @@ namespace Velvet
         // of once they all have, as v5's setQueries notifies once at its end.
         private bool _syncing;
         private bool _changedWhileSyncing;
-        // The mount's commit records the results without telling of them, since the render it commits read them.
+        // The mount's commit, and a StrictMode replay of it after LeaveAll, records the results without telling of
+        // them, since the render it commits read them.
         private bool _committed;
         private Delegate? _combine;
         private Func<object[], TCombined>? _invokeCombine;
@@ -486,6 +487,7 @@ namespace Velvet
             var observers = _observers;
             _observers = Array.Empty<QueryObserver>();
             _items = Array.Empty<QueriesItem>();
+            _committed = false;
             foreach (var observer in observers)
             {
                 observer.Leave();
