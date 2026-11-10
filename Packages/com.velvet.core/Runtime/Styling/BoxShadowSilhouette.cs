@@ -121,6 +121,12 @@ namespace Velvet
                 if (s_byElement.TryGetValue(child, out var binding) && InheritsColour(binding.Layers))
                 {
                     child.MarkDirtyRepaint();
+                    // The ring is part of the same box-shadow (DiscardedByInheritance), on bands of its own.
+                    if (RingOverlay.TryGet(child) is { } ring)
+                    {
+                        ring.RingElement.MarkDirtyRepaint();
+                        ring.OffsetElement.MarkDirtyRepaint();
+                    }
                 }
                 RepaintInheritors(child);
             }

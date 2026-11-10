@@ -161,6 +161,31 @@ namespace Velvet.Tests
             Assert.That(colour, Is.EqualTo(ColorUtility.ToHtmlStringRGBA(red)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps a hover colour Tailwind emits after hover:shadow-initial.
+        [Test]
+        public void Given_HoverShadowInitialAfterAHoverColourTailwindEmitsAfterIt_When_Hovered_Then_TheColourStands()
+        {
+            // Arrange — written with the colour first, where Tailwind emits it last.
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(className: "shadow-lg hover:shadow-red-500 hover:shadow-initial"),
+            });
+            var element = scope.Root[0];
+
+            // Act
+            using (var over = UnityEngine.UIElements.PointerOverEvent.GetPooled())
+            {
+                element.SimulateEvent(over);
+            }
+            var bound = scope.Reconciler.Context.ShadowBindings.TryGetValue(element, out var binding);
+
+            // Assert
+            Assert.That(bound ? ColorUtility.ToHtmlStringRGBA(binding.Layers[0].Color) : "unbound",
+                Is.EqualTo(ColorUtility.ToHtmlStringRGBA(red)));
+        }
+
         [Test]
         public void Given_ShadowInitialBesideAColourTailwindEmitsBeforeIt_When_Reconciled_Then_TheLayerKeepsItsOwnColour()
         {

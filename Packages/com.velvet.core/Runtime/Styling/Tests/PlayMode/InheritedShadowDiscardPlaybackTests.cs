@@ -117,6 +117,24 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_ARingedChildWhoseParentsHoverMakesItsColourInvalid_When_ThePointerEntersTheParent_Then_ItsRingIsNoLongerPainted()
+        {
+            // Arrange — painted while the parent is not hovered; hover re-styles the parent alone, with no render.
+            yield return Mount(Valid + " hover:shadow-lg/150", "ring-4 ring-[#00ff00] shadow-[0_0_0_1px] shadow-inherit");
+            var before = PaintedLeftOf(0, 3);
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                _host.Root.Q<VisualElement>("left").SimulateEvent(over);
+            }
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
+
+            // Assert — the ring painted before is the control.
+            Assert.That(before ? Read(3) : "not painted before", Is.EqualTo("nothing"));
+        }
+
+        [UnityTest]
         public IEnumerator Given_ARingedChildWhoseParentsColourBecomesInvalid_When_Rendered_Then_ItsRingIsNoLongerPainted()
         {
             // Arrange — painted while the parent's colour is valid.
