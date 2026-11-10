@@ -824,6 +824,7 @@ namespace Velvet
                 s_owners.Remove(element);
             }
             Unregister();
+            // MUTANT_SURVIVES(unreachable, line removed): nothing reads a stash after Abandon; FiberBorderStyleApplier, the one caller's caller, drops the binding holding it in the same patch.
             _element = null;
         }
 

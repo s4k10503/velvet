@@ -578,6 +578,29 @@ namespace Velvet.Tests
             Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 ? blocks : -1, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base re-hosts nothing on an idle tick under a single clipping ancestor.
+        [Test]
+        public void Given_AnOutlineInsideOneClippingParent_When_PlacedOnAnIdleTick_Then_NothingIsReHosted()
+        {
+            // Arrange — the one clip the placement read is the last one its check walks back to.
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("a");
+            var binding = RingOverlay.TryGet(card);
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(place);
+
+            // Assert — a re-host allocates; the canary is the instrument's own control, and a placement that read no
+            // clip is not the one this case asks about.
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 && binding.OutlineClipOwners.Count == 1 ? blocks : -1,
+                Is.Zero);
+        }
+
         [Test]
         public void Given_AnOutlineInsideAZStackedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
         {

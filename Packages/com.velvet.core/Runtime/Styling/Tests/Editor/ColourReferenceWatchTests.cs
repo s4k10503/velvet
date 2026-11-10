@@ -689,6 +689,28 @@ namespace Velvet.Tests
             Assert.That(_window.rootVisualElement.Q<VisualElement>("row").style.borderBottomColor.value, Is.EqualTo(Color.red));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads a divided row's inherited bottom colour off its parent's bottom.
+        [Test]
+        public void Given_ADividedRowWithBorderBottomInherit_When_Resolved_Then_ItsBottomIsItsParentsBottomColour()
+        {
+            // Arrange — the parent's bottom and left differ, so a read of the wrong side shows.
+            var list = V.Div(name: "list", className: "divide-y-2 divide-blue-500 border-b-[#00ff00] border-l-[#ff00ff]",
+                children: new VNode[]
+                {
+                    V.Div(name: "row", className: "h-[20px] border-b-inherit", key: "a"),
+                    V.Div(name: "last", className: "h-[20px]", key: "b"),
+                });
+
+            // Act
+            _mounted = V.Mount(_window.rootVisualElement, list);
+            var row = _window.rootVisualElement.Q<VisualElement>("row");
+            ForcePanelUpdate(row.panel);
+            ForcePanelUpdate(row.panel);
+
+            // Assert
+            Assert.That(row.style.borderBottomColor.value, Is.EqualTo(Color.green));
+        }
+
         private static VNode CurrentRowList(string listClass, string rowClass, bool withLast)
             => V.Div(name: "list", className: listClass, children: withLast
                 ? new VNode[]

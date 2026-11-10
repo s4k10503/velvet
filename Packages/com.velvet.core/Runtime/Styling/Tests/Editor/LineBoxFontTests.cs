@@ -244,6 +244,43 @@ namespace Velvet.Tests
             Assert.That(LineBoxFont.Count, Is.EqualTo(before + 1));
         }
 
+        // GREEN_ON_BASE(characterization): the base reuses a fallback's copy a relinked table gave up.
+        [Test]
+        public void Given_CopiesOfAFontWithAFallbackAtManyLineHeightsOneAtATime_When_EachIsReleased_Then_TheFallbackKeepsTwoCopies()
+        {
+            // Arrange — a relink copies the fallback at the new height before it gives up the one at the old, so two
+            // copies of it are held across each relink and the third height takes the first one back.
+            var label = Add(TextGeneratorType.Standard);
+            var source = Fresh(label);
+            source.fallbackFontAssetTable = new List<FontAsset> { Fresh(label) };
+            var before = LineBoxFont.Count;
+
+            // Act
+            for (var i = 0; i < 24; i++)
+            {
+                var copy = LineBoxFont.Acquire(_user, source, 20f + i, 16f);
+                LineBoxFont.Release(_user, copy);
+            }
+
+            // Assert — the source's one copy and the fallback's two.
+            Assert.That(LineBoxFont.Count, Is.EqualTo(before + 3));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the copy of a font built from a font file an atlas of its own.
+        [Test]
+        public void Given_ADynamicFontBuiltFromAFontFile_When_ItIsCopied_Then_TheCopyHasAnAtlasOfItsOwn()
+        {
+            // Arrange
+            var label = Add(TextGeneratorType.Standard);
+            var source = Fresh(label);
+
+            // Act
+            var copy = Acquire(source);
+
+            // Assert
+            Assert.That(copy.atlasTextures[0], Is.Not.SameAs(source.atlasTextures[0]));
+        }
+
         [Test]
         public void Given_TwoFontsWhoseWeightTablesNameEachOtherAndWhichHaveFallbacks_When_OneIsCopied_Then_ItsTableNamesACopyOfTheOther()
         {

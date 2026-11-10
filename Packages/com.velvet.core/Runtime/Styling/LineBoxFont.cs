@@ -205,7 +205,6 @@ namespace Velvet
             face.descentLine -= spread;
             face.lineHeight = face.ascentLine - face.descentLine;
             copy.faceInfo = face;
-            copy.ReadFontAssetDefinition();
         }
 
         // Whether source rasterises glyphs it does not hold yet: from a font file, a font file's path, or the OS.

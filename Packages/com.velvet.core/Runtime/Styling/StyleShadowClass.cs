@@ -368,6 +368,7 @@ namespace Velvet
             // colour sets nothing here (BoxShadowSlot reads it as a rejected colour), and is never a size.
             if (StyleArbitraryValueResolver.TypeHintOf(cls) == "color")
             {
+                // MUTANT_SURVIVES(equivalent, literal): Read, the only caller, hands a class this declines to the inset-ring reader, which takes no class of either root.
                 return true;
             }
             if (!TryReadSize(suffix, presets, alpha, out var layers))

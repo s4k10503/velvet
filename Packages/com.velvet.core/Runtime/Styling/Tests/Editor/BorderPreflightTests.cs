@@ -654,6 +654,28 @@ namespace Velvet.Tests
             Assert.That(face, Is.EqualTo(Color.blue));
         }
 
+        // GREEN_ON_BASE(characterization): the base shows a colour class on a face edge preflight once coloured.
+        [Test]
+        public void Given_AShadowedLabelPreflightLetGoOf_When_ItTakesABorderColourClass_Then_TheFaceShowsTheClassColour()
+        {
+            // Arrange — divided, the label's sides are preflight's, in its text colour, which the face keeps; undivided,
+            // preflight lets go of the label altogether.
+            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
+            var red = TextColourOf("text-red-500");
+            var tag = MountSwitchable("w-[40px] h-[40px] shadow-md text-red-500");
+            BorderPreflight.SetDivided(tag, true);
+            ForcePanelUpdate(tag.panel);
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var divided, out _);
+            BorderPreflight.SetDivided(tag, false);
+
+            // Act
+            Patch("w-[40px] h-[40px] border border-blue-500 shadow-md text-red-500");
+            SilhouetteFaceStash.TryReadFace(tag, DivideEdge.Left, out var face, out _);
+
+            // Assert — the text colour the face took while divided is the control.
+            Assert.That(divided == red ? face : Color.clear, Is.EqualTo(blue));
+        }
+
         [Test]
         public void Given_ADashedBorderedElement_When_Resolved_Then_TheFaceTakesTheTextColour()
         {

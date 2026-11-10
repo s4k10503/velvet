@@ -68,6 +68,20 @@ namespace Velvet.Tests
             Assert.That(snapped, Is.EqualTo(declared.OrderBy(name => name).ToArray()));
         }
 
+        // GREEN_ON_BASE(characterization): the base builds a scale's sheet once and hands the same one back.
+        [Test]
+        public void Given_AScaleWhoseSheetWasBuilt_When_ItIsAskedForAgain_Then_TheSameSheetIsHandedBack()
+        {
+            // Arrange — 1.5 divides no bundled width into whole device pixels, so it has a sheet.
+            var first = SnappedBorderSheets.For(1.5f);
+
+            // Act
+            var second = SnappedBorderSheets.For(1.5f);
+
+            // Assert — a placeholder where no sheet was built, which no sheet is the same as.
+            Assert.That(first != null ? (object)second : "no sheet", Is.SameAs(first));
+        }
+
         private static void AddWidthClasses(object rule, HashSet<string> into)
         {
             var properties = (System.Array)EngineMember.StyleRuleProperties.ResolveProperty()!.GetValue(rule);
