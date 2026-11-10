@@ -133,6 +133,7 @@ namespace Velvet
                 ReversingStart = from,
                 Clock = MotionClock.Of(_element),
                 Easing = easing,
+                Curve = StyleEaseCurve.CurveFor(_element, easing),
             };
             next.StartSec = next.Clock.NowSec;
             // CSS's reversing shortening: a change back to where the running transition started runs for the part of

@@ -43,6 +43,7 @@ namespace Velvet
         public float DelaySec;
         public float DurationSec;
         public EasingMode Easing;
+        public EaseFunction? Curve;
         public IVisualElementScheduledItem Tick = null!;
 
         // The panel whose per-frame check holds this binding (DivideDashPainter.EnsureCheck).
@@ -353,6 +354,7 @@ namespace Velvet
                     // MUTANT_SURVIVES(equivalent, boundary): a zero delay is zero shortened or not.
                     binding.DelaySec = delayMs / 1000f * (delayMs < 0 ? binding.Shortening : 1f);
                     binding.Easing = easing;
+                    binding.Curve = StyleEaseCurve.CurveFor(binding.Child, easing);
                     binding.Tick.Resume();
                 }
                 else
@@ -387,7 +389,7 @@ namespace Velvet
             var t = Mathf.Clamp01((float)((now - binding.StartTime - binding.DelaySec)
                 / Math.Max(binding.DurationSec, 1e-6)));
             ended = t >= 1f;
-            return UssEasing.Evaluate(binding.Easing, t);
+            return StyleEaseCurve.Evaluate(binding.Curve, binding.Easing, t);
         }
 
         private static void Draw(MeshGenerationContext mgc, VisualElement child, DivideDashChildBinding binding)

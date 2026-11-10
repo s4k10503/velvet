@@ -173,6 +173,9 @@ namespace Velvet
         // The function's eased output at progress t.
         internal static float Evaluate(in EaseFunction function, float t) => function.Evaluate(t);
 
+        internal static float Evaluate(EaseFunction? function, EasingMode mode, float t)
+            => function is { } given ? given.Evaluate(t) : UssEasing.Evaluate(mode, t);
+
         private static readonly EasingMode[] s_candidates =
             { EasingMode.Ease, EasingMode.EaseIn, EasingMode.EaseOut, EasingMode.EaseInOut, EasingMode.Linear };
 

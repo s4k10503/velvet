@@ -284,7 +284,7 @@ namespace Velvet
         // The eased output of the tween at pre-easing progress t: the element's cubic-bezier where it holds one for the
         // keyword the entry resolved, else that keyword's curve.
         private static float Eased(StyleFilterTransitionBinding b, float t)
-            => b.Curve is { } curve ? StyleEaseCurve.Evaluate(curve, Mathf.Clamp01(t)) : UssEasing.Evaluate(b.Easing, t);
+            => StyleEaseCurve.Evaluate(b.Curve, b.Easing, t);
 
         // The pre-easing progress at this moment, 0 through the delay and 1 from the end of the run: a zero duration
         // jumps to the end once the delay has passed, as a USS transition does.
