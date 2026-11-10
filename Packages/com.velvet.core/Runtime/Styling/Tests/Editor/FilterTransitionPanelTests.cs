@@ -2388,6 +2388,35 @@ namespace Velvet.Tests
             Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base cancels the running filter transition once, at the time it ran.
+        // Remove the unpaired list TryWritePastTransformOrigin writes before the list, and the one cancel is reported at `0`.
+        [Test]
+        public void Given_ATransformOriginAndAFilterTransitionRunning_When_AFilterChangeLandsAtOnce_Then_TheCancelCarriesTheTimeTheFilterRan()
+        {
+            // Arrange — background-size's entry animates the straight write of a blur of 4 for 0.05 s, and the filter
+            // change below is suspended past it.
+            var element = MountUnderTransitions("transform-origin", "background-size");
+            RunTransformOriginHalfWay(element);
+            element.style.filter = BlurList(4f);
+            AdvanceAndPaint(element.panel, 0.05);
+            var elapsed = new List<double>();
+            element.RegisterCallback<TransitionCancelEvent>(evt =>
+            {
+                if (evt.stylePropertyNames.Contains(new StylePropertyName("filter")))
+                {
+                    elapsed.Add(evt.elapsedTime);
+                }
+            });
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.0);
+            AdvanceAndPaint(element.panel, 0.05);
+
+            // Assert — one cancel, carrying the 0.05 s the transition ran.
+            Assert.That(elapsed.Count == 1 ? elapsed[0] : double.NaN, Is.EqualTo(0.05).Within(1e-3));
+        }
+
         // GREEN_ON_BASE(characterization): a filter change landing at once started no filter transition on the base.
         [Test]
         public void Given_ATransformOriginTransitionRunningOverAFilter_When_TheFilterChangesAtOnce_Then_NoFilterTransitionRuns()

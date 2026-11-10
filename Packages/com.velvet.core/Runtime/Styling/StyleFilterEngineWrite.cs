@@ -221,10 +221,12 @@ namespace Velvet
             }
         }
 
-        // A write TransformOriginSparing takes, landed at once by cancelling the filter transition the write starts. One
-        // still running is cancelled first, since a write that pairs with nothing leaves it running. False for a clear,
-        // which leaves the transform-origin transition running, and where no transform-origin transition runs or the
-        // engine's members do not resolve. Group G of FilterTransitionPanelTests holds each of these.
+        // A write TransformOriginSparing takes, landed at once: where the shown list and the written one both hold a
+        // function, through a list whose first function's type is in neither, which pairs with neither and so starts no
+        // transition; otherwise by cancelling the filter transition the write starts. One still running is cancelled
+        // first, since a write that pairs with nothing leaves it running. False for a clear, which leaves the
+        // transform-origin transition running, and where no transform-origin transition runs or the engine's members do
+        // not resolve. Group G of FilterTransitionPanelTests holds each of these.
         private static bool TryWritePastTransformOrigin(VisualElement element, List<FilterFunction>? list)
         {
             if (list == null || !MotionSlotContext.CancelsNativeTransition(StyleLonghand.Filter)
@@ -236,11 +238,38 @@ namespace Velvet
             {
                 var style = element.style;
                 MotionSlotContext.CancelNativeTransition(element, StyleLonghand.Filter);
-                // The setter takes the list it already holds for no change.
-                style.filter = ReferenceEquals(style.filter.value, list) ? new List<FilterFunction>(list) : list;
+                var shown = element.resolvedStyle.filter?.ToList();
+                if (shown is { Count: > 0 } && list.Count > 0)
+                {
+                    style.filter = new List<FilterFunction> { Unpaired(shown[0].type, list[0].type) };
+                    style.filter = list;
+                }
+                else
+                {
+                    // The setter takes the list it already holds for no change.
+                    style.filter = ReferenceEquals(style.filter.value, list) ? new List<FilterFunction>(list) : list;
+                }
                 MotionSlotContext.CancelNativeTransition(element, StyleLonghand.Filter);
             }
             return true;
+        }
+
+        // A function of neither type.
+        private static FilterFunction Unpaired(FilterFunctionType a, FilterFunctionType b)
+        {
+            var type = a != FilterFunctionType.Tint && b != FilterFunctionType.Tint ? FilterFunctionType.Tint
+                : a != FilterFunctionType.Opacity && b != FilterFunctionType.Opacity ? FilterFunctionType.Opacity
+                : FilterFunctionType.Invert;
+            var function = new FilterFunction(type);
+            if (type == FilterFunctionType.Tint)
+            {
+                function.AddParameter(new FilterParameter(UnityEngine.Color.white));
+            }
+            else
+            {
+                function.AddParameter(new FilterParameter(1f));
+            }
+            return function;
         }
 
         private static void OnTransitionEnd(TransitionEndEvent evt)
