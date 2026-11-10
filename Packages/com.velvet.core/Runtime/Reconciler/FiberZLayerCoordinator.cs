@@ -543,8 +543,8 @@ namespace Velvet
             => ctx.ZLayerMembers.TryGetValue(real, out var member) ? member.StackingParent : real.parent;
 
         // Relocates real, still at its declared slot, out of it: a fresh placeholder takes the slot at the same
-        // physical index (real becomes invisible to the slot arithmetic in the same step, so the caller's re-fetch
-        // at that index reads the placeholder). Nothing leaves the panel; Arrange sorts real into its band.
+        // physical index (real becomes invisible to the slot arithmetic in the same step, so the placeholder holds
+        // the slot). Nothing leaves the panel; Arrange sorts real into its band.
         private static void RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, StackingFacts facts)
         {
             var parent = real.parent!;

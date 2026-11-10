@@ -576,8 +576,7 @@ namespace Velvet
             var inner = NodePatcher.ResolveWrapped(element);
             NodePatcher.PatchNode(inner, oldNode, newNode);
             // A class change can wrap/unwrap during the patch, swapping the slot's top-level
-            // element; return the current outermost so the controller re-mounts the right node
-            // (the parallel of ChildReconciler's post-patch re-fetch).
+            // element; return the current outermost so the controller re-mounts the right node.
             return NodePatcher.ResolveOuter(inner);
         }
 

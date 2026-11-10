@@ -2119,6 +2119,10 @@ namespace Velvet
         // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
         internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
 
+        // The old instances of each general walk in progress, innermost last; OldSlotOccupants.ResolveAgain says
+        // who resolves them again and why.
+        internal List<OldSlotOccupants> OpenOldInstances { get; } = new();
+
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a
         // patch can tell a STABLE ref apart from a swapped one — a ref cycles

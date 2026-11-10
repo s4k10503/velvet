@@ -33,9 +33,10 @@ namespace Velvet
     /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
     /// it resolved, and the removal loops, which visit slots from the last downward, hold a
     /// <see cref="DescendingSlotCursor"/>. The loops in <c>ChildReconciler</c> that add rows at ascending
-    /// slots insert through <see cref="LogicalSlotCursor.Insert"/>. The keyed pass's lookup of each matched row
-    /// (<c>ProcessKeyedNode</c>) and <c>PatchOrReplaceAtSlot</c> still walk from slot zero per child; the fix
-    /// for them is a cursor too, not a cached count, which every insert and remove would have to invalidate.
+    /// slots insert through <see cref="LogicalSlotCursor.Insert"/>. A diff reads its old rows once, at the
+    /// container's entry (<see cref="OldSlotOccupants"/>); the removal and insert of <c>PatchOrReplaceAtSlot</c>
+    /// still walk from slot zero per child, and the fix for them is a cursor too, not a cached count, which
+    /// every insert and remove would have to invalidate.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
