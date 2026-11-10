@@ -134,14 +134,15 @@ namespace Velvet
         public Func<VisualElement, VisualElement>? WrapElement { get; init; }
 
         // Whether anything below this element can be rendered by a fiber: every node other than an ElementNode or a
-        // TextNode holds one or may. Cached on the instance, which the reconciler asks each time it is handed back.
+        // TextNode holds one or may, a Fragment, a Motion or a Portal included whatever it holds. Cached on the
+        // instance; ChildReconciler asks it of a node handed back by instance while the reconciling fiber is marked.
         internal bool MayHoldFiber => _mayHoldFiber ??= AnyChildMayHoldFiber();
 
         private bool? _mayHoldFiber;
 
         private bool AnyChildMayHoldFiber()
         {
-            foreach (var child in Children)
+            foreach (var child in Children ?? Array.Empty<VNode>())
             {
                 if (FiberPendingWork.MayHoldFiber(child)) return true;
             }

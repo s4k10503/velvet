@@ -1167,8 +1167,8 @@ namespace Velvet
                     break;
                 }
                 // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
-                // back the cached instance). Skip the DOM lookup and PatchNode, so the prefix advances and
-                // the in-place DOM slot stays valid.
+                // back the cached instance). Where SkipsIdentical allows, skip the DOM lookup and PatchNode, so
+                // the prefix advances and the in-place DOM slot stays valid.
                 if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
@@ -1915,8 +1915,9 @@ namespace Velvet
 
                 if (ReconcileKeying.CanPatch(old.node, newNode))
                 {
-                    // Reference-identical VNodes are diff-free; reuse the existing element without patching.
-                    // A same-instance node cannot trigger a WrapElement swap, so no re-fetch is needed.
+                    // Reference-identical VNodes are diff-free; where SkipsIdentical allows, reuse the existing
+                    // element without patching. A same-instance node cannot trigger a WrapElement swap, so that
+                    // branch needs no re-fetch.
                     if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
                     {
                         var actualElement = _patcher.ResolveWrapped(existingDomElement);

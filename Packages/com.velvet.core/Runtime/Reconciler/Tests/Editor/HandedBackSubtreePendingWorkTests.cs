@@ -7,9 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies when a host element the parent hands back by instance is entered. While a fiber below the owner has
-    /// work pending, as React enters a subtree whose childLanes are set, every such element that can hold a fiber is
-    /// entered and one holding none is not. Once that work has settled the mark standing for it is clear, and no such
-    /// element is entered however many fibers it holds.
+    /// work pending, as React enters a subtree whose childLanes are set, every such element is entered except one
+    /// built of nothing but elements and text, which no fiber can render. Once that work has settled the mark standing
+    /// for it is clear, and no such element is entered however many fibers it holds.
     /// </summary>
     [TestFixture]
     internal sealed class HandedBackSubtreePendingWorkTests
@@ -133,6 +133,26 @@ namespace Velvet.Tests
             });
         }
 
+        // Built once, so every render hands the same instance back; it has no children array at all.
+        private static readonly ElementNode s_bareElement = new() { Name = "bare", Children = null };
+
+        [Component]
+        private static VNode BareElementBesideAReaderOwner()
+        {
+            s_ownerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOrder = setTick;
+            return V.Div(name: "box", children: new VNode[]
+            {
+                V.Label(name: "tick", text: "tick:" + tick),
+                s_bareElement,
+                V.Div(name: "reading", children: new VNode[]
+                {
+                    V.Suspense(V.Label(name: "loading", text: "loading"), new VNode[] { V.Component(Reader, key: "reader") }),
+                }),
+            });
+        }
+
         // GREEN_ON_BASE(characterization): the merge base builds the row again on every render, so the reader is reached
         // there whatever the keyed pass does with a row handed back by instance.
         [Test]
@@ -189,6 +209,24 @@ namespace Velvet.Tests
 
             // Assert — the mark travels with the name: an owner with nothing marked would skip the panel anyway
             Assert.That(Equals(PendingWorkBelow(s_ownerFiber), true) ? panel.name : null, Is.EqualTo("set-on-the-element"));
+        }
+
+        [Test]
+        public void Given_AnElementWithNoChildrenArrayBesideAWaitingReader_When_TheOwnerRendersAgain_Then_TheRenderCommits()
+        {
+            // Arrange — the reader waits, so the owner stays marked and asks the bare element whether it holds a fiber
+            using var mounted = V.Mount(_root, V.Component(BareElementBesideAReaderOwner, key: "owner"));
+            s_setReaderKey.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the mark travels with the text: an owner with nothing marked would not ask
+            Assert.That(Equals(PendingWorkBelow(s_ownerFiber), true) ? _root.Q<Label>("tick")?.text : null,
+                Is.EqualTo("tick:1"));
         }
 
         // Read by reflection so the fixture builds where the mark does not exist.
