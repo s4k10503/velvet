@@ -35,6 +35,18 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
+        /// Runs the Normal / Urgent tier's own drain, then the passive effects the commits it ran left pending. The
+        /// drain keeps the order the scheduler renders queued fibers in, which <see cref="FlushStateForTest"/>'s
+        /// walk down the tree replaces with tree order. Test-only.
+        /// </summary>
+        // Bypasses: the panel scheduler callback and the passive drain's own callback, as DrainImmediateForTest and FlushEffectsForTest each do.
+        public static void DrainForTest(this MountedTree mounted)
+        {
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.FlushEffectsForTest();
+        }
+
+        /// <summary>
         /// As <see cref="FlushStateForTest"/>, leaving the passive effects earlier commits left pending as they are,
         /// for a case about what a render does while they still wait. Test-only.
         /// </summary>
