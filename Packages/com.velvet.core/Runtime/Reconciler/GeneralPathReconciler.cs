@@ -1970,16 +1970,7 @@ namespace Velvet
             {
                 foreach (var (_, element, hidden) in commit.DisplayChanges)
                 {
-                    if (hidden)
-                    {
-                        SuspenseHiddenElements.Hide(element);
-                        hiddenRoots.Add(element);
-                    }
-                    else
-                    {
-                        SuspenseHiddenElements.Reveal(element);
-                        _ctx.AttachRefsHiddenUnder(element);
-                    }
+                    if (hidden) hiddenRoots.Add(element);
                 }
             }
             // The walk takes a fiber's first hide out of the list's order, so what the list holds for that fiber
@@ -2006,7 +1997,20 @@ namespace Velvet
                     }
                 }
             }
+            // Ahead of the hide, as React's disappearLayoutEffects runs ahead of hideOrUnhideAllChildren.
             SuspenseDisappearWalk.Run(_ctx, hiddenRoots, hiddenFibers);
+            foreach (var element in hiddenRoots) SuspenseHiddenElements.Hide(element);
+            // After the hides: a reveal attaches the refs below it short of an element a Suspense hides, and the walk
+            // has just taken those of the elements hidden here off.
+            if (commit.DisplayChanges != null)
+            {
+                foreach (var (_, element, hidden) in commit.DisplayChanges)
+                {
+                    if (hidden) continue;
+                    SuspenseHiddenElements.Reveal(element);
+                    _ctx.AttachRefsHiddenUnder(element);
+                }
+            }
             foreach (var element in hiddenRoots)
             {
                 // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout

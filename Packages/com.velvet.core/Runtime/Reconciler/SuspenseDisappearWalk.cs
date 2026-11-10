@@ -6,8 +6,8 @@ namespace Velvet
     // What a Suspense that hides its committed primary takes down, in the order React's disappearLayoutEffects
     // takes it: one pre-order walk of the hidden tree, in which a component's layout cleanups run where the walk
     // reaches the component and an element's ref detaches where the walk reaches the element. A component is
-    // reached ahead of the element its output starts at (LogicalElementTree.StartOf), and a Portal's rows where its
-    // placeholder sits.
+    // reached ahead of the element its output starts at (LogicalElementTree.StartOf), and a Portal's rows and an
+    // element FiberZLayerCoordinator relocated where their placeholders sit.
     internal static class SuspenseDisappearWalk
     {
         // roots are the hidden primaries' outermost elements, those of the Portals among them included, and fibers
@@ -77,6 +77,7 @@ namespace Velvet
             private readonly Dictionary<VisualElement, List<ComponentFiber>> _startingAt;
             private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingIn;
             private readonly HashSet<VisualElement> _visited = new();
+            private readonly HashSet<VisualElement> _relocated = new();
 
             internal Walk(ReconcilerContext ctx, Dictionary<VisualElement, List<ComponentFiber>> startingAt,
                 Dictionary<VisualElement, List<ComponentFiber>> endingIn)
@@ -84,6 +85,7 @@ namespace Velvet
                 _ctx = ctx;
                 _startingAt = startingAt;
                 _endingIn = endingIn;
+                foreach (var real in ctx.ZLayerPlaceholders.Values) _relocated.Add(real);
             }
 
             internal void Visit(VisualElement element)
@@ -96,7 +98,10 @@ namespace Velvet
                 // Copied first: a cleanup can change the children.
                 foreach (var child in new List<VisualElement>(element.hierarchy.Children()))
                 {
+                    // Reached at its placeholder instead, which holds the slot it was declared at.
+                    if (_relocated.Contains(child)) continue;
                     Visit(child);
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(child, out var real)) Visit(real);
                     VisitPortalRows(child);
                 }
                 TakeDown(_endingIn, element);

@@ -19,6 +19,7 @@ namespace Velvet.Tests
             PortalInside,
             EmptyLast,
             EmptyMountedFirst,
+            Relocated,
         }
 
         private sealed record Named(string Name);
@@ -88,6 +89,20 @@ namespace Velvet.Tests
             });
         }
 
+        [Component]
+        private static VNode RelocatingOuter()
+        {
+            EventLog.UseEffects("O", Array.Empty<object>());
+            var refO = EventLog.UseRefCallback("O");
+            var refZ = EventLog.UseRefCallback("Z");
+            return V.Div(className: "relative", refCallback: refO, children: new VNode[]
+            {
+                V.Component(Probed, new Named("A"), key: "a"),
+                V.Div(className: "absolute -z-10", refCallback: refZ, key: "z"),
+                V.Component(Probed, new Named("B"), key: "b"),
+            });
+        }
+
         // Pending for good once blocked, so the boundary keeps its fallback for the rest of the case.
         [Component]
         private static VNode Reader(int blocked)
@@ -112,7 +127,8 @@ namespace Velvet.Tests
                     {
                         V.Component(TrailingOuter, key: "outer"), V.Component(Probed, new Named("Z"), key: "z"), reader,
                     },
-                    _ => new VNode[] { V.Component(LeadingOuter, key: "outer"), reader },
+                    Shape.EmptyMountedFirst => new VNode[] { V.Component(LeadingOuter, key: "outer"), reader },
+                    _ => new VNode[] { V.Component(RelocatingOuter, key: "outer"), reader },
                 });
         }
 
@@ -191,6 +207,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "lay-x:O ref-x:O lay-x:N lay-x:I ref-x:I ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_ARevealedPrimaryWithAnElementItsZClassPaintsBehindItsSiblings_When_ItSuspendsAgain_Then_ItsRefDetachesAtTheSlotItWasDeclaredAt()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.Relocated);
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "lay-x:O ref-x:O lay-x:A ref-x:A ref-x:Z lay-x:B ref-x:B ins:F ref:F lay:F eff:F"));
         }
     }
 }
