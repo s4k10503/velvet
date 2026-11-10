@@ -980,6 +980,29 @@ namespace Velvet.Tests
             Assert.That(tag.resolvedStyle.borderTopColor.g, Is.InRange(0.01f, expected.g - 0.01f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reports no lost colour once the cleared side shows it again. Leaving
+        // the side marked as covered once it is shown again reddens this case.
+        [Test]
+        public void Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_TheColourIsShownAgain_Then_NoColourIsLost()
+        {
+            // Arrange
+            var expected = TextColourOf("text-red-500");
+            var tag = MountLabel("border text-red-500");
+            var now = Time.realtimeSinceStartupAsDouble;
+            EditorPanelTestHelpers.SetPanelTimeFunction(tag.panel, () => now);
+            tag.style.borderTopColor = new StyleColor(Color.magenta);
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 2, 0.2, ref now);
+
+            // Act
+            tag.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+            ForcePanelUpdate(tag.panel);
+            Tick(tag, 3, 0.2, ref now);
+
+            // Assert — null where the side does not show the text colour again, which false never equals.
+            Assert.That(tag.resolvedStyle.borderTopColor == expected ? BorderPreflight.Lost(tag) : (bool?)null, Is.EqualTo(false));
+        }
+
         // Advances the panel's clock by step, count times, running its scheduler, its animations and a style pass each time.
         private static void Tick(VisualElement element, int count, double step, ref double now)
         {

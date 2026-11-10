@@ -115,18 +115,15 @@ namespace Velvet
         // it comes to; a var() or another function nothing here reads to the end is taken.
         private static bool Accepts(string function, string value, bool negated)
         {
-            // Negated, Tailwind writes the value inside calc(), where parentheses only group.
-            while (negated && value.Length > 1 && value[0] == '(' && value[value.Length - 1] == ')')
-            {
-                value = value.Substring(1, value.Length - 2).Trim();
-            }
             if (StyleLengthExpression.OpensMathFunction(value.AsSpan()))
             {
                 return AcceptsMath(function, StyleLengthExpression.TypeOf(value.AsSpan()));
             }
-            // A var() or another function this does not read may come to anything. A parenthesis with no name before it
-            // opens no function, and the browser takes no value that opens on one.
-            if (value.IndexOf('(') > 0)
+            // A var() or another function this does not read may come to anything, and so may a negated value opening on
+            // a parenthesis, which Tailwind writes inside calc(), where one groups. Otherwise a parenthesis with no name
+            // before it opens no function, and the browser takes no value that opens on one.
+            var parenthesis = value.IndexOf('(');
+            if (parenthesis > 0 || (negated && parenthesis == 0))
             {
                 return true;
             }

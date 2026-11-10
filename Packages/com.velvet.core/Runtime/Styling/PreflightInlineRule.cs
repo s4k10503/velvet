@@ -238,7 +238,6 @@ namespace Velvet
                 return;
             }
             _shown &= ~(1 << side);
-            _covered &= ~(1 << side);
             Publish();
             if (HasInlineValue(element, side) || s_accessor!.GetValue(element) is not { } accessor)
             {
@@ -267,8 +266,6 @@ namespace Velvet
             s_spare.Push(this);
         }
 
-        // Whether the element's computed style shows colour on side where nothing overrides the rule: an inline value
-        // or a transition still running toward it leaves a different one there legitimately.
         // Whether an inline value read standing over side has been cleared since, recording one that stands now.
         private bool Uncovered(VisualElement element, int side)
         {
@@ -280,6 +277,8 @@ namespace Velvet
             return (_covered & (1 << side)) != 0;
         }
 
+        // Whether the element's computed style shows colour on side where nothing overrides the rule: an inline value
+        // or a transition still running toward it leaves a different one there legitimately.
         private static bool Holds(VisualElement element, int side, Color colour)
             => Same(ResolvedColor(element, side), colour) || HasInlineValue(element, side)
                 || (bool)s_running!.Invoke(element, new[] { s_ids[side] });

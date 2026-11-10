@@ -345,6 +345,9 @@ namespace Velvet.Tests
         [TestCase("-scale-x-[(2)]")]
         [TestCase("-scale-y-[((2))]")]
         [TestCase("-translate-x-[(10px)]")]
+        [TestCase("-translate-x-[(10px)_*_2]")]
+        [TestCase("-scale-x-[(2)_*_3]")]
+        [TestCase("-hue-rotate-[(2deg)_+_1deg]")]
         public void Given_ANegatedBracketOpeningOnAParenthesis_When_ReadForRejection_Then_NothingIsRejected(string cls)
         {
             // Act
@@ -355,11 +358,12 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): a negated skew is written inside calc() as the other negated families are.
-        [Test]
-        public void Given_ANegatedSkewOpeningOnAParenthesis_When_ReadForRejection_Then_TheSkewIsKept()
+        [TestCase("-skew-x-[(10deg)]")]
+        [TestCase("-skew-x-[(10deg)_+_1deg]")]
+        public void Given_ANegatedSkewOpeningOnAParenthesis_When_ReadForRejection_Then_TheSkewIsKept(string cls)
         {
             // Act
-            var rejected = StyleCompositeRejection.RejectsSkew("-skew-x-[(10deg)]", out _);
+            var rejected = StyleCompositeRejection.RejectsSkew(cls, out _);
 
             // Assert
             Assert.That(rejected, Is.False);
