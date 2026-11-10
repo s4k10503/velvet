@@ -408,8 +408,7 @@ namespace Velvet.Tests
             s_slicedFiber = null;
         }
 
-        // Without the compiler the child is reached with a new node on every render, so the resumed slice renders it.
-        [Component(Compiler = false)]
+        [Component]
         private static VNode SlicedParentRender()
         {
             s_slicedFiber = FiberAmbientStack.Current;

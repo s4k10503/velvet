@@ -574,6 +574,28 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildPassSuspendedUnderAnElementTheParentHandsBack_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
+        {
+            // Arrange — the parent's compiler hands back the element holding the child, so only the child's own
+            // suspended pass sends this pass into it; the second warning is that pass suspending in turn
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            using var mounted = V.Mount(_root, V.Component(WrappedOuterPassRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            FiberWorkLoop.FlushState(s_innerFiber);
+            s_outerSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Act
+            s_source.TrySetResult(5);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("child:5|outer:1"),
+                "The resolve retries the outermost pass that suspended, which renders the inner one's too");
+        }
+
+        [Test]
         public void Given_AMemoizedChildPassAndThenItsParentsPassSuspendedOnOneResource_When_TheResourceResolves_Then_BothPassesAreRetried()
         {
             // Arrange — as above, with the inner component memoized on the outer tick, so the outer retry alone
@@ -1676,6 +1698,19 @@ namespace Velvet.Tests
                 s_innerMemoized
                     ? V.Component(MemoizedInnerPassRender, tick, key: "inner")
                     : V.Component(InnerPassRender, key: "inner"),
+                V.Label(text: "outer:" + tick),
+            });
+        }
+
+        [Component]
+        private static VNode WrappedOuterPassRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_outerSetTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(name: "inner-wrap", children: new VNode[] { V.Component(InnerPassRender, key: "inner") }),
                 V.Label(text: "outer:" + tick),
             });
         }

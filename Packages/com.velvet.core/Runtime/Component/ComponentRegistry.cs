@@ -188,7 +188,7 @@ namespace Velvet
                 // A plain component bails only when reached with the node it last rendered from, as React bails an
                 // element whose props object is the one it last rendered with — a node the parent's compiler cache
                 // returned, say, or one in the committed output of a fiber that rendered nothing in this pass.
-                propsChanged = !(renderedFromThisNode && HasNothingPending(existingFiber));
+                propsChanged = !renderedFromThisNode || FiberPendingWork.HasOwn(existingFiber);
             }
             if (propsChanged)
             {
@@ -245,15 +245,6 @@ namespace Velvet
             }
             return existingFiber;
         }
-
-        // React bails an element it is handed again only where the fiber has no work pending. IsDirty and RenderOwed
-        // are read beside the bail; this adds a pass of its own that suspended, a reconcile parked partway and a read
-        // still waiting, on which SuspendWithoutBoundaryTests, InlineSlotStartTests and SuspenseHiddenPrimaryTests
-        // each hold a case that fails when such a fiber bails.
-        private static bool HasNothingPending(ComponentFiber fiber)
-            => fiber.SuspendedOn == null
-                && fiber.Reconciler?.HasPendingWork != true
-                && !ComponentBoundarySearch.HasPendingAsyncSlot(fiber);
 
         private ComponentFiber CreateAndMountFiber(ComponentNode node, object identity, in FiberMountSite site)
         {

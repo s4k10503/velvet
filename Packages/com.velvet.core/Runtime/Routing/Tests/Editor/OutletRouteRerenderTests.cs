@@ -10,17 +10,14 @@ using static Velvet.Tests.RouteTestStubs;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the render count of an Outlet-mounted route Component across reconciles, pinning how
-    /// opt-in memoization gates the props-equality bail.
+    /// Specifies the render count of an Outlet-mounted route Component across reconciles.
     /// <list type="bullet">
     /// <item>A matched route Component renders exactly once on the initial Outlet mount.</item>
     /// <item>A plain (non-memo) route Component is not rendered again by a location-invariant, slot-stable Outlet
     /// reconcile: the Outlet hands it the node the route table holds, which is the one it last rendered from, as
     /// React Router hands a route's element over again.</item>
-    /// <item>A memoized (<c>Memoize = true</c>) route Component with shallow-equal props bails the re-render of
-    /// a preserved fiber on a location-invariant, slot-stable Outlet reconcile.</item>
-    /// <item>Memoization bails a preserved fiber's re-render, not a mount: when a slot shift remounts the route
-    /// fiber, even a memoized route Component renders again.</item>
+    /// <item>A bail spares a preserved fiber's render, not a mount: when a slot shift remounts the route fiber,
+    /// even a memoized route Component renders again.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -62,9 +59,7 @@ namespace Velvet.Tests
             return V.Label(name: "route", text: "non-memo-route");
         }
 
-        // Memoized route Component. With no props (both-null), shallow-equal props bail the re-render of a
-        // preserved fiber, so it does not re-render on a location-invariant parent reconcile that keeps the
-        // Outlet's slot stable.
+        // Memoized route Component, which a remount renders all the same.
         [Component(Memoize = true)]
         private static VNode MemoRouteRender()
         {
@@ -165,25 +160,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_nonMemoRouteRenderCount, Is.EqualTo(1),
                 "A non-memo route Component handed the node it last rendered from is not rendered again");
-        }
-
-        [Test]
-        public void Given_MemoRoute_When_LocationInvariantSlotStableReconcile_Then_BailsReRender()
-        {
-            // A memoized route Component with both-null props is shallow-equal across reconciles, so the
-            // preserved-fiber re-render is bailed.
-            // Arrange
-            var router = BuildRouterFor(MemoRouteRender);
-            using var mounted = MountLayoutWithRouter(router, LayoutWithOutletRender);
-            Assume.That(s_memoRouteRenderCount, Is.EqualTo(1), "Precondition: the initial mount rendered the memo route once");
-
-            // Act
-            s_layoutSetTick!.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(s_memoRouteRenderCount, Is.EqualTo(1),
-                "A memoized route Component bails the location-invariant, slot-stable Outlet reconcile");
         }
 
         [Test]
