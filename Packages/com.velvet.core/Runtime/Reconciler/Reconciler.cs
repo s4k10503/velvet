@@ -570,16 +570,47 @@ namespace Velvet
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {
-            // The controller stores the slot's top-level element, which for a shadow-*/clip-path-*
-            // item root is the structural WRAPPER; patch the real inner (the ChildReconciler does
-            // the same via ResolveWrapped before every PatchNode).
-            var inner = NodePatcher.ResolveWrapped(element);
-            NodePatcher.PatchNode(inner, oldNode, newNode);
-            // A class change can wrap/unwrap during the patch, swapping the slot's top-level
-            // element; return the current outermost so the controller re-mounts the right node
-            // (the parallel of ChildReconciler's post-patch re-fetch).
-            return NodePatcher.ResolveOuter(inner);
+            // The controller stores the slot's occupant, which for a shadow-*/clip-path-* item root is the
+            // structural WRAPPER and for one FiberZLayerCoordinator relocated is its placeholder; patch what the
+            // ChildReconciler patches (ResolveWrapped before every PatchNode). The element a placeholder stands for
+            // is read before the patch, which forgets the placeholder where it puts that element back in the slot.
+            var real = NodePatcher.ResolveWrapped(
+                _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element);
+            NodePatcher.PatchNode(NodePatcher.ResolveWrapped(element), oldNode, newNode);
+            // A class change can wrap/unwrap or relocate during the patch, swapping the slot's occupant; return
+            // the one it left so the controller re-mounts the right node (the parallel of ChildReconciler's
+            // post-patch re-fetch).
+            var outer = NodePatcher.ResolveOuter(real);
+            return FiberZLayerCoordinator.PlaceholderOf(_ctx, outer) ?? outer;
         }
+
+        // Ahead of a rewrite of the rows by index, as FiberZLayerCoordinator.NoteChildrenReconciled is ahead of a diff.
+        void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
+            => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
+
+        // A range rendered inside a pass is placed and arranged where the pass ends (FinishTopLevelPass). Outside one,
+        // the elements its rows' creation relocated join their parents here rather than at the next pass, and every
+        // other queued mount is left to that pass's drain.
+        void IReconcilerBridge.EndRowPlacementForController()
+        {
+            if (_ctx.SharedReconcileDepth > 0) return;
+            for (var queued = _ctx.PendingPortalMounts.Count; queued > 0; queued--)
+            {
+                var entry = _ctx.PendingPortalMounts.Dequeue();
+                if (entry.Node is ZLayerMountNode mount)
+                {
+                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, entry.Placeholder, mount);
+                }
+                else
+                {
+                    _ctx.PendingPortalMounts.Enqueue(entry);
+                }
+            }
+            FiberZLayerCoordinator.ResortLayers(_ctx);
+        }
+
+        VisualElement IReconcilerBridge.RowBoxForController(VisualElement occupant)
+            => _ctx.ZLayerPlaceholders.TryGetValue(occupant, out var real) ? real : occupant;
 
         object? IReconcilerBridge.BeginDetachedItemScope(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext)

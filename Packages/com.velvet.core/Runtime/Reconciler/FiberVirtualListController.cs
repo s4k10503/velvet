@@ -220,8 +220,8 @@ namespace Velvet
             CancelScrollRequest();
             for (var i = 0; i < _renderedElements.Length; i++)
             {
-                var row = _renderedElements[i];
-                if (row == null) continue;
+                if (_renderedElements[i] == null) continue;
+                var row = _reconciler.RowBoxForController(_renderedElements[i]);
                 if (_horizontal) row.style.width = StyleKeyword.Null;
                 else row.style.height = StyleKeyword.Null;
             }
@@ -567,10 +567,19 @@ namespace Velvet
             _lastRenderedIndex = -1;
         }
 
-        // Repopulates _visibleContainer from newElements at its new scroll offset.
+        // Repopulates _visibleContainer from newElements at its new scroll offset. An element FiberZLayerCoordinator
+        // relocated out of a row's slot is left standing: the placeholder holding the slot is what newElements names,
+        // and the coordinator arranges the two again once the rows are placed.
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
-            _visibleContainer.Clear();
+            _reconciler.BeginRowPlacementForController(_visibleContainer);
+            for (var i = _visibleContainer.childCount - 1; i >= 0; i--)
+            {
+                if (!FiberZLayerCoordinator.IsRelocatedReal(_visibleContainer[i]))
+                {
+                    _visibleContainer.RemoveAt(i);
+                }
+            }
             var offset = (float)OffsetOf(newFirst);
             var container = _visibleContainer.style;
             container.flexDirection = _horizontal ? FlexDirection.Row : StyleKeyword.Null;
@@ -579,16 +588,20 @@ namespace Velvet
             container.bottom = _horizontal ? 0 : StyleKeyword.Null;
             container.right = _horizontal ? StyleKeyword.Null : 0;
 
+            var slots = new LogicalSlotCursor();
+            var slot = 0;
             for (var i = 0; i < newCount; i++)
             {
                 if (newElements[i] != null)
                 {
                     var length = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
-                    if (_horizontal) newElements[i].style.width = length;
-                    else newElements[i].style.height = length;
-                    _visibleContainer.Add(newElements[i]);
+                    var box = _reconciler.RowBoxForController(newElements[i]);
+                    if (_horizontal) box.style.width = length;
+                    else box.style.height = length;
+                    slots.Insert(_visibleContainer, slot++, newElements[i]);
                 }
             }
+            _reconciler.EndRowPlacementForController();
         }
 
         // The buffers go with the rows they held: IndexOldRenderedItems offers whatever they still name

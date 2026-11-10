@@ -31,11 +31,20 @@ namespace Velvet
 
         // Patches an item element previously returned by CreateElementForController or by this
         // method. element may be a structural WRAPPER (shadow-* / clip-path-* item roots —
-        // CreateElement returns the wrapper): the implementation resolves the real inner before
-        // PatchNode, mirroring ChildReconciler. Returns the slot's CURRENT top-level element —
-        // a class-driven wrap/unwrap during the patch swaps which element must be (re)mounted, so
-        // the controller must store this return value, not its stale pre-patch reference.
+        // CreateElement returns the wrapper) or the placeholder of an element FiberZLayerCoordinator
+        // relocated: the implementation patches what ChildReconciler would. Returns the slot's CURRENT
+        // occupant — a class-driven wrap/unwrap or relocation during the patch swaps which element must
+        // be (re)mounted, so the controller must store this return value, not its stale pre-patch reference.
         VisualElement PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode);
+
+        // Bracket the controller's rewrite of the container's rows, which leaves the elements
+        // FiberZLayerCoordinator relocated out of the rows' slots standing: Begin before the first row is
+        // removed, End once every row is placed.
+        void BeginRowPlacementForController(VisualElement container);
+        void EndRowPlacementForController();
+
+        // The element that is the row, given the occupant of its slot: the one a placeholder stands for.
+        VisualElement RowBoxForController(VisualElement occupant);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
