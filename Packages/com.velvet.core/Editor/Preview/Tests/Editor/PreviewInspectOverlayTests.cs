@@ -330,6 +330,25 @@ namespace Velvet.Tests
             Assert.That(overlay.Q<Label>().style.display.value, Is.EqualTo(DisplayStyle.None));
         }
 
+        // GREEN_ON_BASE(characterization): the base already hides the label when the pointer moves to no element of the story.
+        [Test]
+        public void Given_ALabelShownForAMeasuredElement_When_ThePointerMovesOverNoElementOfTheStory_Then_TheLabelIsHidden()
+        {
+            // Arrange
+            var (overlay, _) = MountMeasured(BoxAt(top: 20, height: 10));
+            LayOutAndRefresh(overlay);
+            var label = overlay.Q<Label>();
+            var shown = label.style.display.value == DisplayStyle.Flex;
+            using var move = PointerMoveEvent.GetPooled();
+
+            // Act
+            _canvas.SimulateEvent(move);
+
+            // Assert
+            // A label the arrangement never showed reads as shown, which the expected value is not.
+            Assert.That(shown ? label.style.display.value : DisplayStyle.Flex, Is.EqualTo(DisplayStyle.None));
+        }
+
         // GREEN_ON_BASE(characterization): the base already writes no label while the bridge has no panel root.
         [Test]
         public void Given_AMeasuredElementAndABridgeWithoutARoot_When_TheOverlayRefreshes_Then_TheLabelTextIsLeftEmpty()
