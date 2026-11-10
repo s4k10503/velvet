@@ -6,8 +6,8 @@ using UnityEngine.Rendering;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the blend factors of the material each Particles blend draws under, where the shader's own defaults
-    /// differ from them, and which materials are read by their shader's name.
+    /// Specifies values the Multiply and Premultiplied blend materials set over the shader's own defaults, and that a
+    /// material whose shader declares a source factor alone is read by its shader's name.
     /// </summary>
     [TestFixture]
     internal sealed class ParticleBlendMaterialsTests
