@@ -667,12 +667,20 @@ namespace Velvet
                 }
                 return true;
             }
-            if (suffix is "inherit" or "initial" or "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
+            return TryOfferNamedColour(core, suffix, slash, important, ref colour);
+        }
+
+        // A colour the class names rather than brackets: a palette name, current or transparent, or inherit or initial,
+        // which take no modifier, as TryRead declines them.
+        private static bool TryOfferNamedColour(string core, string suffix, int slash, bool important, ref BoxShadowSlot colour)
+        {
+            var keyword = suffix is "inherit" or "initial";
+            if (keyword ? slash >= 0 : suffix is not ("current" or "transparent") && !VelvetPalette.TryResolveColorToken(suffix, out _))
             {
-                colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: suffix is not ("inherit" or "initial"));
-                return true;
+                return false;
             }
-            return false;
+            colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: !keyword);
+            return true;
         }
 
         // A -none, which writes a layer reading no colour, and takes no modifier, as TryReadSize declines it.

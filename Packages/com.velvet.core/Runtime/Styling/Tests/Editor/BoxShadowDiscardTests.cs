@@ -228,6 +228,24 @@ namespace Velvet.Tests
             Assert.That(colour, Is.EqualTo("unbound"));
         }
 
+        // Tailwind writes no rule for -inherit or -initial with a modifier, so the rejected colour keeps the colour the
+        // size reads.
+        [TestCase("shadow-lg shadow-inherit/50", "shadow-[color:0_4px_8px]")]
+        [TestCase("shadow-lg shadow-initial/50", "shadow-[color:0_4px_8px]")]
+        [TestCase("inset-shadow-2xs inset-shadow-inherit/50", "inset-shadow-[color:0_4px_8px]")]
+        [TestCase("inset-shadow-2xs inset-shadow-initial/50", "inset-shadow-[color:0_4px_8px]")]
+        public void Given_AColourKeywordWithAModifierBesideARejectedColour_When_Reconciled_Then_TheShadowIsDiscarded(
+            string sizeAndKeyword, string rejectedColour)
+        {
+            // Act — the control is the size and the keyword alone, which draw.
+            var colour = ReconciledLayerColour(sizeAndKeyword) != "unbound"
+                ? ReconciledLayerColour(sizeAndKeyword + " " + rejectedColour)
+                : "control unbound";
+
+            // Assert
+            Assert.That(colour, Is.EqualTo("unbound"));
+        }
+
         [Test]
         public void Given_TheBareShadowWithAnOpacityModifier_When_Reconciled_Then_ItsLayersTakeTheModifiersAlpha()
         {
