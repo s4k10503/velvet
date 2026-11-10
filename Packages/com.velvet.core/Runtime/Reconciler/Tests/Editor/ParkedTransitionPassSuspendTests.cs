@@ -44,8 +44,7 @@ namespace Velvet.Tests
             s_rowEffectSetups = 0;
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already takes isPending down when the retry commits.
-        // This pins that the flag stays lit while the first slice's pass is suspended and parked.
+        // GREEN_ON_BASE(characterization): the base already clears isPending at the retry's commit; this pins it now that its first slice parks before the drain suspends, as the base's arrangement never did; deleting the SuspendPassOwner call in FiberWorkLoop.FlushFiber's suspend catch reddens it.
         [Test]
         public void Given_ATransitionWhoseFirstSliceParkedBeforeItsPortalChildSuspended_When_TheResourceResolvesAndThePassCommits_Then_IsPendingClears()
         {
@@ -62,8 +61,7 @@ namespace Velvet.Tests
                 "The transition stays pending while its pass is suspended and parked, and the commit that finally lands it takes the indicator down");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already takes isPending down when the retry commits.
-        // This pins that the flag stays lit through a later slice that parked again and then suspended.
+        // GREEN_ON_BASE(characterization): the base already clears isPending at the retry's commit; this pins it now that a resumed slice parks again before its drain suspends and so reaches ContinueReconcile's parked-suspend catch, as the base's arrangement never did; deleting that catch's SuspendPassOwner call reddens it.
         [Test]
         public void Given_ATransitionWhoseLaterSliceParkedAndThenSuspendedInThePortalDrain_When_TheResourceResolvesAndThePassCommits_Then_IsPendingClears()
         {
@@ -79,8 +77,7 @@ namespace Velvet.Tests
                 "A slice that parks again and then suspends leaves the transition pending until the retry commits it");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already runs the host's effect once per committed tick.
-        // This pins that the scheduled resume of the suspended pass adds no run.
+        // GREEN_ON_BASE(characterization): the base already runs the host's effect once per committed tick; this pins it now that its first slice parks before the drain suspends, as the base's arrangement never did; deleting the SuspendPassOwner call in FiberWorkLoop.FlushFiber's suspend catch reddens it.
         [Test]
         public void Given_ATransitionWhoseFirstSliceParkedBeforeItsPortalChildSuspended_When_TheScheduledResumeRunsAndTheResourceResolves_Then_TheHostsEffectRunsOncePerTick()
         {
@@ -96,8 +93,7 @@ namespace Velvet.Tests
                 "The pass's own effect runs once, with the commit of the retry, and neither the suspended pass nor its resume runs it");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already runs the host's effect once per committed tick.
-        // This pins that the resumes of a pass that parked again add no run.
+        // GREEN_ON_BASE(characterization): the base already runs the host's effect once per committed tick; this pins it now that a resumed slice parks again before its drain suspends and so reaches ContinueReconcile's parked-suspend catch, as the base's arrangement never did; deleting that catch's SuspendPassOwner call reddens it.
         [Test]
         public void Given_ATransitionWhoseLaterSliceParkedAndThenSuspendedInThePortalDrain_When_TheResourceResolves_Then_TheHostsEffectRunsOncePerTick()
         {
@@ -112,8 +108,7 @@ namespace Velvet.Tests
                 "The slices that resumed before the suspend and the retry after it run the pass's effect once between them");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already runs a mounted component's effect once.
-        // This pins that the scheduled resume of the suspended pass does not run it as well.
+        // GREEN_ON_BASE(characterization): the base already runs a mounted component's effect once; this pins it now that its first slice parks before the drain suspends, as the base's arrangement never did; deleting the SuspendPassOwner call in FiberWorkLoop.FlushFiber's suspend catch reddens it.
         [Test]
         public void Given_AComponentTheFirstSlicesPassMounted_When_TheScheduledResumeRunsAndTheResourceResolves_Then_ItsEffectRunsOnce()
         {
@@ -129,8 +124,7 @@ namespace Velvet.Tests
                 "A component mounted by a pass that suspended runs its effect with the commit that keeps it, once");
         }
 
-        // GREEN_ON_BASE(characterization): the merge base already runs a mounted component's effect once.
-        // This pins that the slices before the suspend do not run it as well.
+        // GREEN_ON_BASE(characterization): the base already runs a mounted component's effect once; this pins it now that a resumed slice parks again before its drain suspends and so reaches ContinueReconcile's parked-suspend catch, as the base's arrangement never did; deleting that catch's SuspendPassOwner call reddens it.
         [Test]
         public void Given_AComponentASliceThatParkedAgainMounted_When_TheResourceResolves_Then_ItsEffectRunsOnce()
         {
