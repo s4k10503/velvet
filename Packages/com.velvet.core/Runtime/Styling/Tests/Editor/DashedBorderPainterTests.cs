@@ -214,6 +214,34 @@ namespace Velvet.Tests
             Assert.That(dots[dots.Count - 1].From.x, Is.EqualTo(22f).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base grows a dotted edge's end dots by the growth it computes.
+        [Test]
+        public void Given_AOnePixelDottedEdgeAnEvenLength_When_SegmentsComputed_Then_ItsFirstDotGrowsByAPixel()
+        {
+            // Arrange — on 10 units the first dot is drawn on its own and grows from 0 to 2.
+            var edge = new List<Vector2> { new(0f, 0f), new(10f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 1f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[0].To.x, Is.EqualTo(2f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a short edge's dot on its own segment.
+        [Test]
+        public void Given_AThickDottedEdgeShorterThanHalfADot_When_SegmentsComputed_Then_ItsDotStaysHalfAWidthIn()
+        {
+            // Arrange — a 4px dot on a 1-unit edge sits half a diameter in, at 2, past the edge's end.
+            var edge = new List<Vector2> { new(0f, 0f), new(1f, 0f) };
+
+            // Act
+            var dots = Compute(edge, closed: false, lineWidth: 4f, BorderLineStyle.Dotted);
+
+            // Assert
+            Assert.That(dots[0].From.x, Is.EqualTo(2f).Within(1e-3f));
+        }
+
         [Test]
         public void Given_AClosedSquare_When_SegmentsComputed_Then_TheWrapEdgeBackToPointZeroIsWalked()
         {

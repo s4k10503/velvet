@@ -42,6 +42,19 @@ namespace Velvet.Tests
             Assert.That(width, Is.EqualTo(1f));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads no offset width out of a bracket hinted as a colour.
+        [Test]
+        public void Given_ARingOffsetBracketHintedAsAColour_When_Extracted_Then_ItMeasuresNoOffsetWidth()
+        {
+            // Act — Tailwind types a color: hint into the offset colour, so 2em is no width here.
+            var measured = StyleRingClass.TryExtract(new[] { "ring-2", "ring-offset-[color:2em]" }, out var spec)
+                ? spec.IsMeasured
+                : (bool?)null;
+
+            // Assert
+            Assert.That(measured, Is.EqualTo(false));
+        }
+
         [Test]
         public void Given_RingPreset_When_Extracted_Then_ResolvesWidth()
         {

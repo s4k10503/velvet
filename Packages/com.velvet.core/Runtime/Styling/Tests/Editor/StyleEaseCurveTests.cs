@@ -200,5 +200,21 @@ namespace Velvet.Tests
             // Assert
             Assert.That(element.style.transitionTimingFunction.keyword, Is.EqualTo(StyleKeyword.Null));
         }
+
+        // GREEN_ON_BASE(characterization): the base forgets an ease curve once its class is removed.
+        [Test]
+        public void Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "ease-in" });
+            StyleEaseCurve.NoteClasses(element, Array.Empty<string>());
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseIn);
+
+            // Assert
+            Assert.That(curve, Is.Null);
+        }
     }
 }

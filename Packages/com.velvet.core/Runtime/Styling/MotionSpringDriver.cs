@@ -345,6 +345,7 @@ namespace Velvet
             if (c.EaseSec > 0f)
             {
                 c.Scale = 1f;
+                // MUTANT_SURVIVES(equivalent, line removed): StartVelocity is read only by this method's spring path and SamplePass's spring branch, both behind EaseSec > 0 being false, and a channel's EaseSec is never set back to 0 once AssignFramerDefault gives it the ease.
                 c.StartVelocity = 0f;
                 c.Physics = null;
                 c.MirroredPhysics = null;

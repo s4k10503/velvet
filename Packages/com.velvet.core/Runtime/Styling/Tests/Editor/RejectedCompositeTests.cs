@@ -315,5 +315,81 @@ namespace Velvet.Tests
             Assert.That(ringDiscarded ? root.Q("box").style.filter.value?.Count ?? 0 : -1, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Given_ABracketOpeningOnAParenthesis_When_Composed_Then_TheFamilyDrawsNothing()
+        {
+            // Arrange — `(2)` is no function and no number, so brightness((2)) is a declaration the browser rejects.
+            const string classes = "blur-sm brightness-[(2)]";
+
+            // Act
+            var composed = Composed(classes);
+
+            // Assert
+            Assert.That(composed, Is.EqualTo("- - 0"));
+        }
+
+        [TestCase("hue-rotate-[(2deg)]")]
+        [TestCase("translate-x-[(10px)]")]
+        public void Given_ABracketOpeningOnAParenthesis_When_ReadForRejection_Then_ItIsRejected(string cls)
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected(cls, out _);
+
+            // Assert
+            Assert.That(rejected, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): Tailwind writes a negated value inside calc(), where its parentheses group,
+        // and the base took any value holding a parenthesis.
+        [TestCase("-hue-rotate-[(2deg)]")]
+        [TestCase("-scale-x-[(2)]")]
+        [TestCase("-scale-y-[((2))]")]
+        [TestCase("-translate-x-[(10px)]")]
+        [TestCase("-translate-x-[(10px)_*_2]")]
+        [TestCase("-scale-x-[(2)_*_3]")]
+        [TestCase("-hue-rotate-[(2deg)_+_1deg]")]
+        public void Given_ANegatedBracketOpeningOnAParenthesis_When_ReadForRejection_Then_NothingIsRejected(string cls)
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected(cls, out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): a negated skew is written inside calc() as the other negated families are.
+        [TestCase("-skew-x-[(10deg)]")]
+        [TestCase("-skew-x-[(10deg)_+_1deg]")]
+        public void Given_ANegatedSkewOpeningOnAParenthesis_When_ReadForRejection_Then_TheSkewIsKept(string cls)
+        {
+            // Act
+            var rejected = StyleCompositeRejection.RejectsSkew(cls, out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no utility of a negated filter, which Tailwind does not negate.
+        [Test]
+        public void Given_ANegatedFilterThatTailwindDoesNotNegate_When_ReadForRejection_Then_NothingIsRejected()
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected("-blur-[4px]", out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads no value out of a bracket left unclosed.
+        [Test]
+        public void Given_AnUnclosedFilterBracket_When_ReadForRejection_Then_NothingIsRejected()
+        {
+            // Act
+            var rejected = StyleCompositeRejection.TryReadRejected("blur-[4px", out _);
+
+            // Assert
+            Assert.That(rejected, Is.False);
+        }
+
     }
 }

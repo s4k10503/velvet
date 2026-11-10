@@ -281,5 +281,30 @@ namespace Velvet.Tests
             Assert.That(LineBoxFont.Count, Is.EqualTo(before + 1));
         }
 
+        // The copies LineBoxFont keeps an entry for, by source and line height, whether or not the copy still exists.
+        private static int Entries()
+            => ((System.Collections.ICollection)typeof(LineBoxFont)
+                .GetField("s_entries", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .GetValue(null)).Count;
+
+        // GREEN_ON_BASE(characterization): the base sweeps the entry of a copy whose source font was destroyed.
+        [Test]
+        public void Given_AnIdleCopyWhoseSourceIsDestroyed_When_AnotherCopyIsAskedFor_Then_NoEntryIsKeptForTheDestroyedSource()
+        {
+            // Arrange — a source no text was drawn in, so destroying it reaches nothing the text system holds.
+            var label = Add(TextGeneratorType.Standard);
+            var gone = Fresh(label);
+            var other = Fresh(label);
+            var before = Entries();
+            LineBoxFont.Release(_user, LineBoxFont.Acquire(_user, gone, 24f, 16f));
+            Object.DestroyImmediate(gone);
+
+            // Act
+            Acquire(other);
+
+            // Assert — the other's entry alone remains of the two.
+            Assert.That(Entries(), Is.EqualTo(before + 1));
+        }
+
     }
 }

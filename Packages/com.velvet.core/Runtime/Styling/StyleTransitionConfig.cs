@@ -46,7 +46,7 @@ namespace Velvet
 
         // What a variant play runs on this config: the config itself, or, where it is not IsDefined, the per-value
         // defaults after its delay, on its repeat and orchestrating its children by its knobs.
-        internal StyleTransitionConfig PlayedOnVariant => _defined || PerValueDefaults ? this : _played ??= new()
+        internal StyleTransitionConfig PlayedOnVariant => _defined ? this : _played ??= new()
         {
             Type = TransitionType.Spring,
             PerValueDefaults = true,

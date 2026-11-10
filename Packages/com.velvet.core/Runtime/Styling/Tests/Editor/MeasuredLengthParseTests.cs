@@ -19,6 +19,17 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base counts a leading length in ems as the shadow's x offset.
+        [Test]
+        public void Given_AShadowWhoseXOffsetIsInEms_When_Extracted_Then_TheShadowIsRead()
+        {
+            // Act — the em is the first of the two offsets a shadow needs, so it has to count as one.
+            var ok = StyleShadowClass.TryExtract(new[] { "shadow-[1em_2px_#000000]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base read no shadow length in ems, so this one was declined with the rest.
         // Flooring a measured blur at zero for a literal as well reddens it.
         [Test]

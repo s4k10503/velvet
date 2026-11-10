@@ -539,6 +539,7 @@ namespace Velvet
             {
                 var next = (state.ClipIndex + 1) % 2;
                 var baked = state.ClipImages[next] ??= ScriptableObject.CreateInstance<VectorImage>();
+                // MUTANT_SURVIVES(equivalent, line removed): the name labels the baked asset, and nothing in Velvet reads a VectorImage's name.
                 baked.name = "VelvetProjectedCornerClip";
                 using (var painter = new Painter2D())
                 {
@@ -573,6 +574,8 @@ namespace Velvet
         {
             var w = element.layout.width;
             var h = element.layout.height;
+            // MUTANT_SURVIVES(equivalent, boundary): at a width of 0 the face's shapes have no area, and
+            // ProjectedCornerFaceZeroWidthTests reads no pixel painted there with `>=` as with `>`.
             if (!(w > 0f && h > 0f)) return;
             var box = new ShearedRoundedRect { Width = w, Height = h, Radii = state.Radii };
             var painter = mgc.painter2D;

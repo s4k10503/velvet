@@ -165,5 +165,16 @@ namespace Velvet.Tests
             // Assert
             Assert.That(label.style.unityFontDefinition.value.fontAsset, Is.SameAs(latin));
         }
+
+        // GREEN_ON_BASE(characterization): the base leaves weight 600 to a residual bold, as a browser synthesises one.
+        [Test]
+        public void Given_AListNoNameOfWhichIsRegistered_When_ResolvedAtWeight600_Then_TheBoldIsLeftResidual()
+        {
+            // Act
+            var resolved = VelvetFonts.Resolve("sans-serif,system-ui", VelvetFontWeight.SemiBold, italic: false);
+
+            // Assert
+            Assert.That(resolved.ResidualBold, Is.True);
+        }
     }
 }

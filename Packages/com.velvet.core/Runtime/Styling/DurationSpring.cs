@@ -57,6 +57,7 @@ namespace Velvet
 
         // Framer's clamp(min, max, v), through which NaN passes.
         private static double Clamp(double value, double min, double max)
+            // MUTANT_SURVIVES(equivalent, boundary): at value == max both branches return max, and NaN fails `>=` as it fails `>`.
             => value > max ? max : value < min ? min : value;
 
         // Newton's method from the same initial guess and for the same fixed iteration count as Framer, so a root

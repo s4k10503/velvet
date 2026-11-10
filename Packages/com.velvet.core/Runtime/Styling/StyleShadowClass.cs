@@ -598,6 +598,7 @@ namespace Velvet
             }
             var inset = root == "inset-shadow";
             var slash = StyleColorValueParser.ColorModifierSlashIndex(core, 0);
+            // MUTANT_SURVIVES(equivalent, boundary): core starts with root, checked above, so its first character is no slash and the index is never 0.
             var body = slash < 0 ? core : core.Substring(0, slash);
             if (slash >= 0 && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
             {
