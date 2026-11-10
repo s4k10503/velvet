@@ -132,6 +132,21 @@ namespace Velvet
         /// Primary use case: wrapping a button with a shadow container.
         /// </summary>
         public Func<VisualElement, VisualElement>? WrapElement { get; init; }
+
+        // Whether anything below this element can be rendered by a fiber: every node other than an ElementNode or a
+        // TextNode holds one or may. Cached on the instance, which the reconciler asks each time it is handed back.
+        internal bool MayHoldFiber => _mayHoldFiber ??= AnyChildMayHoldFiber();
+
+        private bool? _mayHoldFiber;
+
+        private bool AnyChildMayHoldFiber()
+        {
+            foreach (var child in Children)
+            {
+                if (FiberPendingWork.MayHoldFiber(child)) return true;
+            }
+            return false;
+        }
     }
 
     /// <summary>

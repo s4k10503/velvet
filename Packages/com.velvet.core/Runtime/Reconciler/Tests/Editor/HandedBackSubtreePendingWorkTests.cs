@@ -6,10 +6,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that a host element the parent hands back by instance is still entered where a component inside it
-    /// has work pending, as React enters a subtree whose childLanes are set, that it is left unentered however many
-    /// fibers it holds where none has, and that the mark standing for that is clear once the work has settled, so an
-    /// unchanged subtree costs the walk one read.
+    /// Specifies when a host element the parent hands back by instance is entered. While a fiber below the owner has
+    /// work pending, as React enters a subtree whose childLanes are set, every such element that can hold a fiber is
+    /// entered and one holding none is not. Once that work has settled the mark standing for it is clear, and no such
+    /// element is entered however many fibers it holds.
     /// </summary>
     [TestFixture]
     internal sealed class HandedBackSubtreePendingWorkTests
@@ -116,6 +116,23 @@ namespace Velvet.Tests
             });
         }
 
+        [Component]
+        private static VNode PanelBesideAReaderOwner()
+        {
+            s_ownerFiber = FiberAmbientStack.Current;
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOrder = setTick;
+            return V.Div(name: "box", children: new VNode[]
+            {
+                V.Label(name: "tick", text: "tick:" + tick),
+                V.Div(name: "panel", children: new VNode[] { V.Text("one"), null, V.Div(children: new VNode[] { V.Label(text: "two") }) }),
+                V.Div(name: "reading", children: new VNode[]
+                {
+                    V.Suspense(V.Label(name: "loading", text: "loading"), new VNode[] { V.Component(Reader, key: "reader") }),
+                }),
+            });
+        }
+
         // GREEN_ON_BASE(characterization): the merge base builds the row again on every render, so the reader is reached
         // there whatever the keyed pass does with a row handed back by instance.
         [Test]
@@ -151,6 +168,27 @@ namespace Velvet.Tests
             // Assert — a walk entering the held element reaches the component in it, which then names this render's
             // tree; a component that bails on the node it was handed is reached all the same
             Assert.That(s_heldLeavesFiber.SourceTree, Is.SameAs((object)treeBefore ?? new object()));
+        }
+
+        // Read by reflection so the fixture builds where the mark does not exist. A patch writes the node's name back
+        // onto the element it enters, so a name set on the element itself survives only where it is not entered.
+        [Test]
+        public void Given_AHostPanelBesideAWaitingReader_When_TheOwnerRendersAgain_Then_ThePanelIsNotEntered()
+        {
+            // Arrange — the reader waits, so the owner stays marked through its render
+            using var mounted = V.Mount(_root, V.Component(PanelBesideAReaderOwner, key: "owner"));
+            s_setReaderKey.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+            var panel = _root.Q("panel");
+            panel.name = "set-on-the-element";
+
+            // Act
+            s_setOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the mark travels with the name: an owner with nothing marked would skip the panel anyway
+            Assert.That(Equals(PendingWorkBelow(s_ownerFiber), true) ? panel.name : null, Is.EqualTo("set-on-the-element"));
         }
 
         // Read by reflection so the fixture builds where the mark does not exist.

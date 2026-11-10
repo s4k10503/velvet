@@ -2,8 +2,8 @@ namespace Velvet
 {
     // React bails an element it is handed again, and skips a subtree it was handed again, only where no fiber in it
     // has work pending: its lanes and childLanes. ComponentFiber.PendingWorkBelow stands for childLanes here: an
-    // identity skip reads it alone, and Below, which a render calls before it reconciles, clears it once nothing
-    // marked is pending.
+    // identity skip reads it, and where it is set, whether the node can hold a fiber at all (MayHoldFiber). Below,
+    // which a render calls before it reconciles, clears it once nothing marked is pending.
     internal static class FiberPendingWork
     {
         // Work of the fiber's own that a pass reaching it must render it for, beside IsDirty and RenderOwed: a pass of
@@ -12,6 +12,13 @@ namespace Velvet
             => fiber.SuspendedOn != null
                 || fiber.Reconciler?.HasPendingWork == true
                 || ComponentBoundarySearch.HasPendingAsyncSlot(fiber);
+
+        internal static bool MayHoldFiber(VNode? node) => node switch
+        {
+            null or TextNode => false,
+            ElementNode element => element.MayHoldFiber,
+            _ => true,
+        };
 
         internal static bool IsPendingItself(ComponentFiber fiber)
             => fiber.IsDirty || fiber.RenderOwed || HasOwn(fiber);

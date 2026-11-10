@@ -931,9 +931,11 @@ namespace Velvet
         }
 
         // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
-        // drops the render this pass owes one with work pending. Where a fiber below the one reconciling is marked
-        // (FiberPendingWork), this reconcile takes no identity skip and patches every node.
-        private bool SkipsIdentical => _ctx.FiberStack.Current is not { PendingWorkBelow: true };
+        // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
+        // (FiberPendingWork), this reconcile skips only a node nothing below can be rendered by a fiber, and patches
+        // every other.
+        private bool SkipsIdentical(VNode? node)
+            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } || !FiberPendingWork.MayHoldFiber(node);
 
         // Returns false only on a yield (this phase parked its resume point); true when the phase is done
         // with the range — including when an abort cut it short, which the dispatcher detects separately.
@@ -954,7 +956,7 @@ namespace Velvet
                 // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
                 // lookup and DiffProps invocation suppresses outlier GC allocations on the
                 // no-change path.
-                if (ReferenceEquals(oldNodes[i], newNodes[i]) && SkipsIdentical)
+                if (ReferenceEquals(oldNodes[i], newNodes[i]) && SkipsIdentical(newNodes[i]))
                 {
                     if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                     {
@@ -1167,7 +1169,7 @@ namespace Velvet
                 // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
                 // back the cached instance). Skip the DOM lookup and PatchNode, so the prefix advances and
                 // the in-place DOM slot stays valid.
-                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical)
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
@@ -1277,7 +1279,7 @@ namespace Velvet
             {
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
-                if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical) continue;
+                if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(newNodes[ni])) continue;
                 var actualElement = _patcher.ResolveWrapped(parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oi)));
                 _patcher.PatchNode(actualElement, oldNodes[oi], newNodes[ni]);
                 if (_ctx.IsAborted) return;
@@ -1521,7 +1523,7 @@ namespace Velvet
                 {
                     break;
                 }
-                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical)
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
@@ -1915,7 +1917,7 @@ namespace Velvet
                 {
                     // Reference-identical VNodes are diff-free; reuse the existing element without patching.
                     // A same-instance node cannot trigger a WrapElement swap, so no re-fetch is needed.
-                    if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical)
+                    if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
                     {
                         var actualElement = _patcher.ResolveWrapped(existingDomElement);
                         _patcher.PatchNode(actualElement, old.node, newNode);

@@ -617,6 +617,73 @@ namespace Velvet.Tests
                 "The parent's pass reaches the child whose own pass suspended, and suspends with it");
         }
 
+        // GREEN_ON_BASE(characterization): the base builds the keyed row again on every render and so reaches the child.
+        // This pins the keyed diff's linear head, which patches a row handed back by instance there.
+        [Test]
+        public void Given_AChildPassSuspendedUnderAKeyedRowKeptAtTheHead_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_keyedRowMoved = false;
+            using var mounted = V.Mount(_root, V.Component(KeyedHeadOuterPassRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            FiberWorkLoop.FlushState(s_innerFiber);
+
+            // Act — the tail row is replaced, so the linear head reaches the kept row
+            s_keyedRowMoved = true;
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert — the parent's pass suspends with the child, so its rows stay as they were
+            Assert.That(Texts(), Is.EqualTo("child:0|b"),
+                "The parent's pass reaches the child whose own pass suspended, and suspends with it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the keyed row again on every render and so reaches the child.
+        // This pins the keyed diff's matched tail, which patches a row handed back by instance there.
+        [Test]
+        public void Given_AChildPassSuspendedUnderAKeyedRowKeptAtTheTail_When_TheParentsPassRuns_Then_ItReachesTheChildAndSuspendsToo()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_keyedRowMoved = false;
+            using var mounted = V.Mount(_root, V.Component(KeyedTailOuterPassRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            FiberWorkLoop.FlushState(s_innerFiber);
+
+            // Act — a row is inserted ahead, so the matched tail reaches the kept row
+            s_keyedRowMoved = true;
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert — the parent's pass suspends with the child, so its rows stay as they were
+            Assert.That(Texts(), Is.EqualTo("child:0"),
+                "The parent's pass reaches the child whose own pass suspended, and suspends with it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base builds the keyed row again on every render and so reaches the child.
+        // This pins the time-sliced keyed diff's linear head, which patches a row handed back by instance there.
+        [Test]
+        public void Given_AChildPassSuspendedUnderAKeyedRowKeptAtTheHead_When_TheParentsTimeSlicedPassRuns_Then_ItReachesTheChildAndSuspendsToo()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Warning, new Regex("no Suspense boundary"));
+            s_keyedRowMoved = false;
+            using var mounted = V.Mount(_root, V.Component(KeyedHeadOuterPassRender, key: "outer"));
+            s_innerSetOwn.Invoke(1);
+            FiberWorkLoop.FlushState(s_innerFiber);
+
+            // Act — a Transition-lane render takes the time-sliced keyed diff
+            s_keyedRowMoved = true;
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_outerFiber.FlushStateWithTinyBudgetForTest();
+            s_outerFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — the parent's pass suspends with the child, so its rows stay as they were
+            Assert.That(Texts(), Is.EqualTo("child:0|b"),
+                "The parent's pass reaches the child whose own pass suspended, and suspends with it");
+        }
+
         [Test]
         public void Given_AMemoizedChildPassAndThenItsParentsPassSuspendedOnOneResource_When_TheResourceResolves_Then_BothPassesAreRetried()
         {
@@ -1722,6 +1789,33 @@ namespace Velvet.Tests
                     : V.Component(InnerPassRender, key: "inner"),
                 V.Label(text: "outer:" + tick),
             });
+        }
+
+        private static bool s_keyedRowMoved;
+
+        // The hook's value is read nowhere, so the body has no gate of its own and every render builds the rows
+        // again from the static; the row holding the child reads nothing, so the compiler hands it back.
+        [Component]
+        private static VNode KeyedHeadOuterPassRender()
+        {
+            _ = Hooks.UseState(0);
+            s_outerFiber = FiberAmbientStack.Current;
+            var kept = V.Div(name: "kept", key: "kept", children: new VNode[] { V.Component(InnerPassRender, key: "inner") });
+            return V.Fragment(children: s_keyedRowMoved
+                ? new VNode[] { kept, V.Label(key: "c", text: "outer:1") }
+                : new VNode[] { kept, V.Label(key: "b", text: "b") });
+        }
+
+        // As KeyedHeadOuterPassRender, with the kept row at the tail.
+        [Component]
+        private static VNode KeyedTailOuterPassRender()
+        {
+            _ = Hooks.UseState(0);
+            s_outerFiber = FiberAmbientStack.Current;
+            var kept = V.Div(name: "kept", key: "kept", children: new VNode[] { V.Component(InnerPassRender, key: "inner") });
+            return V.Fragment(children: s_keyedRowMoved
+                ? new VNode[] { V.Label(key: "c", text: "outer:1"), kept }
+                : new VNode[] { kept });
         }
 
         [Component]
