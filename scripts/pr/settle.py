@@ -345,8 +345,9 @@ def check_results(runs, statuses, left_out=frozenset()):
 
 
 # One entry of `git worktree list --porcelain`. `primary` is the main working tree, which git lists
-# first.
-Worktree = collections.namedtuple("Worktree", "path head primary locked")
+# first, and `prunable` one whose directory git finds gone.
+Worktree = collections.namedtuple("Worktree", "path head primary locked prunable",
+                                  defaults=(False,))
 
 
 def worktrees(project):
@@ -361,7 +362,8 @@ def worktrees(project):
             fields[key] = value.strip()
         if fields.get("branch") and "worktree" in fields:
             held.setdefault(fields["branch"].removeprefix("refs/heads/"), []).append(Worktree(
-                fields["worktree"], fields.get("HEAD", ""), number == 0, "locked" in fields))
+                fields["worktree"], fields.get("HEAD", ""), number == 0, "locked" in fields,
+                "prunable" in fields))
     return held
 
 
@@ -379,19 +381,54 @@ def worktree_clean(path):
     return status.returncode == 0 and not status.stdout.strip()
 
 
-def holder_state(tree, sha):
-    """None where `tree` is a linked, unlocked worktree at `sha` with nothing modified or
-    untracked — the holder whose removal alone would leave the pull request at `sha` mergeable —
-    and otherwise what keeps it from being that. Neither says anything of the ignored files a
-    removal also takes."""
+# What `holder_state` says of a holder, and what `report` advises for each. A clean holder at or
+# behind the head is None and takes the advice under `HELD_CLEAN`.
+HOLDER_GONE = "is gone from disk"
+HOLDER_MAIN = "is the main working tree"
+HOLDER_LOCKED = "is locked"
+HOLDER_AHEAD = "has commits the head lacks"
+HOLDER_UNCOMPARED = "could not be compared with the head"
+HOLDER_DIRTY = "has uncommitted changes"
+HELD_CLEAN = " READY once "
+
+HOLDER_ADVICE = {
+    HELD_CLEAN: "One READY once a worktree is removed is held by clean worktrees whose commits are "
+                "all in its head, and nothing here removes them: `git worktree remove` takes their "
+                "ignored files as well, so look at what they hold first.",
+    HOLDER_GONE: "One whose worktree is gone from disk is freed by `git worktree prune`.",
+    HOLDER_MAIN: "One held by the main working tree is freed by switching that tree to another "
+                 "branch: git declines to remove it.",
+    HOLDER_LOCKED: "One held by a locked worktree waits for whoever locked it.",
+    HOLDER_AHEAD: "One whose worktree has commits the head lacks needs them pushed to the pull "
+                  "request or moved to another branch first: removing the worktree and merging "
+                  "would leave them on no branch at all.",
+    HOLDER_UNCOMPARED: "One whose worktree could not be compared with the head may hold commits it "
+                       "lacks, so read that worktree's log before anything else.",
+    HOLDER_DIRTY: "One whose worktree has uncommitted changes needs them committed and pushed, or "
+                  "set aside, by whoever made them.",
+}
+
+
+def holder_state(project, tree, sha):
+    """None where `tree` is a linked, unlocked worktree whose commits are all in `sha` and which
+    has nothing modified or untracked — a holder whose removal would leave the pull request at
+    `sha` mergeable — and otherwise what keeps it from being that. Neither says anything of the
+    ignored files a removal also takes."""
     if tree.primary:
-        return "is the main working tree"
+        return HOLDER_MAIN
+    if tree.prunable:
+        return f"{HOLDER_GONE}, and `git worktree prune` frees the branch"
     if tree.locked:
-        return "is locked"
+        return HOLDER_LOCKED
     if not sha or tree.head != sha:
-        return f"is at {tree.head[:7] or 'no commit'}, not at the head"
+        contained = run_quietly(["git", "-C", str(project), "merge-base", "--is-ancestor",
+                                 tree.head or "HEAD", sha or "HEAD"], GIT_TIMEOUT).returncode
+        if contained == 1:
+            return f"is at {tree.head[:7]} and {HOLDER_AHEAD}"
+        if contained != 0:
+            return f"is at {tree.head[:7] or 'no commit'}, which {HOLDER_UNCOMPARED}"
     if not worktree_clean(tree.path):
-        return "has uncommitted changes"
+        return HOLDER_DIRTY
     return None
 
 
@@ -588,7 +625,7 @@ def blocking_reasons(project, number, base=None, states=None):
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
     holders = state.held.get(before.branch) or ()
-    held = tuple((tree.path, holder_state(tree, after)) for tree in holders)
+    held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
@@ -752,8 +789,26 @@ def read_lines(path):
 
 
 def write_lines(path, lines):
-    path.write_text(f"{int(time.time())}\n" + "".join(f"{line}\n" for line in sorted(lines)),
-                    encoding="utf-8")
+    """Writes through a temporary file renamed into place, so no reader, and no other caller's
+    pruning, ever finds the record half-written. The temporary name opens on a dot, which
+    `write_reported` leaves alone."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(f"{int(time.time())}\n" + "".join(f"{line}\n" for line in sorted(lines)),
+                         encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def told_key(line):
+    """What a reported record keeps of an actionable line: the pull request, the head and, for a
+    READY or held one, its kind alone. A holder's own edits and commits change the rest of a held
+    line, and a caller told it is held is not told anything new by those."""
+    number, _, rest = line.partition(" ")
+    head, _, said = rest.partition(" ")
+    if said.startswith(HELD_CLEAN.strip() + " ") or said.startswith("green, but "):
+        return f"{number} {head} held"
+    if said.startswith("READY: "):
+        return f"{number} {head} READY"
+    return line
 
 
 def read_reported(caller):
@@ -764,17 +819,18 @@ def read_reported(caller):
     Per caller, because what one caller was told says nothing of what another heard: kept for the
     whole machine, a READY one run exited over was never told to a second run waiting beside it.
     """
-    return read_lines(watcher_state.reported_record(caller)) or set()
+    return {told_key(line) for line in read_lines(watcher_state.reported_record(caller)) or ()}
 
 
 def write_reported(caller, lines):
-    """Writes `caller`'s record, and deletes every other record no reading would carry any more:
-    a run given no `--caller` starts a record of its own, so they would otherwise pile up."""
+    """Writes `caller`'s record of `lines` as `told_key` keeps them, and deletes every other record
+    no reading would carry any more: a run given no `--caller` starts a record of its own, so they
+    would otherwise pile up."""
     record = watcher_state.reported_record(caller)
     record.parent.mkdir(parents=True, exist_ok=True)
-    write_lines(record, lines)
+    write_lines(record, {told_key(line) for line in lines})
     for other in record.parent.iterdir():
-        if other != record and read_lines(other) is None:
+        if other != record and not other.name.startswith(".") and read_lines(other) is None:
             try:
                 other.unlink()
             except OSError:
@@ -807,10 +863,8 @@ def report(project, actionable, caller):
     said = []
     if any(" READY: " in line for line in actionable):
         said.append("Merge a READY one with `python3 scripts/pr/settle.py merge <pr>`.")
-    if any(" READY once " in line or " green, but " in line for line in actionable):
-        said.append("One held by a worktree merges only once that worktree goes, and nothing here "
-                    "removes it: `git worktree remove` takes its ignored files as well, so look at "
-                    "what it holds first.")
+    said.extend(advice for phrase, advice in HOLDER_ADVICE.items()
+                if any(phrase in line for line in actionable))
     print("\n" + " ".join(said + [f"Then watch again in the background:\n\n"
                                   f"  {watcher_state.rearm_command(project, caller)}\n"]),
           flush=True)
@@ -891,12 +945,13 @@ def follow(project, base, caller):
 
         standing = held_lines()
         reported = read_reported(caller)
-        if standing is not None and any(line not in reported for line in standing):
+        if standing is not None and any(told_key(line) not in reported for line in standing):
             write_reported(caller, standing)
             return report(project, standing, caller)
         # Unpruned where nothing was readable, so a slow poll of the holder's does not make what
         # was already reported read as new on the next.
-        write_reported(caller, reported if standing is None else reported & standing)
+        write_reported(caller, reported if standing is None
+                       else reported & {told_key(line) for line in standing})
         time.sleep(watcher_state.POLL_SECONDS)
 
 
@@ -989,10 +1044,11 @@ def poll_until(project, base, lock, until_actionable, caller):
             # failed reading would make the next poll's lines read as new and wake the caller.
             unread = {line for line in reported
                       if reported_number(line) in pull_requests and reported_number(line) not in read}
-            if any(line not in reported for line in actionable):
+            if any(told_key(line) not in reported for line in actionable):
                 write_reported(caller, unread | set(actionable))
                 return handed_off(lock, project, actionable, caller)
-            write_reported(caller, unread | {line for line in actionable if line in reported})
+            write_reported(caller, unread | {line for line in actionable
+                                             if told_key(line) in reported})
         time.sleep(watcher_state.POLL_SECONDS)
 
 

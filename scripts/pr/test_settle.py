@@ -13,6 +13,7 @@ import importlib.util
 import io
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -834,7 +835,7 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
                 states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None,
                 until_actionable=False, seed_reported=None, readings=(), required=None,
                 holder=False, holder_stops_after=None, seed_actionable=None, caller=CALLER,
-                reported_by=None, home=None):
+                reported_by=None, home=None, holder_beats=False):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
     `asked` sends the record somewhere else, for a case about it not being written; `bound` is how
@@ -849,6 +850,7 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
     left for a follower. An `--until-actionable` run reports to `caller`, and to a token of its own
     where that is None; `seed_reported` is what `reported_by`, by default that same caller, was
     already told. `home` holds the watcher's files where a case runs twice over one set of them.
+    `holder_beats` has the holder write its heartbeat at every poll, as a live watcher does.
     """
     printed = io.StringIO()
     handles = []
@@ -867,6 +869,9 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             if other is not None and clock.polls == holder_stops_after:
                 other.kill()
                 other.wait()
+            if other is not None and holder_beats and other.poll() is None:
+                (Path(directory) / "heartbeat").write_text(f"{int(now)} {other.pid}\n",
+                                                           encoding="utf-8")
             if between_polls is not None:
                 between_polls(now)
         clock = FakeClock(bound, between)
@@ -2480,7 +2485,7 @@ class HolderStateTests(unittest.TestCase):
             if arrange is not None:
                 arrange(root, tree)
             holders = settle.worktrees(root)[branch]
-            return settle.holder_state(holders[0], head if sha is None else sha(root))
+            return settle.holder_state(root, holders[0], head if sha is None else sha(root))
 
     def test_Given_ACleanWorktreeAtTheHead_When_Asked_Then_NothingKeepsIt(self):
         # Act / Assert
@@ -2504,13 +2509,32 @@ class HolderStateTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.state(hidden), "has uncommitted changes")
 
-    def test_Given_AWorktreeWithACommitThePullRequestLacks_When_Asked_Then_ItIsNotAtTheHead(self):
+    def test_Given_AWorktreeWithACommitThePullRequestLacks_When_Asked_Then_ItHasCommitsTheHeadLacks(self):
         # Arrange — clean, so only the HEAD separates it from the clean one.
         def ahead(_root, tree):
             committed(tree)
 
         # Act / Assert
-        self.assertIn("not at the head", str(self.state(ahead)))
+        self.assertIn(settle.HOLDER_AHEAD, str(self.state(ahead)))
+
+    def test_Given_ACleanWorktreeBehindTheHead_When_Asked_Then_NothingKeepsIt(self):
+        # Arrange — the head is a commit on top of the worktree's, so every commit in it is in the
+        # head and removing it loses none of them.
+        def descendant(root):
+            return subprocess.run(["git", "-C", str(root), "commit-tree", "topic^{tree}", "-p",
+                                   "topic", "-m", "later"], capture_output=True, text=True,
+                                  check=True).stdout.strip()
+
+        # Act / Assert
+        self.assertIsNone(self.state(sha=descendant))
+
+    def test_Given_AWorktreeGoneFromDisk_When_Asked_Then_ItSaysPruneFreesTheBranch(self):
+        # Arrange
+        def gone(_root, tree):
+            shutil.rmtree(tree)
+
+        # Act / Assert
+        self.assertIn("`git worktree prune` frees the branch", str(self.state(gone)))
 
     def test_Given_ALockedWorktree_When_Asked_Then_ItIsLocked(self):
         # Arrange — git removes a locked one only when forced twice.
@@ -2614,6 +2638,38 @@ class HeldBranchMergeTests(unittest.TestCase):
 
 # The line `fabricate(5, held=...)` prints once its holder is all that blocks it.
 HELD_LINE = "PR#5 0000000 READY once the worktree at /trees/topic-5 is removed"
+
+
+class HolderAdviceTests(unittest.TestCase):
+    """What the exit tells a caller to do about a pull request held by a worktree, by holder."""
+
+    def advised(self, why):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            settle.report(Path("/p"), {f"PR#5 0000000 green, but the worktree at /w holds the "
+                                       f"branch and {why}"}, "tok")
+        return printed.getvalue()
+
+    def test_Given_AHolderWithCommitsTheHeadLacks_When_Reported_Then_ItSaysToPushOrMoveThem(self):
+        # Act
+        said = self.advised(f"is at 61d9eb7 and {settle.HOLDER_AHEAD}")
+
+        # Assert
+        self.assertIn("pushed to the pull request or moved to another branch first", said)
+
+    def test_Given_AHolderWithCommitsTheHeadLacks_When_Reported_Then_ItDoesNotSayToRemoveIt(self):
+        # Act
+        said = self.advised(f"is at 61d9eb7 and {settle.HOLDER_AHEAD}")
+
+        # Assert
+        self.assertNotIn("`git worktree remove`", said)
+
+    def test_Given_TheMainWorkingTreeAsHolder_When_Reported_Then_ItSaysToSwitchItsBranch(self):
+        # Act
+        said = self.advised(settle.HOLDER_MAIN)
+
+        # Assert
+        self.assertIn("switching that tree to another branch", said)
 
 
 class HeldBranchWatchTests(unittest.TestCase):
@@ -2905,16 +2961,17 @@ class CallerTokenTests(unittest.TestCase):
     """Who a run reports to: its own token, carried by the re-arm it prints."""
 
     def test_Given_TwoSubagentsOfOneSession_When_OneWasToldOfAReadyOne_Then_TheOtherIsToldToo(self):
-        # Arrange — both inherit the session's environment, which is all they share.
-        told = stamped_lines(READY_LINE)
+        # Arrange — both inherit the session's environment and neither names a caller, which is
+        # the whole of what two subagents of one session share.
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "session-1"}), \
+                tempfile.TemporaryDirectory(prefix="settle-siblings-") as home:
+            watch_until(until_actionable=True, bound=3, caller=None, home=home)
 
-        # Act
-        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "session-1"}):
-            watched = watch_until(until_actionable=True, bound=3, caller=None, seed_reported=told,
-                                  reported_by="session-1")
+            # Act
+            second = watch_until(until_actionable=True, bound=3, caller=None, home=home)
 
-        # Assert — a run keyed by the session reads the other's record and polls to the bound.
-        self.assertEqual(watched.polls, 0)
+        # Assert
+        self.assertIn(READY_LINE, second.output)
 
     def test_Given_ACallerToken_When_TheRunExits_Then_TheReArmItPrintsCarriesIt(self):
         # Act
@@ -2945,6 +3002,106 @@ class CallerTokenTests(unittest.TestCase):
 
         # Assert
         self.assertIn("watch --until-actionable --caller tok-2", watched.output)
+
+
+def rearmed(first, then, caller="tok-5"):
+    """What a token caller's re-arm prints after its first run exited over `first`'s states and
+    the pull requests moved to `then`'s, over one set of watcher files."""
+    with tempfile.TemporaryDirectory(prefix="settle-rearm-") as home:
+        watch_until(until_actionable=True, bound=3, caller=caller, home=home, states=first)
+        return watch_until(until_actionable=True, bound=2, caller=caller, home=home, states=then)
+
+
+class ToldKeyTests(unittest.TestCase):
+    """What counts as something new for a caller already told of a pull request."""
+
+    def test_Given_AHeldPullRequestWhoseHolderWasCleaned_When_ReArmed_Then_ItWaits(self):
+        # Act
+        again = rearmed({5: fabricate(5, held=True)}, {5: fabricate(5, held=CLEAN)})
+
+        # Assert — None is what a run still polling at the clock's bound leaves.
+        self.assertIsNone(again.code)
+
+    def test_Given_AHeldPullRequestThatTurnedReady_When_ReArmed_Then_ItIsTold(self):
+        # Act
+        again = rearmed({5: fabricate(5, held=True)}, {5: fabricate(5)})
+
+        # Assert
+        self.assertIn("PR#5 0000000 READY: nothing blocks the merge", again.output)
+
+    def test_Given_AHeldPullRequestWhoseHeadMoved_When_ReArmed_Then_ItIsTold(self):
+        # Arrange — the same pull request on a new head, still held.
+        moved = fabricate(5, held=True)._replace(sha="e" * 40, after="e" * 40)
+
+        # Act
+        again = rearmed({5: fabricate(5, held=True)}, {5: moved})
+
+        # Assert
+        self.assertIn("PR#5 eeeeeee green, but", again.output)
+
+
+class RecordPruningTests(unittest.TestCase):
+    """Which other callers' records a caller's write deletes."""
+
+    def pruned(self, stamp, name=None):
+        """Whether another caller's record stamped `stamp` is gone after this caller's run writes."""
+        with tempfile.TemporaryDirectory(prefix="settle-prune-") as home:
+            other = Path(home) / "reported" / (name or "0123456789abcdef")
+            other.parent.mkdir()
+            other.write_text(f"{stamp}\n{READY_LINE}\n", encoding="utf-8")
+            watch_until(until_actionable=True, bound=3, home=home)
+            return not other.exists()
+
+    def test_Given_AnotherCallersRecordInsideTheWindow_When_ACallerWrites_Then_ItIsKept(self):
+        # Act / Assert
+        self.assertFalse(self.pruned(CLOCK_START))
+
+    def test_Given_AnotherCallersRecordOutsideTheWindow_When_ACallerWrites_Then_ItIsDeleted(self):
+        # Act / Assert
+        self.assertTrue(self.pruned(CLOCK_START - STALE_SECONDS))
+
+    def test_Given_AnotherCallersRecordBeingWritten_When_ACallerWrites_Then_ItIsKept(self):
+        # Arrange — a temporary file holding no stamp yet, which a reading carries no further.
+        # Act / Assert
+        self.assertFalse(self.pruned("", name=".0123456789abcdef.4242.tmp"))
+
+    def test_Given_ACallersRecord_When_Written_Then_ItArrivesByRename(self):
+        # Arrange — a record written in place is empty for a moment, and a reading of it then, or
+        # another caller's pruning, takes it for none.
+        renamed = []
+        replace = os.replace
+
+        def recording(source, target):
+            renamed.append(Path(target).parent.name)
+            return replace(source, target)
+
+        # Act
+        with mock.patch.object(settle.os, "replace", recording):
+            watch_until(until_actionable=True, bound=3)
+
+        # Assert
+        self.assertIn("reported", renamed)
+
+
+class FollowerTokenTests(unittest.TestCase):
+    """A follower's re-arm carries its token as a polling run's does."""
+
+    def test_Given_AFollowerOfAReadyLine_When_ItExits_Then_TheReArmItPrintsCarriesItsToken(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True, caller="tok-4",
+                              seed_actionable=stamped_lines(READY_LINE))
+
+        # Assert
+        self.assertIn("watch --until-actionable --caller tok-4", watched.output)
+
+    def test_Given_AFollowerOfAHolderThatKeepsBeating_When_ItRetires_Then_ItsReArmCarriesItsToken(self):
+        # Arrange — nothing actionable from the holder, which beats throughout.
+        # Act
+        watched = watch_until(until_actionable=True, holder=True, holder_beats=True,
+                              caller="tok-3", seed_actionable=stamped_lines())
+
+        # Assert
+        self.assertIn("watch --until-actionable --caller tok-3", watched.output)
 
 
 class HandOffTests(unittest.TestCase):
