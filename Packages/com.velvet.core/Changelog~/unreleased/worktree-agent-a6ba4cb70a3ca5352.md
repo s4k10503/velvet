@@ -18,6 +18,6 @@
   start through a positive `transition-delay`, as CSS does; it took its first step as the delay began.
 - A `transition-filter` tween whose filter is changed back to the one it shows, as when a hover ends inside the
   delay, now stops there. It ran on to the filter it had been heading for and stayed on it.
-- An element a Motion narrows, and whose rules give its transitions more than one duration, delay or timing
-  function, takes back its own timing when the narrowing ends after a sortable list's drag shifted it. The drag's
-  200 ms ease was kept in its place.
+- A sortable item whose transition lists are written inline, by an `ease-[…]` class or by a Motion narrowing its
+  transitions, gets them back when a drag that shifted it ends, and a narrowing that ends afterwards hands back the
+  item's own. The drag's `translate` and `scale` over 200 ms on an ease stayed in their place.

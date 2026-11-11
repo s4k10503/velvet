@@ -114,23 +114,6 @@ namespace Velvet.Tests
             Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
         }
 
-        [Test]
-        public void Given_ATransitionUtilityWhoseRulesANarrowingWritesInline_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere()
-        {
-            // Arrange
-            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.25f);
-
-            // Act
-            var fraction = QuarterSecondByRule("ease-in-out-test", element =>
-            {
-                StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
-                MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
-            });
-
-            // Assert
-            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
-        }
-
         // GREEN_ON_BASE(characterization): the base's CurveFor reads the inline slot alone, so a list code writes and puts
         // back leaves nothing behind. Calling `Adopt` from MotionTweenTiming.PeekOwn keeps the list as the element's own
         // once it is put back, which reddens this case.
@@ -228,7 +211,10 @@ namespace Velvet.Tests
             var owner = new object();
             MotionNativeTransitionGuard.NarrowIfIntercepted(element, owner, MotionTransitionSlots.Opacity);
             var style = element.style;
-            var (property, duration, timing) = (style.transitionProperty, style.transitionDuration, style.transitionTimingFunction);
+            // Copies, as a sortable list's drag saves them: a list read out of a slot is refilled by that slot's next write
+            // (MotionNativeTransitionGuard.ExcludeFromHeldList).
+            var (property, duration, timing) = (MotionTweenTiming.Copy(style.transitionProperty),
+                MotionTweenTiming.Copy(style.transitionDuration), MotionTweenTiming.Copy(style.transitionTimingFunction));
             style.transitionProperty = new List<StylePropertyName> { new("translate") };
             style.transitionDuration = new List<TimeValue> { new(200f, TimeUnit.Millisecond) };
             style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Ease) };

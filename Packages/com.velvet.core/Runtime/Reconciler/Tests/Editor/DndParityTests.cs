@@ -615,6 +615,40 @@ namespace Velvet.Tests
             Assert.That(TranslateOf(Q("b")), Is.EqualTo(new[] { 0f, -50f }));
         }
 
+        // SortableScene, its middle item easing linearly by a class of its own, which writes the timing inline.
+        [Component]
+        private static VNode SortableSceneWithAnEasedItem() => V.DndContext(
+            activation: new DragActivation(Distance: 4f),
+            className: "w-[300px] h-[300px]",
+            children: new VNode[]
+            {
+                V.SortableContext(new[] { "a", "b", "c" }, strategy: DndSortingStrategies.VerticalList, key: "list",
+                    children: new VNode[]
+                    {
+                        V.Sortable("a", key: "a", name: "a", className: "w-[50px] h-[50px]"),
+                        V.Sortable("b", key: "b", name: "b", className: "w-[50px] h-[50px] ease-[cubic-bezier(0,0,1,1)]"),
+                        V.Sortable("c", key: "c", name: "c", className: "w-[50px] h-[50px]"),
+                    }),
+            });
+
+        [Test]
+        public void Given_AVerticalSortableListThatShiftedAnItemWithATimingOfItsOwn_When_TheDragEnds_Then_TheItemHasItsOwnTimingBack()
+        {
+            // Arrange
+            Mount(SortableSceneWithAnEasedItem);
+            var first = Q("a");
+            first.SendPointerDownEvent(new Vector2(10, 10));
+            first.SendPointerMoveEvent(new Vector2(20, 10));
+            first.SendPointerMoveEvent(new Vector2(20, 110));
+
+            // Act
+            first.SendPointerUpEvent(new Vector2(20, 110));
+
+            // Assert — read as null where the item holds no single timing, which is not a mode.
+            var timing = Q("b").style.transitionTimingFunction.value;
+            Assert.That(timing is { Count: 1 } ? timing[0].mode : (EasingMode?)null, Is.EqualTo(EasingMode.Linear));
+        }
+
         // GREEN_ON_BASE(characterization): the base already takes the transition off; deleting `element.style.transitionProperty = saved.TransitionProperty;` from DndSortableSession.Put reddens it.
         [Test]
         public void Given_AVerticalSortableListThatShiftedItsMiddleItem_When_TheDragEnds_Then_TheMiddleItemHasNoInlineTransitionProperty()

@@ -219,6 +219,23 @@ namespace Velvet.Tests
             Assert.That(curve, Is.Null);
         }
 
+        [Test]
+        public void Given_AClassedElementWhoseNarrowingWritesItsCurveList_When_ItsCurveIsAskedFor_Then_ItIsTailwindsCurveForTheKeyword()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+            MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.5f);
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseInOut);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.5f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
         // GREEN_ON_BASE(characterization): the probe already counts a list's allocation.
         // The zero below would read the same from a probe stuck at zero.
         [Test]

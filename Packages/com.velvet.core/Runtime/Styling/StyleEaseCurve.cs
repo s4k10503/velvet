@@ -178,7 +178,7 @@ namespace Velvet
         // A tween Velvet runs itself, at progress t through its run, unclamped: below 0 is inside its delay, where it shows
         // its start whatever the function, as a steps(n, jump-start) asked at 0 would already have jumped.
         internal static float Evaluate(EaseFunction? function, EasingMode mode, float t)
-            => t < 0f ? 0f : function is { } given ? given.Evaluate(t) : UssEasing.Evaluate(mode, t);
+            => t < 0f ? 0f : function is { } given ? Evaluate(given, t) : UssEasing.Evaluate(mode, t);
 
         private static readonly EasingMode[] s_candidates =
             { EasingMode.Ease, EasingMode.EaseIn, EasingMode.EaseOut, EasingMode.EaseInOut, EasingMode.Linear };
