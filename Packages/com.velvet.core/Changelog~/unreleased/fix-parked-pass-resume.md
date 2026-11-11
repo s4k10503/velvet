@@ -24,6 +24,7 @@
   Portal's child, a Provider that another boundary's fallback had just placed above the boundary gave way to one
   of the same context above that other boundary.
 
-- A component that a `V.Portal` mounts when the component rendering the Portal updates reads, in that first
-  render, the `V.Provider` value around the Portal rather than one of the same context above the component
-  rendering it. It read the farther Provider's value.
+- A component that a `V.Portal` mounts reads, in that first render, the `V.Provider` value around the Portal
+  rather than one of the same context farther up, whether the Portal mounts with the component rendering it or
+  when that component updates. It read the farther Provider's value: on an update wherever that Provider sat,
+  and at the mount where a component above rendered it.

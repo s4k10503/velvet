@@ -19,8 +19,8 @@ namespace Velvet
     // Hooks.UseContext<T> reads the top of the stack.
     // The provider-enclosure search mirrors GeneralPathReconciler.ExpandInlineRecursive: an unkeyed
     // ComponentNode's position key is its slot in the child array it sits in under that array's
-    // WalkPosition, Fragment/Provider extend the current position, an element node opens a fresh walk
-    // for its children, and a Memo resolves to its committed inner.
+    // WalkPosition, Fragment/Provider extend the current position, and an element node opens a fresh walk
+    // for its children.
     // The registry's key narrows the reconstruction to the positions this fiber could occupy; it does
     // not on its own name which one, since it answers at every container holding that position.
     // MatchesInlineSpineChild owns what separates them. Both walkers derive every key through

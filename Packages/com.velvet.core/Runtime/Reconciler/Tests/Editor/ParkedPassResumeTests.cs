@@ -49,6 +49,7 @@ namespace Velvet.Tests
         private static ComponentFiber s_hostFiber;
         private static ComponentFiber s_providerFiber;
         private static bool s_portalShown;
+        private static int s_listLayoutEffects;
 
         private static readonly MountOptions s_recordingErrors = new()
         {
@@ -82,6 +83,7 @@ namespace Velvet.Tests
             s_hostFiber = null;
             s_providerFiber = null;
             s_portalShown = false;
+            s_listLayoutEffects = 0;
             Application.logMessageReceived += RecordLoggedError;
         }
 
@@ -377,6 +379,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APortalInsideAProviderUnderAnotherOfTheSameContextThatAComponentRenders_When_TheMountDrainsIt_Then_ItsChildReadsTheNearerProvider()
+        {
+            // Arrange
+            s_portalShown = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(OuterProvidingRender, key: "outer"));
+
+            // Assert
+            Assert.That(s_outsiderReading, Is.EqualTo("inner"));
+        }
+
+        [Test]
         public void Given_APortalInsideAProviderUnderAnotherOfTheSameContext_When_AnUpdateMountsIt_Then_ItsChildReadsTheNearerProvider()
         {
             // Arrange
@@ -390,6 +405,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_outsiderReading, Is.EqualTo("inner"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base commits a parked pass's effects only on its terminal slice too.
+        // What this pins is that a resumed slice leaving work pending does not take the arm that completes the pass.
+        [Test]
+        public void Given_AComponentWhoseTransitionPassParked_When_AResumedSliceLeavesWorkPending_Then_ItsLayoutEffectHasNotRun()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(LayoutEffectListRender, key: "list"));
+            var effectsAtMount = s_listLayoutEffects;
+            s_generation = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_listFiber.FlushStateWithTinyBudgetForTest();
+
+            // Act
+            FiberWorkLoop.ContinueReconcile(s_listFiber);
+
+            // Assert — a slice that finished the pass runs the effect rightly, so that reading is a sentinel.
+            var ranSincePark = s_listFiber.HasPendingReconcileWorkForTest() ? s_listLayoutEffects - effectsAtMount : -1;
+            Assert.That(ranSincePark, Is.EqualTo(0));
         }
 
         // The list re-renders every row on the Transition lane under a budget too small for one row, the last row
@@ -566,6 +601,10 @@ namespace Velvet.Tests
         private static void ThrowCleanupError() => throw new InvalidOperationException(CleanupError);
 
         [Component(Compiler = false)]
+        private static VNode OuterProvidingRender()
+            => V.Provider(s_context, "outer", new VNode[] { V.Component(PortalDeclaringRender, key: "declaring") });
+
+        [Component(Compiler = false)]
         private static VNode PortalDeclaringRender()
         {
             s_outerFiber = FiberAmbientStack.Current;
@@ -618,6 +657,19 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode ListRender() => Rows();
+
+        [Component(Compiler = false)]
+        private static VNode LayoutEffectListRender()
+        {
+            Hooks.UseLayoutEffect(CountListLayoutEffect, new object[] { s_generation });
+            return Rows();
+        }
+
+        private static Action CountListLayoutEffect()
+        {
+            s_listLayoutEffects++;
+            return null;
+        }
 
         // Keyed elements at the top level keep the list's own reconcile on the path that time-slices; the row
         // component sits one level down, where an element's own children reach it once that row is reconciled.
