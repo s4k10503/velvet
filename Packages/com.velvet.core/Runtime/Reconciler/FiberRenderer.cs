@@ -469,15 +469,16 @@ namespace Velvet
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
 
-        // A render in a Portal's drain is at depth 0 as an isolated re-render is, but starts under the cursor the drain
-        // has populated from the Portal's snapshot and its walk (ChildReconciler.DrainPendingPortalMounts), as a nested
-        // expansion render starts under the walk's. A spine pushed there would sit above that cursor without reaching
-        // through the Portal.
+        // A render in a Portal's drain, or in the scope a VirtualList renders its items in, starts under the cursor that
+        // drain or that scope has populated (ChildReconciler.DrainPendingPortalMounts, Reconciler.BeginDetachedItemScope),
+        // as a nested expansion render starts under the walk's, though it can run at depth 0 as an isolated re-render
+        // does. A spine pushed there would sit above that cursor without reaching through the Portal or the list.
         private static bool RebuildsContextSpine(ComponentFiber fiber)
         {
             var context = fiber.Reconciler?.Context;
             return fiber.Parent != null && (context?.SharedReconcileDepth ?? 1) == 0
-                && context?.CurrentPortalPlaceholder == null;
+                && context?.CurrentPortalPlaceholder == null
+                && context?.DetachedItemScopeDepth == 0;
         }
 
         // Returns whether this render's output became the fiber's PreviousTree.

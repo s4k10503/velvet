@@ -1976,6 +1976,23 @@ namespace Velvet.Tests
             => VirtualListHost(item => V.Component(RerenderItemConsumerRender, key: item.Id));
 
         [Test]
+        public void Given_AVirtualListInsideAProviderUnderAnotherOfTheSameContext_When_ARangeUpdateMountsAnItem_Then_ItReadsTheNearerProvider()
+        {
+            // Arrange
+            s_lastSeen = null;
+            var root = new VisualElement();
+            var tree = V.Provider(ThemeContext, "outer", new VNode[] { V.Component(ItemHostRender, key: "host") });
+            using var mounted = V.Mount(root, tree);
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(s_lastSeen, Is.EqualTo("provided"));
+        }
+
+        [Test]
         public void Given_ProviderAboveVirtualList_When_ItemRenders_Then_ReadsProvidedValue()
         {
             // Arrange: a VirtualList enclosed by a Provider, whose item renderer reads that context. Items mount
