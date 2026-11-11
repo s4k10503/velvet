@@ -43,7 +43,7 @@ settle = load_module()
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
-            runs_failed=(), required=(), stack_below=(), stack_settings=None):
+            runs_failed=(), required=(), stack_below=(), stack_settings=None, stack_tangles=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -53,7 +53,7 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                behind_release=behind_release, long_lived_head=long_lived_head,
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
                                required=required, stack_below=stack_below,
-                               stack_settings=stack_settings)
+                               stack_settings=stack_settings, stack_tangles=stack_tangles)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -208,7 +208,8 @@ class MergeDecisionTests(unittest.TestCase):
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
     "Fabricated",
-    "sha after branch base draft merge_state results holds held fork labels runs state jobs stack")
+    "sha after branch base draft merge_state results holds held fork labels runs state jobs stack "
+    "tangled")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -265,13 +266,13 @@ REQUIRED = ("Required checks (Unity)",)
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
-              state="open", jobs=None, stack=None):
+              state="open", jobs=None, stack=None, tangled=None):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
                       held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
-                      jobs=jobs or {}, stack=stack)
+                      jobs=jobs or {}, stack=stack, tangled=tangled)
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -300,7 +301,7 @@ CLEAN = "clean"
 
 # What the repository's settings a stack member's merge relies on answer in the tables below,
 # unless a case hands `fabricated_readings` another answer.
-STACK_SETTINGS = ("PR_TITLE", "PR_BODY", True)
+STACK_SETTINGS = (True,)
 
 
 def in_stack(number, base="main"):
@@ -344,6 +345,9 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 stack=states[number].stack)),
             ("stack_members", lambda _project, stack: members(states, stack)),
             ("stack_settings", lambda _project: settings),
+            # Each listed member whose entry is `tangled`, with the stack's base below it.
+            ("stack_tangles", lambda _project, base, listed: tuple(
+                (entry["number"], base) for entry in listed if states[entry["number"]].tangled)),
             ("checks", lambda _project, sha, *_, **__: by_sha[sha].results),
             ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
@@ -1892,6 +1896,24 @@ class RequiredWorkflowTests(unittest.TestCase):
         self.assertEqual([name.startswith(prefix + " (") for name in names], [True])
 
 
+def updated(refs, holds_base):
+    """What `settle.update` of PR 733 printed, its readings answered by `refs` and every git call it
+    makes, the worktree's removal included, answered with nothing."""
+    printed = io.StringIO()
+    with contextlib.ExitStack() as stack:
+        for name, answer in (("repository", lambda *_: "owner/name"),
+                             ("rest", lambda _path, jq: refs[jq]),
+                             ("gh_git", lambda *_: ""),
+                             ("run_quietly", lambda *_: subprocess.CompletedProcess([], 0, "", "")),
+                             ("contains_base", lambda *_: holds_base),
+                             ("worktree_branches", lambda *_: set())):
+            stack.enter_context(mock.patch.object(settle, name, answer))
+        stack.enter_context(contextlib.redirect_stderr(printed))
+        stack.enter_context(contextlib.redirect_stdout(printed))
+        settle.update(Path("."), 733, None)
+    return printed.getvalue()
+
+
 class PullRequestBaseTests(unittest.TestCase):
     """Which branch the decision is taken against, once more than one of them takes pull requests.
 
@@ -1958,23 +1980,23 @@ class PullRequestBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual(asked, ["main", "main"])
 
+    # GREEN_ON_BASE(characterization): the base named the maintenance branch it refused to update.
+    # Its readings now answer that the pull request sits in no stack, which the base does not ask.
     def test_Given_AnUpdateOfAPullRequestOnAMaintenanceBranch_When_Refused_Then_ItNamesThatBranch(self):
         # Arrange
-        printed = io.StringIO()
-        refs = {".head.ref": "release/2.1.1", ".base.ref": "2.x"}
-        with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
-            stack.enter_context(mock.patch.object(settle, "rest", lambda _path, jq: refs[jq]))
-            stack.enter_context(mock.patch.object(settle, "gh_git", lambda *_: ""))
-            stack.enter_context(mock.patch.object(settle, "contains_base", lambda *_: True))
-            stack.enter_context(mock.patch.object(settle, "worktree_branches", lambda *_: set()))
-            stack.enter_context(contextlib.redirect_stderr(printed))
+        printed = updated({".head.ref": "release/2.1.1", ".base.ref": "2.x",
+                           ".stack.number // empty": ""}, holds_base=True)
 
-            # Act
-            settle.update(Path("."), 733, None)
+        # Act / Assert
+        self.assertIn("already contains origin/2.x", printed)
 
-        # Assert
-        self.assertIn("already contains origin/2.x", printed.getvalue())
+    def test_Given_AnUpdateOfAStackMember_When_Asked_Then_ItIsRefusedNamingTheRebase(self):
+        # Arrange — a branch behind its base, so nothing but the stack refuses the update.
+        printed = updated({".head.ref": "topic-2", ".base.ref": "topic-1",
+                           ".stack.number // empty": "1559"}, holds_base=False)
+
+        # Act / Assert
+        self.assertIn("Refusing to update PR#733: it is in stack #1559", printed)
 
 
 class UpdateReasonsTests(unittest.TestCase):
@@ -2366,39 +2388,52 @@ class StackDecisionTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [])
 
-    def test_Given_AStackMemberUnderOtherSquashDefaults_When_Decided_Then_ItIsRefusedNamingThem(self):
-        # Arrange — the bottom member, so its place in the stack refuses nothing.
-        states = {1: fabricate(1, stack=in_stack(70))}
-
-        # Act
-        decided = self.decided(states, 1, settings=("COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES", True))
-
-        # Assert
-        self.assertEqual(decided, [
-            "it is in a stack, whose merge leaves its commit text and its remote branch to the "
-            "repository's settings: squash_merge_commit_title reads COMMIT_OR_PR_TITLE rather than "
-            "PR_TITLE, and squash_merge_commit_message reads COMMIT_MESSAGES rather than PR_BODY"])
-
     def test_Given_AStackMemberWhoseHeadIsNotDeletedOnMerge_When_Decided_Then_ItIsRefusedNamingTheSetting(self):
-        # Arrange — nothing would delete the remote branch, which this merge leaves to GitHub.
+        # Arrange — the bottom member, so its place in the stack refuses nothing. Nothing would
+        # delete the remote branch, which this merge leaves to GitHub.
         states = {1: fabricate(1, stack=in_stack(70))}
 
         # Act
-        decided = self.decided(states, 1, settings=("PR_TITLE", "PR_BODY", False))
+        decided = self.decided(states, 1, settings=(False,))
 
         # Assert
         self.assertEqual(decided, [
-            "it is in a stack, whose merge leaves its commit text and its remote branch to the "
-            "repository's settings: delete_branch_on_merge reads false rather than true"])
+            "it is in a stack, whose merge leaves its remote branch to the repository's settings: "
+            "delete_branch_on_merge reads false rather than true"])
 
     # GREEN_ON_BASE(characterization): the base held no pull request to the repository's settings.
-    # One outside a stack is still held to none, since its merge passes its own text and deletes.
+    # One outside a stack is still held to none, since its merge deletes its own remote branch.
     def test_Given_APullRequestOutsideAStackUnderOtherSettings_When_Decided_Then_NothingBlocksIt(self):
         # Arrange
         states = {1: fabricate(1)}
 
         # Act
-        decided = self.decided(states, 1, settings=("COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES", False))
+        decided = self.decided(states, 1, settings=(False,))
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AStackNotLinearOnItsBase_When_TheLowestMemberIsDecided_Then_ItIsRefusedNamingHowToRebase(self):
+        # Arrange — the member above is the tangled one, and GitHub merges no member of a stack that
+        # is not linear.
+        states = {1: fabricate(1, stack=in_stack(70)),
+                  2: fabricate(2, stack=in_stack(70), base="topic-1", tangled=True)}
+
+        # Act
+        decided = self.decided(states, 1)
+
+        # Assert
+        self.assertEqual(decided, [
+            "its stack is not linear on main: #2 does not hold the head of main. Rebase it with the "
+            "pull request's Rebase stack button, or with `gh stack rebase` and `gh stack push`"])
+
+    def test_Given_AStackMemberLackingTheBasesNewestReleaseCommit_When_Decided_Then_ThatIsNotAskedOfIt(self):
+        # Arrange — what that reason names as the remedy, `update`, refuses a stack member, and a
+        # stack linear on its base holds the base's head.
+        states = {1: fabricate(1, stack=in_stack(70, base=RELEASING), base=RELEASING)}
+
+        # Act
+        decided = self.decided(states, 1)
 
         # Assert
         self.assertEqual(decided, [])
@@ -2518,6 +2553,14 @@ def stack_merge_run(*answers):
     return StackMergeRun(sent, code, deleted, remotely, printed.getvalue())
 
 
+def quietly(*answers):
+    """`stack_merge_run` of `answers`, or None where the merge raised."""
+    try:
+        return stack_merge_run(*answers)
+    except RuntimeError:
+        return None
+
+
 def async_request(run):
     """The arguments of the request that asked for the stack merge, or none where nothing did."""
     return next((args for args in run.sent if ASYNC_MERGE in args), ())
@@ -2532,9 +2575,10 @@ class StackMergeRequestTests(unittest.TestCase):
     """What the merge of a stack member sends and waits for, which no reading of the decision would
     catch."""
 
-    def test_Given_AStackMemberTheDecisionRead_When_Merged_Then_NoCommitTextIsSent(self):
+    def test_Given_AStackMemberTheDecisionRead_When_Merged_Then_TheBodyIsThePullRequestsOwnDescription(self):
         # Arrange — the decision runs rather than being stubbed, so the stack it hands the merge is
-        # the one the pull request's own reading found. A merge that sent nothing answers None.
+        # the one the pull request's own reading found. A merge that asked for no stack merge reads
+        # as no request at all.
         sent = []
         with fabricated_readings({592: fabricate(592, stack=in_stack(70))}) as stack:
             stack.enter_context(mock.patch.object(settle, "pull_request_text",
@@ -2549,8 +2593,39 @@ class StackMergeRequestTests(unittest.TestCase):
             settle.merge(Path("."), 592, None, dry_run=False)
 
         # Assert
-        self.assertEqual(any(arg.startswith(("commit_title=", "commit_message=")) for arg in sent[0])
-                         if sent else None, False)
+        self.assertIn("commit_message=A body",
+                      next((args for args in sent if ASYNC_MERGE in args), ()))
+
+    def test_Given_AStackMemberNothingBlocks_When_Merged_Then_TheTitleIsThePullRequestsOwnWithItsNumber(self):
+        # Act
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Assert
+        self.assertIn("commit_title=A title (#592)", async_request(run))
+
+    def test_Given_AStackMergeGitHubAlreadyHolds_When_ItIsAskedAgain_Then_ItExitsAsNoFailure(self):
+        # Arrange — what a second merge gets while an earlier one is still pending. A merge that
+        # raised, or never said its outcome was unknown, answers None, which 0 can never equal.
+        run = quietly(RuntimeError("gh api -X PUT failed: gh: A merge request already exists for "
+                                   "this pull request (HTTP 409)"))
+
+        # Act / Assert
+        self.assertEqual(run.code if run and "outcome unknown" in run.printed else None, 0)
+
+    def test_Given_AStackMergeRequestThatNeverAnswers_When_ItReturns_Then_ItExitsAsNoFailure(self):
+        # Arrange — GitHub may have taken the request whose answer never came back.
+        run = quietly(getattr(settle, "Unanswered", RuntimeError)("gh api -X PUT did not answer "
+                                                                  "within 60s"))
+
+        # Act / Assert
+        self.assertEqual(run.code if run and "outcome unknown" in run.printed else None, 0)
+
+    # GREEN_ON_BASE(characterization): the base raised every merge request GitHub refused outright.
+    # A stack member's request refused outright still raises, since nothing was requested.
+    def test_Given_AStackMergeRequestGitHubRefuses_When_Sent_Then_ItRaisesWhatGitHubSaid(self):
+        # Act / Assert
+        with self.assertRaisesRegex(RuntimeError, "HTTP 422"):
+            stack_merge_run(RuntimeError("gh api -X PUT failed: gh: Validation Failed (HTTP 422)"))
 
     def test_Given_AStackMemberNothingBlocks_When_Merged_Then_ItAsksForTheAsynchronousMerge(self):
         # Act
@@ -2923,6 +2998,89 @@ class HolderStateTests(unittest.TestCase):
 
             # Assert
             self.assertEqual(len(holders), 2)
+
+
+class StackTangleReadingTests(unittest.TestCase):
+    """What `stack_tangles` reads off the branches on origin, for a two-member stack on main."""
+
+    MEMBERS = [{"number": 1, "state": "open", "merged_at": None, "head": {"ref": "b1"}},
+               {"number": 2, "state": "open", "merged_at": None, "head": {"ref": "b2"}}]
+
+    def read(self, layout, members=None):
+        """`settle.stack_tangles` over origin refs `layout(commit)` names, one `member:below` per
+        tangle. Each commit carries its own message, so no two are the same object."""
+        with tempfile.TemporaryDirectory(prefix="settle-stack-") as directory:
+            root = Path(directory)
+            git = ["git", "-C", str(root), "-c", "user.email=t@example.com", "-c", "user.name=t"]
+            subprocess.run(["git", "init", "-q", "-b", "main", str(root)], capture_output=True,
+                           check=True)
+            tree = subprocess.run(git + ["write-tree"], capture_output=True, text=True,
+                                  check=True).stdout.strip()
+
+            def commit(message, *parents):
+                return subprocess.run(git + ["commit-tree", tree, "-m", message,
+                                             *(flag for parent in parents for flag in ("-p", parent))],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+
+            for name, sha in layout(commit).items():
+                subprocess.run(git + ["update-ref", f"refs/remotes/origin/{name}", sha],
+                               capture_output=True, check=True)
+            found = settle.stack_tangles(root, "main", self.MEMBERS if members is None else members)
+        return " ".join(f"{member}:{below}" for member, below in found)
+
+    def test_Given_EachBranchOnTheOneBelow_When_Read_Then_NothingIsTangled(self):
+        # Arrange
+        def linear(commit):
+            base = commit("base")
+            first = commit("first", base)
+            return {"main": base, "b1": first, "b2": commit("second", first)}
+
+        # Act / Assert
+        self.assertEqual(self.read(linear), "")
+
+    def test_Given_TheBaseMovedAheadOfTheLowestBranch_When_Read_Then_ThatBranchLacksItsHead(self):
+        # Arrange
+        def moved(commit):
+            base = commit("base")
+            first = commit("first", base)
+            return {"main": commit("later", base), "b1": first, "b2": commit("second", first)}
+
+        # Act / Assert
+        self.assertEqual(self.read(moved), "1:main")
+
+    def test_Given_APushToTheLowerBranchAlone_When_Read_Then_TheUpperOneLacksItsHead(self):
+        # Arrange
+        def pushed(commit):
+            base = commit("base")
+            first = commit("first", base)
+            return {"main": base, "b1": commit("pushed", first), "b2": commit("second", first)}
+
+        # Act / Assert
+        self.assertEqual(self.read(pushed), "2:#1")
+
+    def test_Given_ALowerBranchMergedIntoTheOneAbove_When_Read_Then_NothingIsTangled(self):
+        # Arrange — a push to the lower branch that the upper one took in by a merge, so the upper
+        # branch holds the head below it.
+        def merged(commit):
+            base = commit("base")
+            first = commit("first", base)
+            pushed = commit("pushed", first)
+            return {"main": base, "b1": pushed,
+                    "b2": commit("merge", commit("second", first), pushed)}
+
+        # Act / Assert
+        self.assertEqual(self.read(merged), "")
+
+    def test_Given_AMergedMemberWhoseBranchIsGone_When_Read_Then_TheOneAboveIsReadAgainstTheBase(self):
+        # Arrange — the member above, moved onto the base once the one below merged.
+        def landed(commit):
+            squashed = commit("squashed", commit("base"))
+            return {"main": squashed, "b2": commit("second", squashed)}
+
+        members = [dict(self.MEMBERS[0], merged_at="2026-11-12T00:00:00Z"), self.MEMBERS[1]]
+
+        # Act / Assert
+        self.assertEqual(self.read(landed, members), "")
 
 
 class HeldBranchMergeTests(unittest.TestCase):

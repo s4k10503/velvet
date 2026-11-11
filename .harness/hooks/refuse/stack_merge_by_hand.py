@@ -8,8 +8,9 @@ to the one it is given in a single operation. So one command lands members that 
 preconditions were asked of. `scripts/pr/settle.py merge` merges one member at a time, the lowest
 one not yet merged, after reading what it reads for any other pull request.
 
-The extension can be run as `gh stack` and as its own binary, and both are refused. Its other
-commands are not merges and are left alone.
+What is refused is each spelling `SPELLINGS` holds; a shell alias or a script wrapping the extension
+reaches the same merge under a name this does not see. The extension's other commands are not
+merges and are left alone.
 """
 
 import json
@@ -31,8 +32,11 @@ UNEXPANDED_PROBE = 'gh stack merge $PR --yes --squash'
 UNREADABLE_POLICY = "none"
 UNREADABLE_PROBE = {"command": "gh stack merge 1559 --yes --squash"}
 
-# The spellings that reach the extension's merge: through gh, and as the binary gh installs.
-SPELLINGS = (("gh", ("stack", "merge")), ("gh-stack", ("merge",)))
+# The extension's merge through gh, through gh's `extension exec` under each name gh gives that
+# command, and as the binary gh installs.
+SPELLINGS = (("gh", ("stack", "merge")),
+             *(("gh", (name, "exec", "stack", "merge")) for name in ("extension", "extensions", "ext")),
+             ("gh-stack", ("merge",)))
 
 
 def stack_merges(command):

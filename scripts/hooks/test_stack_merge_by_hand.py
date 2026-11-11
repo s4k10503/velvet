@@ -48,6 +48,27 @@ class StackMergeSpellingTests(unittest.TestCase):
         # Assert
         self.assertEqual(answer, REFUSED)
 
+    def test_Given_TheExtensionRunThroughExtensionExec_When_ItMerges_Then_ItIsRefused(self):
+        # Act
+        answer = verdict("gh extension exec stack merge 1558 --yes --squash")
+
+        # Assert
+        self.assertEqual(answer, REFUSED)
+
+    def test_Given_TheExtensionRunThroughExtensionsExec_When_ItMerges_Then_ItIsRefused(self):
+        # Act
+        answer = verdict("gh extensions exec stack merge 1558 --yes")
+
+        # Assert
+        self.assertEqual(answer, REFUSED)
+
+    def test_Given_TheExtensionRunThroughExtExec_When_ItMerges_Then_ItIsRefused(self):
+        # Act
+        answer = verdict("gh ext exec stack merge 1558 --yes")
+
+        # Assert
+        self.assertEqual(answer, REFUSED)
+
     def test_Given_AStackMergeNamingNothing_When_Posed_Then_ItIsRefused(self):
         # Arrange — with no number the extension merges the stack of the checked-out branch.
         command = "gh stack merge --yes --squash"

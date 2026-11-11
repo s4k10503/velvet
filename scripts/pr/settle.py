@@ -27,7 +27,9 @@ Eleven preconditions:
   run is read and what exempts a head. Which base comes off the pull request, or off its stack for a
   stack member, and `--base` overrides it.
 - **The branch must contain the base's newest release commit.** CONTRIBUTING.md's
-  continuous-integration section owns why; `published_check.release_commit` finds the commit.
+  continuous-integration section owns why; `published_check.release_commit` finds the commit. A
+  stack member is not asked it: a stack linear on its base holds the base's head, and the remedy
+  this reason names, `update`, refuses a stack member.
 - **No worktree may hold the branch.** The branch is deleted locally after the merge, and a worktree
   holding it makes that delete fail once the merge has already happened — so the branch outlives the
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
@@ -49,15 +51,13 @@ Eleven preconditions:
   addressed on origin by that name.
 - **A long-lived head is not merged from here**, since this squashes and deletes it. `long_lived.py`
   owns which heads those are.
-- **A stack member merges only once every member below it has merged.** It goes through the
-  asynchronous endpoint, which GitHub documents as merging every member below the one asked for as
-  well, and nothing here read their checks. It is judged against the stack's base, which is where it
-  lands.
-- **A stack member merges only while the repository's squash defaults are `PR_TITLE` and
-  `PR_BODY` and `delete_branch_on_merge` is on.** `stack_merge` sends no title or message, so those
-  defaults are what take the commit's title and body from the pull request, as the other path does,
-  rather than from the branch's commits; and the remote branch is left to that setting, for the
-  reason `delete_local_branch` gives.
+- **A stack member merges only once every member below it has merged, and while its stack is
+  linear on its base.** It goes through the asynchronous endpoint, which GitHub documents as merging
+  every member below the one asked for as well, and nothing here read their checks; and GitHub
+  documents a linear history as a requirement for merging a stack. It is judged against the stack's
+  base, which is where it lands.
+- **A stack member merges only while `delete_branch_on_merge` is on**, since its remote branch is
+  left to that setting, for the reason `delete_local_branch` gives.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -142,13 +142,18 @@ REF_REREAD_SECONDS = 2
 GIT_TIMEOUT = 300
 
 
+class Unanswered(RuntimeError):
+    """A call that did not answer within its bound."""
+
+
 def run(command, timeout):
     """subprocess.run with a bound, reporting a timeout as the same RuntimeError a failed call
-    raises — so a hang reaches a caller as something it already handles rather than as a new kind."""
+    raises — so a hang reaches a caller as something it already handles rather than as a new kind.
+    `stack_merge` is the caller that has to tell the two apart, which the subclass is for."""
     try:
         return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise RuntimeError("{} did not answer within {}s".format(" ".join(command), timeout))
+        raise Unanswered("{} did not answer within {}s".format(" ".join(command), timeout))
 
 
 def run_quietly(command, timeout):
@@ -275,17 +280,40 @@ def stack_members(project, number):
 
 def stack_settings(project):
     """The repository's settings a stack member's merge leaves its work to, in `STACK_SETTINGS`'
-    order: what a squash commit's title and message are composed from when it is sent neither, and
-    whether the head is deleted on merge."""
+    order."""
     payload = rest_json(f"repos/{repository(project)}")
     return tuple(payload.get(name) for name, _ in STACK_SETTINGS)
 
 
-# Each setting a stack member's merge relies on, beside the value it relies on. The squash defaults
-# take a commit's title and body from its pull request, as `merge` does on the other path.
-STACK_SETTINGS = (("squash_merge_commit_title", "PR_TITLE"),
-                  ("squash_merge_commit_message", "PR_BODY"),
-                  ("delete_branch_on_merge", True))
+# Each setting a stack member's merge relies on, beside the value it relies on.
+STACK_SETTINGS = (("delete_branch_on_merge", True),)
+
+
+def stack_tangles(project, base, members):
+    """(member, what sits below it) for each open member of the listing whose branch on origin does
+    not hold the head of what sits below it: origin/<base> below the lowest, and the branch of the
+    open member below it for each other.
+
+    Holding is the whole test. A merge commit over the branch below is not refused as well:
+    `gh stack rebase`, the remedy the refusal names, describes its work as giving each branch the
+    head of the one below it, which a branch holding that head through a merge already has, so a
+    refusal of one would name a way out that need not change it.
+    """
+    found, below, named = [], f"origin/{base}", base
+    for member in members:
+        if member.get("merged_at") or member.get("state") != "open":
+            continue
+        number = member.get("number")
+        branch = "origin/{}".format((member.get("head") or {}).get("ref") or "")
+        held = run(["git", "-C", str(project), "merge-base", "--is-ancestor", below, branch],
+                   GIT_TIMEOUT)
+        if held.returncode not in (0, 1):
+            raise RuntimeError(f"whether #{number}'s {branch} holds {below} could not be read: "
+                               f"{held.stderr.strip()}")
+        if held.returncode == 1:
+            found.append((number, named))
+        below, named = branch, f"#{number}"
+    return tuple(found)
 
 
 def spelled(value):
@@ -521,7 +549,7 @@ def contains_commit(project, branch, sha):
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
                  long_lived_head, runs_unfinished, runs_failed, required, stack_below,
-                 stack_settings):
+                 stack_settings, stack_tangles):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -532,8 +560,9 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     for the reason `unpublished_release` gives, and neither do `runs_unfinished` and `runs_failed`,
     `expected_checks`' reasons about the head's workflow runs, or `required`, the contexts the base
     requires. Nor do `stack_below`, what `unmerged_below` answers for a stack member and () for any
-    other pull request, and `stack_settings`, what `stack_settings` reads for a stack member and None
-    for any other.
+    other pull request, `stack_settings`, what `stack_settings` reads for a stack member and None
+    for any other, and `stack_tangles`, what `stack_tangles` answers for a stack member and () for
+    any other.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -556,8 +585,8 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         wrong = [f"{name} reads {spelled(read)} rather than {spelled(needed)}"
                  for (name, needed), read in zip(STACK_SETTINGS, stack_settings) if read != needed]
         if wrong:
-            reasons.append("it is in a stack, whose merge leaves its commit text and its remote "
-                           "branch to the repository's settings: " + ", and ".join(wrong))
+            reasons.append("it is in a stack, whose merge leaves its remote branch to the "
+                           "repository's settings: " + ", and ".join(wrong))
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
@@ -579,6 +608,11 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
                                                                    ", ".join(runs_unfinished)))
     if runs_failed:
         reasons.append("workflow runs failed at {}: {}".format(after[:7], ", ".join(runs_failed)))
+    if stack_tangles:
+        reasons.append("its stack is not linear on {}: {}. Rebase it with the pull request's Rebase "
+                       "stack button, or with `gh stack rebase` and `gh stack push`".format(
+                           base, "; ".join(f"#{member} does not hold the head of {below}"
+                                           for member, below in stack_tangles)))
 
     unfinished = [entry["name"] for entry in results
                   if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
@@ -691,13 +725,14 @@ def blocking_reasons(project, number, base=None, states=None):
     uncovered = [failing for failing in state.red
                  if before.fork or not ran
                  or not contains_commit(project, before.branch, failing.sha)]
-    behind_release = (state.release if state.release and not before.fork
+    stack = before.stack
+    behind_release = (state.release if state.release and not before.fork and not stack
                       and not contains_commit(project, before.branch, state.release[0]) else None)
     long_lived_head = not before.fork and long_lived.is_long_lived(before.branch)
     holders = state.held.get(before.branch) or ()
     held = tuple((tree.path, holder_state(project, tree, after)) for tree in holders)
     runs_failed = expected_checks.failed(others, jobs, now)
-    stack = before.stack
+    members = stack_members(project, stack.number) if stack else []
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
@@ -710,9 +745,9 @@ def blocking_reasons(project, number, base=None, states=None):
                                  runs_unfinished=expected_checks.unfinished(others, jobs, now),
                                  runs_failed=runs_failed,
                                  required=state.required,
-                                 stack_below=unmerged_below(stack_members(project, stack.number),
-                                                            number) if stack else (),
-                                 stack_settings=stack_settings(project) if stack else None),
+                                 stack_below=unmerged_below(members, number) if stack else (),
+                                 stack_settings=stack_settings(project) if stack else None,
+                                 stack_tangles=stack_tangles(project, target, members)),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.
                     runs_failed if before.sha == after else (), stack)
@@ -1151,6 +1186,14 @@ def update(project, number, base):
     (a long-held branch that re-conflicts on every base move) is exactly the case not to automate.
     """
     payload = "repos/{}/pulls/{}".format(repository(project), number)
+    # Ahead of every other reading, since none of them changes the answer: a merge commit in a stack
+    # member's branch is one of the shapes `stack_tangles` refuses to merge.
+    stack = rest(payload, ".stack.number // empty")
+    if stack:
+        print(f"Refusing to update PR#{number}: it is in stack #{stack}, and merging a base into it "
+              f"leaves the stack unmergeable until it is rebased. Rebase it with the pull request's "
+              f"Rebase stack button, or with `gh stack rebase` and `gh stack push`.", file=sys.stderr)
+        return 1
     branch = rest(payload, ".head.ref")
     base = base or rest(payload, ".base.ref")
     gh_git(project, "fetch", "origin", "--quiet")
@@ -1203,18 +1246,18 @@ def merge(project, number, base, dry_run):
     # `sha` binds the merge to the head those readings were about: the sandwich above reports a move,
     # this one refuses it.
     #
-    # The squash body is the pull request's description, the summary somebody wrote for the whole
-    # change, rather than one composed from the branch's commits — which lands a copy of every
-    # Co-Authored-By trailer they carry. This path passes it; a stack member's leaves it to the
-    # squash defaults `reasons_from` holds to `STACK_SETTINGS`.
+    # The squash title and body are passed rather than left to the repository's squash defaults,
+    # which nothing here reads: a body composed from the branch's commits lands a copy of every
+    # Co-Authored-By trailer they carry. The pull request's description is the summary somebody wrote
+    # for the whole change, and it lands instead. Both requests carry it.
+    title, body = pull_request_text(project, number)
+    fields = ("-f", "merge_method=squash", "-f", "sha={}".format(blocking.head),
+              "-f", "commit_title={} (#{})".format(title, number),
+              "-f", "commit_message={}".format(body))
     if blocking.stack is None:
-        title, body = pull_request_text(project, number)
-        gh("api", "-X", "PUT", "repos/{}/pulls/{}/merge".format(repository(project), number),
-           "-f", "merge_method=squash", "-f", "sha={}".format(blocking.head),
-           "-f", "commit_title={} (#{})".format(title, number),
-           "-f", "commit_message={}".format(body))
+        gh("api", "-X", "PUT", "repos/{}/pulls/{}/merge".format(repository(project), number), *fields)
     else:
-        unknown = stack_merge(project, number, blocking.head)
+        unknown = stack_merge(project, number, fields)
         if unknown:
             # Not a failure: one would send its reader to merge again while the first may land.
             print(f"PR#{number} merge requested at {blocking.head[:7]}, outcome unknown: {unknown}. "
@@ -1236,18 +1279,27 @@ STACK_MERGE_BOUND = 600
 STACK_MERGE_POLL_SECONDS = 2
 
 
-def stack_merge(project, number, sha):
-    """Asks GitHub to merge stack member `number` at `sha`, and waits for the answer: None once it
-    reads merged, and otherwise what was read when the waiting stopped.
+def stack_merge(project, number, fields):
+    """Asks GitHub to merge stack member `number` with the request `fields` the other path sends, and
+    waits for the answer: None once it reads merged, and otherwise what was known when the waiting
+    stopped.
 
-    GitHub refuses a stack member on the endpoint the other path uses. An answer that the merge
-    failed raises, as a refused merge does there; a poll that fails is asked again until the bound.
+    GitHub refuses a stack member on the endpoint the other path uses. A request GitHub refuses, and
+    an answer that the merge failed, raise as a refused merge does there. A request that did not
+    answer, or that GitHub answers is already pending (HTTP 409), is a merge that may still land, so
+    it is reported rather than raised; a poll that fails is asked again until the bound.
     `direct_merge` rather than the default, which would put the merge on a merge queue for a base
     that has one, where it outlives this run.
     """
     path = f"repos/{repository(project)}/pulls/{number}/merge-async"
-    answer = json.loads(gh("api", "-X", "PUT", path, "-f", "merge_method=squash", "-f", f"sha={sha}",
-                           "-f", "merge_action=direct_merge"))
+    try:
+        answer = json.loads(gh("api", "-X", "PUT", path, *fields, "-f", "merge_action=direct_merge"))
+    except Unanswered as error:
+        return str(error)
+    except RuntimeError as error:
+        if "(HTTP 409)" not in str(error):
+            raise
+        return f"GitHub already holds a merge request for it: {error}"
     uuid = (answer.get("details") or {}).get("uuid")
     deadline = time.monotonic() + STACK_MERGE_BOUND
     failure = None
@@ -1302,9 +1354,10 @@ def delete_local_branch(project, branch):
     `.claude/hooks/refuse/merge_without_branch_deletion.py` records. A branch that was only ever
     worked on from a detached worktree has no local ref at all, which is not a failure.
 
-    A stack member's merge deletes only this half. Its branch is the base of the member directly above
-    it, where there is one, so the remote ref is left to the repository's `delete_branch_on_merge`,
-    which `reasons_from` holds a stack member to.
+    A stack member's merge deletes only this half. The member above it targets its branch until
+    GitHub moves that member onto the stack's base, which GitHub documents as following the merge,
+    so the remote ref is left to the repository's `delete_branch_on_merge` rather than deleted here
+    first. `reasons_from` holds a stack member to that setting.
     """
     present = run_quietly(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
                            f"refs/heads/{branch}"], GIT_TIMEOUT)
@@ -1357,8 +1410,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", default=".", help="repository root (default: cwd)")
-    parser.add_argument("--base", help="branch merged into (default: each pull request's own, or "
-                                       "its stack's)")
+    parser.add_argument("--base", help="the base: what watch and merge judge a pull request against, "
+                                       "and what update merges in (default: the pull request's own; "
+                                       "watch and merge take a stack member's stack's)")
     sub = parser.add_subparsers(dest="command", required=True)
     watch_parser = sub.add_parser("watch",
                                   help="emit terminal check results for every open pull request")
