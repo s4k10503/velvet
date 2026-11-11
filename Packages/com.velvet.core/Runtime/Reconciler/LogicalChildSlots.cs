@@ -24,19 +24,18 @@ namespace Velvet
     /// </para>
     /// <para>
     /// Cost, and where it is NOT paid. <see cref="ToPhysical"/> stops at the requested slot; <c>Count</c>
-    /// scans the whole child list, so it must not sit inside a per-child loop — the per-child sites ask
-    /// <see cref="TryGetPhysical"/> instead, which answers "is the slot occupied" and "where" in one walk,
-    /// and <c>AssertDomIndexInvariant</c> computes its count inside the <c>Debug.Assert</c> arguments so a
-    /// player build compiles it out with the call. What remains is one bounded walk per DOM touch. A
-    /// container with no invisible child still pays it: the walk is proportional to the slot index, not to
-    /// the whole list, so a loop calling these once per child is quadratic in the child count. The general
-    /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
-    /// it resolved, and the loops in <c>ChildReconciler</c> that add rows at ascending slots insert through
-    /// <see cref="LogicalSlotCursor.Insert"/>. A diff reads its old rows once, at the
-    /// container's entry (<see cref="OldSlotOccupants"/>), and removes them by element, which
-    /// <c>HostCommitQueue</c> searches for from where the entry found it; the insert of <c>PatchOrReplaceAtSlot</c>
-    /// still walks from slot zero per child, and the fix for it is a cursor too, not a cached count, which
-    /// every insert and remove would have to invalidate.
+    /// scans the whole child list, so it must not sit inside a per-child loop. <see cref="TryGetPhysical"/>
+    /// answers "is the slot occupied" and "where" in one walk. That walk is proportional to the slot index,
+    /// and every child it passes is asked <see cref="IsInvisible"/>, so a loop calling these once per child is
+    /// quadratic in the child count, and whatever <see cref="IsInvisible"/> costs is paid that many times. A
+    /// diff reads its old rows once, at the container's entry (<see cref="OldSlotOccupants"/>), and removes them
+    /// by element, which <c>HostCommitQueue</c> searches for from where the entry found it. What it still asks
+    /// by slot, a <see cref="LogicalSlotCursor"/> answers, walking on or back from the last slot it resolved, not
+    /// a cached count, which every insert and remove would have to invalidate: the general path's leaf commit,
+    /// <c>ChildReconciler</c>'s check of each slot the indexed diff patches and of each old row keyed Pass 2 takes
+    /// (<c>AssertDomIndexInvariant</c>), and the inserts of its loops (<see cref="LogicalSlotCursor.Insert"/>).
+    /// <c>PatchOrReplaceAtSlot</c>'s insert takes the caller's cursor too, but in the indexed diff that cursor stood
+    /// on the row the replacement has just removed, so the insert there still walks from the first child.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -175,9 +174,9 @@ namespace Velvet
 
     /// <summary>
     /// <see cref="LogicalChildSlots.TryGetPhysical"/> for one container, resolved from the last slot this
-    /// cursor found occupied rather than from the start of the child list, so a caller asking for slots in
-    /// ascending order pays the distance between consecutive slots rather than each slot's index. A slot
-    /// below the remembered one is resolved from the start.
+    /// cursor found occupied rather than from the start of the child list, walking on to a slot above it and
+    /// back to one below it, so a caller pays the distance between consecutive slots rather than each slot's
+    /// index.
     /// </summary>
     /// <remarks>
     /// The remembered slot is trusted only while its element still sits at the remembered physical index;
@@ -199,11 +198,14 @@ namespace Velvet
         /// </summary>
         internal bool TryGetPhysical(VisualElement container, int logical, out int physical)
         {
-            // MUTANT_SURVIVES(equivalent, clause removed): walking on never finds a slot below the remembered
-            // one, so the walk from the start below answers it either way; the clause spares the walk to the end.
-            if (IsCurrentFor(container) && logical >= _logical)
+            if (IsCurrentFor(container))
             {
-                if (WalkForward(container, logical, out physical)) return true;
+                // MUTANT_SURVIVES(equivalent, boundary): no caller asks again for the slot the cursor remembers, and for
+                // that slot the walk back gives up, leaving the walk from the start to give the answer the walk on gives.
+                if (logical >= _logical ? WalkForward(container, logical, out physical) : WalkBack(container, logical, out physical))
+                {
+                    return true;
+                }
             }
             if (!LogicalChildSlots.TryGetPhysical(container, logical, out physical))
             {
@@ -287,6 +289,24 @@ namespace Velvet
                     return true;
                 }
                 rendered++;
+            }
+            return false;
+        }
+
+        private bool WalkBack(VisualElement container, int logical, out int physical)
+        {
+            var remaining = _logical - logical;
+            for (physical = _physical - 1; physical != -1; physical--)
+            {
+                if (LogicalChildSlots.IsInvisible(container[physical]))
+                {
+                    continue;
+                }
+                if (--remaining == 0)
+                {
+                    Remember(container, logical, physical);
+                    return true;
+                }
             }
             return false;
         }

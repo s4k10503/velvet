@@ -240,6 +240,29 @@ namespace Velvet.Tests
                 Is.EqualTo("clip-path-none"));
         }
 
+        // GREEN_ON_BASE(characterization): the base's restore moves a payload standing ahead of its family's token behind it.
+        // What this pins is that the payload is read as a member of that family where the token is the only one of
+        // its family on the list; passing over it as a class of no family is what reddens it.
+        [Test]
+        public void Given_AVariantPayloadOnTheLiveListAheadOfAClipAddedByALaterRender_When_Reconciled_Then_ThePayloadStaysLast()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var firstTree = new VNode[] { V.Div(name: "t", className: "flex") };
+            var secondTree = new VNode[] { V.Div(name: "t", className: "flex clip-path-[inset(10%)]") };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
+            // What a lit hover:clip-path-none payload leaves on the live list, here before any clip token is there.
+            root.Q<VisualElement>("t").AddToClassList("clip-path-none");
+
+            // Act
+            reconciler.Reconcile(root, firstTree, secondTree);
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("t").GetClasses().Last(cls => cls.StartsWith("clip-path-")),
+                Is.EqualTo("clip-path-none"));
+        }
+
         [TestCase("font-light font-bold", VelvetFontWeight.Light)]
         [TestCase("font-[700] font-[600]", (VelvetFontWeight)700)]
         [TestCase("font-light font-[700]", VelvetFontWeight.Light)]

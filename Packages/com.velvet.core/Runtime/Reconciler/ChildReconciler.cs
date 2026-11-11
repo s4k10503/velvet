@@ -138,7 +138,8 @@ namespace Velvet
         // discarding anything: the boundary already resolved the failure, so any later slot's
         // patch/replace would be racing a reconcile the caller no longer owns end-to-end.
         private bool PatchOrReplaceAtSlot(
-            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists, OldSlotOccupants occupants)
+            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists, OldSlotOccupants occupants,
+            ref LogicalSlotCursor slots)
         {
             var parent = slot.Parent;
             // LOGICAL, converted per DOM touch. It is deliberately not pre-converted into a physical index:
@@ -158,7 +159,7 @@ namespace Velvet
             var newElement = _factory.CreateElement(newNode);
             // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
             // position just after it — so the caller no longer chooses between two index formulas.
-            new LogicalSlotCursor().Insert(_host, parent, logicalIndex, newElement);
+            slots.Insert(_host, parent, logicalIndex, newElement);
             return _ctx.IsAborted;
         }
 
@@ -1004,6 +1005,7 @@ namespace Velvet
             var slotLimit = inputs.SlotLimit;
             var commonLength = inputs.CommonLength;
             var budgeted = frameBudgetMs > 0;
+            var slots = new LogicalSlotCursor();
 
             for (var i = startIndex; i < commonLength; i++)
             {
@@ -1034,9 +1036,9 @@ namespace Velvet
                 // One walk answers both "is the slot occupied" and "where is it", where a Count bound
                 // check would scan the whole child list per element on a phase that mutates nothing.
                 var slotExists = slotStart + i < slotLimit
-                    && LogicalChildSlots.TryGetPhysical(parent, slotStart + i, out _);
+                    && slots.TryGetPhysical(parent, slotStart + i, out _);
                 var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i], slotExists, inputs.OldOccupants))
+                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i], slotExists, inputs.OldOccupants, ref slots))
                 {
                     return true;
                 }
@@ -1245,6 +1247,7 @@ namespace Velvet
             var occupants = pass.OldOccupants;
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
             linearEnd = 0;
+            var prefixSlots = new LogicalSlotCursor();
             for (var i = 0; i < commonLength; i++)
             {
                 // A scoped old key is compared even for the same node: the node may have been emitted under a
@@ -1261,7 +1264,7 @@ namespace Velvet
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                            slotExists: true, occupants))
+                            slotExists: true, occupants, ref prefixSlots))
                     {
                         return false;
                     }
@@ -1435,11 +1438,12 @@ namespace Velvet
                     ReconcileKeying.RegisterOldKey(OldKey(oldKeys, oldNodes, i), oldNodes[i], i, oldKeyMap, orphanedOldIndices);
                 }
 
+                var slots = new LogicalSlotCursor();
                 for (var i = linearEnd; i < newNodes.Length; i++)
                 {
                     if (_ctx.IsAborted) return;
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                    if (ProcessKeyedNode(in slot, newNodes[i], in tables)) return;
+                    if (ProcessKeyedNode(in slot, newNodes[i], in tables, ref slots)) return;
                 }
 
                 // Reverse walk so each RemoveElement leaves not-yet-visited indices intact. An
@@ -1611,6 +1615,7 @@ namespace Velvet
             var newNodes = state.NewNodes!;
             var slotStart = state.SlotStart;
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
+            var slots = new LogicalSlotCursor();
 
             for (var i = state.ResumeIndex; i < commonLength; i++)
             {
@@ -1626,7 +1631,7 @@ namespace Velvet
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                            slotExists: true, state.OldOccupants!))
+                            slotExists: true, state.OldOccupants!, ref slots))
                     {
                         state.Phase = KeyedReconcilePhase.Done;
                         return true;
@@ -1745,6 +1750,7 @@ namespace Velvet
                 OldOccupants = state.OldOccupants!,
             };
             var slotStart = state.SlotStart;
+            var slots = new LogicalSlotCursor();
 
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
             {
@@ -1754,7 +1760,7 @@ namespace Velvet
                 // time-sliced loop owns the state.Phase = Done transition (what AbortIfCanceled does for the
                 // loop-boundary checks).
                 var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                if (ProcessKeyedNode(in slot, newNodes[i], in tables))
+                if (ProcessKeyedNode(in slot, newNodes[i], in tables, ref slots))
                 {
                     state.Phase = KeyedReconcilePhase.Done;
                     return true;
@@ -1961,17 +1967,21 @@ namespace Velvet
         // guaranteed because a same-key replacement (Pass 1 CanPatch=false) remove+inserts at the same index,
         // and a Pass-2 CanPatch=false routes through replacedKeys + CreateElement rather than patching the
         // stale element as the new type. Both the synchronous and time-sliced keyed paths gate on this.
-        private static void AssertDomIndexInvariant(int slotStart, int oldIndex, VisualElement parent)
+        // The bound asks whether a rendered child holds the slot, so an invisible child cannot loosen it and mask a real
+        // Pass-1 ordering violation. It is asked of the caller's cursor, which walks from the slot the row before asked:
+        // a LogicalChildSlots.Count of its own walked the whole child list twice for each row matched to an old key in
+        // the editor, since Debug.Assert's message was built before the bound was read. Conditional as Debug.Assert is,
+        // so a player build compiles the call out with the walk.
+        [Conditional("UNITY_ASSERTIONS")]
+        private static void AssertDomIndexInvariant(ref LogicalSlotCursor slots, int slotStart, int oldIndex, VisualElement parent)
         {
-            // The logical count, not a physical one, so an invisible child cannot loosen the bound and mask a
-            // real Pass-1 ordering violation. Computed INSIDE the Debug.Assert arguments rather than into a
-            // local: Debug.Assert is [Conditional("UNITY_ASSERTIONS")], so the whole O(childCount) walk is
-            // compiled out of a player build along with the call. A local would have run in every build.
-            UnityEngine.Debug.Assert(
-                slotStart + oldIndex < LogicalChildSlots.Count(parent),
-                $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
-                + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
-                + "Pass 1 may have modified parent's child order.");
+            if (!slots.TryGetPhysical(parent, slotStart + oldIndex, out _))
+            {
+                UnityEngine.Debug.LogAssertion(
+                    $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
+                    + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
+                    + "Pass 1 may have modified parent's child order.");
+            }
         }
 
         // Processes one new-side keyed node: matches it against oldKeyMap and patches the existing element in
@@ -1985,7 +1995,8 @@ namespace Velvet
         // eagerly, appends to a newElements list instead of inserting at a live DOM index, and records what
         // the patch left at the slot — three real differences in shape, not just
         // naming, so forcing this through the same helper would need as many bool flags as it has callers.
-        private bool ProcessKeyedNode(in ChildSlot slot, VNode? newNode, in KeyedPassTables tables)
+        private bool ProcessKeyedNode(in ChildSlot slot, VNode? newNode, in KeyedPassTables tables,
+            ref LogicalSlotCursor slots)
         {
             var parent = slot.Parent;
             var slotStart = slot.SlotStart;
@@ -2007,7 +2018,7 @@ namespace Velvet
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     return false;
                 }
-                AssertDomIndexInvariant(slotStart, old.index, parent);
+                AssertDomIndexInvariant(ref slots, slotStart, old.index, parent);
                 var occupants = tables.OldOccupants;
                 var existingDomElement = occupants.Occupant(old.index)!;
 

@@ -633,9 +633,9 @@ namespace Velvet
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement row, VNode oldNode, VNode newNode)
         {
-            // Patched through the slot's occupant, as ChildReconciler patches it (ResolveWrapped before every
-            // PatchNode): a shadow-*/clip-path-* row's occupant is its structural WRAPPER, and a relocated one's its
-            // placeholder, through which a patch that wraps or unwraps it carries the relocation over.
+            // Patched through the slot's occupant, as ChildReconciler patches it: a shadow-*/clip-path-* row's
+            // occupant is its structural WRAPPER, and a relocated one's its placeholder, through which a patch that
+            // wraps or unwraps it carries the relocation over.
             var inner = NodePatcher.ResolveWrapped(row);
             PatchWalk.PatchNode(NodePatcher.ResolveWrapped(SlotOccupantOf(row)), oldNode, newNode);
             // A class change can wrap or unwrap the row during the patch; return its outermost element now.
