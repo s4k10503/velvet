@@ -106,21 +106,61 @@ def unfinished(runs, jobs, now):
                   for run in runs if conclusion(run, jobs, now) is None)
 
 
-def superseded(runs, jobs, now):
-    """The runs `conclusion` reads as cancelled whose workflow has a run on the head it does not.
+def read_duplicates(entries, runs, jobs, now, run_id):
+    """`entries`, each a check carrying "name" and "bucket" whose run `run_id` names, with the checks
+    of a run GitHub concluded as cancelled read against its group: the other runs of its workflow,
+    event and pull request (or branch, for a run naming none) that `conclusion` does not read as
+    cancelled. Such a check is left out where a run of the group reports it with a bucket other than
+    `skipping`, reads as pending where none has and one has not finished, and is kept as it is
+    otherwise. The run reporting it need not have finished, since one that has not holds the head
+    by itself, as `unfinished` names it.
 
-    Only a cancelled run is left out, and never for being older: a later run of a workflow can
-    measure less than an earlier one on the same head, which `SupersededRunTests` poses. Re-running
-    a run keeps its id, so the runs listing carries it once, at its latest attempt.
+    No run stands in for another that ran, since a later run of a workflow can measure less than an
+    earlier one; and a cancelled check gives way only to the same check in its group, since a run of
+    another event or pull request, or one that skipped the job, measured something else. GitHub's own
+    conclusion is read for the cancelled run rather than `conclusion`'s, which can read a run left
+    open past `STALE_AFTER` as cancelled after its jobs failed. `CancelledDuplicateTests` poses each.
     """
-    ran = {workflow_of(run) for run in runs if conclusion(run, jobs, now) != "cancelled"}
-    return [run for run in runs
-            if conclusion(run, jobs, now) == "cancelled" and workflow_of(run) in ran]
+    cancelled = {run.get("id"): run for run in runs
+                 if run.get("status") == "completed" and run.get("conclusion") == "cancelled"}
+    read = []
+    for entry in entries:
+        run = cancelled.get(run_id(entry)) if run_id(entry) is not None else None
+        others = [] if run is None else [
+            other for other in runs if other is not run and group_of(other) == group_of(run)
+            and conclusion(other, jobs, now) != "cancelled"]
+        if not others:
+            read.append(entry)
+        elif not any(reports(entries, run_id, other, entry) for other in others):
+            read.append(dict(entry, bucket="pending")
+                        if any(conclusion(other, jobs, now) is None for other in others) else entry)
+    return read
+
+
+def group_of(run):
+    numbers = tuple(sorted(pull.get("number") for pull in run.get("pull_requests") or []))
+    return workflow_of(run), run.get("event"), numbers or run.get("head_branch")
+
+
+def reports(entries, run_id, run, entry):
+    """Whether `run` reports the check `entry` is with a bucket other than `skipping`."""
+    return any(run_id(other) == run.get("id") and other.get("bucket") != "skipping"
+               and same_check(other.get("name"), entry.get("name")) for other in entries)
+
+
+EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+
+
+def same_check(reported, name):
+    """Whether `reported` names the check `name` does, an expression left in `name` by a matrix that
+    was never expanded standing for whatever the run that expanded it put there."""
+    pattern = ".+".join(re.escape(piece) for piece in EXPRESSION.split(name or ""))
+    return re.fullmatch(pattern, reported or "") is not None
 
 
 def failed(runs, jobs, now):
     """A reason for each run on the head that concluded as a failure, whatever else its workflow
-    ran there, for the reason `superseded` gives.
+    ran there, for the reason `read_duplicates` gives.
 
     What it concluded is `conclusion`'s reading, so a run GitHub left open after its jobs failed
     counts.

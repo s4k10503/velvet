@@ -1431,7 +1431,7 @@ measured before it ships.
 The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
 runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
 the head like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled
-pull request, and a failed newest run blocks its merge.
+pull request, and a failed one blocks its merge.
 
 ### Merging a pull request
 

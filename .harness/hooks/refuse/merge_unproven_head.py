@@ -19,8 +19,9 @@ A list whose every check passed is refused too while the head still has a workfl
 carries a workflow run that failed, or lacks a context its base requires. All of it is read
 off the head's workflow runs and the base's rules inside the same pair of head readings, and
 `scripts/pr/expected_checks.py` owns what each of those is and why. A mutation campaign's runs and
-checks are left out of what it reads, as `settle.py` leaves them out; `campaign.py` says which. So
-are the checks of a run `expected_checks.superseded` names, told by `expected_checks.run_of`.
+checks are left out of what it reads, as `settle.py` leaves them out; `campaign.py` says which. The
+checks of a run GitHub cancelled are read as `expected_checks.read_duplicates` says, each told to
+its run by `expected_checks.run_of`.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
@@ -190,9 +191,8 @@ def unproven(asked, cwd):
                                  + "; ".join(expected_checks.stuck_exit(run) for run in opened)
                                  + "), or ask `settle.py merge`, which reads them all"))
         else:
-            left_out = {run.get("id") for run in expected_checks.superseded(others, jobs, now)}
-            listed = [entry for entry in listed
-                      if expected_checks.run_of(entry) not in left_out - {None}]
+            listed = expected_checks.read_duplicates(listed, others, jobs, now,
+                                                     expected_checks.run_of)
             waiting = expected_checks.unfinished(others, jobs, now)
             failing = expected_checks.failed(others, jobs, now)
             absent = expected_checks.absent(required, (entry["name"] for entry in listed))

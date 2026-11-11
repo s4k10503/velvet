@@ -43,6 +43,7 @@ sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable  # noqa: E402
 from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
 from watcher_state import HEARTBEAT, STALE_AFTER, alive, rearm_command, unreadable_beat  # noqa: E402
+import campaign  # noqa: E402
 import expected_checks  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
@@ -152,8 +153,8 @@ Head = collections.namedtuple("Head", "base runs jobs now")
 
 
 def head_of(pr):
-    """The head's base, its workflow runs and the jobs of its open ones, or None when a reading did
-    not answer."""
+    """The head's base, its workflow runs but a campaign's, and the jobs of the open ones, or None
+    when a reading did not answer."""
     out, _, code = gh(["pr", "view", pr, "--json", "headRefOid,baseRefName"])
     try:
         payload = json.loads(out) if code == 0 else None
@@ -166,6 +167,7 @@ def head_of(pr):
     runs = expected_checks.listed_runs(api(expected_checks.runs_path("{owner}/{repo}", sha)))
     if runs is None:
         return None
+    runs = campaign.others(runs)
     now = time.time()
     jobs = {run.get("id"): expected_checks.listed_jobs(
                 api(expected_checks.jobs_path("{owner}/{repo}", run)))
@@ -241,10 +243,8 @@ def judge(pr):
 
     head = head_of(pr)
     if head is not None:
-        left_out = {run.get("id") for run in expected_checks.superseded(head.runs, head.jobs,
-                                                                         head.now)}
-        checks = [check for check in checks
-                  if expected_checks.run_of(check) not in left_out - {None}]
+        checks = expected_checks.read_duplicates(checks, head.runs, head.jobs, head.now,
+                                                 expected_checks.run_of)
     pending = [check for check in checks if check.get("bucket") == "pending"]
     if not pending:
         # Nothing is running, so a watcher has nothing to observe and its heartbeat vouches for

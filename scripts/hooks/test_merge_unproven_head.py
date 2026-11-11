@@ -378,16 +378,20 @@ class HeadCheckVerdictTests(unittest.TestCase):
         self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
 
     def test_Given_ACheckOfARunCancelledBesideOneThatPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
-        # Arrange — the cancelled run's matrix job was never expanded, so no check of the run that
-        # passed carries its name. gh prints only the fields a call names, so this stub prints the
-        # links only to a call naming them.
+        # Arrange — the cancelled run's matrix job was never expanded, so the run that passed reports
+        # it only under the name it expanded it to. gh prints only the fields a call names, so this
+        # stub prints the links only to a call naming them.
         runs = json.dumps({"total_count": 2, "workflow_runs": [
             {"id": 43076529433, "name": "Test", "workflow_id": 307106660, "run_number": 4516,
-             "status": "completed", "conclusion": "success"},
+             "event": "pull_request", "pull_requests": [{"number": 7}], "status": "completed",
+             "conclusion": "success"},
             {"id": 43076528473, "name": "Test", "workflow_id": 307106660, "run_number": 4514,
-             "status": "completed", "conclusion": "cancelled"}]})
+             "event": "pull_request", "pull_requests": [{"number": 7}], "status": "completed",
+             "conclusion": "cancelled"}]})
         entries = [{"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test",
                     "link": "https://github.com/owner/name/actions/runs/43076529433/job/1"},
+                   {"name": "Unity tests (EditMode)", "bucket": "pass", "workflow": "Test",
+                    "link": "https://github.com/owner/name/actions/runs/43076529433/job/3"},
                    {"name": "Unity tests (${{ matrix.testMode }})", "bucket": "cancel",
                     "workflow": "Test",
                     "link": "https://github.com/owner/name/actions/runs/43076528473/job/2"}]
@@ -422,6 +426,36 @@ class HeadCheckVerdictTests(unittest.TestCase):
              "conclusion": "failure"}]})
         checks = json.dumps([
             {"name": "Unity tests (EditMode)", "bucket": "fail", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9101/job/1"},
+            {"name": "Required checks (Unity)", "bucket": "fail", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9101/job/2"},
+            {"name": "Unity tests (EditMode)", "bucket": "pass", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9102/job/3"},
+            {"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9102/job/4"}])
+
+        # Act
+        result = self.ask(checks=checks, runs=runs)
+        refusal = result.stderr if result.returncode == REFUSED else ""
+
+        # Assert
+        self.assertIn(f"not passing at {HEAD[:7]}: Required checks (Unity), Unity tests (EditMode)",
+                      refusal)
+
+    # GREEN_ON_BASE(characterization): the base refuses this list for its failing entries.
+    # What it pins is that a dispatch on the branch is not of a cancelled run's group: reading every
+    # run of a workflow as one group reddens it.
+    def test_Given_ACancelledRunAndADispatchOfItsWorkflowThatPassed_When_TheMergeIsAsked_Then_TheCancelledChecksAreNamed(self):
+        # Arrange — the dispatch names no pull request, with both runs' checks listed.
+        runs = json.dumps({"total_count": 2, "workflow_runs": [
+            {"id": 9102, "name": "Test", "workflow_id": 1, "run_number": 102,
+             "event": "workflow_dispatch", "pull_requests": [], "head_branch": "topic",
+             "status": "completed", "conclusion": "success"},
+            {"id": 9101, "name": "Test", "workflow_id": 1, "run_number": 101,
+             "event": "pull_request", "pull_requests": [{"number": 7}], "head_branch": "topic",
+             "status": "completed", "conclusion": "cancelled"}]})
+        checks = json.dumps([
+            {"name": "Unity tests (EditMode)", "bucket": "cancel", "workflow": "Test",
              "link": "https://github.com/owner/name/actions/runs/9101/job/1"},
             {"name": "Required checks (Unity)", "bucket": "fail", "workflow": "Test",
              "link": "https://github.com/owner/name/actions/runs/9101/job/2"},

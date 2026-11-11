@@ -226,16 +226,20 @@ class OwedChecks(unittest.TestCase):
         self.assertIn("every check passed and it is unmerged", said or "")
 
     def test_Given_ACancelledRunsCheckBesideARunOfItsWorkflowThatPassed_When_Judged_Then_ItStillSaysMergeIt(self):
-        # Arrange — the cancelled run's matrix job was never expanded, so no check of the run that
-        # passed carries its name. gh prints only the fields a call names, so this stub prints the
-        # links only to a call naming them.
+        # Arrange — the cancelled run's matrix job was never expanded, so the run that passed reports
+        # it only under the name it expanded it to. gh prints only the fields a call names, so this
+        # stub prints the links only to a call naming them.
         runs = json.dumps({"total_count": 2, "workflow_runs": [
             {"id": 43076529433, "name": "Test", "workflow_id": 307106660, "run_number": 4516,
-             "status": "completed", "conclusion": "success"},
+             "event": "pull_request", "pull_requests": [{"number": 1}], "status": "completed",
+             "conclusion": "success"},
             {"id": 43076528473, "name": "Test", "workflow_id": 307106660, "run_number": 4514,
-             "status": "completed", "conclusion": "cancelled"}]})
+             "event": "pull_request", "pull_requests": [{"number": 1}], "status": "completed",
+             "conclusion": "cancelled"}]})
         entries = [{"name": "Required checks (Unity)", "bucket": "pass",
                     "link": "https://github.com/owner/name/actions/runs/43076529433/job/1"},
+                   {"name": "Unity tests (EditMode)", "bucket": "pass",
+                    "link": "https://github.com/owner/name/actions/runs/43076529433/job/3"},
                    {"name": "Unity tests (${{ matrix.testMode }})", "bucket": "cancel",
                     "link": "https://github.com/owner/name/actions/runs/43076528473/job/2"}]
         unlinked = [{key: value for key, value in entry.items() if key != "link"}
@@ -256,6 +260,25 @@ class OwedChecks(unittest.TestCase):
         # Act
         with mock.patch.object(unsettled_pr, "gh", stub):
             said = unsettled_pr.judge("1")
+
+        # Assert
+        self.assertIn("every check passed and it is unmerged", said or "")
+
+    # GREEN_ON_BASE(characterization): the base read each workflow's newest run alone, so the failed
+    # campaign run here was never named. What it pins is that a campaign's runs are not read: taking
+    # `campaign.others` out of `head_of` reddens it.
+    def test_Given_ACampaignRunThatFailedBesideOneThatPassed_When_Judged_Then_ItStillSaysMergeIt(self):
+        # Arrange
+        runs = json.dumps({"total_count": 2, "workflow_runs": [
+            {"id": 9402, "name": "Mutation campaign", "path": ".github/workflows/mutation.yml",
+             "run_number": 402, "event": "workflow_dispatch", "status": "completed",
+             "conclusion": "success"},
+            {"id": 9401, "name": "Mutation campaign", "path": ".github/workflows/mutation.yml",
+             "run_number": 401, "event": "workflow_dispatch", "status": "completed",
+             "conclusion": "failure"}]})
+
+        # Act
+        said = self.judge_with(PASSING, "CLEAN", runs=runs)
 
         # Assert
         self.assertIn("every check passed and it is unmerged", said or "")
