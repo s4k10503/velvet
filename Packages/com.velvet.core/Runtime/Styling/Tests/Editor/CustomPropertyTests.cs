@@ -554,6 +554,19 @@ namespace Velvet.Tests
             Assert.That(PaintOrder(), Is.EqualTo("lit,inner"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already relocates an element whose order its parent's declaration gives
+        // it. What this pins is the order Reorder records: the parent declares --o after its children are created, inside
+        // the mount, and no patch of the element records its order after that.
+        [Test]
+        public void Given_AnOrderReadingAParentsDeclarationInAFlexParent_When_Mounted_Then_TheElementLeavesItsSlot()
+        {
+            // Arrange / Act
+            var child = MountStacked("flex [--o:2]", "order-(--o)");
+
+            // Assert
+            Assert.That(IsRelocated(child), Is.True);
+        }
+
         [Test]
         public void Given_AStylesheetRuleRedeclaringAProperty_When_ItsClassIsRemoved_Then_TheReaderTakesTheOuterValue()
         {

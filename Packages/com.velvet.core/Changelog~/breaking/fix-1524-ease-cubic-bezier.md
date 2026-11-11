@@ -12,7 +12,9 @@
 
 ### Changed
 
-- The ease-in-out every `transition-*` utility bundles runs along Tailwind v4's default curve, `cubic-bezier(0.4, 0, 0.2, 1)`.
+- The ease-in-out each `transition-*` utility but `transition-none` bundles runs along Tailwind v4's default curve,
+  `cubic-bezier(0.4, 0, 0.2, 1)`.
+<!-- corrects: - The ease-in-out every `transition-*` utility bundles runs along Tailwind v4's default curve, `cubic-bezier(0.4, 0, 0.2, 1)`. -->
 - The bundled `ease-in`, `ease-out` and `ease-in-out` classes, behind a variant or not, run their transition along Tailwind v4's curves
   (`cubic-bezier(0.4, 0, 1, 1)`, `(0, 0, 0.2, 1)` and `(0.4, 0, 0.2, 1)`) in place of the UI Toolkit keywords of the
   same names that approximated them. A project's `--ease-in`, `--ease-out` or `--ease-in-out` replaces the curve.

@@ -256,8 +256,16 @@ namespace Velvet
                 order = StyleCustomProperties.TryVariableOrder(classElement, out var variable) ? variable ?? 0 : declaredOrder;
             }
             var facts = new StackingFacts(stackedZ, order);
-            ctx.StackingFacts[real] = facts;
+            Track(ctx, real, facts);
             return facts;
+        }
+
+        // Every write of an element's facts goes through here, so ResortLayers can record the parent its slot stands
+        // in before any parent is arranged.
+        private static void Track(ReconcilerContext ctx, VisualElement real, StackingFacts facts)
+        {
+            ctx.StackingFacts[real] = facts;
+            ctx.StackingArrivals.TryAdd(real, default);
         }
 
         // Whether facts alone, whatever the siblings, move an element out of its declared slot: a z other than auto
@@ -372,7 +380,7 @@ namespace Velvet
             }
             if (ctx.StackingFacts.Remove(oldReal, out var facts))
             {
-                ctx.StackingFacts[newReal] = facts;
+                Track(ctx, newReal, facts);
             }
         }
 
@@ -397,7 +405,7 @@ namespace Velvet
                 return;
             }
             facts = facts with { Z = resolvedZ };
-            ctx.StackingFacts[real] = facts;
+            Track(ctx, real, facts);
             Settle(ctx, real, facts);
             if (ctx.SharedReconcileDepth == 0)
             {
@@ -415,7 +423,7 @@ namespace Velvet
                 return;
             }
             facts = facts with { Order = order };
-            ctx.StackingFacts[real] = facts;
+            Track(ctx, real, facts);
             Settle(ctx, real, facts);
             if (ctx.SharedReconcileDepth == 0)
             {
@@ -511,6 +519,7 @@ namespace Velvet
         {
             ctx.PinnedGhosts.Remove(ghost);
             ctx.PinnedGhosts.Add(ghost, s_candidate);
+            ctx.StackingArrivals.TryAdd(ghost, default);
             MarkGhostParent(ctx, ghost);
         }
 
@@ -664,6 +673,7 @@ namespace Velvet
             {
                 return;
             }
+            RecordStackingParents(ctx);
             var queue = ctx.ZLayerArrangeQueue;
             var start = queue.Count;
             queue.AddRange(ctx.PendingZLayerResorts);
@@ -682,6 +692,25 @@ namespace Velvet
         }
 
         private static void MarkPending(ReconcilerContext ctx, VisualElement parent) => ctx.PendingZLayerResorts.Add(parent);
+
+        private static readonly List<VisualElement> s_arrivals = new();
+
+        // An arrival whose slot stands in no parent yet stays for a later call: a keyed diff can create an element in
+        // one slice and insert it in a later one.
+        private static void RecordStackingParents(ReconcilerContext ctx)
+        {
+            s_arrivals.AddRange(ctx.StackingArrivals.Keys);
+            foreach (var real in s_arrivals)
+            {
+                var parent = (PlaceholderOf(ctx, real) ?? real).hierarchy.parent;
+                if (parent != null)
+                {
+                    ctx.StackingParents.TryAdd(parent, default);
+                    ctx.StackingArrivals.Remove(real);
+                }
+            }
+            s_arrivals.Clear();
+        }
 
         private static void Hold(VisualElement element, Role role, VisualElement? partner, VisualElement? slot = null)
         {
@@ -862,8 +891,13 @@ namespace Velvet
             }
         }
 
+        // ZLayerArrangeCostTests pins that a parent outside StackingParents is not walked.
         private static bool HoldsTrackedChild(ReconcilerContext ctx, VisualElement parent)
         {
+            if (!ctx.StackingParents.ContainsKey(parent))
+            {
+                return false;
+            }
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
@@ -877,6 +911,7 @@ namespace Velvet
                     return true;
                 }
             }
+            ctx.StackingParents.Remove(parent);
             return false;
         }
 
