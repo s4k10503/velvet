@@ -459,6 +459,9 @@ namespace Velvet
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
+            // A disposed fiber has nothing to reconcile into. The drain of a parked pass ahead of this call can dispose
+            // it: a boundary above swaps in its fallback for an error that drain rendered.
+            if (passContext == null) return;
             // A mark left from work that has since rendered would keep every identity skip of this reconcile off.
             FiberPendingWork.Below(fiber);
             var caught = FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
