@@ -4,12 +4,6 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // A Motion transition eases EaseIn, EaseOut and EaseInOut by Framer Motion's easeIn, easeOut and easeInOut, the
-    // cubic-beziers motion-utils' ease.ts declares, and EaseInBack, EaseOutBack and EaseInOutBack by its backIn, backOut
-    // and backInOut (back.ts), where UI Toolkit's transition eases those modes by quadratics and by back curves of its
-    // own (UssEasing). A value Framer hands the Web Animations API (accelerated) eases backIn, circIn and circOut by the
-    // CSS curves its supportedWaapiEasing table names instead. Every other mode keeps UI Toolkit's curve, and EaseInCirc
-    // and EaseOutCirc keep it off that path.
     internal static class MotionEasing
     {
         private static readonly KeywordCurves s_keywords =
@@ -44,6 +38,12 @@ namespace Velvet
         private static Func<float, float>? CurveOf(EasingMode mode, bool accelerated)
             => FunctionOf(mode, accelerated) is { } function ? function.Evaluate : null;
 
+        // The function a Motion transition eases mode by, null where UI Toolkit's curve for it stands: EaseIn, EaseOut and
+        // EaseInOut take Framer Motion's easeIn, easeOut and easeInOut, the cubic-beziers motion-utils' ease.ts declares,
+        // and EaseInBack, EaseOutBack and EaseInOutBack its backIn, backOut and backInOut (back.ts), where UI Toolkit's
+        // transition eases those modes by quadratics and by back curves of its own (UssEasing). A value Framer hands the
+        // Web Animations API (accelerated) takes the CSS curves its supportedWaapiEasing table names for backIn, circIn
+        // and circOut.
         internal static EaseFunction? FunctionOf(EasingMode mode, bool accelerated)
         {
             switch (mode)

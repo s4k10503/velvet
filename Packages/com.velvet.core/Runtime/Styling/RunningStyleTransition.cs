@@ -62,10 +62,10 @@ namespace Velvet
 
         // Has the carry run on from the element's running opacity transition, if it has one.
         public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_floats, s_opacityId, value => ((float)value, 0));
+            TakeOver(element, carry, s_floats, s_opacityId, "opacity", value => ((float)value, 0));
 
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_rotates, s_rotateId, value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
+            TakeOver(element, carry, s_rotates, s_rotateId, "rotate", value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
 
         // The x and y axes, each carried in the given unit. UI Toolkit runs a transition in the unit of its end and keeps
         // what a reversal runs back to as it was given, in its own unit or as none
@@ -75,7 +75,7 @@ namespace Velvet
         {
             for (var axis = 0; axis < 2; axis++)
             {
-                TakeOver(element, axes[axis], s_translates, s_translateId,
+                TakeOver(element, axes[axis], s_translates, s_translateId, "translate",
                     value => (InUnit(axis == 0 ? ((Translate)value).x : ((Translate)value).y, units[axis], element.layout.size[axis]),
                         MotionLayoutIdDriver.Tag((Translate)value, axis)));
             }
@@ -85,7 +85,7 @@ namespace Velvet
         {
             for (var axis = 0; axis < 2; axis++)
             {
-                TakeOver(element, axes[axis], s_scales, s_scaleId, value => (((Scale)value).value[axis], 0));
+                TakeOver(element, axes[axis], s_scales, s_scaleId, "scale", value => (((Scale)value).value[axis], 0));
             }
         }
 
@@ -101,7 +101,7 @@ namespace Velvet
         // given, as TakeOverTranslate reads
         // (Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt).
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
-            TakeOver(element, carry, s_lengths, s_cornerIds[corner],
+            TakeOver(element, carry, s_lengths, s_cornerIds[corner], "border-radius",
                 value => (InUnit((Length)value, unit, element.resolvedStyle.width), (int)((Length)value).unit));
 
         // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
@@ -156,8 +156,9 @@ namespace Velvet
         }
 #endif
 
-        // read: a value of the transition as the carry holds it, and its LayoutIdCarry.TargetTag.
-        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property,
+        // name: the property's, as a transition list names it. read: a value of the transition as the carry holds it, and
+        // its LayoutIdCarry.TargetTag.
+        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, string name,
             Func<object, (float Value, int Tag)> read)
         {
             if (Find(element, set, property) is not { } found) return;
@@ -168,7 +169,8 @@ namespace Velvet
                 var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
                 if (!AllNumbers(from.Value, to.Value, reversingStart.Value)) return;
                 var elapsedSec = (double)s_now!.GetValue(system) - (double)Read(s_startTime!, timing);
-                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
+                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec),
+                    StyleEaseCurve.TakenOver(element, name, (Func<float, float>)Read(s_curve!, timing)),
                     (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
             }
             catch (Exception)

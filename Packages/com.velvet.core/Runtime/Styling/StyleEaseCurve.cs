@@ -364,6 +364,19 @@ namespace Velvet
             => (property == "opacity" || property == "filter")
                 && (!s_bindings.TryGetValue(element, out var binding) || binding.TweenRepeat.KeepsWebAnimations || binding.HasEntryFor(property));
 
+        // The curve a transition UI Toolkit runs for the element eases by once a carry takes it over, which can be before
+        // its run event reaches OnRun
+        // (Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn):
+        // under a Motion's tween, the one OnRun retimes it to.
+        internal static Func<float, float> TakenOver(VisualElement element, string property, Func<float, float> curve)
+        {
+            if (!MotionTweenTiming.PlaysCurve(element))
+            {
+                return curve;
+            }
+            return MotionEasing.InPlaceOfEngineCurve(curve, OnWebAnimations(element, property)) ?? curve;
+        }
+
         // For an element whose transitions a Motion's tween on that repeat and those entries is about to time, which UI
         // Toolkit then runs; listened to until NoteTweenEnded finds no tween left playing on it.
         internal static void NoteTween(VisualElement element, MotionRepeat repeat,

@@ -391,15 +391,16 @@ namespace Velvet
 
         /// <summary>
         /// How each pass after the first runs — Framer Motion's <c>repeatType</c>. Defaults to
-        /// <see cref="TransitionRepeatType.Loop"/>. Read only when <see cref="Repeat"/> is above zero, but for the
-        /// opacity of a single <see cref="Animator"/> call, whose keyframes <see cref="TransitionRepeatType.Mirror"/>
-        /// eases pair by pair (<c>Documentation~/motion.md</c>).
+        /// <see cref="TransitionRepeatType.Loop"/>. Read with no <see cref="Repeat"/> too wherever
+        /// <see cref="TransitionRepeatType.Mirror"/> keeps a value off Framer Motion's Web Animations path, as a
+        /// <see cref="RepeatDelaySec"/> above zero does; <c>Documentation~/motion.md</c> names where.
         /// </summary>
         public TransitionRepeatType RepeatType { get; init; } = TransitionRepeatType.Loop;
 
         /// <summary>
         /// Seconds a repeating play holds the value one pass ends on before the next pass starts — Framer Motion's
-        /// <c>repeatDelay</c>. No wait follows the last pass, so it never delays completion. 0 by default.
+        /// <c>repeatDelay</c>. No wait follows the last pass, so it never delays completion. 0 by default. Read with no
+        /// <see cref="Repeat"/> too, as <see cref="RepeatType"/> says.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative or not finite.</exception>
         public float RepeatDelaySec

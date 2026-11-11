@@ -10,7 +10,8 @@ namespace Velvet.Tests
     /// Specifies that a Motion tween UI Toolkit's own transition plays runs a named ease on Framer Motion's curve for it
     /// from its first frame, each property on the keyword its own entry names and opacity as Framer's Web Animations path
     /// eases it, that a transition the tween did not start keeps its curve, that the element stops being listened to
-    /// once no tween plays on it, and that a layoutId carry of its opacity eases as that path does.
+    /// once no tween plays on it, and that a layoutId carry eases a value as the value's own transition would under the
+    /// tween, and on UI Toolkit's curve where no tween times it.
     /// </summary>
     [TestFixture]
     internal sealed class MotionNamedEaseTransitionTests : PanelTestBase
@@ -47,13 +48,19 @@ namespace Velvet.Tests
             ForcePanelUpdate(element.panel);
         }
 
-        // The frame that swaps the classes and the one the transitions it starts first run in.
-        private void FirstFrame(VisualElement element)
+        // The frame that swaps the classes, up to the styles pass that starts the transitions the swap asks for.
+        private void Swap(VisualElement element)
         {
             _now += 0.016;
             EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
             ForcePanelUpdate(element.panel);
+        }
+
+        // The frame that swaps the classes and the one the transitions it starts first run in.
+        private void FirstFrame(VisualElement element)
+        {
+            Swap(element);
             EditorPanelTestHelpers.DriveAnimationsOnce(element.panel);
             ForcePanelUpdate(element.panel);
         }
@@ -205,6 +212,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(carry.Value, Is.EqualTo(WebAnimationsBackIn(0.75f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn()
+        {
+            // Arrange — taken over as a layoutId crossfade's first draw takes it, in the frame that starts it.
+            var element = OnClock("opacity-0");
+            var ran = false;
+            element.RegisterCallback<TransitionRunEvent>(_ => ran = true);
+            TweenEnter(element, "opacity-0", "opacity-100", OneSecond(EasingMode.EaseInCirc, -0.3f));
+            Swap(element);
+            var carry = new LayoutIdCarry();
+
+            // Act
+            RunningStyleTransition.TakeOverOpacity(element, carry);
+            var opacity = carry.Advance(0f);
+
+            // Assert — NaN where a run event had already reached the element, which the expected value never matches.
+            Assert.That(ran ? float.NaN : opacity, Is.EqualTo(WebAnimationsCircIn(0.3f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ASlideUpTweenEnterEasingInBack_When_ACarryTakesItsTranslateOverBeforeItsRunEvent_Then_ItCarriesBackTsBackIn()
+        {
+            // Arrange — anim-slide-up-enter-from translates 20px down; taken over as a layoutId move's first pass takes
+            // it, in the frame that starts it.
+            var element = OnClock("anim-slide-up-enter-from");
+            var ran = false;
+            element.RegisterCallback<TransitionRunEvent>(_ => ran = true);
+            TweenEnter(element, "anim-slide-up-enter-from", "anim-slide-up-enter-to", OneSecond(EasingMode.EaseInBack, -0.75f));
+            Swap(element);
+            var axes = new[] { new LayoutIdCarry(), new LayoutIdCarry() };
+
+            // Act
+            RunningStyleTransition.TakeOverTranslate(element, axes, new[] { LengthUnit.Pixel, LengthUnit.Pixel });
+            var y = axes[1].Advance(0f);
+
+            // Assert — NaN where a run event had already reached the element, which the expected value never matches.
+            Assert.That(ran ? float.NaN : y, Is.EqualTo(20f - 20f * FramerBackIn(0.75f)).Within(1e-2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a carry the curve UI Toolkit runs a transition on.
+        // Dropping the PlaysCurve clause from StyleEaseCurve.TakenOver reddens it.
+        [Test]
+        public void Given_AnOpacityTransitionOfTheElementsOwnEasingInCirc_When_ACarryTakesItOver_Then_ItKeepsUIToolkitsCurve()
+        {
+            // Arrange — a second on EaseInCirc begun three tenths of a second in, which no Motion's tween times.
+            var element = OnClock("opacity-0", e =>
+            {
+                e.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
+                e.style.transitionDuration = new List<TimeValue> { new(1f) };
+                e.style.transitionDelay = new List<TimeValue> { new(-0.3f) };
+                e.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseInCirc) };
+            });
+            element.style.opacity = 1f;
+            ForcePanelUpdate(element.panel);
+            var carry = new LayoutIdCarry();
+
+            // Act
+            RunningStyleTransition.TakeOverOpacity(element, carry);
+            var opacity = carry.Advance(0f);
+
+            // Assert — three tenths of the way along UI Toolkit's own curve, which UssEasingTests holds UssEasing to.
+            Assert.That(opacity, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseInCirc, 0.3f)).Within(1e-3f));
         }
 
         [Test]
