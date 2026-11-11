@@ -1396,8 +1396,8 @@ order their entries were appended:
   fewest runs from it that make four on at least two models, counting models that ran at least three
   times before it, each measured at least 1.2 times the slowest of the last five runs on its own model.
   The decision is taken on those runs, so a run landing after them cannot withdraw a step once its issue
-  is open; the runs after them, up to eight in all, only add to the medians the issue shows. The timing
-  canary (`InstrumentCanary_TimingBaseline`) is no substitute for the model: it ranks the models
+  is open; where they are fewer than eight, the runs after them up to eight only add to the medians the
+  issue shows. The timing canary (`InstrumentCanary_TimingBaseline`) is no substitute for the model: it ranks the models
   differently from the benchmarks.
 - **An allocation count** (a `.GC()` group and the other unit-less ones) does not depend on the model, so
   counts are compared across all runs, by the same rule with one model, and must also rise by at least
@@ -1405,18 +1405,23 @@ order their entries were appended:
   records reads anything from 0 to 12 KB from one run to the next.
 - Every step in a benchmark's history is reported, not only its first. After a step, a model is judged
   again only once it has run since, so the slowest of its last five runs includes one measured since.
-- The range a step names starts after the latest run that measured no higher than the slowest of the last
-  five before it on its model, or before the benchmark's first run where none did, so a run above that
-  and short of the threshold stays inside the range. Steps whose ranges share a commit share an issue.
+- The range a step names starts after the latest run at which its model was judged and measured no higher
+  than the slowest of that model's last five runs before it, or before the benchmark's first run where
+  there is none, so a run above that and short of the threshold, or one its model was not judged at,
+  stays inside the range.
+  Steps whose ranges share a commit share an issue.
 - An issue's markers name each of its steps by benchmark and range, and an issue is found again by any
-  step of the same benchmark whose range shares a commit with one of them, so a step whose first slow run
-  moves keeps its issue. Steps one issue names are written to it together.
-- An issue opens only for a step whose first slow run is among the twelve latest entries, so a step that
-  landed further back opens none. An open issue is rewritten while the history holds its steps; a step a
-  closed one names is left out, since closing it is how a step is accepted or answered, while another
-  benchmark's step in the same range still opens its own. An open issue none of whose steps the history
-  holds any more, one whose runs have left the history's 200 entries for instance, gets a line saying so,
-  once.
+  step of the same benchmark whose first slow run lies in a range one of them names, so a step whose first
+  slow run moves earlier within that range keeps its issue, while one starting after the marked step is
+  another step.
+  Steps one issue names are written to it together; where they name two or more open issues, the
+  lowest-numbered holds them and each other is given a pointer to it and closed.
+- An issue opens only for a step decided at one of the twelve latest entries, so a step decided further
+  back opens none. An open issue is rewritten while the history holds its steps; a step a closed one
+  names is left out, since closing it is how a step is accepted or answered, while another benchmark's
+  step in the same range, or a later step of the same benchmark, still opens its own. An open issue none
+  of whose steps the history holds any more, one whose runs have left the history's 200 entries for
+  instance, gets a line saying so, once.
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 

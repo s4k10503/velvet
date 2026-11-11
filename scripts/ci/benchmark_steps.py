@@ -31,6 +31,7 @@ MARKER = "<!-- benchmark-step: {series} | {low} | {first} -->"
 MARKER_PATTERN = re.compile(
     r"^<!-- benchmark-step: (?P<series>.+?) \| (?P<low>~?[0-9a-f]{40}) \| (?P<first>[0-9a-f]{40}) -->$", re.M)
 WITHDRAWN = "> The history this job last read holds none of the steps below."
+MERGED = "Merged into #{}, which holds these steps now.\n"
 BODY_LIMIT = 60000
 CUT_NOTE = "\n\n... cut to fit an issue body\n"
 
@@ -68,6 +69,7 @@ class Step:
     since: Run
     last_fast: Run | None
     first_slow: Run
+    decided: Run
     ratio: float
     # (processor, before median, runs before, after median, runs after), one per processor after it.
     per_processor: tuple
@@ -118,8 +120,8 @@ def judge(runs, points, start, baseline, settled, since, name, unit, rule):
     """The step whose first slow run is `points[start]`, or None where the runs from it are not one, or not yet.
 
     The decision is taken on the fewest runs from the start that the rule asks for, so a run landing after
-    them cannot withdraw a step an issue has already been opened for; the rest of the window only adds to
-    the medians shown."""
+    them cannot withdraw a step an issue has already been opened for. Where they are fewer than the window,
+    the runs after them up to it only add to the medians shown."""
     slowest = {key: max(values) for key, values in baseline.items()}
     after, keys, decided = [], set(), None
     for i in range(start, len(points)):
@@ -143,7 +145,8 @@ def judge(runs, points, start, baseline, settled, since, name, unit, rule):
         slow = [value for _, k, value in after if k == key]
         per_processor.append((key, medians[key], len(baseline[key]), statistics.median(slow), len(slow)))
     ratio = statistics.median(times(value, medians[key]) for _, key, value in after)
-    return Step(name, unit, since, last_fast, runs[points[start][0]], ratio, tuple(per_processor))
+    return Step(name, unit, since, last_fast, runs[points[start][0]], runs[after[decided - 1][0]], ratio,
+                tuple(per_processor))
 
 
 def series_steps(runs, name, unit, rule):
@@ -163,8 +166,9 @@ def series_steps(runs, name, unit, rule):
             if step is not None:
                 steps.append(step)
                 era = start
-        # A step's range starts after the latest run that measured no higher than the slowest before it
-        # on its processor. One above that and short of the threshold is left inside the range.
+        # A step's range starts after the latest run that was judged here and measured no higher than the
+        # slowest before it on its processor. One above that and short of the threshold, or one its
+        # processor was not judged at, is left inside the range.
         settled.append(key in baseline and value <= max(baseline[key]))
         seen.setdefault(key, []).append(value)
         latest[key] = start
@@ -201,7 +205,7 @@ def clusters(steps, runs):
 
 
 def recent(runs, rule=RULE):
-    """The commits of the latest `rule.fresh` runs appended: an issue opens only for a step starting at one."""
+    """The commits of the latest `rule.fresh` runs appended: an issue opens only for a step decided at one."""
     return {run.commit for run in runs[-rule.fresh:]}
 
 
@@ -217,11 +221,12 @@ def marked_span(match, order):
 
 
 def covers(matches, step, order):
-    """Whether a marker names `step`'s benchmark over a range sharing a commit with `step`'s."""
-    low, high = span(step, order)
+    """Whether a marker names `step`'s benchmark over a range holding `step`'s first slow run. A step that
+    starts after the marked one is another step, even where its range reaches back over it."""
+    _, high = span(step, order)
     for match in matches:
         marked = marked_span(match, order) if match["series"] == step.benchmark else None
-        if marked and marked[0] < high and low < marked[1]:
+        if marked and marked[0] < high <= marked[1]:
             return True
     return False
 
@@ -296,8 +301,10 @@ def is_open(issue):
 def sync_issues(steps, runs, repository, run=gh, rule=RULE):
     """Keeps an issue for each cluster of steps, found by any step its markers name over an overlapping range.
 
-    A step a closed issue names is left out: closing it is how a step is accepted or answered. An open issue
-    none of whose steps the history holds any longer is marked so rather than left reading as current."""
+    A step a closed issue names is left out: closing it is how a step is accepted or answered. Where a
+    cluster's steps name several open issues, the lowest-numbered holds them and the others are pointed at
+    it and closed. An open issue none of whose steps the history holds any longer is marked so rather than
+    left reading as current."""
     issues = list_issues(repository, run)
     order = {run_.commit: index for index, run_ in enumerate(landed(runs))}
     named = {issue["number"]: list(MARKER_PATTERN.finditer(issue.get("body") or "")) for issue in issues}
@@ -326,7 +333,12 @@ def sync_issues(steps, runs, repository, run=gh, rule=RULE):
         if opened and by_number[opened[0]].get("body") != body:
             run(["issue", "edit", str(opened[0]), "--repo", repository, "--title", title, "--body-file", "-"], body)
             actions.append(f"rewrote #{opened[0]}")
-        elif not opened and openable & {step.first_slow.commit for step in live}:
+        for number in opened[1:]:
+            # The pointer carries no marker, so once closed this issue accepts none of the steps.
+            run(["issue", "edit", str(number), "--repo", repository, "--body-file", "-"], MERGED.format(opened[0]))
+            run(["issue", "close", str(number), "--repo", repository, "--reason", "not planned"])
+            actions.append(f"merged #{number} into #{opened[0]}")
+        if not opened and openable & {step.decided.commit for step in live}:
             create = ["issue", "create", "--repo", repository, "--title", title, "--body-file", "-",
                       "--assignee", ASSIGNEE]
             for label in LABELS:
@@ -362,6 +374,9 @@ class MemoryIssues:
             if "--title" in args:
                 issue["title"] = args[args.index("--title") + 1]
             self.log.append((self.now, "rewrote", issue["number"]))
+        elif args[:2] == ["issue", "close"]:
+            self.issues[int(args[2]) - 1]["state"] = "closed"
+            self.log.append((self.now, "closed", int(args[2])))
         return ""
 
 

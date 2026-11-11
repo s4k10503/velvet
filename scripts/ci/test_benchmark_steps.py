@@ -57,10 +57,11 @@ def steps(runs):
 RUNS = runs_of(*[(ONE, 10)] * 40)
 
 
-def step(per_processor=((ONE, 10, 4, 15, 2),), last=7, first=8, since=0, ratio=1.5, name=NAME, unit="ms"):
+def step(per_processor=((ONE, 10, 4, 15, 2),), last=7, first=8, since=0, ratio=1.5, name=NAME, unit="ms",
+         decided=None):
     """A step built directly over RUNS' commits, `last` None for one with no run at the old level before it."""
     return benchmark_steps.Step(name, unit, RUNS[since], RUNS[last] if last is not None else None, RUNS[first],
-                                ratio, tuple(per_processor))
+                                RUNS[first if decided is None else decided], ratio, tuple(per_processor))
 
 
 def history_text(*benches):
@@ -157,6 +158,16 @@ class FindStepsTests(unittest.TestCase):
 
         # Assert
         self.assertEqual([s.first_slow.commit for s in found], [commit(8), commit(12)])
+
+    def test_Given_ASecondStepStartingAtTheNextRunOfTheFirstsProcessor_When_StepsAreFound_Then_ItStartsThere(self):
+        # Arrange: the first processor's only run since the first step is that step's own first slow run.
+        runs = runs_of(*BEFORE, (ONE, 15), (TWO, 15), (TWO, 15), (TWO, 15), *[(ONE, 40), (TWO, 40)] * 2)
+
+        # Act
+        found = steps(runs)
+
+        # Assert
+        self.assertIn(commit(12), [s.first_slow.commit for s in found])
 
     def test_Given_AStepAndProcessorsThatHaveNotRunSince_When_TheyRunAtTheNewLevel_Then_ItIsNoFurtherStep(self):
         # Arrange: the third and fourth processors last ran before the step, so their baselines are the old level.
@@ -302,8 +313,10 @@ class FindStepsTests(unittest.TestCase):
         self.assertEqual(len(merged), 2)
 
     def test_Given_ABenchmarkThatSteppedBeforeAnyRunSettled_When_Clustered_Then_ItsRangeStartsAtItsFirstRun(self):
-        # Arrange: an old step ending at c05, and a benchmark added at c26 that stepped at c29.
-        found = [step(last=4, first=5), step(last=None, first=29, since=26, name="N / Time")]
+        # Arrange: an old step ending at c05; a benchmark added at c26 that stepped at c29; and a step in
+        # (c27, c28] that shares commits with the young one's range only if that range starts at c26.
+        found = [step(last=4, first=5), step(last=None, first=29, since=26, name="N / Time"),
+                 step(last=27, first=28, name="M / Time")]
 
         # Act
         merged = benchmark_steps.clusters(found, RUNS)
@@ -390,7 +403,7 @@ class SyncIssuesTests(unittest.TestCase):
         benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
 
         # Assert
-        self.assertEqual(len(gh.calls), 2)
+        self.assertEqual(len(benchmark_steps.MARKER_PATTERN.findall(gh.bodies[1])), 2)
 
     def test_Given_AnOpenIssueAlreadySayingWhatTheStepSays_When_IssuesSync_Then_NothingIsWritten(self):
         # Arrange
@@ -460,6 +473,88 @@ class SyncIssuesTests(unittest.TestCase):
         self.assertEqual(len(gh.calls), 1)
 
 
+def named_by_two_open_issues():
+    """Two steps whose ranges share a commit, and two open issues, #3 and #5, naming the first of them."""
+    found = [step(last=7, first=8), step(last=7, first=9, name="B / Time")]
+    return found, FakeGh([issue(3, "open", benchmark_steps.marker(found[0])),
+                          issue(5, "open", benchmark_steps.marker(found[0]))])
+
+
+class SyncIssueIdentityTests(unittest.TestCase):
+
+    def test_Given_AClosedIssueAndALaterStepOfThatBenchmarkWhoseRangeReachesBack_When_IssuesSync_Then_ItOpensOne(self):
+        # Arrange: the closed issue names a step first slow at c30; the later one is first slow at c37 and
+        # its range reaches back over c30.
+        accepted, later = step(last=29, first=30), step(last=29, first=37)
+        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(accepted))])
+
+        # Act
+        benchmark_steps.sync_issues([accepted, later], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
+
+    def test_Given_AnIssueWhoseRangeOnlyMeetsTheStepsOwn_When_IssuesSync_Then_TheStepOpensItsOwn(self):
+        # Arrange: the issue names (c30, c31]; the step's range is (c29, c30].
+        gh = FakeGh([issue(3, "open", benchmark_steps.marker(step(last=30, first=31)))])
+
+        # Act
+        benchmark_steps.sync_issues([step(last=29, first=30)], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
+
+    def test_Given_AStepDecidedAmongTheLatestRunsWhoseFirstSlowRunIsOlder_When_IssuesSync_Then_ItOpensOne(self):
+        # Arrange: RUNS' twelve latest are c28..c39; the step starts at c21 and is decided at c30.
+        gh = FakeGh([])
+
+        # Act
+        benchmark_steps.sync_issues([step(last=20, first=21, decided=30)], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
+
+    def test_Given_AnOpenIssueThatNamesNoStep_When_IssuesSync_Then_NothingIsWritten(self):
+        # Arrange: an issue the performance label shares with this job's, written by hand.
+        gh = FakeGh([{"number": 9, "state": "open", "body": "Initial mount allocates per element."}])
+
+        # Act
+        benchmark_steps.sync_issues([], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(gh.calls), 1)
+
+    def test_Given_OneClustersStepsNamedByTwoOpenIssues_When_IssuesSync_Then_TheLowerNumberedHoldsThem(self):
+        # Arrange
+        found, gh = named_by_two_open_issues()
+
+        # Act
+        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(gh.calls[1][:3], ["issue", "edit", "3"])
+
+    def test_Given_OneClustersStepsNamedByTwoOpenIssues_When_IssuesSync_Then_TheOtherIsPointedAtTheFirst(self):
+        # Arrange
+        found, gh = named_by_two_open_issues()
+
+        # Act
+        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(gh.bodies[2], benchmark_steps.MERGED.format(3))
+
+    def test_Given_OneClustersStepsNamedByTwoOpenIssues_When_IssuesSync_Then_TheOtherIsClosed(self):
+        # Arrange
+        found, gh = named_by_two_open_issues()
+
+        # Act
+        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
+
+        # Assert
+        self.assertIn(["issue", "close", "5"], [call[:3] for call in gh.calls])
+
+
 class RenderTests(unittest.TestCase):
 
     def test_Given_AStep_When_Rendered_Then_TheBodyLinksTheCommitsFromItsLastFastToItsFirstSlowRun(self):
@@ -493,7 +588,7 @@ class RenderTests(unittest.TestCase):
         self.assertIn(f"| {NAME} | `{commit(8)[:8]}` | {ONE} | 10 ms (4 runs) | 15 ms (2 runs) | 1.50x |", body)
 
     def test_Given_ACountRisingFromZero_When_Rendered_Then_ItsTitleSaysSo(self):
-        # Arrange: only the title reads the step's ratio; the row is left with a baseline to divide by.
+        # Arrange: the row is left a baseline to divide by, so the title is what reads the infinite ratio.
         found = [step([("", 1, 5, 6, 4)], ratio=float("inf"), unit="")]
 
         # Act
