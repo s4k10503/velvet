@@ -2141,6 +2141,8 @@ namespace Velvet
             foreach (var parked in ParkedDiffParents.Keys) (parked as ChildReconciler)?.ReplaceParkedRow(from, to);
         }
 
+        internal HostCommitQueue HostCommit { get; }
+
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a
         // patch can tell a STABLE ref apart from a swapped one — a ref cycles
@@ -3436,6 +3438,7 @@ namespace Velvet
             ComponentContextStack = new ComponentContextStack();
             FiberStack = new FiberStack();
             BufferPool = new ReconcilerBufferPool();
+            HostCommit = new HostCommitQueue(this);
             _pureElementSideTables = new System.Collections.IDictionary[]
             {
                 StructuralVariants,

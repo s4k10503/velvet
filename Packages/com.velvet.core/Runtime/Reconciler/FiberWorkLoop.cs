@@ -692,7 +692,7 @@ namespace Velvet
                         // LogicalMountPointChildCount.
                         var slice = new FiberCommitWork.RowCountWindow(fiber);
                         fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
-                        FiberCommitWork.PropagateInlineSlotShift(fiber, slice.UnshiftedChange);
+                        resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
                     }
                     else
                     {
