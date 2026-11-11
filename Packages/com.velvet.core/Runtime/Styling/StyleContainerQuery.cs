@@ -174,7 +174,8 @@ namespace Velvet
                 return true;
             }
 
-            if (StyleThemeTokens.Current is { } scope && scope.TryGetPx("--container-" + rest, out var themed))
+            if (StyleThemeTokens.Current is { } scope
+                && scope.TryGetPx(StyleThemeVariableName.Of("--container-", rest), out var themed))
             {
                 query = new StyleContainerQuery(themed, isMax, name, "rem");
                 return true;
@@ -208,7 +209,7 @@ namespace Velvet
                     return true;
                 }
             }
-            return StyleThemeTokens.Current is { } scope && scope.TryGetPx("--breakpoint-" + name, out px);
+            return StyleThemeTokens.Current is { } scope && scope.TryGetPx(StyleThemeVariableName.Of("--breakpoint-", name), out px);
         }
 
         private static readonly StyleVariantKind[] s_breakpointKinds =

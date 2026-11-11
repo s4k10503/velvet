@@ -9,6 +9,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 def load_module():
@@ -32,6 +33,11 @@ def results_xml(*lines):
     return f"<test-run><test-suite>{cases}</test-suite></test-run>"
 
 
+def run_info(processor):
+    return "##performancetestruninfo2:" + json.dumps({"TestSuite": "Playmode", "Hardware": {"ProcessorType": processor}})
+
+
+PROCESSOR = "AMD EPYC 7763 64-Core Processor"
 TIME = {"Name": "Time", "Unit": 2, "IncreaseIsBetter": False, "Median": 1.5}
 BLOCKS = {"Name": "GC.Alloc", "Unit": 4, "IncreaseIsBetter": False, "Median": 0}
 THROUGHPUT = {"Name": "Frames", "Unit": 3, "IncreaseIsBetter": True, "Median": 60}
@@ -102,6 +108,32 @@ class BenchmarkResultsTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(code, 1)
+
+    def test_Given_ARunInfoLineAfterAResult_When_TheProcessorIsRead_Then_ItIsTheHardwaresProcessorType(self):
+        # Arrange
+        xml = results_xml(result("A.One", [TIME]) + "\n" + run_info(PROCESSOR))
+
+        # Act
+        processor = benchmark_results.read_processor(xml)
+
+        # Assert
+        self.assertEqual(processor, PROCESSOR)
+
+    def test_Given_OnlyTheSecondDocumentNamesItsProcessor_When_MainRuns_Then_EveryValueCarriesIt(self):
+        # Arrange
+        written = benchmark_results.to_benchmark_json([("A.One / Time", "ms", 1.5)], processor=PROCESSOR)[0]["extra"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "a.xml").write_text(results_xml(result("A.One", [TIME])), encoding="utf-8")
+            (root / "b.xml").write_text(results_xml(result("A.Two", [TIME])), encoding="utf-8")
+
+            # Act
+            with mock.patch.object(benchmark_results, "read_processor", side_effect=[None, PROCESSOR]):
+                benchmark_results.main([str(root), "--json", str(root / "o.json"), "--summary", str(root / "o.md")])
+            extras = {value.get("extra") for value in json.loads((root / "o.json").read_text(encoding="utf-8"))}
+
+        # Assert
+        self.assertEqual(extras, {written})
 
 
 if __name__ == "__main__":

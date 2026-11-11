@@ -490,6 +490,23 @@ class HandOffJobTests(unittest.TestCase):
         self.assertEqual(types, ["labeled", "ready_for_review"])
 
 
+class MergeJobBudgetTests(unittest.TestCase):
+    """The merge job's own timeout, against the waits the merge it runs can take."""
+
+    def test_Given_TheMergeJob_When_ItsTimeoutIsRead_Then_ItOutlastsTheRunWaitAndAStackMergeWait(self):
+        # Arrange — a job killed inside the stack wait reports a failure while GitHub goes on with
+        # the merge. A timeout the reading did not find answers 0, which no budget is under.
+        text = (WORKFLOWS / "automerge.yml").read_text(encoding="utf-8")
+        block = text.partition("\n  merge:\n")[2].partition("\n  sweep:\n")[0]
+        minutes = re.search(r"^    timeout-minutes:\s*(\d+)\s*$", block, re.MULTILINE)
+
+        # Act
+        seconds = int(minutes.group(1)) * 60 if minutes else 0
+
+        # Assert
+        self.assertGreater(seconds, automerge.AFTER_RUN_TIMEOUT + automerge.settle.STACK_MERGE_BOUND)
+
+
 class CampaignWorkflowTests(unittest.TestCase):
     """The campaign's workflow, against the merge it no longer asks for."""
 

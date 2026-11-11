@@ -115,6 +115,10 @@ namespace Velvet
             {
                 return false;
             }
+            if (!scope.LineHeightClasses.Contains(core))
+            {
+                return false;
+            }
             var name = core.Substring(Prefix.Length);
             if (!scope.TryGetText("--text-" + name + "--line-height", out var text)
                 || !(scope.Project.Contains("--text-" + name) || IsBuiltIn(name)))
@@ -140,7 +144,22 @@ namespace Velvet
         internal static bool HasThemedLineHeight(string core)
             => core != null && core.StartsWith(Prefix, StringComparison.Ordinal) && core.IndexOf('/') < 0
                 && StyleThemeTokens.Current is { } scope
-                && scope.Values.ContainsKey("--text-" + core.Substring(Prefix.Length) + "--line-height");
+                && scope.LineHeightClasses.Contains(core);
+
+        private const string LineHeightVariable = "--" + Prefix;
+        private const string LineHeightSuffix = "--line-height";
+
+        // The text-<name> class whose line height a `--text-<name>--line-height` variable declares, null for any other
+        // variable. A scope keeps these so a reader asks by the class rather than building the variable's name per read,
+        // which ThemeTokenLineHeightLookupTests pins.
+        internal static string? LineHeightClassOf(string variable)
+            => variable.Length >= LineHeightVariable.Length + LineHeightSuffix.Length
+                && variable.StartsWith(LineHeightVariable, StringComparison.Ordinal)
+                // MUTANT_SURVIVES(equivalent, clause removed): Refresh hands this only names Values holds, and ReadDeclaration lets a --text- name into Values only where it ends in --line-height.
+                && variable.EndsWith(LineHeightSuffix, StringComparison.Ordinal)
+                    ? string.Concat(Prefix, variable.Substring(LineHeightVariable.Length,
+                        variable.Length - LineHeightVariable.Length - LineHeightSuffix.Length))
+                    : null;
 
         private static bool IsBuiltIn(string name)
         {
