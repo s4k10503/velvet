@@ -1309,12 +1309,15 @@ class CampaignMergeTests(unittest.TestCase):
 
 def head_run(run_id, name, workflow, number, status, conclusion, suite,
              started="2026-11-11T18:18:34Z", event="pull_request", pull_request=1, updated=None):
-    """One entry of the Actions runs listing for a head, run for `pull_request`."""
+    """One entry of the Actions runs listing for a head, listing `pull_request`: a number, several,
+    or None."""
     return dict({"id": run_id, "name": name, "workflow_id": workflow, "run_number": number,
                  "run_attempt": 1, "status": status, "conclusion": conclusion,
                  "check_suite_id": suite, "run_started_at": started, "event": event,
                  "head_branch": "topic",
-                 "pull_requests": [] if pull_request is None else [{"number": pull_request}]},
+                 "pull_requests": [{"number": number} for number in (
+                     () if pull_request is None else pull_request if isinstance(pull_request, tuple)
+                     else (pull_request,))]},
                 **({"updated_at": updated} if updated else {}))
 
 
@@ -1432,8 +1435,7 @@ class CancelledDuplicateTests(unittest.TestCase):
     # What it pins is that a dispatch on the branch is not of the cancelled run's group: reading
     # every run of a workflow as one group reddens it.
     def test_Given_ACancelledRunBesideADispatchOfItsWorkflow_When_Decided_Then_ItsChecksAreKept(self):
-        # Arrange — the dispatch skips the steps test.yml runs only on `pull_request`, and names no
-        # pull request.
+        # Arrange — the dispatch skips the steps test.yml runs only on `pull_request`.
         cancelled = head_run(121, "Test", 1, 121, "completed", "cancelled", 121)
         dispatched = head_run(122, "Test", 1, 122, "completed", "success", 122,
                               event="workflow_dispatch", pull_request=None)
@@ -1465,14 +1467,18 @@ class CancelledDuplicateTests(unittest.TestCase):
         self.assertEqual(results, bucketed(checks))
 
     # GREEN_ON_BASE(characterization): the base leaves out no run's checks but a campaign's.
-    # What it pins is that a run for another pull request is not of the cancelled run's group:
-    # leaving the pull requests out of `group_of` reddens it.
-    def test_Given_ACancelledRunBesideARunOfItsWorkflowForAnotherPullRequest_When_Decided_Then_ItsChecksAreKept(self):
-        # Arrange — two pull requests on one head, each with a run of its own.
-        cancelled = head_run(121, "Test", 1, 121, "completed", "cancelled", 121)
-        other = head_run(122, "Test", 1, 122, "completed", "success", 122, pull_request=2)
-        checks = FAILED_CHECKS + [check_run("Unity tests (EditMode)", "success", 122),
-                                  check_run("Required checks (Unity)", "success", 122)]
+    # What it pins is that a run naming several pull requests is a group of its own: taking that
+    # rule out of `group_of` reddens it.
+    def test_Given_ACancelledRunOnAHeadTwoPullRequestsShare_When_Decided_Then_ItsChecksAreKept(self):
+        # Arrange — each pull request ran `Test` on the head, and each run lists both, so neither
+        # list says which pull request the run was for.
+        cancelled = head_run(111, "Test", 1, 111, "completed", "cancelled", 111, pull_request=(1, 2))
+        other = head_run(112, "Test", 1, 112, "completed", "success", 112, pull_request=(1, 2))
+        checks = [check_run("Unity tests (${{ matrix.testMode }})", "cancelled", 111),
+                  check_run("Required checks (Unity)", "failure", 111),
+                  check_run("Unity tests (EditMode)", "success", 112),
+                  check_run("Unity tests (PlayMode)", "success", 112),
+                  check_run("Required checks (Unity)", "success", 112)]
 
         # Act
         with rest_readings(checks, [other, cancelled], labels=()):

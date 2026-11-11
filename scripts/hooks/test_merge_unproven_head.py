@@ -446,7 +446,7 @@ class HeadCheckVerdictTests(unittest.TestCase):
     # What it pins is that a dispatch on the branch is not of a cancelled run's group: reading every
     # run of a workflow as one group reddens it.
     def test_Given_ACancelledRunAndADispatchOfItsWorkflowThatPassed_When_TheMergeIsAsked_Then_TheCancelledChecksAreNamed(self):
-        # Arrange — the dispatch names no pull request, with both runs' checks listed.
+        # Arrange — both runs' checks are listed.
         runs = json.dumps({"total_count": 2, "workflow_runs": [
             {"id": 9102, "name": "Test", "workflow_id": 1, "run_number": 102,
              "event": "workflow_dispatch", "pull_requests": [], "head_branch": "topic",

@@ -108,9 +108,10 @@ def unfinished(runs, jobs, now):
 
 def read_duplicates(entries, runs, jobs, now, run_id):
     """`entries`, each a check carrying "name" and "bucket" whose run `run_id` names, with the checks
-    of a run GitHub concluded as cancelled read against its group: the other runs of its workflow,
-    event and pull request (or branch, for a run naming none) that `conclusion` does not read as
-    cancelled. Such a check is left out where a run of the group reports it with a bucket other than
+    of a run GitHub concluded as cancelled read against its group: the other runs of its workflow
+    and event that name the same one pull request (or branch, for a run naming none) and that
+    `conclusion` does not read as cancelled. A run naming several pull requests is a group of its
+    own, since its list does not say which of them it ran for. Such a check is left out where a run of the group reports it with a bucket other than
     `skipping`, reads as pending where none has and one has not finished, and is kept as it is
     otherwise. The run reporting it need not have finished, since one that has not holds the head
     by itself, as `unfinished` names it.
@@ -139,6 +140,8 @@ def read_duplicates(entries, runs, jobs, now, run_id):
 
 def group_of(run):
     numbers = tuple(sorted(pull.get("number") for pull in run.get("pull_requests") or []))
+    if len(numbers) > 1:
+        return "run", run.get("id")
     return workflow_of(run), run.get("event"), numbers or run.get("head_branch")
 
 
