@@ -155,6 +155,16 @@
       {
         "hooks": [
           {
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/stack_merge_by_hand.py",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/shared_git_state.py",
             "timeout": 10,
             "type": "command"

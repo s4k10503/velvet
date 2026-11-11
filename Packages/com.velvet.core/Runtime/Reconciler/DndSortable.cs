@@ -343,13 +343,16 @@ namespace Velvet
             internal readonly StyleList<TimeValue> TransitionDuration;
             internal readonly StyleList<EasingFunction> TransitionTiming;
 
+            // The lists are copied: a list read out of a slot is refilled by that slot's next write
+            // (MotionNativeTransitionGuard.ExcludeFromHeldList), which Write makes before Put would hand it back
+            // (Given_AVerticalSortableListThatShiftedAnItemWithATimingOfItsOwn_When_TheDragEnds_Then_TheItemHasItsOwnTimingBack).
             internal Saved(VisualElement element)
             {
                 Translate = element.style.translate;
                 Scale = AuthoredTransform.Scale(element);
-                TransitionProperty = element.style.transitionProperty;
-                TransitionDuration = element.style.transitionDuration;
-                TransitionTiming = element.style.transitionTimingFunction;
+                TransitionProperty = MotionTweenTiming.Copy(element.style.transitionProperty);
+                TransitionDuration = MotionTweenTiming.Copy(element.style.transitionDuration);
+                TransitionTiming = MotionTweenTiming.Copy(element.style.transitionTimingFunction);
             }
         }
 

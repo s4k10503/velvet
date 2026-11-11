@@ -71,7 +71,9 @@ jobs:
           && github.event.workflow_run.event == 'pull_request'
           && contains(fromJSON('["Test", "Source generators"]'), github.event.workflow_run.name))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Above the wait for the hand-off's run and a stack member's merge wait together, which
+    # test_automerge.py holds it to.
+    timeout-minutes: 30
     permissions:
       contents: read
     # One merge run per pull request at a time, since each required workflow completing starts one.

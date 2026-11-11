@@ -426,6 +426,33 @@ class EditWhileAReadyPrSitsVerdicts(VerdictFixture):
         # Assert
         self.assertEqual(verdict, ALLOWED)
 
+    def test_Given_AWatcherThatExitedToReport_When_AnEditIsPosed_Then_ItAllows(self):
+        # Arrange — `settle.py watch --until-actionable` exits to wake its caller, so its process is
+        # gone while the caller acts on what it printed.
+        done = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
+                              capture_output=True, text=True, check=True)
+        stamp = f"{int(time.time())} {done.stdout.strip()}\n"
+        (self.home / ".velvet-pr-watch.heartbeat").write_text(stamp, encoding="utf-8")
+        (self.home / ".velvet-pr-watch.handed-off").write_text(stamp, encoding="utf-8")
+        tree = self.repository()
+
+        # Act
+        verdict, _ = self.pose(edit(tree / "README.md", "readme\n", "read me\n", tree), tree)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED)
+
+    def test_Given_NothingWatching_When_AnEditIsPosed_Then_ItRefuses(self):
+        # Arrange — the HOME holds no heartbeat.
+        tree = self.repository()
+
+        # Act
+        answer = self.pose(edit(tree / "README.md", "readme\n", "read me\n", tree), tree,
+                           "settle.py watch --until-actionable")
+
+        # Assert
+        self.assertEqual(answer, (REFUSED, True))
+
 
 class HandRolledPrPollerVerdicts(VerdictFixture):
     HOOK = "refuse/hand_rolled_pr_poller.py"
@@ -640,6 +667,25 @@ class MergeWithoutBranchDeletionVerdicts(VerdictFixture):
         # Arrange / Act
         verdict, _ = self.pose(bash("gh pr merge 42 --squash --delete-branch", self.root),
                                self.root)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED)
+
+
+class StackMergeByHandVerdicts(VerdictFixture):
+    HOOK = "refuse/stack_merge_by_hand.py"
+
+    def test_Given_AStackMergeTypedByHand_When_Posed_Then_ItRefuses(self):
+        # Arrange / Act — a refusal that does not say why answers None, which no verdict equals.
+        verdict, said = self.pose(bash("gh stack merge 1558 --yes --squash", self.root), self.root,
+                                  "merges every member of the stack")
+
+        # Assert
+        self.assertEqual(verdict if said else None, REFUSED)
+
+    def test_Given_AStackCommandThatMergesNothing_When_Posed_Then_ItAllows(self):
+        # Arrange / Act
+        verdict, _ = self.pose(bash("gh stack view", self.root), self.root)
 
         # Assert
         self.assertEqual(verdict, ALLOWED)

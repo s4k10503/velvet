@@ -281,7 +281,7 @@ namespace Velvet
         // Whether the box-shadow Tailwind composes for these classes is one the browser discards, which takes the
         // ring and every shadow-* with it: a ring or inset ring whose colour or width the browser rejects, a ring
         // offset colour it rejects beside an offset width, or a shadow-* or inset-shadow-* layer it rejects or whose
-        // colour it rejects (StyleShadowClass.TryReadBoxShadowClass). Each value is the one of the class that holds
+        // colour it rejects (StyleShadowClass.ReadBoxShadowClass). Each value is the one of the class that holds
         // its property (StyleShadowClass.BoxShadowSlot), which the composed class source puts last.
         internal static bool DiscardsBoxShadow(string[]? classNames) => ReadBoxShadow(classNames).Discards;
 
@@ -311,11 +311,13 @@ namespace Velvet
             var offset = default(BandSlots);
             var shadow = default(StyleShadowClass.BoxShadowSlot);
             var shadowColour = default(StyleShadowClass.BoxShadowSlot);
+            var shadowAlpha = default(StyleShadowClass.AlphaSlot);
             var insetShadow = default(StyleShadowClass.BoxShadowSlot);
             var insetShadowColour = default(StyleShadowClass.BoxShadowSlot);
+            var insetShadowAlpha = default(StyleShadowClass.AlphaSlot);
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
+                if (!OpensWithBoxShadowRoot(cls))
                 {
                     continue;
                 }
@@ -340,16 +342,33 @@ namespace Velvet
                 {
                     ReadBoxShadowPart(suffix!, "inset-ring", important, ref insetRing);
                 }
-                else if (!StyleShadowClass.TryReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour))
+                else if (core.StartsWith("shadow", StringComparison.Ordinal))
                 {
-                    StyleShadowClass.TryReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
-                        ref insetShadowColour);
+                    StyleShadowClass.ReadBoxShadowClass(core, "shadow", important, ref shadow, ref shadowColour, ref shadowAlpha);
+                }
+                else if (core.StartsWith("inset-shadow", StringComparison.Ordinal))
+                {
+                    StyleShadowClass.ReadBoxShadowClass(core, "inset-shadow", important, ref insetShadow,
+                        ref insetShadowColour, ref insetShadowAlpha);
                 }
             }
             var declared = ring.Width.Set || insetRing.Width.Set || shadow.Set || insetShadow.Set;
             return new BoxShadowReading(declared, declared && (ring.Discards || insetRing.Discards
-                || (offset.Width.Set && offset.Colour.Rejected) || StyleShadowClass.Discards(shadow, shadowColour)
-                || StyleShadowClass.Discards(insetShadow, insetShadowColour)));
+                || (offset.Width.Set && offset.Colour.Rejected) || StyleShadowClass.Discards(shadow, shadowColour, shadowAlpha)
+                || StyleShadowClass.Discards(insetShadow, insetShadowColour, insetShadowAlpha)));
+        }
+
+        // Whether cls, past a leading bang, opens with a root ReadBoxShadow reads, so that an important class opening with
+        // none of them is passed over before StripImportant copies its core. A root ReadBoxShadow comes to read is added
+        // here too.
+        private static bool OpensWithBoxShadowRoot(string cls)
+        {
+            var rest = cls.AsSpan();
+            rest = rest.Slice(rest.StartsWith("!".AsSpan(), StringComparison.Ordinal) ? 1 : 0);
+            return rest.StartsWith("ring".AsSpan(), StringComparison.Ordinal)
+                || rest.StartsWith("shadow".AsSpan(), StringComparison.Ordinal)
+                || rest.StartsWith("inset-ring".AsSpan(), StringComparison.Ordinal)
+                || rest.StartsWith("inset-shadow".AsSpan(), StringComparison.Ordinal);
         }
 
         // The width and colour slots of ring-*, inset-ring-* or ring-offset-*.
@@ -373,7 +392,9 @@ namespace Velvet
                 slots.Width.Offer(important, false);
                 return;
             }
-            if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            // A bracketed modifier closes a bracket of its own, which is not the value's.
+            if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) != -1
+                || !StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
                 // A modifier outside 0..100% makes the colour's color-mix() invalid; a palette name Velvet does not know
                 // is offered to neither slot.
@@ -696,7 +717,7 @@ namespace Velvet
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [<color>], whose type hint is the
         // colour branch's unless HintSelectsNonColour says otherwise for root, either one followed by an opacity
-        // modifier (ring-red-500/50, ring-offset-[#fff]/50) where the bracket is not the whole suffix.
+        // modifier (ring-red-500/50, ring-offset-[#fff]/50, ring-[#f00]/[50%]).
         private static bool TryParseColorValue(string root, string? suffix, bool longhand, out Color color)
         {
             color = default;
@@ -704,7 +725,9 @@ namespace Velvet
             {
                 return false;
             }
-            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
+            // A bracketed modifier closes a bracket of its own, which is not the value's.
+            if (StyleColorValueParser.ColorModifierSlashIndex(suffix, 0) == -1
+                && StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
                 return StyleArbitraryValueResolver.TrySplitTypeHint(inner, out var hint, out inner)
                     && !StyleColorValueParser.HintSelectsNonColour(root, hint)

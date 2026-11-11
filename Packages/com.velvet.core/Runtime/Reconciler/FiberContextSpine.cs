@@ -12,15 +12,15 @@ namespace Velvet
     // re-renders a setState / context-invalidated fiber in isolation (FiberWorkLoop.FlushState)
     // rather than re-walking from the root, so the cursor is empty at that point. This type performs the
     // "spine-rewalk-with-bailout" lazily: it walks the spine from the root down to the target fiber and,
-    // for each ancestor, structurally re-walks that ancestor's COMMITTED output
-    // (ComponentFiber.PreviousTree) to re-push exactly the Providers that enclose the next
-    // spine fiber — WITHOUT re-running any ancestor body (that is the bailout: clean ancestors contribute
-    // their committed Provider values for free). The target then renders with a correct live cursor and
+    // for each ancestor, structurally re-walks that ancestor's output (SpineWalk.OwnOutput says which
+    // array, and when a detached mount's captured nodes stand in for it) to re-push exactly the Providers
+    // that enclose the next spine fiber — WITHOUT re-running any ancestor body (that is the bailout). The
+    // target then renders with a correct live cursor and
     // Hooks.UseContext<T> reads the top of the stack.
     // The provider-enclosure search mirrors GeneralPathReconciler.ExpandInlineRecursive: an unkeyed
     // ComponentNode's position key is its slot in the child array it sits in under that array's
-    // WalkPosition, Fragment/Provider extend the current position, an element node opens a fresh walk
-    // for its children, and a Memo resolves to its committed inner.
+    // WalkPosition, Fragment/Provider extend the current position, and an element node opens a fresh walk
+    // for its children.
     // The registry's key narrows the reconstruction to the positions this fiber could occupy; it does
     // not on its own name which one, since it answers at every container holding that position.
     // MatchesInlineSpineChild owns what separates them. Both walkers derive every key through
@@ -60,17 +60,18 @@ namespace Velvet
             // Both are therefore constants of one edge rather than readings of where the descent has
             // got to, so the key resolves SpineChild at every container holding the same position and
             // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
-            // node instead, where WalksCommittedTree says that node can be compared. Two occurrences a
+            // node instead, where OwnOutput says that node can be compared. Two occurrences a
             // declaring body builds from one shared node instance are one node, so those stay
             // unseparated and the walk still takes the first.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
 
-            // Whether the nodes being walked are Ancestor's current PreviousTree. False for a detached
-            // mount's captured DescendantNodes, which is stamped onto a fiber only on the drain that
-            // created it — so after the declaring body renders again that array still holds the nodes
-            // of the render that captured it, which ComponentFiber.SourceNode no longer names.
-            internal bool WalksCommittedTree { get; init; }
+            // The array being walked where it is Ancestor's own output: its ReconcilingTree where it has one, else
+            // its PreviousTree. Null for a detached mount's captured DescendantNodes, which is
+            // stamped onto a fiber only on the drain that created it — so after the declaring body renders again
+            // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
+            // longer names.
+            internal VNode?[]? OwnOutput { get; init; }
             // One per Push, cleared at each edge. An element's children are reconciled by a new walk,
             // so PushScope starts their occurrence count over where that walk's claim does.
             internal InlineKeyClaims Claims { get; init; }
@@ -112,7 +113,7 @@ namespace Velvet
             var ctx = target.Reconciler?.Context;
             if (ctx == null || target.Parent == null) return default;
 
-            // Build the spine root -> target's parent. Each entry's committed tree contributes the
+            // Build the spine root -> target's parent. Each entry contributes the
             // Providers enclosing the NEXT entry down (or the target at the deepest entry).
             List<ComponentFiber>? spine = null;
             for (var f = target.Parent; f != null; f = f.Parent)
@@ -129,14 +130,14 @@ namespace Velvet
             var memoCache = ctx.FiberMemoCache;
             var claims = new InlineKeyClaims();
 
-            // For each spine edge (ancestor -> child), re-push the Providers in the ancestor's committed
-            // tree that enclose `child`. The deepest ancestor encloses `target` itself.
+            // For each spine edge (ancestor -> child), re-push the Providers in the ancestor's output
+            // that enclose `child`. The deepest ancestor encloses `target` itself.
             //
             // INLINE-mounted spine children match the canonical wrapper-less Component path: a
-            // ComponentNode in the ancestor's committed tree resolves to `child` via the registry's
+            // ComponentNode in the ancestor's output resolves to `child` via the registry's
             // tree-position keying. A WRAPPER-mounted spine child is hosted by a wrapper-emitting node
             // whose container VE is the child's MountPoint; the providers enclosing that container in the
-            // ancestor's committed tree are the ones that enclose it.
+            // ancestor's output are the ones that enclose it.
             for (var i = 0; i < spine.Count; i++)
             {
                 claims.Clear();
@@ -145,7 +146,7 @@ namespace Velvet
 
                 // Detached-mount top-level child (a Portal's drained children, or a VirtualList's
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
-                // `ancestor`'s committed tree hides this child behind a wrapper-emitting leaf the canonical
+                // `ancestor`'s output hides this child behind a wrapper-emitting leaf the canonical
                 // descent skips (see the default arm of PushEnclosingProvidersForNode, which is where both
                 // kinds of host land). Rebuild from the captured snapshot instead: push the context that enclosed
                 // the detached mount as the base, then — when descendant VNodes were captured (Portal) — walk
@@ -179,7 +180,7 @@ namespace Velvet
                             IsInlineSpineChild = true,
                             PortalScope = detachedScope,
                             Container = detachedContainer,
-                            WalksCommittedTree = false,
+                            OwnOutput = null,
                             Claims = claims,
                         };
                         // A VirtualList item is one rendered node rather than a reconciled child array.
@@ -193,7 +194,7 @@ namespace Velvet
                     continue;
                 }
 
-                var tree = ancestor.PreviousTree;
+                var tree = ancestor.ReconcilingTree ?? ancestor.PreviousTree;
                 if (tree == null || tree.Length == 0) continue;
 
                 var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
@@ -210,7 +211,7 @@ namespace Velvet
                     IsInlineSpineChild = isInline,
                     PortalScope = childScope,
                     Container = childContainer,
-                    WalksCommittedTree = true,
+                    OwnOutput = tree,
                     Claims = claims,
                 };
                 PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
@@ -240,7 +241,7 @@ namespace Velvet
             }
         }
 
-        // Walks nodes (one reconcile scope of ancestor's committed
+        // Walks nodes (one reconcile scope of ancestor's
         // output) depth-first, pushing each Provider before descending its children. Returns true once the
         // node that hosts spineChild is reached — its enclosing Providers stay pushed
         // (recorded in pushed). The host node is a ComponentNode resolving to
@@ -322,7 +323,7 @@ namespace Velvet
 
                 default:
                     // Reaching a wrapper-emitting leaf (Portal / VirtualList) here means it sits in this
-                    // ancestor's committed tree but does NOT host the spine child being searched for. A
+                    // ancestor's output but does NOT host the spine child being searched for. A
                     // detached mount that DID host it (a Portal's drained children, a VirtualList's items)
                     // is handled before this walk — see the DetachedMountContext branch in Push, which
                     // rebuilds the enclosing context from the captured snapshot instead of descending the
@@ -379,8 +380,8 @@ namespace Velvet
             var occurrence = component.Key is { } explicitKey
                 ? walk.Claims.Claim(position.SlotPath, explicitKey, identity)
                 : 0;
-            if (walk.WalksCommittedTree
-                && ReferenceEquals(walk.SpineChild.SourceTree, walk.Ancestor.PreviousTree)
+            if (walk.OwnOutput != null
+                && ReferenceEquals(walk.SpineChild.SourceTree, walk.OwnOutput)
                 && !ReferenceEquals(component, walk.SpineChild.SourceNode))
             {
                 return false;
@@ -412,8 +413,6 @@ namespace Velvet
             return false;
         }
 
-        // Follow whichever subtree (children vs fallback) was committed last render so the
-        // reconstruction matches the live DOM/fiber layout.
         private static bool PushSuspenseSubtree(
             SuspenseNode suspense,
             int nodeIndex,
@@ -494,7 +493,7 @@ namespace Velvet
         // FiberNodeFactory.PresenceChildMapKey assigns, so the ComponentNode arm matches the spine child
         // and the enclosing Providers / MotionContext stay pushed. Only currently-present children are
         // walked (not still-exiting ghosts): the covered case is an isolated re-render of a
-        // persisting descendant. Mirrors the Suspense arm (descend the committed subtree).
+        // persisting descendant. Mirrors the Suspense arm.
         private static bool PushPresenceChildren(
             AnimatePresenceNode presence,
             int nodeIndex,

@@ -1,5 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -69,6 +71,11 @@ namespace Velvet
 
             public FaceImage? Image;
             public bool Clips;
+            // The image slot holds what WrittenImage records, as the getter reads it: Hidden's pixel, the clip, or, with no
+            // image to hide, the element's own. Until it does, the slot holds the element's own value, which the getter
+            // reads as none where it is a keyword or a RenderTexture, so it is compared as InlineImage reads it instead
+            // (Given_AClippingFaceNotYetClipped_When_ItsInlineRenderTextureIsRemoved_Then_NoImageIsHandedBack).
+            public bool Settled;
             // Something else wrote an image or placement slot, or clipping began, since the clip's slots were written.
             public bool RewriteClip;
             // The callback list as this last left it, with the face first.
@@ -160,7 +167,7 @@ namespace Velvet
         {
             if (!s_states.TryGetValue(element, out var state))
             {
-                if (!TryReadImage(OwnLayer(element, new InlineSlots().Take(element.style)), element.resolvedStyle, out _)) return false;
+                if (!TryReadImage(OwnLayer(element, new InlineSlots().Take(element)), element.resolvedStyle, out _)) return false;
                 state = Begin(element);
             }
             else if (state.Tail != null)
@@ -243,7 +250,10 @@ namespace Velvet
                 color.Carry.Land(drawn);
             }
             var style = element.style;
-            state.Own.Take(style);
+            state.Own.Take(element);
+            // MUTANT_SURVIVES(equivalent, line removed): SyncImage compares the slot through InlineImage until it settles
+            // the slot, which writes WrittenImage; before then only WrittenElsewhere reads it, where a default value only
+            // has a panel update start the SyncImage the next pass runs anyway.
             state.WrittenImage = style.backgroundImage;
             state.WrittenPositionX = style.backgroundPositionX;
             state.WrittenPositionY = style.backgroundPositionY;
@@ -261,8 +271,6 @@ namespace Velvet
         {
             state.Tail!.Pause();
             state.Tail = null;
-            var style = element.style;
-            state.Own.Image = state.WrittenImage = style.backgroundImage;
             state.RewriteClip = true;
             InsertFirst(element, state);
             state.Guard?.Resume();
@@ -271,7 +279,7 @@ namespace Velvet
         // The projection's pass runs every StyleAnimateDriver.TickMs and a write lands at any time, so a slot something
         // else wrote is taken back here, at each update of the panel, rather than left to that pass: until the clip is
         // written back over the image slot, the element clips to its native, unrounded box
-        // (Given_AnOverflowHiddenRoundedLayoutIdMotionHeldByItsDelay_When_ItsInlineBackgroundImageChanges_Then_ItsChildStaysClippedAtTheCircle).
+        // (Given_AClippingRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_AnImageIsWrittenInlineBetweenItsPasses_Then_TheClipIsWrittenBackAtTheNextPanelUpdate).
         private static void Reassert(VisualElement element, State state)
         {
             if (state.Tail != null || !WrittenElsewhere(element.style, state)) return;
@@ -395,13 +403,17 @@ namespace Velvet
         // Takes back each image slot something else wrote since this did, and reads whether the element clips its content
         // now; reads the element's own image off its own slots and, beneath them, its rules. Where it clips, a slot
         // something else wrote has the clip's written over it again (SyncClip); where it does not, the image slot holds
-        // none and the placement slots its own. False where the element's own image is one this does not paint.
+        // Hidden's pixel where the face paints an image, and the placement slots their own. False where the element's own
+        // image is one this does not paint.
         private static bool SyncImage(VisualElement element, State state)
         {
             var style = element.style;
             var own = state.Own;
             var foreign = false;
-            if (style.backgroundImage != state.WrittenImage) (own.Image, foreign) = (style.backgroundImage, true);
+            if (state.Settled ? style.backgroundImage != state.WrittenImage : InlineImage(element) != own.Image)
+            {
+                (own.Image, foreign) = (InlineImage(element), true);
+            }
             if (style.backgroundPositionX != state.WrittenPositionX) (own.X, foreign) = (style.backgroundPositionX, true);
             if (style.backgroundPositionY != state.WrittenPositionY) (own.Y, foreign) = (style.backgroundPositionY, true);
             if (style.backgroundRepeat != state.WrittenRepeat) (own.Repeat, foreign) = (style.backgroundRepeat, true);
@@ -412,8 +424,81 @@ namespace Velvet
             if (clips && (foreign || !state.Clips)) state.RewriteClip = true;
             if (!clips && state.Clips) HandBackPlacement(element, state);
             state.Clips = clips;
-            if (!clips) style.backgroundImage = state.WrittenImage = new StyleBackground(StyleKeyword.None);
+            if (clips) return true;
+            // With no image of the element's own the slot is left as it is, since the element's own placement draws the
+            // pixel, a tile to every pixel of the box under `background-repeat: repeat` and `background-size: auto`
+            // (Given_ARoundedLayoutIdMotionWithNoImageDrawnScaledDifferentlyOnEachAxis_When_ItsFaceIsPainted_Then_ItsImageSlotIsLeftAlone).
+            if (image != null) style.backgroundImage = Hidden();
+            state.WrittenImage = style.backgroundImage;
+            state.Settled = true;
             return true;
+        }
+
+        // A clear pixel only this writes, which hides the native image of an element that does not clip while the face
+        // paints its image: any other value in that slot, a keyword included, was written elsewhere
+        // (Given_ARoundedLayoutIdMotionWithAnImageOverrideDrawnScaledDifferentlyOnEachAxis_When_ItsOverrideTurnsToNoneMidMove_Then_NoImageIsHandedBack).
+        private static Texture2D? s_hidden;
+
+        private static StyleBackground Hidden()
+        {
+            if (s_hidden == null)
+            {
+                s_hidden = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
+                s_hidden.SetPixel(0, 0, Color.clear);
+                s_hidden.Apply();
+            }
+            return new StyleBackground(s_hidden);
+        }
+
+        private static readonly InlineEntryReader? s_inlineEntries = InlineEntryReader.Resolve();
+
+        // The element's inline background image: the style's own reading where that names an image, else the entry's
+        // RenderTexture or keyword, which that reading gives as StyleKeyword.Null as it gives no entry at all
+        // (Given_ARenderTextureImagedRoundedLayoutIdMotionDrawnScaledDifferentlyOnEachAxis_When_ItsMoveLands_Then_ItsImageIsHandedBack).
+        private static StyleBackground InlineImage(VisualElement element)
+        {
+            var read = element.style.backgroundImage;
+            return read.keyword == StyleKeyword.Null && s_inlineEntries != null ? s_inlineEntries.Read(element, read) : read;
+        }
+
+        // The engine's own lookup of an element's inline background-image entry; none where a member it reads is not there.
+        private sealed class InlineEntryReader
+        {
+            private readonly FieldInfo _access;
+            private readonly MethodInfo _tryGet;
+            private readonly FieldInfo _keyword;
+            private readonly FieldInfo _resource;
+            private readonly object?[] _args;
+
+            private InlineEntryReader(FieldInfo access, MethodInfo tryGet, FieldInfo keyword, FieldInfo resource, object id)
+            {
+                (_access, _tryGet, _keyword, _resource) = (access, tryGet, keyword, resource);
+                _args = new[] { id, System.Activator.CreateInstance(keyword.DeclaringType!) };
+            }
+
+            public static InlineEntryReader? Resolve()
+            {
+                var access = EngineMember.ElementInlineStyleAccess.ResolveField();
+                var tryGet = EngineMember.StyleValueCollectionTryGetValue.ResolveMethod();
+                var keyword = EngineMember.StyleValueKeyword.ResolveField();
+                var resource = EngineMember.StyleValueResource.ResolveField();
+                var id = EngineMember.BackgroundImagePropertyId.ResolveField()?.GetValue(null);
+                if (access == null || tryGet == null || keyword == null || resource == null || id == null) return null;
+                return tryGet.DeclaringType!.IsAssignableFrom(access.FieldType)
+                    ? new InlineEntryReader(access, tryGet, keyword, resource, id)
+                    : null;
+            }
+
+            public StyleBackground Read(VisualElement element, StyleBackground none)
+                => (bool)_tryGet.Invoke(_access.GetValue(element), _args) ? EntryOf(_args[1]!) : none;
+
+            private StyleBackground EntryOf(object entry)
+            {
+                var handle = (GCHandle)_resource.GetValue(entry);
+                var texture = handle.IsAllocated ? handle.Target as RenderTexture : null;
+                return texture != null ? new StyleBackground(Background.FromRenderTexture(texture))
+                    : new StyleBackground((StyleKeyword)_keyword.GetValue(entry));
+            }
         }
 
         // The placement slots back to the element's own, which no longer place a clip.
@@ -435,9 +520,10 @@ namespace Velvet
             public StyleBackgroundRepeat Repeat;
             public StyleBackgroundSize Size;
 
-            public InlineSlots Take(IStyle style)
+            public InlineSlots Take(VisualElement element)
             {
-                (Image, X, Y) = (style.backgroundImage, style.backgroundPositionX, style.backgroundPositionY);
+                var style = element.style;
+                (Image, X, Y) = (InlineImage(element), style.backgroundPositionX, style.backgroundPositionY);
                 (Repeat, Size) = (style.backgroundRepeat, style.backgroundSize);
                 return this;
             }
@@ -557,6 +643,7 @@ namespace Velvet
             state.RewriteClip = false;
             var style = element.style;
             style.backgroundImage = state.WrittenImage = Background.FromVectorImage(image);
+            state.Settled = true;
             style.backgroundPositionX = state.WrittenPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, 0f);
             style.backgroundPositionY = state.WrittenPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, 0f);
             style.backgroundRepeat = state.WrittenRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);

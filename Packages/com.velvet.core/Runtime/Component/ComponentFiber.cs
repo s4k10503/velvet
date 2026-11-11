@@ -186,7 +186,17 @@ namespace Velvet
         /// caught it. Cleared where a pass of this fiber next commits its tree, and where a resource of that
         /// fiber resolves and asks for the retry — see <c>FiberRenderer.NotifyAsyncResourceCompleted</c>.
         /// </summary>
-        internal ComponentFiber? SuspendedOn { get; set; }
+        internal ComponentFiber? SuspendedOn
+        {
+            get => _suspendedOn;
+            set
+            {
+                _suspendedOn = value;
+                if (value != null) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private ComponentFiber? _suspendedOn;
 
         // Set on a fiber a suspended mount abandoned
         // (ComponentRegistry.DiscardSuspendedMountUnder); it waits for its reader's resolve to ask for the retry,
@@ -199,7 +209,22 @@ namespace Velvet
         /// because a flush that visits dirty fibers would render a component the pass mounted before the parent
         /// that places it has.
         /// </summary>
-        internal bool RenderOwed { get; set; }
+        internal bool RenderOwed
+        {
+            get => _renderOwed;
+            set
+            {
+                _renderOwed = value;
+                if (value) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private bool _renderOwed;
+
+        // Set on each ancestor of a fiber that takes work of its own (FiberPendingWork.MarkAncestors), and cleared
+        // only by FiberPendingWork when it finds nothing pending below, as React clears childLanes. A set bit
+        // may be stale; a clear one is not: every ancestor of a fiber with pending work carries it.
+        internal bool PendingWorkBelow { get; set; }
 
         // Whether the pass SuspendedOn names was a transition's, which the retry then renders on the Transition lane.
         internal bool SuspendedInTransition { get; set; }
@@ -435,7 +460,17 @@ namespace Velvet
         /// Whether re-render is needed at the next FlushState (an update was requested via Hook setter / dispatch /
         /// store subscription). Marks the fiber dirty so it is re-rendered on the next flush.
         /// </summary>
-        public bool IsDirty { get; internal set; }
+        public bool IsDirty
+        {
+            get => _isDirty;
+            internal set
+            {
+                _isDirty = value;
+                if (value) FiberPendingWork.MarkAncestors(this);
+            }
+        }
+
+        private bool _isDirty;
 
         /// <summary>
         /// Whether the component is already disposed. Used as a no-op guard on paths such as calling a setter
@@ -812,6 +847,11 @@ namespace Velvet
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
+        // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
+        // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
+        // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.
+        internal VNode?[]? ReconcilingTree { get; set; }
+
         /// <summary>
         /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
         /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
@@ -819,7 +859,7 @@ namespace Velvet
         /// fixed the ancestor's <see cref="PreviousTree"/>, because a render whose output is discarded has
         /// already written its nodes onto the children it reached. <see cref="SourceTree"/> is what pairs the
         /// two, and <see cref="FiberContextSpine"/> compares nodes only where they pair and only while
-        /// descending a committed tree; its <c>SpineWalk</c> owns the second of those conditions.
+        /// descending the ancestor's own output; its <c>SpineWalk</c> owns the second of those conditions.
         /// </summary>
         internal ComponentNode? SourceNode { get; set; }
 
@@ -832,7 +872,8 @@ namespace Velvet
         /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
         /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
         /// that render's output was committed AND reached this fiber, which is what
-        /// <see cref="FiberContextSpine"/> tests before comparing nodes: a render whose output was discarded
+        /// <see cref="FiberContextSpine"/> tests before comparing nodes, against <see cref="ReconcilingTree"/>
+        /// instead where the fiber above has one: a render whose output was discarded
         /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
         /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
         /// </summary>
@@ -1115,6 +1156,7 @@ namespace Velvet
             child.Parent = this;
             child.Sibling = null;
             child._previousSibling = _lastChild;
+            if (child.PendingWorkBelow || FiberPendingWork.IsPendingItself(child)) FiberPendingWork.MarkAncestors(child);
 
             if (_lastChild == null)
             {

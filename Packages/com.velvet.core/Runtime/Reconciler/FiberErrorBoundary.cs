@@ -93,9 +93,22 @@ namespace Velvet
         {
             info = null;
             if (fiber.Reconciler == null) return false;
+            var cursor = fiber.Reconciler.Context.ComponentContextStack;
             var fallback = RenderFallback(fiber, throwingFiber, originalException, out info);
             if (fallback == null) return false;
-            return ShowFallbackTree(fiber, new[] { fallback });
+            // The fallback renders where the boundary is, so it reads the Providers above the boundary rather than
+            // what the cursor holds where the error was caught, inside its subtree. The spine is dropped with the
+            // cursor it was pushed onto rather than unwound.
+            var caughtUnder = cursor.SetAside();
+            _ = FiberContextSpine.Push(fiber);
+            try
+            {
+                return ShowFallbackTree(fiber, new[] { fallback });
+            }
+            finally
+            {
+                cursor.Restore(caughtUnder);
+            }
         }
 
         // Reconciles fallbackTree over the boundary's own rows and commits it as the boundary's tree; false where
@@ -252,8 +265,9 @@ namespace Velvet
                 ctx.DropCompletions(failedCompletions);
                 // Only a pass on the stack has sibling work left for the abort to stop. Set outside one, the flag
                 // outlives the catch, and a pass starting while it is still set discards its whole reconcile —
-                // CommitPhaseCatchAbortLeakTests holds that.
-                if (ctx.SharedReconcileDepth > 0) fiber.Reconciler.SetAborted();
+                // CommitPhaseCatchAbortLeakTests holds that. A VirtualList range's bracket adds a depth that is no pass
+                // here (ReconcilerContext.RangeBracketDepth).
+                if (ctx.SharedReconcileDepth > ctx.RangeBracketDepth) fiber.Reconciler.SetAborted();
                 RecordCatch(ctx, fiber, exception, info!);
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;

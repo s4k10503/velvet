@@ -704,11 +704,10 @@ result reading `IsStale` turns stale with it. `IsFetching` and `Hooks.UseIsFetch
 that are `Fetching`, a paused one left out.
 
 **Several queries in one hook.** `UseQueries` reads each query of its list as `UseQuery` would and returns the
-results in the list's order, so the number of queries can change between renders. A query keeps its observer
-while some query of the list reads the same entry, whatever its position, as v5 matches observers by
-`queryHash`, and queries of one list over one entry share one observer, as v5's map of them keeps one, whatever
-each makes of the entry's data: each query's result is its own, from its own `Select`, as v5's
-`getOptimisticResult(options)` runs for each query on that observer; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
+results in the list's order, so the number of queries can change between renders. The queries over one entry are
+handed the observers held over it in the list's order, the first to the first, whatever their positions and whatever
+each makes of the entry's data, and one none is left for gets a new one, as v5 hands out its list of the observers of a
+`queryHash` in order. Each query's result is its own, from its own `Select`; a query leaving the list leaves its entry, and a commit whose list holds two queries over one
 entry logs a warning, in the Editor and a development build, as v5 warns outside production. Two to four
 queries passed as their own arguments keep their own data types, and the hook returns a tuple of their results
 or hands `combine` each result as its own argument; a list built at run time holds queries of one type. A
@@ -718,7 +717,9 @@ query whose error its `ThrowOnError` throws is thrown from the hook. With a `com
 makes of the results: it runs again only when a query's result has changed, the queries' keys have changed or
 it is another instance, what it returns keeps the previous instance where the two are deeply equal, and the
 component re-renders only when that instance changes, or without running it while a suspending query holds no
-data, as v5's `shouldSkipCombine` does. `UseSuspenseQueries` takes each query as
+data, as v5's `shouldSkipCombine` does. A change to one query hands `combine` its new result and each other query's
+as the hook last committed or notified it, as v5's `#onUpdate` replaces its own alone, so a change a query's
+`NotifyOnChangeProps` leaves out reaches `combine` once a commit follows. `UseSuspenseQueries` takes each query as
 `UseSuspenseQuery` does: a render with any result pending starts each pending query's request and suspends
 until all of them hold data or have settled.
 
@@ -1115,7 +1116,7 @@ VEL600 is a compile-time warning at each `V.*` factory call building a node with
 | `useCallback(fn, deps)` | `Hooks.UseCallback(fn, deps)` | Returns a stable delegate while deps are unchanged |
 
 > **Note — Two memoization axes**  
-> `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in). A component that is not memoized and sits in a bailed component's output is not re-rendered by the parent's re-render either, since the node it was given is the one it last rendered from; as in React, only an update of its own renders it.  
+> `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in). A component that is not memoized is not re-rendered by its parent's re-render either when the parent hands it the node it last rendered from — a node in a bailed component's output, or one the inner automatic memoization below returned from its cache; as in React, it renders again only for work of its own, such as an update or a change to a context it reads.  
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on the component's props and hook-derived inputs, compared per [§1-4](#1-4-what-a-dependency-list-means). No annotation needed. `ComponentAttribute.Compiler` states what a render whose inputs compare equal shows, and which components are left unwoven. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).
 >
 > **Velvet deviation:** the scopes are cut at calls that build a `VNode`, not at every expression. React Compiler caches any value a scope computes; here a computation that does not end in a `VNode` — a LINQ query, a formatted string — is recomputed whenever the scope reading it, or the body as a whole, misses. A props record is keyed by the members the scope reads where they are fields or automatic properties; any other read keys the scope on the record, and a parent's re-run builds a fresh one. [memoization.md](memoization.md#automatic-memoization-of-a-component-body) states what a scope is, what keeps one from being cached, and how to read the report listing what was left out. To keep other work cached across a change, split it out by hand: `V.Memoized(factory, deps)`, `Hooks.UseMemo`, or a child component declared `[Component(Memoize = true)]` (or mounted through `V.Memo`).

@@ -11,8 +11,10 @@ import collections
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,7 +43,7 @@ settle = load_module()
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
-            runs_failed=(), required=()):
+            runs_failed=(), required=(), stack_below=(), stack_settings=None, stack_tangles=()):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -50,7 +52,8 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                merge_state=merge_state, fork=fork, failing_runs=failing_runs,
                                behind_release=behind_release, long_lived_head=long_lived_head,
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
-                               required=required)
+                               required=required, stack_below=stack_below,
+                               stack_settings=stack_settings, stack_tangles=stack_tangles)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -205,7 +208,8 @@ class MergeDecisionTests(unittest.TestCase):
 # base commits the head contains, which is what the red-base exemption asks of it.
 Fabricated = collections.namedtuple(
     "Fabricated",
-    "sha after branch base draft merge_state results holds held fork labels runs state jobs")
+    "sha after branch base draft merge_state results holds held fork labels runs state jobs stack "
+    "tangled")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
@@ -262,13 +266,13 @@ REQUIRED = ("Required checks (Unity)",)
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds=(),
               held=False, moved=False, fork=False, base="main", branch=None, labels=(), runs=(),
-              state="open", jobs=None):
+              state="open", jobs=None, stack=None, tangled=None):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=branch or f"topic-{number}",
                       base=base,
                       draft=draft, merge_state=merge_state, results=results, holds=holds,
                       held=held, fork=fork, labels=frozenset(labels), runs=list(runs), state=state,
-                      jobs=jobs or {})
+                      jobs=jobs or {}, stack=stack, tangled=tangled)
 
 
 def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
@@ -285,8 +289,60 @@ def base_state(held, base, red=(RED,), releasing=(RELEASING,), required=None):
                                  required=(required or {}).get(base, REQUIRED))
 
 
+def holder(state):
+    """The linked worktree `state.held` says holds its branch, at the head the poll reads last.
+    `fabricated_readings` answers it clean only where `held` is `CLEAN`."""
+    return settle.Worktree(f"/trees/{state.branch}", state.after, False, False)
+
+
+# A `held` value for a holder `settle.holder_state` finds nothing against: clean, at the head.
+CLEAN = "clean"
+
+
+# What the repository's settings a stack member's merge relies on answer in the tables below,
+# unless a case hands `fabricated_readings` another answer.
+STACK_SETTINGS = (True,)
+
+
+def in_stack(number, base="main"):
+    """The stack a `fabricate` entry sits in. The attributes the decision reads rather than
+    settle.Stack itself, for the reason `fabricated_readings` gives about the pull request."""
+    return types.SimpleNamespace(number=number, base=base)
+
+
+def members(states, stack):
+    """What the Stacks API lists for `stack` over a table: its entries in ascending number, which
+    is bottom first in every table below."""
+    return [{"number": number, "state": "open" if state.state == "open" else "closed",
+             "draft": state.draft,
+             "merged_at": "2026-11-11T00:00:00Z" if state.state == "merged" else None}
+            for number, state in sorted(states.items())
+            if state.stack is not None and state.stack.number == stack]
+
+
+# The way back a refusal over a stack that is not linear names, spelled out rather than read from
+# settle, so a refusal that stopped naming it reddens the cases quoting it.
+REBASE_SENTENCE = ("Rebase it with `gh stack rebase`, then push it with `gh stack push`, which "
+                   "force-pushes each branch with a lease; the rebase moves the branch of each clean "
+                   "worktree holding a member, so leave every such worktree clean, or remove it, first")
+
+
+def tangles(states, base, listed):
+    """What `settle.stack_tangles` answers over a table: each open, unmerged entry whose `tangled` is
+    set, as its `how`, beside what sits below it the way the real reading names it."""
+    found, below = [], base
+    for entry in listed:
+        if entry["merged_at"] or entry["state"] != "open":
+            continue
+        if states[entry["number"]].tangled:
+            found.append((entry["number"], below, states[entry["number"]].tangled))
+        below = f"#{entry['number']}"
+    return tuple(found)
+
+
 @contextlib.contextmanager
-def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None):
+def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None,
+                        settings=STACK_SETTINGS):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
@@ -305,7 +361,11 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("pull_request", lambda _project, number: types.SimpleNamespace(
                 sha=states[number].sha, branch=states[number].branch, base=states[number].base,
                 draft=states[number].draft, merge_state=states[number].merge_state,
-                fork=states[number].fork, labels=states[number].labels, state=states[number].state)),
+                fork=states[number].fork, labels=states[number].labels, state=states[number].state,
+                stack=states[number].stack)),
+            ("stack_members", lambda _project, stack: members(states, stack)),
+            ("stack_settings", lambda _project: settings),
+            ("stack_tangles", lambda _project, base, listed: tangles(states, base, listed)),
             ("checks", lambda _project, sha, *_, **__: by_sha[sha].results),
             ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
@@ -314,8 +374,11 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
             ("contains_commit", lambda _project, branch, sha: (
                 _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
                 else sha in by_branch[branch].holds)),
+            ("worktree_clean", lambda path: any(
+                state.held == CLEAN for state in states.values()
+                if f"/trees/{state.branch}" == str(path))),
             ("project_state", lambda _project, base: base_state(
-                {state.branch for state in states.values() if state.held}, base, red,
+                {state.branch: [holder(state)] for state in states.values() if state.held}, base, red,
                 releasing, required)),
         ):
             # `create`, so the table is posed to a settle that has not got a reading as well.
@@ -355,7 +418,10 @@ def poll(states, listing_answers=True):
             for name, path in (("READY_STATE", ready_state),
                                ("HEARTBEAT", heartbeat),
                                ("LOCK", Path(directory) / "lock"),
-                               ("ASKED", Path(directory) / "asked")):
+                               ("ASKED", Path(directory) / "asked"),
+                               ("HANDED_OFF", Path(directory) / "handed_off"),
+                               ("REPORTED", Path(directory) / "reported"),
+                               ("ACTIONABLE", Path(directory) / "actionable")):
                 # `create` so the redirect survives being carried onto a tree without the name, where
                 # the alternative is a case that stops before it disagrees.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name, path, create=True))
@@ -419,6 +485,8 @@ class ReadinessTests(unittest.TestCase):
         18: fabricate(18, runs=[campaign_run(1, None, status="in_progress")]),
         19: fabricate(19, runs=(TEST_PENDING,)),
         20: fabricate(20, results=GENERATOR_CHECKS),
+        21: fabricate(21, stack=in_stack(70)),
+        22: fabricate(22, stack=in_stack(70), base="topic-21"),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -596,7 +664,7 @@ class ExpectedCheckTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for name, answer in (("gh_git", lambda *_: ""),
                                  ("repository", lambda *_: "owner/name"),
-                                 ("worktree_branches", lambda *_: set()),
+                                 ("worktrees", lambda *_: {}),
                                  ("rest_json", lambda path: answers[path] if "/rules/" in path
                                   else {"workflow_runs": []}),
                                  ("release_commit", lambda *_: None)):
@@ -790,9 +858,9 @@ class FakeClock:
 
 
 # How a run of `watch` ended: its exit code, or None where it was still polling when the clock gave
-# up, how many polls it took, what it printed on the way out, whether the lock was free by then, and
-# the ready record it left.
-Watched = collections.namedtuple("Watched", "code polls output lock_released ready")
+# up, how many polls it took, what it printed on the way out, whether every lock it took was free by
+# then, the ready record it left, and the actionable lines it left for a follower.
+Watched = collections.namedtuple("Watched", "code polls output lock_released ready actionable")
 
 
 def keeping_the_lock(handles):
@@ -810,20 +878,54 @@ def keeping_the_lock(handles):
 # retires has stopped before it.
 CLOCK_BOUND = 180
 
+# Who an `--until-actionable` run in `watch_until` reports to, unless a case names another.
+CALLER = "caller-a"
+
 
 def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
-                states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None):
+                states=None, bound=CLOCK_BOUND, seed_ready_at=None, seed_asked=None,
+                until_actionable=False, seed_reported=None, readings=(), required=None,
+                holder=False, holder_stops_after=None, seed_actionable=None, caller=CALLER,
+                reported_by=None, home=None, holder_beats=False):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
     `asked` sends the record somewhere else, for a case about it not being written; `bound` is how
     many polls the clock allows before it gives up. The `seed_` arguments write what a watcher that
-    has already stopped leaves behind: its ready record, when that record was written, and the
-    record of the last read.
+    has already stopped leaves behind: its ready record, when that record was written, the
+    record of the last read, and the record of what an `--until-actionable` run exited over.
+    `readings` are (name, wrap) pairs: each reading is replaced by what `wrap` makes of the
+    fabricated one; `required` is what `fabricated_readings` takes by that name.
+
+    `holder` starts another process holding the lock, beating at the clock's start, and
+    `holder_stops_after` ends it after that many polls; `seed_actionable` is the text that process
+    left for a follower. An `--until-actionable` run reports to `caller`, and to a token of its own
+    where that is None; `seed_reported` is what `reported_by`, by default that same caller, was
+    already told. `home` holds the watcher's files where a case runs twice over one set of them.
+    `holder_beats` has the holder write its heartbeat at every poll, as a live watcher does.
     """
-    clock = FakeClock(bound, between_polls)
     printed = io.StringIO()
     handles = []
-    with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory:
+    with contextlib.ExitStack() as holding:
+        directory = home or holding.enter_context(
+            tempfile.TemporaryDirectory(prefix="settle-retire-"))
+        other = None
+        if holder:
+            other = holding.enter_context(another_watcher_holding(Path(directory) / "lock"))
+            (Path(directory) / "heartbeat").write_text(f"{CLOCK_START} {other.pid}\n",
+                                                       encoding="utf-8")
+        if seed_actionable is not None:
+            (Path(directory) / "actionable").write_text(seed_actionable, encoding="utf-8")
+
+        def between(now):
+            if other is not None and clock.polls == holder_stops_after:
+                other.kill()
+                other.wait()
+            if other is not None and holder_beats and other.poll() is None:
+                (Path(directory) / "heartbeat").write_text(f"{int(now)} {other.pid}\n",
+                                                           encoding="utf-8")
+            if between_polls is not None:
+                between_polls(now)
+        clock = FakeClock(bound, between)
         ready_state = Path(directory) / "ready_state"
         if isinstance(seed_ready, bytes):
             ready_state.write_bytes(seed_ready)
@@ -837,33 +939,49 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             (Path(directory) / "asked").write_bytes(seed_asked)
         elif seed_asked is not None:
             (Path(directory) / "asked").write_text(f"{int(seed_asked)}\n", encoding="utf-8")
-        with fabricated_readings({1: fabricate(1)} if states is None else states) as stack:
-            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED"):
+        with fabricated_readings({1: fabricate(1)} if states is None else states,
+                                 required=required) as stack:
+            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED", "HANDED_OFF", "REPORTED",
+                         "ACTIONABLE"):
                 # `create` for the reason `poll` gives over the same redirect.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name,
                                                       Path(directory) / name.lower(), create=True))
             if asked is not None:
                 stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED", asked,
                                                       create=True))
+            if seed_reported is not None:
+                record = settle.watcher_state.reported_record(reported_by or caller)
+                record.parent.mkdir(parents=True, exist_ok=True)
+                record.write_text(seed_reported, encoding="utf-8")
             if not listing_answers:
                 stack.enter_context(mock.patch.object(settle, "open_pull_requests",
                                                      refuse_to_answer))
+            for name, wrap in readings:
+                stack.enter_context(mock.patch.object(settle, name, wrap(getattr(settle, name))))
             stack.enter_context(mock.patch.object(settle, "hold_the_watch",
                                                   keeping_the_lock(handles)))
             stack.enter_context(mock.patch.object(settle.time, "sleep", clock.sleep))
             stack.enter_context(mock.patch.object(settle.time, "time", clock.time))
             stack.enter_context(contextlib.redirect_stdout(printed))
             try:
-                code = settle.watch(Path("."), "main")
+                # Passed only where asked for, so the cases that do not ask still run on a tree
+                # whose `watch` takes no such argument.
+                code = settle.watch(Path("."), "main",
+                                    **({"until_actionable": True, "caller": caller}
+                                       if until_actionable else {}))
             except Polled:
                 code = None
             # Read before this closes it: what a case asks is whether the code let the lock go, so
             # the handle is held until the reading rather than left to fall out of scope.
-            released = handles[0].closed
-            handles[0].close()
+            released = all(handle.closed for handle in handles if handle is not None)
+            for handle in handles:
+                if handle is not None:
+                    handle.close()
         recorded = (ready_state.read_text(encoding="utf-8", errors="replace")
                     if ready_state.exists() else "")
-    return Watched(code, clock.polls, printed.getvalue(), released, recorded)
+        left = Path(directory) / "actionable"
+        standing = left.read_text(encoding="utf-8") if left.exists() else ""
+    return Watched(code, clock.polls, printed.getvalue(), released, recorded, standing)
 
 
 class RetirementTests(unittest.TestCase):
@@ -1033,7 +1151,7 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
     """
     state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                   merge_state="clean", fork=False, labels=frozenset(labels),
-                                  state="open")
+                                  state="open", stack=None)
     answers = {"/check-runs": {"total_count": len(check_runs), "check_runs": check_runs},
                "/status": NO_STATUSES if statuses is None else statuses,
                "/jobs": {"total_count": 0, "jobs": []},
@@ -1043,7 +1161,7 @@ def rest_readings(check_runs, workflow_runs, labels=(AUTOMERGE,), statuses=None)
             ("repository", lambda *_: "owner/name"),
             ("pull_request", lambda *_: state),
             ("head_sha", lambda *_: GREEN),
-            ("project_state", lambda _project, base: base_state(set(), base)),
+            ("project_state", lambda _project, base: base_state({}, base)),
             ("rest_json", lambda path: next(value for key, value in answers.items() if key in path)),
         ):
             stack.enter_context(mock.patch.object(settle, name, answer))
@@ -1506,6 +1624,8 @@ class HeartbeatTests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(settle.watcher_state, "HEARTBEAT", path))
                 stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED",
                                                      Path(directory) / "asked"))
+                stack.enter_context(mock.patch.object(settle.watcher_state, "HANDED_OFF",
+                                                     Path(directory) / "handed_off", create=True))
                 yield
 
 
@@ -1545,14 +1665,14 @@ class RedBaseMergeTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON])
 
-    # GREEN_ON_BASE(characterization): an unlabelled head behind a green base still merges.
-    # This change only drops a double of a reading settle no longer takes; the arranged verdict is unchanged.
+    # GREEN_ON_BASE(refactor): an unlabelled head behind a green base still merges.
+    # The pull request it arranges now says it sits in no stack, which the base does not read.
     def test_Given_ABranchBehindAGreenBase_When_TheMergeIsDecided_Then_NothingBlocksIt(self):
         # Arrange — `gh_git` answers that the branch is behind: the merge-base is not the base's tip.
         # That is what `contains_base` reads, so a decision asking it is told the branch is behind.
         state = types.SimpleNamespace(sha=GREEN, branch="topic", base="main", draft=False,
                                       merge_state="clean", fork=False, labels=frozenset(),
-                                      state="open")
+                                      state="open", stack=None)
         answers = {"merge-base": MOVED, "rev-parse": BROKE}
         with contextlib.ExitStack() as stack:
             for name, answer in (
@@ -1562,7 +1682,7 @@ class RedBaseMergeTests(unittest.TestCase):
                 ("campaign_runs", lambda *_: []),
                 ("run_jobs", lambda *_: {}),
                 ("head_sha", lambda *_: GREEN),
-                ("project_state", lambda _project, base: base_state(set(), base)),
+                ("project_state", lambda _project, base: base_state({}, base)),
                 ("gh_git", lambda _project, command, *_: answers[command]),
             ):
                 stack.enter_context(mock.patch.object(settle, name, answer, create=True))
@@ -1593,7 +1713,7 @@ class RedBaseMergeTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for name, answer in (("gh_git", lambda *_: ""),
                                  ("repository", lambda *_: "owner/name"),
-                                 ("worktree_branches", lambda *_: set()),
+                                 ("worktrees", lambda *_: {}),
                                  ("rest_json", listing)):
                 stack.enter_context(mock.patch.object(settle, name, answer))
             stack.enter_context(mock.patch.object(settle.published_check, "unpublished_reason",
@@ -1613,7 +1733,7 @@ def project_readings(release_commit):
     with contextlib.ExitStack() as stack:
         for name, answer in (("gh_git", lambda *_: ""),
                              ("repository", lambda *_: "owner/name"),
-                             ("worktree_branches", lambda *_: set()),
+                             ("worktrees", lambda *_: {}),
                              ("rest_json", lambda path: [] if "/rules/branches/" in path
                               else {"workflow_runs": []})):
             stack.enter_context(mock.patch.object(settle, name, answer))
@@ -1794,6 +1914,24 @@ class RequiredWorkflowTests(unittest.TestCase):
         self.assertEqual([name.startswith(prefix + " (") for name in names], [True])
 
 
+def updated(refs, holds_base):
+    """What `settle.update` of PR 733 printed, its readings answered by `refs` and every git call it
+    makes, the worktree's removal included, answered with nothing."""
+    printed = io.StringIO()
+    with contextlib.ExitStack() as stack:
+        for name, answer in (("repository", lambda *_: "owner/name"),
+                             ("rest", lambda _path, jq: refs[jq]),
+                             ("gh_git", lambda *_: ""),
+                             ("run_quietly", lambda *_: subprocess.CompletedProcess([], 0, "", "")),
+                             ("contains_base", lambda *_: holds_base),
+                             ("worktree_branches", lambda *_: set())):
+            stack.enter_context(mock.patch.object(settle, name, answer))
+        stack.enter_context(contextlib.redirect_stderr(printed))
+        stack.enter_context(contextlib.redirect_stdout(printed))
+        settle.update(Path("."), 733, None)
+    return printed.getvalue()
+
+
 class PullRequestBaseTests(unittest.TestCase):
     """Which branch the decision is taken against, once more than one of them takes pull requests.
 
@@ -1812,6 +1950,7 @@ class PullRequestBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual(decided, [RED_REASON.replace("main", RED)])
 
+    # GREEN_ON_BASE(refactor): only the holders this arranges changed, from a set to a mapping.
     def test_Given_PullRequestsOnTwoBases_When_OnePollReadsThem_Then_EachBaseIsAskedOnce(self):
         # Arrange — the dict a poll carries, which is what keeps N pull requests at one fetch per
         # base rather than one per pull request.
@@ -1822,13 +1961,14 @@ class PullRequestBaseTests(unittest.TestCase):
         with fabricated_readings(states) as stack:
             stack.enter_context(mock.patch.object(
                 settle, "project_state",
-                lambda _project, base: (asked.append(base), base_state(set(), base))[1]))
+                lambda _project, base: (asked.append(base), base_state({}, base))[1]))
             for number in sorted(states):
                 settle.blocking_reasons(Path("."), number, None, states=shared)
 
         # Assert
         self.assertEqual(asked, ["main", "2.x"])
 
+    # GREEN_ON_BASE(refactor): only the holders this arranges changed, from a set to a mapping.
     def test_Given_TwoPollsOverOneBase_When_TheyRun_Then_TheSecondReadsItAgain(self):
         # Arrange — the cache is a poll's, not a watcher's: a base whose release is dispatched
         # between two polls has to stop blocking at the next poll rather than at the next watcher.
@@ -1838,11 +1978,13 @@ class PullRequestBaseTests(unittest.TestCase):
             with fabricated_readings(states) as stack:
                 for name, path in (("READY_STATE", Path(directory) / "ready"),
                                    ("HEARTBEAT", Path(directory) / "beat"),
-                                   ("LOCK", Path(directory) / "lock")):
-                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
+                                   ("LOCK", Path(directory) / "lock"),
+                                   ("ACTIONABLE", Path(directory) / "actionable")):
+                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path,
+                                                          create=True))
                 stack.enter_context(mock.patch.object(
                     settle, "project_state",
-                    lambda _project, base: (asked.append(base), base_state(set(), base))[1]))
+                    lambda _project, base: (asked.append(base), base_state({}, base))[1]))
                 stack.enter_context(mock.patch.object(settle.time, "sleep",
                                                       side_effect=[None, Polled]))
                 stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
@@ -1856,23 +1998,25 @@ class PullRequestBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual(asked, ["main", "main"])
 
+    # GREEN_ON_BASE(characterization): the base named the maintenance branch it refused to update.
+    # Its readings now answer that the pull request sits in no stack, which the base does not ask.
     def test_Given_AnUpdateOfAPullRequestOnAMaintenanceBranch_When_Refused_Then_ItNamesThatBranch(self):
         # Arrange
-        printed = io.StringIO()
-        refs = {".head.ref": "release/2.1.1", ".base.ref": "2.x"}
-        with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
-            stack.enter_context(mock.patch.object(settle, "rest", lambda _path, jq: refs[jq]))
-            stack.enter_context(mock.patch.object(settle, "gh_git", lambda *_: ""))
-            stack.enter_context(mock.patch.object(settle, "contains_base", lambda *_: True))
-            stack.enter_context(mock.patch.object(settle, "worktree_branches", lambda *_: set()))
-            stack.enter_context(contextlib.redirect_stderr(printed))
+        printed = updated({".head.ref": "release/2.1.1", ".base.ref": "2.x",
+                           ".stack.number // empty": ""}, holds_base=True)
 
-            # Act
-            settle.update(Path("."), 733, None)
+        # Act / Assert
+        self.assertIn("already contains origin/2.x", printed)
 
-        # Assert
-        self.assertIn("already contains origin/2.x", printed.getvalue())
+    def test_Given_AnUpdateOfAStackMember_When_Asked_Then_ItIsRefusedNamingTheRebase(self):
+        # Arrange — a branch behind its base, so nothing but the stack refuses the update.
+        printed = updated({".head.ref": "topic-2", ".base.ref": "topic-1",
+                           ".stack.number // empty": "1559"}, holds_base=False)
+
+        # Act / Assert
+        self.assertIn("Refusing to update PR#733: it is in stack #1559, and a merge of its base into "
+                      "it is a merge commit, which leaves the stack not linear. " + REBASE_SENTENCE,
+                      printed)
 
 
 class UpdateReasonsTests(unittest.TestCase):
@@ -2222,6 +2366,414 @@ class MergeRequestTests(unittest.TestCase):
         self.assertIn("PR#592 merged:", printed.getvalue())
 
 
+class StackDecisionTests(unittest.TestCase):
+    """What a pull request in a stack is refused for, besides what any pull request is."""
+
+    def decided(self, states, number, settings=STACK_SETTINGS):
+        with fabricated_readings(states, settings=settings):
+            return settle.blocking_reasons(Path("."), number).reasons
+
+    def test_Given_AStackMemberAboveAnOpenOne_When_Decided_Then_ItIsRefusedNamingTheOneToMergeFirst(self):
+        # Arrange — the member below is green as well, so its order is all that refuses this one.
+        states = {1: fabricate(1, stack=in_stack(70)),
+                  2: fabricate(2, stack=in_stack(70), base="topic-1")}
+
+        # Act
+        decided = self.decided(states, 2)
+
+        # Assert
+        self.assertEqual(decided, ["#1 sits below it in its stack and has not merged: merge #1 first"])
+
+    def test_Given_AStackMemberAboveAClosedOne_When_Decided_Then_ItIsRefusedWithoutAMergeToMakeFirst(self):
+        # Arrange
+        states = {1: fabricate(1, stack=in_stack(70), state="closed"),
+                  2: fabricate(2, stack=in_stack(70), base="topic-1")}
+
+        # Act
+        decided = self.decided(states, 2)
+
+        # Assert
+        self.assertEqual(decided, ["#1 sits below it in its stack and is closed without having merged"])
+
+    # GREEN_ON_BASE(characterization): the base refused no stack member for its place in the stack.
+    # A member whose members below have all merged is still refused nothing.
+    def test_Given_AStackMemberAboveOnlyMergedOnes_When_Decided_Then_NothingBlocksIt(self):
+        # Arrange
+        states = {1: fabricate(1, stack=in_stack(70), state="merged"),
+                  2: fabricate(2, stack=in_stack(70), base="topic-1")}
+
+        # Act
+        decided = self.decided(states, 2)
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AStackMemberWhoseHeadIsNotDeletedOnMerge_When_Decided_Then_ItIsRefusedNamingTheSetting(self):
+        # Arrange — the bottom member, so its place in the stack refuses nothing. Nothing would
+        # delete the remote branch, which this merge leaves to GitHub.
+        states = {1: fabricate(1, stack=in_stack(70))}
+
+        # Act
+        decided = self.decided(states, 1, settings=(False,))
+
+        # Assert
+        self.assertEqual(decided, [
+            "it is in a stack, whose merge leaves its remote branch to the repository's settings: "
+            "delete_branch_on_merge reads false rather than true"])
+
+    # GREEN_ON_BASE(characterization): the base held no pull request to the repository's settings.
+    # One outside a stack is still held to none, since its merge deletes its own remote branch.
+    def test_Given_APullRequestOutsideAStackUnderOtherSettings_When_Decided_Then_NothingBlocksIt(self):
+        # Arrange
+        states = {1: fabricate(1)}
+
+        # Act
+        decided = self.decided(states, 1, settings=(False,))
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AStackNotLinearOnItsBase_When_TheLowestMemberIsDecided_Then_ItIsRefusedNamingHowToRebase(self):
+        # Arrange — the member above is the tangled one, and GitHub merges no member of a stack that
+        # is not linear.
+        states = {1: fabricate(1, stack=in_stack(70)),
+                  2: fabricate(2, stack=in_stack(70), base="topic-1", tangled="lacks")}
+
+        # Act
+        decided = self.decided(states, 1)
+
+        # Assert
+        self.assertEqual(decided, [
+            "its stack is not linear on main: #2 does not hold the head of #1. " + REBASE_SENTENCE])
+
+    def test_Given_AStackMemberHoldingAMergeCommit_When_Decided_Then_TheMergeCommitIsNamed(self):
+        # Arrange
+        states = {1: fabricate(1, stack=in_stack(70), tangled="merges")}
+
+        # Act
+        decided = self.decided(states, 1)
+
+        # Assert
+        self.assertEqual(decided, [
+            "its stack is not linear on main: #1 holds a merge commit over main. " + REBASE_SENTENCE])
+
+    def test_Given_AStackMemberLackingTheBasesNewestReleaseCommit_When_Decided_Then_ThatIsNotAskedOfIt(self):
+        # Arrange — what that reason names as the remedy, `update`, refuses a stack member, and a
+        # stack linear on its base holds the base's head.
+        states = {1: fabricate(1, stack=in_stack(70, base=RELEASING), base=RELEASING)}
+
+        # Act
+        decided = self.decided(states, 1)
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_TheLowestOpenMemberStillBasedOnTheOneBelow_When_Decided_Then_ItIsJudgedAgainstTheStacksBase(self):
+        # Arrange — the stack lands on the red base, and the branch this member names as its base
+        # has no push run to be red on.
+        states = {1: fabricate(1, stack=in_stack(70, base=RED), state="merged"),
+                  2: fabricate(2, stack=in_stack(70, base=RED), base="topic-1")}
+
+        # Act
+        decided = self.decided(states, 2)
+
+        # Assert
+        self.assertIn(RED_REASON.replace("main", RED), decided)
+
+    def test_Given_AStackListingThatLeavesThePullRequestOut_When_Decided_Then_ItRaises(self):
+        # Arrange — an empty answer would read as nothing below it.
+        states = {2: fabricate(2, stack=in_stack(70))}
+        with fabricated_readings(states) as stack:
+            stack.enter_context(mock.patch.object(settle, "stack_members", lambda *_: [],
+                                                  create=True))
+
+            # Act / Assert
+            with self.assertRaisesRegex(RuntimeError, "does not list PR#2"):
+                settle.blocking_reasons(Path("."), 2)
+
+
+class StackReadingTests(unittest.TestCase):
+    """What the pull request's own payload says of the stack it is in."""
+
+    PAYLOAD = {"head": {"sha": GREEN, "ref": "topic-2", "repo": {"full_name": "o/v"}},
+               "base": {"ref": "topic-1", "repo": {"full_name": "o/v"}}, "state": "open",
+               "stack": {"id": 3321345, "number": 1559, "position": 2, "size": 3,
+                         "base": {"ref": "main", "sha": BROKE}}}
+
+    def read(self):
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "o/v"))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda *_: self.PAYLOAD))
+            return settle.pull_request(Path("."), 2)
+
+    def test_Given_APayloadCarryingAStack_When_Read_Then_ItsNumberIsRead(self):
+        # Act
+        read = self.read()
+
+        # Assert
+        self.assertEqual(getattr(getattr(read, "stack", None), "number", None), 1559)
+
+    def test_Given_APayloadCarryingAStack_When_Read_Then_ItsBaseIsTheStacksRatherThanThePullRequests(self):
+        # Act
+        read = self.read()
+
+        # Assert
+        self.assertEqual(getattr(getattr(read, "stack", None), "base", None), "main")
+
+
+ASYNC_MERGE = "repos/owner/name/pulls/592/merge-async"
+
+PENDING_MERGE = json.dumps({"status": "pending",
+                            "details": {"uuid": "6e1f", "message": "Merge request enqueued."}})
+MERGED_ANSWER = json.dumps({"status": "merged", "details": {"sha": BROKE,
+                                                            "message": "Pull request was merged."}})
+FAILED_ANSWER = json.dumps({"status": "failed",
+                            "details": {"message": "Merge conflict: the pull request could not be "
+                                                   "merged."}})
+ENQUEUED_ANSWER = json.dumps({"status": "enqueued",
+                              "details": {"message": "Pull request was added to the merge queue."}})
+
+# What one `settle.merge` of a stack member did: every `gh` call, its exit code, the branches it
+# deleted, the ones of those it deleted on the remote as well, and everything it printed.
+StackMergeRun = collections.namedtuple("StackMergeRun", "sent code deleted remotely printed")
+
+
+def stack_merge_run(*answers):
+    """`settle.merge` of stack member 592, nothing blocking it, whose `gh` answers each of `answers`
+    in turn and pending after them; an answer that is an exception is raised instead.
+
+    Time moves only when the merge sleeps, and a merge that never stops waiting fails the case
+    rather than hanging it.
+    """
+    sent, deleted, remotely, printed, now = [], [], [], io.StringIO(), [0.0]
+    queue = list(answers)
+
+    def gh(*args):
+        sent.append(args)
+        answer = queue.pop(0) if queue else PENDING_MERGE
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    def sleep(seconds):
+        if len(sent) > 10000:
+            raise AssertionError("the merge never stopped waiting")
+        now[0] += seconds
+
+    # The attributes the merge reads rather than settle.Blocking itself, for the reason
+    # `fabricated_readings` gives about the pull request.
+    blocking = types.SimpleNamespace(reasons=[], head=GREEN, branch="topic", base="main",
+                                     stack=in_stack(70))
+    with contextlib.ExitStack() as stack:
+        for name, answer in (("repository", lambda *_: "owner/name"),
+                             ("blocking_reasons", lambda *_: blocking),
+                             ("pull_request_text", lambda *_: ("A title", "A body")),
+                             ("gh", gh),
+                             ("delete_merged_branch",
+                              lambda _project, branch: (deleted.append(branch),
+                                                        remotely.append(branch), [])[2]),
+                             ("delete_local_branch",
+                              lambda _project, branch: (deleted.append(branch), [])[1])):
+            stack.enter_context(mock.patch.object(settle, name, answer, create=True))
+        stack.enter_context(mock.patch.object(settle.time, "sleep", sleep))
+        stack.enter_context(mock.patch.object(settle.time, "monotonic", lambda: now[0]))
+        stack.enter_context(contextlib.redirect_stdout(printed))
+        stack.enter_context(contextlib.redirect_stderr(printed))
+        code = settle.merge(Path("."), 592, "main", dry_run=False)
+    return StackMergeRun(sent, code, deleted, remotely, printed.getvalue())
+
+
+def refused(stderr):
+    """What `gh` raises for a PUT GitHub refused with `stderr`, on a settle that keeps the two apart
+    and on one that does not."""
+    message = f"gh api -X PUT failed: {stderr}"
+    kind = getattr(settle, "Refused", None)
+    return kind(message, stderr) if kind else RuntimeError(message)
+
+
+def quietly(*answers):
+    """`stack_merge_run` of `answers`, or None where the merge raised."""
+    try:
+        return stack_merge_run(*answers)
+    except RuntimeError:
+        return None
+
+
+def async_request(run):
+    """The arguments of the request that asked for the stack merge, or none where nothing did."""
+    return next((args for args in run.sent if ASYNC_MERGE in args), ())
+
+
+def polls(run):
+    """Each `gh` call that read the stack merge's answer back."""
+    return [args for args in run.sent if any(f"{ASYNC_MERGE}/" in arg for arg in args)]
+
+
+class StackMergeRequestTests(unittest.TestCase):
+    """What the merge of a stack member sends and waits for, which no reading of the decision would
+    catch."""
+
+    def test_Given_AStackMemberTheDecisionRead_When_Merged_Then_TheBodyIsThePullRequestsOwnDescription(self):
+        # Arrange — the decision runs rather than being stubbed, so the stack it hands the merge is
+        # the one the pull request's own reading found. A merge that asked for no stack merge reads
+        # as no request at all.
+        sent = []
+        with fabricated_readings({592: fabricate(592, stack=in_stack(70))}) as stack:
+            stack.enter_context(mock.patch.object(settle, "pull_request_text",
+                                                  lambda *_: ("A title", "A body")))
+            stack.enter_context(mock.patch.object(
+                settle, "gh", lambda *args: (sent.append(args), MERGED_ANSWER)[1]))
+            for name in ("delete_merged_branch", "delete_local_branch"):
+                stack.enter_context(mock.patch.object(settle, name, lambda *_: [], create=True))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+            # Act
+            settle.merge(Path("."), 592, None, dry_run=False)
+
+        # Assert
+        self.assertIn("commit_message=A body",
+                      next((args for args in sent if ASYNC_MERGE in args), ()))
+
+    def test_Given_AStackMemberNothingBlocks_When_Merged_Then_TheTitleIsThePullRequestsOwnWithItsNumber(self):
+        # Act
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Assert
+        self.assertIn("commit_title=A title (#592)", async_request(run))
+
+    def test_Given_AStackMergeGitHubAlreadyHolds_When_ItIsAskedAgain_Then_ItExitsAsNoFailure(self):
+        # Arrange — what a second merge gets while an earlier one is still pending. A merge that
+        # raised, or never said its outcome was unknown, answers None, which 0 can never equal.
+        run = quietly(refused("gh: A merge request already exists for this pull request (HTTP 409)"))
+
+        # Act / Assert
+        self.assertEqual(run.code if run and "outcome unknown" in run.printed else None, 0)
+
+    def test_Given_AStackMergeRequestThatNeverAnswers_When_ItReturns_Then_ItExitsAsNoFailure(self):
+        # Arrange — GitHub may have taken the request whose answer never came back.
+        run = quietly(getattr(settle, "Unanswered", RuntimeError)("gh api -X PUT did not answer "
+                                                                  "within 60s"))
+
+        # Act / Assert
+        self.assertEqual(run.code if run and "outcome unknown" in run.printed else None, 0)
+
+    # GREEN_ON_BASE(characterization): the base raised every merge request GitHub refused outright.
+    # A stack member's request refused outright still raises, since nothing was requested.
+    def test_Given_AStackMergeRequestGitHubRefuses_When_Sent_Then_ItRaisesWhatGitHubSaid(self):
+        # Act / Assert
+        with self.assertRaisesRegex(RuntimeError, "HTTP 422"):
+            stack_merge_run(refused("gh: Validation Failed (HTTP 422)"))
+
+    # GREEN_ON_BASE(characterization): the base raised every merge request GitHub refused outright.
+    # One whose own description names a 409 still raises, since the 409 is the body's, not GitHub's.
+    def test_Given_ARefusedStackMergeWhoseBodyNamesA409_When_Sent_Then_ItRaisesWhatGitHubSaid(self):
+        # Arrange — gh itself builds the error, so the request's arguments are in its message.
+        def run(command, timeout):
+            return subprocess.CompletedProcess(command, 1, "", "gh: Validation Failed (HTTP 422)")
+
+        blocking = types.SimpleNamespace(reasons=[], head=GREEN, branch="topic", base="main",
+                                         stack=in_stack(70))
+        with contextlib.ExitStack() as stack:
+            for name, answer in (("repository", lambda *_: "owner/name"),
+                                 ("blocking_reasons", lambda *_: blocking),
+                                 ("pull_request_text",
+                                  lambda *_: ("A title", "Answer a merge request with (HTTP 409)")),
+                                 ("run", run)):
+                stack.enter_context(mock.patch.object(settle, name, answer))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+
+            # Act / Assert
+            with self.assertRaisesRegex(RuntimeError, "HTTP 422"):
+                settle.merge(Path("."), 592, "main", dry_run=False)
+
+    def test_Given_AStackMemberNothingBlocks_When_Merged_Then_ItAsksForTheAsynchronousMerge(self):
+        # Act
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Assert
+        self.assertIn(ASYNC_MERGE, run.sent[0])
+
+    def test_Given_AStackMemberNothingBlocks_When_Merged_Then_ItCarriesTheHeadTheChecksWereReadAt(self):
+        # Act
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Assert
+        self.assertIn(f"sha={GREEN}", async_request(run))
+
+    def test_Given_AStackMemberNothingBlocks_When_Merged_Then_ItIsSquashed(self):
+        # Act
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Assert
+        self.assertIn("merge_method=squash", async_request(run))
+
+    def test_Given_AStackMemberNothingBlocks_When_Merged_Then_ItIsMergedDirectlyRatherThanQueued(self):
+        # Act
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Assert
+        self.assertIn("merge_action=direct_merge", async_request(run))
+
+    # GREEN_ON_BASE(characterization): the base deleted the branch after every merge GitHub accepted.
+    # A stack member's merge that reads merged only once it is polled still deletes it.
+    def test_Given_AStackMergeThatReadsMergedOnAPoll_When_ItReturns_Then_TheBranchIsDeleted(self):
+        # Act
+        run = stack_merge_run(PENDING_MERGE, MERGED_ANSWER)
+
+        # Assert
+        self.assertEqual(run.deleted, ["topic"])
+
+    def test_Given_AStackMergeThatWentThrough_When_ItsBranchIsDeleted_Then_TheRemoteRefIsLeftToGitHub(self):
+        # Arrange — that ref is the base of the member above, and `delete_branch_on_merge`, which a
+        # stack member is held to, is what deletes it.
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Act / Assert
+        self.assertEqual(run.remotely, [])
+
+    def test_Given_AStackMergeThatReadsFailedOnAPoll_When_ItReturns_Then_ItRaisesWhatGitHubSaid(self):
+        # Act / Assert
+        with self.assertRaisesRegex(RuntimeError, "Merge conflict"):
+            stack_merge_run(PENDING_MERGE, FAILED_ANSWER)
+
+    def test_Given_APollThatFailsOnce_When_TheStackMergeWaits_Then_ItAsksAgain(self):
+        # Act
+        run = stack_merge_run(PENDING_MERGE, RuntimeError("gh api failed: HTTP 502"), MERGED_ANSWER)
+
+        # Assert
+        self.assertEqual(len(polls(run)), 2)
+
+    def test_Given_AStackMergeStillPendingAtTheBound_When_ItReturns_Then_TheBranchIsLeft(self):
+        # Act
+        run = stack_merge_run(PENDING_MERGE)
+
+        # Assert
+        self.assertEqual(run.deleted, [])
+
+    def test_Given_AStackMergeStillPendingAtTheBound_When_ItReturns_Then_ItExitsAsNoFailure(self):
+        # Arrange — a failure sends its reader to merge again while the first request may land. A
+        # merge that never said its outcome was unknown answers None, which 0 can never equal.
+        run = stack_merge_run(PENDING_MERGE)
+
+        # Act / Assert
+        self.assertEqual(run.code if "outcome unknown" in run.printed else None, 0)
+
+    def test_Given_AStackMergeStillPendingAtTheBound_When_ItReturns_Then_ItSaysTheOutcomeIsUnknown(self):
+        # Act
+        run = stack_merge_run(PENDING_MERGE)
+
+        # Assert
+        self.assertIn("PR#592 merge requested at aaaaaaa, outcome unknown", run.printed)
+
+    def test_Given_AStackMergeAnsweredEnqueued_When_ItReturns_Then_TheBranchIsLeft(self):
+        # Arrange — a queue merges it after this run, and needs the branch to do it.
+        run = stack_merge_run(ENQUEUED_ANSWER)
+
+        # Act / Assert
+        self.assertEqual(run.deleted, [])
+
+
 @contextlib.contextmanager
 def repository_holding(branch):
     """A throwaway repository on `main` with `branch` also present, since deletion needs a real one."""
@@ -2368,6 +2920,803 @@ class BranchDeletionTests(unittest.TestCase):
     def test_Given_ARefDeleteRefusedForAnyOtherReason_When_Read_Then_ItIsReported(self):
         # Act / Assert
         self.assertFalse(settle.reference_already_gone("gh: Resource not accessible (HTTP 403)"))
+
+
+@contextlib.contextmanager
+def worktree_holding(branch="topic"):
+    """(project, tree, head): a repository on `main` ignoring `Library/`, with `branch` checked out
+    at `head` in the linked worktree `tree` beside it."""
+    with tempfile.TemporaryDirectory(prefix="settle-tree-") as directory:
+        root = Path(directory).resolve()
+        project, tree = root / "project", root / "tree"
+        subprocess.run(["git", "init", "-q", "-b", "main", str(project)], capture_output=True,
+                       check=True)
+        (project / ".gitignore").write_text("Library/\n", encoding="utf-8")
+        committed(project, ".gitignore")
+        subprocess.run(["git", "-C", str(project), "worktree", "add", "-q", "-b", branch, str(tree)],
+                       capture_output=True, check=True)
+        yield project, tree, head_of(tree)
+
+
+def committed(tree, *paths):
+    git = ["git", "-C", str(tree), "-c", "user.email=t@example.com", "-c", "user.name=t"]
+    subprocess.run(git + ["add", "--", *paths], capture_output=True, check=True)
+    subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "change"], capture_output=True,
+                   check=True)
+
+
+def head_of(tree):
+    return subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+# The real one, which `fabricated_readings` stubs and a case asking git puts back.
+REAL_WORKTREE_CLEAN = getattr(settle, "worktree_clean", None)
+
+
+class HolderStateTests(unittest.TestCase):
+    """What `holder_state` says keeps a holder of a pull request's branch from being all that
+    blocks it, or None where nothing does."""
+
+    def state(self, arrange=None, branch="topic", sha=None):
+        """`settle.holder_state` of the worktree on `branch`, after `arrange(project, tree)`."""
+        with worktree_holding() as (root, tree, head):
+            if arrange is not None:
+                arrange(root, tree)
+            holders = settle.worktrees(root)[branch]
+            return settle.holder_state(root, holders[0], head if sha is None else sha(root))
+
+    def test_Given_ACleanWorktreeAtTheHead_When_Asked_Then_NothingKeepsIt(self):
+        # Act / Assert
+        self.assertIsNone(self.state())
+
+    def test_Given_AWorktreeHoldingAnUntrackedFile_When_Asked_Then_ItHasUncommittedChanges(self):
+        # Arrange
+        def untracked(_root, tree):
+            (tree / "notes.txt").write_text("x", encoding="utf-8")
+
+        # Act / Assert
+        self.assertEqual(self.state(untracked), "has uncommitted changes")
+
+    def test_Given_AnUntrackedFileGitIsConfiguredToHide_When_Asked_Then_ItHasUncommittedChanges(self):
+        # Arrange — `status.showUntrackedFiles=no` leaves a plain `git status --porcelain` empty.
+        def hidden(_root, tree):
+            subprocess.run(["git", "-C", str(tree), "config", "status.showUntrackedFiles", "no"],
+                           capture_output=True, check=True)
+            (tree / "notes.txt").write_text("x", encoding="utf-8")
+
+        # Act / Assert
+        self.assertEqual(self.state(hidden), "has uncommitted changes")
+
+    def test_Given_AWorktreeWithACommitThePullRequestLacks_When_Asked_Then_ItHasCommitsTheHeadLacks(self):
+        # Arrange — clean, so only the HEAD separates it from the clean one.
+        def ahead(_root, tree):
+            committed(tree)
+
+        # Act / Assert
+        self.assertIn(settle.HOLDER_AHEAD, str(self.state(ahead)))
+
+    def test_Given_ACleanWorktreeBehindTheHead_When_Asked_Then_NothingKeepsIt(self):
+        # Arrange — the head is a commit on top of the worktree's, so every commit in it is in the
+        # head and removing it loses none of them.
+        def descendant(root):
+            return subprocess.run(["git", "-C", str(root), "-c", "user.email=t@example.com", "-c",
+                                   "user.name=t", "commit-tree", "topic^{tree}", "-p", "topic",
+                                   "-m", "later"], capture_output=True, text=True,
+                                  check=True).stdout.strip()
+
+        # Act / Assert
+        self.assertIsNone(self.state(sha=descendant))
+
+    def test_Given_AWorktreeGoneFromDisk_When_Asked_Then_ItSaysPruneFreesTheBranch(self):
+        # Arrange
+        def gone(_root, tree):
+            shutil.rmtree(tree)
+
+        # Act / Assert
+        self.assertIn("`git worktree prune` frees the branch", str(self.state(gone)))
+
+    def test_Given_ALockedWorktree_When_Asked_Then_ItIsLocked(self):
+        # Arrange — git removes a locked one only when forced twice.
+        def locked(root, tree):
+            subprocess.run(["git", "-C", str(root), "worktree", "lock", str(tree)],
+                           capture_output=True, check=True)
+
+        # Act / Assert
+        self.assertEqual(self.state(locked), "is locked")
+
+    def test_Given_TheMainWorkingTreeAtItsHead_When_Asked_Then_ItIsTheMainOne(self):
+        # Act / Assert
+        self.assertEqual(self.state(branch="main", sha=head_of), "is the main working tree")
+
+    def test_Given_ATrackedFileWhoseStatChanged_When_ItsStatusIsRead_Then_ItsIndexIsNotRewritten(self):
+        # Arrange — the holder is another agent's tree, and a status run here that rewrites its
+        # index to refresh a stat it finds out of date takes that tree's index lock to do it.
+        with worktree_holding() as (_root, tree, _head):
+            index = Path(subprocess.run(["git", "-C", str(tree), "rev-parse", "--git-path", "index"],
+                                        capture_output=True, text=True, check=True).stdout.strip())
+            index = index if index.is_absolute() else tree / index
+            before = index.stat().st_mtime_ns
+            later = time.time() + 5
+            os.utime(tree / ".gitignore", (later, later))
+
+            # Act
+            settle.worktree_clean(tree)
+
+            # Assert
+            self.assertEqual(index.stat().st_mtime_ns, before)
+
+    def test_Given_TwoWorktreesHoldingOneBranch_When_Listed_Then_BothAreKept(self):
+        # Arrange — `worktree add -f` puts a branch in a second tree, and a reading keeping one of
+        # the two would judge the branch by whichever git listed last.
+        with worktree_holding() as (root, _tree, _head):
+            subprocess.run(["git", "-C", str(root), "worktree", "add", "-q", "-f",
+                            str(root.parent / "second"), "topic"], capture_output=True, check=True)
+
+            # Act
+            holders = settle.worktrees(root)["topic"]
+
+            # Assert
+            self.assertEqual(len(holders), 2)
+
+
+class StackTangleReadingTests(unittest.TestCase):
+    """What `stack_tangles` reads off the branches on origin, for a two-member stack on main."""
+
+    MEMBERS = [{"number": 1, "state": "open", "merged_at": None, "head": {"ref": "b1"}},
+               {"number": 2, "state": "open", "merged_at": None, "head": {"ref": "b2"}}]
+
+    def read(self, layout, members=None):
+        """`settle.stack_tangles` over origin refs `layout(commit)` names, one `member:below:how` per
+        tangle. Each commit carries its own message, so no two are the same object."""
+        with tempfile.TemporaryDirectory(prefix="settle-stack-") as directory:
+            root = Path(directory)
+            git = ["git", "-C", str(root), "-c", "user.email=t@example.com", "-c", "user.name=t"]
+            subprocess.run(["git", "init", "-q", "-b", "main", str(root)], capture_output=True,
+                           check=True)
+            tree = subprocess.run(git + ["write-tree"], capture_output=True, text=True,
+                                  check=True).stdout.strip()
+
+            def commit(message, *parents):
+                return subprocess.run(git + ["commit-tree", tree, "-m", message,
+                                             *(flag for parent in parents for flag in ("-p", parent))],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+
+            for name, sha in layout(commit).items():
+                subprocess.run(git + ["update-ref", f"refs/remotes/origin/{name}", sha],
+                               capture_output=True, check=True)
+            found = settle.stack_tangles(root, "main", self.MEMBERS if members is None else members)
+        return " ".join(f"{member}:{below}:{how}" for member, below, how in found)
+
+    def test_Given_EachBranchOnTheOneBelow_When_Read_Then_NothingIsTangled(self):
+        # Arrange
+        def linear(commit):
+            base = commit("base")
+            first = commit("first", base)
+            return {"main": base, "b1": first, "b2": commit("second", first)}
+
+        # Act / Assert
+        self.assertEqual(self.read(linear), "")
+
+    def test_Given_TheBaseMovedAheadOfTheLowestBranch_When_Read_Then_ThatBranchLacksItsHead(self):
+        # Arrange
+        def moved(commit):
+            base = commit("base")
+            first = commit("first", base)
+            return {"main": commit("later", base), "b1": first, "b2": commit("second", first)}
+
+        # Act / Assert
+        self.assertEqual(self.read(moved), "1:main:lacks")
+
+    def test_Given_APushToTheLowerBranchAlone_When_Read_Then_TheUpperOneLacksItsHead(self):
+        # Arrange
+        def pushed(commit):
+            base = commit("base")
+            first = commit("first", base)
+            return {"main": base, "b1": commit("pushed", first), "b2": commit("second", first)}
+
+        # Act / Assert
+        self.assertEqual(self.read(pushed), "2:#1:lacks")
+
+    def test_Given_ALowerBranchMergedIntoTheOneAbove_When_Read_Then_TheUpperOneHoldsAMergeCommit(self):
+        # Arrange — a push to the lower branch that the upper one took in by a merge: it holds the
+        # head below it, through a merge commit.
+        def merged(commit):
+            base = commit("base")
+            first = commit("first", base)
+            pushed = commit("pushed", first)
+            return {"main": base, "b1": pushed,
+                    "b2": commit("merge", commit("second", first), pushed)}
+
+        # Act / Assert
+        self.assertEqual(self.read(merged), "2:#1:merges")
+
+    def test_Given_TheBaseMergedIntoTheLowestBranch_When_Read_Then_ItHoldsAMergeCommit(self):
+        # Arrange — what `settle.py update` makes of a branch behind its base.
+        def merged(commit):
+            base = commit("base")
+            later = commit("later", base)
+            joined = commit("merge", commit("first", base), later)
+            return {"main": later, "b1": joined, "b2": commit("second", joined)}
+
+        # Act / Assert
+        self.assertEqual(self.read(merged), "1:main:merges")
+
+    def test_Given_AMergedMemberWhoseBranchIsGone_When_Read_Then_TheOneAboveIsReadAgainstTheBase(self):
+        # Arrange — the member above, moved onto the base once the one below merged.
+        def landed(commit):
+            squashed = commit("squashed", commit("base"))
+            return {"main": squashed, "b2": commit("second", squashed)}
+
+        members = [dict(self.MEMBERS[0], merged_at="2026-11-12T00:00:00Z"), self.MEMBERS[1]]
+
+        # Act / Assert
+        self.assertEqual(self.read(landed, members), "")
+
+
+class HeldBranchMergeTests(unittest.TestCase):
+    """What `settle.py merge` does about the worktree a pull request was written in: refuses, as it
+    always has, and leaves the worktree where it is."""
+
+    def merge(self, project, head):
+        """(what `gh` was sent, what was refused) for a merge of PR 1, whose head is `head` on
+        `topic`, with every reading but the worktrees fabricated."""
+        sent = []
+        state = fabricate(1, branch="topic")._replace(sha=head, after=head)
+        with fabricated_readings({1: state}) as stack:
+            stack.enter_context(mock.patch.object(settle, "worktree_clean", REAL_WORKTREE_CLEAN))
+            stack.enter_context(mock.patch.object(
+                settle, "project_state",
+                lambda _project, base: base_state(settle.worktrees(project), base)))
+            stack.enter_context(mock.patch.object(settle, "pull_request_text",
+                                                  lambda *_: ("A title", "A body")))
+            stack.enter_context(mock.patch.object(settle, "gh", lambda *args: (sent.append(args),
+                                                                               "")[1]))
+            stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            refused = io.StringIO()
+            stack.enter_context(contextlib.redirect_stderr(refused))
+            settle.merge(project, 1, None, dry_run=False)
+        return sent, refused.getvalue()
+
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_NothingIsSent(self):
+        # Arrange
+        with worktree_holding() as (project, _tree, head):
+            # Act
+            sent, _ = self.merge(project, head)
+
+            # Assert
+            self.assertEqual(sent, [])
+
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_ItIsLeftInPlace(self):
+        # Arrange — an ignored file in it, which a removal would take as well.
+        with worktree_holding() as (project, tree, head):
+            (tree / "Library").mkdir()
+            (tree / "Library" / "ArtifactDB").write_text("x", encoding="utf-8")
+
+            # Act
+            self.merge(project, head)
+
+            # Assert
+            self.assertTrue((tree / "Library" / "ArtifactDB").exists())
+
+    def test_Given_ACleanWorktreeHoldingTheBranchAtItsHead_When_Merged_Then_TheReasonIsTheOldOne(self):
+        # Arrange
+        with worktree_holding() as (project, _tree, head):
+            # Act
+            _, refused = self.merge(project, head)
+
+            # Assert
+            self.assertIn(settle.held_reason("topic"), refused)
+
+
+# The line `fabricate(5, held=...)` prints once its holder is all that blocks it.
+HELD_LINE = "PR#5 0000000 READY once the worktree at /trees/topic-5 is removed"
+
+
+class HolderAdviceTests(unittest.TestCase):
+    """What the exit tells a caller to do about a pull request held by a worktree, by holder."""
+
+    def advised(self, why):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            settle.report(Path("/p"), {f"PR#5 0000000 green, but the worktree at /w holds the "
+                                       f"branch and {why}"}, "tok")
+        return printed.getvalue()
+
+    def test_Given_AHolderWithCommitsTheHeadLacks_When_Reported_Then_ItSaysToPushOrMoveThem(self):
+        # Act
+        said = self.advised(f"is at 61d9eb7 and {settle.HOLDER_AHEAD}")
+
+        # Assert
+        self.assertIn("pushed to the pull request or moved to another branch first", said)
+
+    def test_Given_AHolderWithCommitsTheHeadLacks_When_Reported_Then_ItDoesNotSayToRemoveIt(self):
+        # Act
+        said = self.advised(f"is at 61d9eb7 and {settle.HOLDER_AHEAD}")
+
+        # Assert
+        self.assertNotIn("`git worktree remove`", said)
+
+    def test_Given_TheMainWorkingTreeAsHolder_When_Reported_Then_ItSaysToSwitchItsBranch(self):
+        # Act
+        said = self.advised(settle.HOLDER_MAIN)
+
+        # Assert
+        self.assertIn("switching that tree to another branch", said)
+
+
+class HeldBranchWatchTests(unittest.TestCase):
+    """A pull request held only by clean worktrees at its head wakes the caller, who decides."""
+
+    def test_Given_OnlyACleanWorktreeHoldsTheBranch_When_WatchedUntilActionable_Then_ItSaysSo(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states={5: fabricate(5, held=CLEAN)})
+
+        # Assert
+        self.assertIn(HELD_LINE, watched.output)
+
+    def test_Given_OnlyACleanWorktreeHoldsTheBranch_When_ThePollEnds_Then_ItIsNotRecordedReady(self):
+        # Arrange — the ready record is `merge`'s own decision, and `merge` refuses a held branch.
+        table = {5: fabricate(5, held=CLEAN)}
+
+        # Act / Assert
+        self.assertEqual(polled(table), set())
+
+    def test_Given_ADirtyWorktreeHoldsTheBranch_When_WatchedUntilActionable_Then_ItSaysWhatItHolds(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, states={5: fabricate(5, held=True)})
+
+        # Assert
+        self.assertIn("PR#5 0000000 green, but the worktree at /trees/topic-5 holds the branch and "
+                      "has uncommitted changes", watched.output)
+
+    def test_Given_ACleanHolderAndAPendingCheck_When_WatchedUntilActionable_Then_ItWaits(self):
+        # Arrange — the holder is not all that blocks it.
+        pending = [{"name": "Unity", "bucket": "pending"}]
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=2,
+                              states={5: fabricate(5, held=CLEAN, results=pending)})
+
+        # Assert
+        self.assertIsNone(watched.code)
+
+
+# The line a ready `fabricate(1)` prints, its sha being the number padded with zeros.
+READY_LINE = "PR#1 0000000 READY: nothing blocks the merge"
+
+
+def flaky_first(reading):
+    """A reading that raises the first time it is asked, as a dropped connection does."""
+    asked = []
+
+    def answer(*args):
+        asked.append(1)
+        if len(asked) == 1:
+            raise RuntimeError("the connection dropped")
+        return reading(*args)
+    return answer
+
+
+class UntilActionableTests(unittest.TestCase):
+    """`watch --until-actionable`: a backgrounded caller hears of it only when it exits."""
+
+    def test_Given_AReadyPullRequest_When_Watched_Then_ItExitsWithoutSleeping(self):
+        # Act
+        watched = watch_until(until_actionable=True)
+
+        # Assert — a run that did not exit retires with the same code 0, so the polls tell them apart.
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AFailingCheck_When_Watched_Then_ItExitsWithoutSleeping(self):
+        # Act
+        watched = watch_until(until_actionable=True,
+                              states={1: fabricate(1, results=[{"name": "Unity", "bucket": "fail"}])})
+
+        # Assert
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_OnlyAPendingCheck_When_Watched_Then_ItKeepsPolling(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3,
+                              states={1: fabricate(1, results=[{"name": "Unity",
+                                                                "bucket": "pending"}])})
+
+        # Assert — None is what a watcher still polling at the clock's bound leaves.
+        self.assertIsNone(watched.code)
+
+    def test_Given_AReadyPullRequest_When_ItExits_Then_ItPrintsTheReadyLine(self):
+        # Act
+        watched = watch_until(until_actionable=True)
+
+        # Assert
+        self.assertIn(READY_LINE, watched.output)
+
+    def test_Given_AReadyPullRequest_When_ItExits_Then_ItLeavesOutThePassingChecks(self):
+        # Act
+        watched = watch_until(until_actionable=True)
+
+        # Assert
+        self.assertNotIn("=> pass", watched.output)
+
+    def test_Given_AReadyLineReportedInsideTheWindow_When_ReArmed_Then_ItWaitsForSomethingNew(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3,
+                              seed_reported=f"{CLOCK_START}\n{READY_LINE}\n")
+
+        # Assert
+        self.assertIsNone(watched.code)
+
+    def test_Given_AReadyLineReportedOutsideTheWindow_When_ReArmed_Then_ItReportsItAgain(self):
+        # Arrange — nothing watched through the gap, so what stands is reported rather than assumed
+        # heard.
+        stale = f"{CLOCK_START - STALE_SECONDS}\n{READY_LINE}\n"
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, seed_reported=stale)
+
+        # Assert
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AReportedPullRequestWhoseReadingFailsOnce_When_ReArmed_Then_ItStillWaits(self):
+        # Arrange — the failed poll reads nothing about it, which is not the same as it having
+        # stopped being ready.
+        watched = watch_until(until_actionable=True, bound=3,
+                              seed_reported=f"{CLOCK_START}\n{READY_LINE}\n",
+                              readings=[("pull_request", flaky_first)])
+
+        # Act / Assert
+        self.assertIsNone(watched.code)
+
+
+# A head whose `Test` run failed before it put a check on the head, on a base requiring nothing, so
+# the failed run is the only thing wrong with it.
+FAILED_RUN = dict(TEST_PENDING, status="completed", conclusion="startup_failure")
+FAILED_RUN_STATES = {1: fabricate(1, results=GENERATOR_CHECKS, runs=(GENERATORS_DONE, FAILED_RUN))}
+
+
+class FailedRunTests(unittest.TestCase):
+    """A failed workflow run with no check run blocks the merge, so it has to wake the caller too."""
+
+    def test_Given_AFailedRunWithNoCheck_When_WatchedUntilActionable_Then_ItExitsWithoutSleeping(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states=FAILED_RUN_STATES,
+                              required={"main": ()})
+
+        # Assert
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AFailedRunWithNoCheck_When_Watched_Then_ItPrintsTheRun(self):
+        # Act
+        watched = watch_until(bound=0, states=FAILED_RUN_STATES, required={"main": ()})
+
+        # Assert
+        self.assertIn("PR#1 0000000 Test (startup_failure, run 36512896182) => failed run",
+                      watched.output)
+
+
+def stamped_lines(*lines):
+    """A record of lines as `settle.write_lines` leaves it, written at the clock's start."""
+    return "".join(f"{line}\n" for line in (str(CLOCK_START), *lines))
+
+
+class FollowerTests(unittest.TestCase):
+    """`--until-actionable` while another process holds the lock: refusing would end the run with
+    nothing actionable said, so it follows what that process writes instead."""
+
+    def test_Given_AWatcherPolling_When_ItEndsAPoll_Then_ItLeavesItsActionableLines(self):
+        # Act
+        watched = watch_until(bound=0)
+
+        # Assert
+        self.assertIn(READY_LINE, watched.actionable)
+
+    def test_Given_APullRequestWhoseReadingFails_When_APollEnds_Then_ItsLastLinesStand(self):
+        # Arrange — a follower pruning on a failed reading would read the next poll's line as new.
+        # The second pull request reads, so the record compared is one this poll wrote rather than
+        # the seed left standing.
+        seeded = stamped_lines(READY_LINE)
+
+        # Act
+        watched = watch_until(bound=0, seed_actionable=seeded, states={1: fabricate(1),
+                                                                       2: fabricate(2)},
+                              readings=[("pull_request", flaky_first)])
+
+        # Assert
+        self.assertEqual(watched.actionable,
+                         stamped_lines(READY_LINE, "PR#2 0000000 READY: nothing blocks the merge"))
+
+    def test_Given_AHolderThatWroteAReadyLine_When_WatchedUntilActionable_Then_ItExits(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True,
+                              seed_actionable=stamped_lines(READY_LINE))
+
+        # Assert — 1 is the refusal, None a run still following at the clock's bound.
+        self.assertEqual(watched.code, 0)
+
+    def test_Given_AHolderWhoseLineWasReported_When_WatchedUntilActionable_Then_ItWaits(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, holder=True,
+                              seed_actionable=stamped_lines(READY_LINE),
+                              seed_reported=stamped_lines(READY_LINE))
+
+        # Assert
+        self.assertIsNone(watched.code)
+
+    def test_Given_AHolderThatWritesOnlyTheReadyRecord_When_Followed_Then_ItsReadyOneIsReported(self):
+        # Arrange — a watcher from a checkout predating the actionable record.
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True,
+                              seed_ready=f"1 {CLOCK_START}\n", seed_ready_at=CLOCK_START)
+
+        # Assert
+        self.assertIn("PR#1 READY: recorded by the watcher holding the lock", watched.output)
+
+    def test_Given_AHolderThatStopsBeating_When_Followed_Then_ItExitsOnceTheWindowPasses(self):
+        # Arrange — it keeps the lock, so nothing else can take the watch over.
+        # Act
+        watched = watch_until(until_actionable=True, bound=5, holder=True)
+
+        # Assert — three polls are the window; still following, the run would reach the bound.
+        self.assertEqual(watched.polls, 3)
+
+    def test_Given_AHolderThatExits_When_Followed_Then_ItTakesTheWatchOver(self):
+        # Arrange — nothing written for it to follow, so a READY line is its own poll's.
+        # Act
+        watched = watch_until(until_actionable=True, bound=4, holder=True, holder_stops_after=1)
+
+        # Assert
+        self.assertIn(READY_LINE, watched.output)
+
+
+class PerCallerTests(unittest.TestCase):
+    """What one caller was told says nothing of what another heard."""
+
+    def test_Given_AnotherCallerWasToldOfAReadyOne_When_ThisCallerWatches_Then_ItIsToldToo(self):
+        # Arrange — one run exited over it and freed the lock, which this one then takes.
+        told = stamped_lines(READY_LINE)
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, seed_reported=told,
+                              reported_by="caller-b")
+
+        # Assert — a run that read the other's record as its own keeps polling to the bound.
+        self.assertEqual(watched.polls, 0)
+
+    def test_Given_AnotherCallerWasToldOfAReadyOne_When_ThisCallerFollows_Then_ItIsToldToo(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True,
+                              seed_actionable=stamped_lines(READY_LINE),
+                              seed_reported=stamped_lines(READY_LINE), reported_by="caller-b")
+
+        # Assert — 1 is the refusal, None a run still following at the clock's bound.
+        self.assertEqual(watched.code, 0)
+
+
+# A head that moved while its checks were read, whose one check failed at the head first read.
+MOVED_FAILING = {1: fabricate(1, moved=True, results=[{"name": "Unity", "bucket": "fail"}])}
+
+
+class MovedHeadTests(unittest.TestCase):
+    """Check results read at a head that has since moved are about that head and not the new one."""
+
+    def test_Given_AHeadThatMovedWhileRead_When_Watched_Then_TheResultNamesTheHeadItWasReadAt(self):
+        # Act
+        watched = watch_until(bound=0, states=MOVED_FAILING)
+
+        # Assert
+        self.assertIn("PR#1 0000000 Unity => fail", watched.output)
+
+    def test_Given_AHeadThatMovedWhileRead_When_WatchedUntilActionable_Then_ItsOldResultWakesNothing(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, states=MOVED_FAILING)
+
+        # Assert
+        self.assertIsNone(watched.code)
+
+
+class MovedHeadRunTests(unittest.TestCase):
+    """A failed run read at a head that has since moved is not the new head's to report."""
+
+    def test_Given_AFailedRunAtAHeadThatMovedWhileRead_When_WatchedUntilActionable_Then_ItWakesNothing(self):
+        # Arrange
+        states = {1: fabricate(1, moved=True, results=GENERATOR_CHECKS,
+                               runs=(GENERATORS_DONE, FAILED_RUN))}
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=2, states=states, required={"main": ()})
+
+        # Assert — None is what a run still polling at the clock's bound leaves.
+        self.assertIsNone(watched.code)
+
+
+class CallerTokenTests(unittest.TestCase):
+    """Who a run reports to: its own token, carried by the re-arm it prints."""
+
+    def test_Given_TwoSubagentsOfOneSession_When_OneWasToldOfAReadyOne_Then_TheOtherIsToldToo(self):
+        # Arrange — both inherit the session's environment and neither names a caller, which is
+        # the whole of what two subagents of one session share.
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "session-1"}), \
+                tempfile.TemporaryDirectory(prefix="settle-siblings-") as home:
+            watch_until(until_actionable=True, bound=3, caller=None, home=home)
+
+            # Act
+            second = watch_until(until_actionable=True, bound=3, caller=None, home=home)
+
+        # Assert
+        self.assertIn(READY_LINE, second.output)
+
+    def test_Given_ACallerToken_When_TheRunExits_Then_TheReArmItPrintsCarriesIt(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, caller="tok-1")
+
+        # Assert
+        self.assertIn("watch --until-actionable --caller tok-1", watched.output)
+
+    def test_Given_NoCallerToken_When_TheRunsReArmIsRun_Then_ItWaitsForSomethingNew(self):
+        # Arrange — the first run exits over the READY one under a token of its own.
+        with tempfile.TemporaryDirectory(prefix="settle-rearm-") as home:
+            first = watch_until(until_actionable=True, bound=3, caller=None, home=home)
+            token = re.search(r"--caller (\S+)", first.output)
+
+            # Act
+            again = watch_until(until_actionable=True, bound=2, home=home,
+                                caller=token.group(1) if token else "no token printed")
+
+        # Assert — None is what a run still polling at the clock's bound leaves.
+        self.assertIsNone(again.code)
+
+    def test_Given_ACallerToken_When_TheRunRetires_Then_TheReArmItPrintsCarriesIt(self):
+        # Arrange — nothing actionable, so it polls the interval out.
+        pending = {1: fabricate(1, results=[{"name": "Unity", "bucket": "pending"}])}
+
+        # Act
+        watched = watch_until(until_actionable=True, states=pending, caller="tok-2")
+
+        # Assert
+        self.assertIn("watch --until-actionable --caller tok-2", watched.output)
+
+
+def rearmed(first, then, caller="tok-5"):
+    """What a token caller's re-arm prints after its first run exited over `first`'s states and
+    the pull requests moved to `then`'s, over one set of watcher files."""
+    with tempfile.TemporaryDirectory(prefix="settle-rearm-") as home:
+        watch_until(until_actionable=True, bound=3, caller=caller, home=home, states=first)
+        return watch_until(until_actionable=True, bound=2, caller=caller, home=home, states=then)
+
+
+class ToldKeyTests(unittest.TestCase):
+    """What counts as something new for a caller already told of a pull request."""
+
+    def test_Given_AHeldPullRequestWhoseHolderWasCleaned_When_ReArmed_Then_ItWaits(self):
+        # Act
+        again = rearmed({5: fabricate(5, held=True)}, {5: fabricate(5, held=CLEAN)})
+
+        # Assert — None is what a run still polling at the clock's bound leaves.
+        self.assertIsNone(again.code)
+
+    def test_Given_AHeldPullRequestThatTurnedReady_When_ReArmed_Then_ItIsTold(self):
+        # Act
+        again = rearmed({5: fabricate(5, held=True)}, {5: fabricate(5)})
+
+        # Assert
+        self.assertIn("PR#5 0000000 READY: nothing blocks the merge", again.output)
+
+    def test_Given_AHeldPullRequestWhoseHeadMoved_When_ReArmed_Then_ItIsTold(self):
+        # Arrange — the same pull request on a new head, still held.
+        moved = fabricate(5, held=True)._replace(sha="e" * 40, after="e" * 40)
+
+        # Act
+        again = rearmed({5: fabricate(5, held=True)}, {5: moved})
+
+        # Assert
+        self.assertIn("PR#5 eeeeeee green, but", again.output)
+
+
+class RecordPruningTests(unittest.TestCase):
+    """Which other callers' records a caller's write deletes."""
+
+    def pruned(self, stamp, name=None):
+        """Whether another caller's record stamped `stamp` is gone after this caller's run writes."""
+        with tempfile.TemporaryDirectory(prefix="settle-prune-") as home:
+            other = Path(home) / "reported" / (name or "0123456789abcdef")
+            other.parent.mkdir()
+            other.write_text(f"{stamp}\n{READY_LINE}\n", encoding="utf-8")
+            watch_until(until_actionable=True, bound=3, home=home)
+            return not other.exists()
+
+    def test_Given_AnotherCallersRecordInsideTheWindow_When_ACallerWrites_Then_ItIsKept(self):
+        # Act / Assert
+        self.assertFalse(self.pruned(CLOCK_START))
+
+    def test_Given_AnotherCallersRecordOutsideTheWindow_When_ACallerWrites_Then_ItIsDeleted(self):
+        # Act / Assert
+        self.assertTrue(self.pruned(CLOCK_START - STALE_SECONDS))
+
+    def test_Given_AnotherCallersRecordBeingWritten_When_ACallerWrites_Then_ItIsKept(self):
+        # Arrange — a temporary file holding no stamp yet, which a reading carries no further.
+        # Act / Assert
+        self.assertFalse(self.pruned("", name=".0123456789abcdef.4242.tmp"))
+
+    def test_Given_ACallersRecord_When_Written_Then_ItArrivesByRename(self):
+        # Arrange — a record written in place is empty for a moment, and a reading of it then, or
+        # another caller's pruning, takes it for none.
+        renamed = []
+        replace = os.replace
+
+        def recording(source, target):
+            renamed.append(Path(target).parent.name)
+            return replace(source, target)
+
+        # Act
+        with mock.patch.object(settle.os, "replace", recording):
+            watch_until(until_actionable=True, bound=3)
+
+        # Assert
+        self.assertIn("reported", renamed)
+
+
+class FollowerTokenTests(unittest.TestCase):
+    """A follower's re-arm carries its token as a polling run's does."""
+
+    def test_Given_AFollowerOfAReadyLine_When_ItExits_Then_TheReArmItPrintsCarriesItsToken(self):
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, holder=True, caller="tok-4",
+                              seed_actionable=stamped_lines(READY_LINE))
+
+        # Assert
+        self.assertIn("watch --until-actionable --caller tok-4", watched.output)
+
+    def test_Given_AFollowerOfAHolderThatKeepsBeating_When_ItRetires_Then_ItsReArmCarriesItsToken(self):
+        # Arrange — nothing actionable from the holder, which beats throughout.
+        # Act
+        watched = watch_until(until_actionable=True, holder=True, holder_beats=True,
+                              caller="tok-3", seed_actionable=stamped_lines())
+
+        # Assert
+        self.assertIn("watch --until-actionable --caller tok-3", watched.output)
+
+
+class HandOffTests(unittest.TestCase):
+    """A watcher that exited to report is still a watcher for its heartbeat's window."""
+
+    def alive(self, handed_off, pid):
+        """`alive` at 1060 over a heartbeat `pid` wrote at 1000, beside the hand-off text given."""
+        with tempfile.TemporaryDirectory(prefix="settle-handoff-") as directory:
+            beat_file = Path(directory) / "beat"
+            beat_file.write_text(settle.watcher_state.beat(pid, now=1000))
+            record = Path(directory) / "handed_off"
+            record.write_text(handed_off)
+            with contextlib.ExitStack() as stack:
+                for name, path in (("HEARTBEAT", beat_file), ("HANDED_OFF", record),
+                                   ("ASKED", Path(directory) / "asked")):
+                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path,
+                                                          create=True))
+                return settle.watcher_state.alive(now=1060)
+
+    def test_Given_AWatcherThatExitedToReport_When_ReadInsideTheWindow_Then_ItIsAlive(self):
+        # Arrange
+        pid = exited_pid()
+
+        # Act / Assert
+        self.assertTrue(self.alive(settle.watcher_state.beat(pid, now=1000), pid))
+
+    # GREEN_ON_BASE(characterization): a gone writer was never alive; this pins the pid match.
+    def test_Given_AHandOffNamingAnotherProcess_When_Read_Then_TheGoneWriterIsNotAlive(self):
+        # Arrange
+        pid = exited_pid()
+
+        # Act / Assert
+        self.assertFalse(self.alive(settle.watcher_state.beat(pid + 1, now=1000), pid))
+
+    # GREEN_ON_BASE(characterization): a gone writer was never alive; this pins the window.
+    def test_Given_AHandOffOlderThanTheWindow_When_Read_Then_TheGoneWriterIsNotAlive(self):
+        # Arrange
+        pid = exited_pid()
+
+        # Act / Assert
+        self.assertFalse(self.alive(settle.watcher_state.beat(pid, now=1060 - STALE_SECONDS), pid))
 
 
 class TerminalStateTests(unittest.TestCase):

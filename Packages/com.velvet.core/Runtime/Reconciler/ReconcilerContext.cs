@@ -1581,8 +1581,9 @@ namespace Velvet
 
         // The exiting children a PopLayout presence pinned out of flow, keyed by the ghost element, which paint as
         // positioned children for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken when
-        // the exit is cancelled or the ghost is removed.
-        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> PinnedGhosts { get; } = new();
+        // the exit is cancelled or the ghost is removed. A pure side-table, enrolled in _pureElementSideTables: an
+        // exit's completion removes the ghost without unpinning it.
+        internal Dictionary<VisualElement, object> PinnedGhosts { get; } = new();
 
         // Real element -> its relocation bookkeeping. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();
@@ -1590,6 +1591,15 @@ namespace Velvet
         // Slot element -> the z, flex order and position its classes give it, for an element whose classes name
         // any of them. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
+
+        // The elements given stacking facts or pinned since FiberZLayerCoordinator.ResortLayers last recorded the
+        // parent each stands in (StackingParents). A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, bool> StackingArrivals { get; } = new();
+
+        // The parents FiberZLayerCoordinator.Arrange looks through for a child with stacking facts or a pin: every
+        // parent such a child's slot stands in is here by the time the parent is arranged, and a parent leaves when
+        // a look finds none. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, bool> StackingParents { get; } = new();
 
         // Retired placeholders and anchors still standing in their parent, removed by
         // FiberZLayerCoordinator.DrainTeardowns once no diff can be holding a physical index into that parent.
@@ -1620,8 +1630,10 @@ namespace Velvet
         // FiberZLayerCoordinator.ResortLayers' working copy of PendingZLayerResorts, kept so a drain allocates nothing.
         internal List<VisualElement> ZLayerArrangeQueue { get; } = new();
 
-        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it. A parent a diff is
-        // parked over keeps its slot occupants until the diff finishes (FiberZLayerCoordinator.Arrange).
+        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it, kept while a Portal
+        // drain sets the park aside (ChildReconciler.DrainPendingPortalMounts). Arrange leaves the slot occupants of
+        // such a parent until the diff finishes; a settle outside a pass does not wait, and NoteSlotOccupantChanged
+        // carries what it swaps to the parked diff.
         internal Dictionary<object, VisualElement> ParkedDiffParents { get; } = new();
 
         internal bool IsParkedParent(VisualElement parent)
@@ -1799,12 +1811,6 @@ namespace Velvet
         private readonly List<SuspensePrimaryFrame> _suspensePrimaries = new();
 
         internal int SuspensePrimaryDepth => _suspensePrimaries.Count;
-
-        // True while the walk expands the committed output of an inline fiber that rendered nothing in this pass,
-        // including the patch of an element of that output kept because a fiber below it has an update pending.
-        // GeneralPathReconciler.ExpandComponentInline writes it for every component it expands, an error
-        // boundary included, and restores it after.
-        internal bool InBailedOutput;
 
         // Retains is whether the Suspense keeps the primary it had committed when that primary suspends again; boundary
         // is the fiber rendering it.
@@ -2118,6 +2124,24 @@ namespace Velvet
         // (memo hits legitimately share instances across fibers' trees). Maintained by the park /
         // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
         internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
+
+        // The old instances of each general walk in progress, innermost last; OldSlotOccupants.ResolveAgain says
+        // who resolves them again and why.
+        internal List<OldSlotOccupants> OpenOldInstances { get; } = new();
+
+        // FiberZLayerCoordinator put `to` in the logical slot `from` held. Each diff holding old instances names that
+        // slot's element by `to` from here on, since the swap can come from outside the diff: an out-of-pass restack
+        // between two slices of a parked pass is one. A parked keyed Pass 2 also holds the old rows it already took,
+        // which its reorder places later, so those are rewritten too. Neither compares a parent. For the old instances
+        // OldSlotOccupants.ReplaceOccupant gives why; a taken row stays a child of its own container until the reorder
+        // places it, so a row naming `from` is one of the container the swap is in.
+        internal void NoteSlotOccupantChanged(VisualElement from, VisualElement to)
+        {
+            foreach (var occupants in BufferPool.RentedOldSlotOccupants) occupants.ReplaceOccupant(from, to);
+            foreach (var parked in ParkedDiffParents.Keys) (parked as ChildReconciler)?.ReplaceParkedRow(from, to);
+        }
+
+        internal HostCommitQueue HostCommit { get; }
 
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a
@@ -3351,6 +3375,13 @@ namespace Velvet
         // OUTERMOST Reconcile pass across the entire fiber tree completes. Using an instance-local depth would
         // treat each fiber-owned Reconciler.Reconcile call as a fresh top-level and run that reset mid-pass.
         internal int SharedReconcileDepth { get; set; }
+
+        // The SharedReconcileDepth the bracket of a VirtualList range rendered outside a pass holds while it is open
+        // (Reconciler's BeginRangeForController), and 0 while none is. For the abort the bracket is no pass: a boundary
+        // catching at its depth raises none (FiberErrorBoundary.TryCatch), and a Reconcile or a resume entered at its
+        // depth takes the one raised inside it as a top-level pass does, without that pass's drains (Reconciler's
+        // ReconcileCatching and ContinueReconcile).
+        internal int RangeBracketDepth { get; set; }
         public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }
 
@@ -3410,6 +3441,7 @@ namespace Velvet
             ComponentContextStack = new ComponentContextStack();
             FiberStack = new FiberStack();
             BufferPool = new ReconcilerBufferPool();
+            HostCommit = new HostCommitQueue(this);
             _pureElementSideTables = new System.Collections.IDictionary[]
             {
                 StructuralVariants,
@@ -3445,6 +3477,9 @@ namespace Velvet
                 ZLayerHosts,
                 ZLayerMembers,
                 StackingFacts,
+                StackingArrivals,
+                StackingParents,
+                PinnedGhosts,
             };
             FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
         }

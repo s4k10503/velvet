@@ -171,11 +171,9 @@ namespace Velvet
             existingFiber.Body = node.Body;
             existingFiber.SourceNode = node;
             existingFiber.SourceTree = _ctx.CurrentFiberTree;
-            // Only a memoized component bails a parent-driven re-render on
-            // shallow-equal props. A plain component re-renders whenever its parent does, so the
-            // props-equality bail is gated on opt-in memoization. Memoization is opted into either by
-            // [Component(Memoize = true)] (node.Memoize) or by V.Memo (custom areEqual, node.AreEqual).
-            // When NOT memoized, props are treated as changed so the component always re-renders.
+            // Only a memoized component bails a parent-driven re-render on shallow-equal props. Memoization is
+            // opted into either by [Component(Memoize = true)] (node.Memoize) or by V.Memo (custom areEqual,
+            // node.AreEqual).
             bool isMemoized = node.Memoize || node.AreEqual != null;
             bool propsChanged;
             if (isMemoized)
@@ -187,11 +185,10 @@ namespace Velvet
             }
             else
             {
-                // Non-memo component: the props bail never applies, so a parent re-render re-renders it, except
-                // inside the committed output of a fiber that rendered nothing in this pass: there the node is
-                // the instance the fiber last rendered from, which the parent did not produce again, and only a
-                // pending update renders it. Props are still synced below for the next render.
-                propsChanged = !(_ctx.InBailedOutput && renderedFromThisNode);
+                // A plain component bails only when reached with the node it last rendered from, as React bails an
+                // element whose props object is the one it last rendered with — a node the parent's compiler cache
+                // returned, say, or one in the committed output of a fiber that rendered nothing in this pass.
+                propsChanged = !renderedFromThisNode || FiberPendingWork.HasOwn(existingFiber);
             }
             if (propsChanged)
             {
@@ -310,8 +307,7 @@ namespace Velvet
         // Props-bail comparison, reached only for memoized nodes (see ReconcileExistingFiber's isMemoized gate).
         // With a custom areEqual predicate (V.Memo(component, props, areEqual)) the predicate decides equality;
         // otherwise ComponentPropsComparer decides. Both-null props (a memoized props-less
-        // overload) are trivially equal, so such a component bails unless dirty. Non-memo components never reach
-        // here: their props are unconditionally treated as changed so a parent re-render re-renders the child.
+        // overload) are trivially equal, so such a component bails unless dirty.
         private static bool PropsEqual(object? prev, object? next, Func<object?, object?, bool>? areEqual)
         {
             if (areEqual != null)
@@ -445,7 +441,7 @@ namespace Velvet
         }
 
         // Disposes an inline-mounted fiber identified by reference and removes its registry entry.
-        // Called by GeneralPathReconciler.SweepOrphans when its per-call old/new fiber-set diff detects
+        // Called by HostCommitQueue.DisposeOrphans when a container's per-call old/new fiber-set diff detects
         // an orphan (ComponentNode present on the old side but absent on the new side). The orphan
         // fiber's rendered VEs were already removed from anchor.children by the reconcile's
         // Remove ops; this method releases fiber-side resources (effects, ref cleanups, hook state).
@@ -509,7 +505,7 @@ namespace Velvet
 
         // Returns the inline registration key under which fiber is registered, or false when it is not
         // an inline-mounted fiber (root / wrapper-mounted). Used by FiberContextSpine to recognize a
-        // spine child while structurally walking an ancestor's committed tree, so the Providers that
+        // spine child while structurally walking an ancestor's output, so the Providers that
         // enclose that child can be re-pushed onto the live cursor for an isolated re-render. portalScope
         // is handed back rather than recomputed there: an isolated re-render pushes no Portal scope, so
         // the walk has nothing of its own to derive it from and a guess would look the child up under a

@@ -83,11 +83,13 @@ namespace Velvet
     //
     // Two sources give an element a function: the ease-[...] layer, which StyleArbitraryValueResolver resolves (and a
     // theme class, ease-snappy for --ease-snappy, resolves to), and the keyword the element's rules resolve, read when
-    // the transition starts: ease-in, ease-out and ease-in-out, behind a variant or not, and the ease-in-out every
-    // transition-* utility bundles, take Tailwind v4's curves (--ease-in, --ease-out, --ease-in-out and
-    // --default-transition-timing-function). Both also leave a keyword on the element, so an engine that cannot be
-    // reached eases by the keyword closest to the function. A timing function written inline (a Motion's own) is the
-    // keyword it names; the layer's is written inline too, and is told apart by the keyword it left.
+    // the transition starts: ease-in, ease-out and ease-in-out, behind a variant or not, and the ease-in-out each
+    // transition-* utility but transition-none bundles, take Tailwind v4's curves (--ease-in, --ease-out, --ease-in-out
+    // and --default-transition-timing-function). Both also leave a keyword on the element, so an engine that cannot be
+    // reached eases by the keyword closest to the function. A timing function a Motion's tween writes (a play
+    // MotionTweenTiming holds) is the keyword it names, and so is one other code writes inline where the classes give
+    // the keyword; the layer's is written inline too, and is told apart by the keyword it left. The lists a narrowing
+    // writes in the rules' place (MotionTweenTiming.Narrow) stand for the rules.
     //
     // The layer outranks the keyword source as an inline value outranks a class.
     internal static class StyleEaseCurve
@@ -173,6 +175,11 @@ namespace Velvet
         // The function's eased output at progress t.
         internal static float Evaluate(in EaseFunction function, float t) => function.Evaluate(t);
 
+        // A tween Velvet runs itself, at progress t through its run, unclamped: below 0 is inside its delay, where it shows
+        // its start whatever the function, as a steps(n, jump-start) asked at 0 would already have jumped.
+        internal static float Evaluate(EaseFunction? function, EasingMode mode, float t)
+            => t < 0f ? 0f : function is { } given ? Evaluate(given, t) : UssEasing.Evaluate(mode, t);
+
         private static readonly EasingMode[] s_candidates =
             { EasingMode.Ease, EasingMode.EaseIn, EasingMode.EaseOut, EasingMode.EaseInOut, EasingMode.Linear };
 
@@ -240,6 +247,14 @@ namespace Velvet
             {
                 foreach (var name in classNames)
                 {
+                    // A peel leaves a suffix of its class, so a class holding neither word cannot leave one of these.
+                    // It is passed over before the peel, which allocates its variants and would run on each patch
+                    // (ClassReadAllocationTests).
+                    if (name == null || (name.IndexOf("ease-", StringComparison.Ordinal) < 0
+                            && name.IndexOf("transition", StringComparison.Ordinal) < 0))
+                    {
+                        continue;
+                    }
                     var leaf = name;
                     while (StyleVariantClass.TryParse(leaf, out _, out var payload))
                     {
@@ -266,7 +281,7 @@ namespace Velvet
         // runs itself.
         internal static EaseFunction? CurveFor(VisualElement element, EasingMode resolved)
         {
-            if (!s_bindings.TryGetValue(element, out var binding))
+            if (!s_bindings.TryGetValue(element, out var binding) || MotionTweenTiming.PlaysCurve(element))
             {
                 return null;
             }
@@ -274,7 +289,7 @@ namespace Velvet
             {
                 return binding.LayerMode == resolved ? layer : null;
             }
-            return binding.Classed && element.style.transitionTimingFunction.keyword == StyleKeyword.Null
+            return binding.Classed && MotionTweenTiming.PeekOwn(element).Curve.keyword == StyleKeyword.Null
                 ? OfKeyword(resolved)
                 : null;
         }

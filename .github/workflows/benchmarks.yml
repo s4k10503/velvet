@@ -19,6 +19,7 @@ on:
       - '!Packages/com.velvet.core/Documentation~/**'
       - '.github/workflows/benchmarks.yml'
       - 'scripts/ci/benchmark_results.py'
+      - 'scripts/ci/benchmark_steps.py'
       - 'scripts/test_quality/assert_no_inconclusive.py'
       - 'scripts/test_quality/assert_results_from_this_tree.py'
       - '!**.md'
@@ -176,6 +177,36 @@ jobs:
           alert-threshold: '150%'
           comment-on-alert: false
           fail-on-alert: false
+
+  # Reads the history trend-main has just appended to, opens an issue for a new step up and rewrites the
+  # open issues it opened (scripts/ci/benchmark_steps.py). A job of its own so that its concurrency group serialises the issue
+  # writes without serialising the appends: two runs that both list the issues before either opens one
+  # would open the same step twice. Each run reads the whole history, so one that waits behind another
+  # misses nothing.
+  regressions:
+    name: Benchmark regressions
+    needs: trend-main
+    if: >-
+      github.repository == 's4k10503/velvet'
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: benchmark-regressions
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Open or rewrite the step issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --depth 1 origin benchmark-data
+          git show FETCH_HEAD:dev/bench/data.js > history.js
+          python3 scripts/ci/benchmark_steps.py history.js --issues --repository "$GITHUB_REPOSITORY"
 
   # A labelled pull request is compared with main's latest entry in the job summary. Nothing is pushed
   # and no comment is written, so the job needs no more than read access; a regression shows in the

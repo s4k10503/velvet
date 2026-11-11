@@ -696,11 +696,13 @@ namespace Velvet.Tests
             s_movedSetTick = null;
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the thrower again with its host, as this still does.
+        // The host and the boundary are built without the compiler, so each render hands the thrower a new node.
         [Test]
         public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatches_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledReorderHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -713,11 +715,13 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-ahead,moved-fallback"));
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the thrower again with its host, as this still does.
+        // The host and the boundary are built without the compiler, so each render hands the thrower a new node.
         [Test]
         public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItCatches_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -730,11 +734,13 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-lead0,moved-fallback"));
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the thrower again with its host, as this still does.
+        // The host and the boundary are built without the compiler, so each render hands the thrower a new node.
         [Test]
         public void Given_APassAddingRowsAheadOfTheBoundary_When_ItCatches_Then_TheFallbackTakesTheRowsThatPassGaveIt()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledGrowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -747,15 +753,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here. A removed ref's
-        // cleanup failing is no render error, so the boundary catches it on the aborting path, and the rows its
-        // fallback rewrites are what this pins.
+        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here, and renders the thrower.
+        // A removed ref's cleanup failing is no render error, so the boundary catches it on the aborting path, and the
+        // rows its fallback rewrites are what this pins. The host and the boundary are built without the compiler, so
+        // each render hands the thrower a new node.
         [Test]
         public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItAbortsOnARemovedRefsCleanupError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
             s_movedThrowsInCleanup = true;
-            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledReorderHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -768,15 +775,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-fallback,moved-ahead"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here. A removed ref's
-        // cleanup failing is no render error, so the boundary catches it on the aborting path, and the rows its
-        // fallback rewrites are what this pins.
+        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here, and renders the thrower.
+        // A removed ref's cleanup failing is no render error, so the boundary catches it on the aborting path, and the
+        // rows its fallback rewrites are what this pins. The host and the boundary are built without the compiler, so
+        // each render hands the thrower a new node.
         [Test]
         public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItAbortsOnARemovedRefsCleanupError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
             s_movedThrowsInCleanup = true;
-            using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -789,15 +797,16 @@ namespace Velvet.Tests
                 Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here. A removed ref's
-        // cleanup failing is no render error, so the boundary catches it on the aborting path, and the rows its
-        // fallback rewrites are what this pins.
+        // GREEN_ON_BASE(characterization): the merge base aborts on this error as it does here, and renders the thrower.
+        // A removed ref's cleanup failing is no render error, so the boundary catches it on the aborting path, and the
+        // rows its fallback rewrites are what this pins. The host and the boundary are built without the compiler, so
+        // each render hands the thrower a new node.
         [Test]
         public void Given_APassAddingRowsAheadOfTheBoundary_When_ItAbortsOnARemovedRefsCleanupError_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
             s_movedThrowsInCleanup = true;
-            using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledGrowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -848,6 +857,13 @@ namespace Velvet.Tests
             return V.Component(MovedThrowerRender, key: "thrower");
         }
 
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UncompiledMovedBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "moved-fallback", text: "caught"));
+            return V.Component(MovedThrowerRender, key: "thrower");
+        }
+
         [Component]
         private static VNode ReorderHostRender()
         {
@@ -866,30 +882,48 @@ namespace Velvet.Tests
                 });
         }
 
-        [Component]
-        private static VNode GrowHostRender()
+        [Component(Compiler = false)]
+        private static VNode UncompiledReorderHostRender()
+        {
+            var (order, setOrder) = Hooks.UseState(0);
+            s_movedSetOrder = setOrder;
+            return order == 0
+                ? V.Div(children: new VNode[]
+                {
+                    V.Component(UncompiledMovedBoundaryRender, key: "boundary"),
+                    V.Label(name: "moved-ahead", text: "ahead", key: "ahead"),
+                })
+                : V.Div(children: new VNode[]
+                {
+                    V.Label(name: "moved-ahead", text: "ahead", key: "ahead"),
+                    V.Component(UncompiledMovedBoundaryRender, key: "boundary"),
+                });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UncompiledGrowHostRender()
         {
             var (leading, setGrow) = Hooks.UseState(1);
             s_movedSetGrow = setGrow;
-            return LeadingRowsBefore(leading);
+            return UncompiledLeadingRowsBefore(leading);
         }
 
-        [Component]
-        private static VNode ShrinkHostRender()
+        [Component(Compiler = false)]
+        private static VNode UncompiledShrinkHostRender()
         {
             var (leading, setLeading) = Hooks.UseState(3);
             s_movedSetLeading = setLeading;
-            return LeadingRowsBefore(leading);
+            return UncompiledLeadingRowsBefore(leading);
         }
 
-        private static VNode LeadingRowsBefore(int leading)
+        private static VNode UncompiledLeadingRowsBefore(int leading)
         {
             var children = new VNode[leading + 1];
             for (var i = 0; i < leading; i++)
             {
                 children[i] = V.Label(name: "moved-lead" + i, text: "lead", key: "lead" + i);
             }
-            children[leading] = V.Component(MovedBoundaryRender, key: "boundary");
+            children[leading] = V.Component(UncompiledMovedBoundaryRender, key: "boundary");
             return V.Div(children: children);
         }
 

@@ -259,7 +259,9 @@ namespace Velvet
                 : null;
         }
 
-        // WithoutTypeHint as a Try: false where the hint is malformed.
+        // WithoutTypeHint as a Try: false where the hint is malformed. The drop keeps the class through its first '[' and
+        // from its last ']' on, so a parser can test its family's prefix before it. It can allocate where the bracket opens
+        // with a run TrySplitTypeHint reads up to a ':', and does for the empty run of the variant has-[:checked]:.
         internal static bool TryDropTypeHint(string cls, out string plain)
         {
             var dropped = WithoutTypeHint(cls);

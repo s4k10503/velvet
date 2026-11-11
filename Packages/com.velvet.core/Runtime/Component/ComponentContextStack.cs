@@ -11,7 +11,7 @@ namespace Velvet
     // FiberContextSpine before the body runs.
     internal sealed class ComponentContextStack
     {
-        private readonly Dictionary<object, Stack<object>> _stacks = new();
+        private Dictionary<object, Stack<object>> _stacks = new();
 
         public void Push<T>(ComponentContext<T> context, T? value) => PushRaw(context, value);
 
@@ -44,6 +44,17 @@ namespace Velvet
             }
             return snapshot;
         }
+
+        // Starts the cursor empty for a render placed somewhere other than where the values on it were pushed, and
+        // hands those values back for Restore, which drops whatever the render pushed with them.
+        internal Dictionary<object, Stack<object>> SetAside()
+        {
+            var setAside = _stacks;
+            _stacks = new Dictionary<object, Stack<object>>();
+            return setAside;
+        }
+
+        internal void Restore(Dictionary<object, Stack<object>> setAside) => _stacks = setAside;
 
         // Untyped push/pop over the per-context stacks. Backs both the typed Push/Pop (which simply box the
         // context key and value) and the restore of a SnapshotTops capture (a snapshot has erased the generic

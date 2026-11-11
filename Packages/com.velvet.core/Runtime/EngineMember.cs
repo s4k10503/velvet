@@ -645,6 +645,20 @@ namespace Velvet
         internal static readonly EngineMember BorderLeftColorPropertyId =
             Field(UIElements, StylePropertyIdType, "BorderLeftColor", StylePropertyIdShape);
 
+        // ProjectedCornerFace's reading of the inline background-image entry an element holds.
+        internal static readonly EngineMember StyleValueCollectionTryGetValue = Method(UIElements,
+            "UnityEngine.UIElements.StyleValueCollection", "TryGetStyleValue", "System.Boolean", StylePropertyIdShape,
+            StyleValueTypeName + "&");
+
+        internal static readonly EngineMember StyleValueKeyword =
+            Field(UIElements, StyleValueTypeName, "keyword", "enum:UnityEngine.UIElements.StyleKeyword");
+
+        internal static readonly EngineMember StyleValueResource =
+            Field(UIElements, StyleValueTypeName, "resource", "System.Runtime.InteropServices.GCHandle");
+
+        internal static readonly EngineMember BackgroundImagePropertyId =
+            Field(UIElements, StylePropertyIdType, "BackgroundImage", StylePropertyIdShape);
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

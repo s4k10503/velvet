@@ -1,0 +1,302 @@
+using System.Reflection;
+using NUnit.Framework;
+using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+
+namespace Velvet.Tests
+{
+    /// <summary>
+    /// Specifies how a <see cref="V.VirtualList{T}"/> row that stacks by a <c>z-*</c> class sits among the rows the
+    /// list places: FiberZLayerCoordinator relocates it within the list's row container as it relocates an element
+    /// within its parent, and the list keeps it there across the ranges it renders.
+    /// <list type="bullet">
+    /// <item>A row a render gives a z, and a row created with one, paints in front of the rows after it, and keeps
+    /// doing so when the list renders the range again. A row a scroll brings into the range paints where its z puts
+    /// it, though no pass renders that range, whether a Component row follows it there or rows already in the range
+    /// are patched after it. A row a render takes the z away from paints in its slot again.</item>
+    /// <item>No placeholder is kept for a row a render gave a z once it leaves the list.</item>
+    /// <item>A relocated row takes the list's item length, and hands it back when the list turns to the other
+    /// axis.</item>
+    /// </list>
+    /// </summary>
+    [TestFixture]
+    internal sealed class VirtualListZLayerTests
+    {
+        private const float ItemHeight = 10f;
+
+        private VisualElement _root;
+        private static string[] s_items;
+        // The classes of the row named s_classedRow.
+        private static string s_classes;
+        private static string s_classedRow;
+        private static bool s_horizontal;
+        private static string s_componentRow;
+        private static StateUpdater<int> s_render;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            FiberStrictMode.Enabled = false;
+            (s_items, s_classes, s_classedRow, s_horizontal, s_componentRow, s_render) =
+                (new[] { "a", "b", "c" }, "", "b", false, null, default);
+        }
+
+        [Component]
+        private static VNode ListHost()
+        {
+            var (_, setRender) = Hooks.UseState(0);
+            s_render = setRender;
+            return V.Div(children: new VNode[]
+            {
+                V.VirtualList(
+                    items: s_items,
+                    keySelector: item => item,
+                    itemHeight: ItemHeight,
+                    renderer: item => item == s_componentRow
+                        ? V.Component(ComponentRow, item, key: item)
+                        : V.Div(name: item, className: item == s_classedRow ? s_classes : null),
+                    horizontal: s_horizontal,
+                    overscan: 0,
+                    key: "list"),
+            });
+        }
+
+        [Component]
+        private static VNode ComponentRow(string item) => V.Div(name: item);
+
+        // Mounts the host with the viewport height a geometry pass would have left, so that each render of the host
+        // renders the list's range inside its pass.
+        private MountedTree Mount()
+        {
+            var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()], 200f);
+            return mounted;
+        }
+
+        private static void Render(MountedTree mounted)
+        {
+            s_render.Invoke(previous => previous + 1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+        }
+
+        private VisualElement Rows => _root.Q<ScrollView>().contentContainer.ElementAt(1);
+
+        [Test]
+        public void Given_AVirtualListRowARenderGivesAZIndex_When_TheListRendersIt_Then_ItPaintsInFrontOfTheRowsAfterIt()
+        {
+            // Arrange
+            using var mounted = Mount();
+            Render(mounted);
+
+            // Act
+            s_classes = "relative z-10";
+            Render(mounted);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,c,b"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowCreatedWithAZIndex_When_TheListRendersTheRangeAgain_Then_ItStillPaintsInFrontOfTheRowsAfterIt()
+        {
+            // Arrange
+            s_classes = "relative z-10";
+            using var mounted = Mount();
+            Render(mounted);
+
+            // Act
+            Render(mounted);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,c,b"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowCreatedWithAZIndex_When_ARenderTakesTheZIndexAway_Then_ItPaintsInItsSlotAgain()
+        {
+            // Arrange
+            s_classes = "relative z-10";
+            using var mounted = Mount();
+            Render(mounted);
+
+            // Act
+            s_classes = "";
+            Render(mounted);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,b,c"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowWithAZIndex_When_AScrollBringsItIntoTheRange_Then_ItPaintsInFrontOfTheRowsAfterIt()
+        {
+            // Arrange — no viewport height set, so the host's mount renders no range.
+            s_classes = "relative z-10";
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+
+            // Act — a range rendered from a scroll, outside any pass.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,c,b"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowWithANegativeZIndex_When_AScrollBringsItIntoTheRange_Then_ItPaintsBehindTheOtherRows()
+        {
+            // Arrange — no viewport height set, so the host's mount renders no range.
+            s_classes = "relative -z-10";
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+
+            // Act — a range rendered from a scroll, outside any pass.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("b,a,c"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowWithAZIndexAheadOfAComponentRow_When_AScrollBringsBothIntoTheRange_Then_ItPaintsInFrontOfTheRows()
+        {
+            // Arrange — no viewport height set, so the host's mount renders no range; the row after "b" is a
+            // Component, whose render outside a pass is a top-level pass of its own.
+            (s_classes, s_componentRow) = ("relative z-10", "c");
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+
+            // Act — a range rendered from a scroll, outside any pass.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(ZBandProbe.Names(ZBandProbe.Band(Rows, front: true)), Is.EqualTo("b"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowWithAZIndexAheadOfRowsAlreadyInTheRange_When_AScrollBringsItIn_Then_ItPaintsInFrontOfThem()
+        {
+            // Arrange — no viewport height set, so the host's mount renders no range; a scroll renders the range of
+            // "b" and "c" alone.
+            (s_classedRow, s_classes) = ("a", "relative z-10");
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 10f, viewportHeight: 15f);
+
+            // Act — a scroll that creates "a" ahead of the rows it patches, outside any pass.
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("b,c,a"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowAMotionPlayHoldsTheZIndexOf_When_TheListRendersTheRangeAgain_Then_ItStillPaintsInFrontOfTheRowsAfterIt()
+        {
+            // Arrange — "b" relocated in front; a play opened on it holds its z, so the patch leaves its stacking to
+            // the play.
+            s_classes = "relative z-10";
+            using var mounted = Mount();
+            Render(mounted);
+            var b = _root.Q<VisualElement>("b");
+            mounted.Root.Reconciler.Context.PaintLeases.Open(b, new[] { "relative", "z-10" }, new[] { "relative", "z-20" }, isExit: false);
+
+            // Act
+            Render(mounted);
+
+            // Assert
+            Assert.That(ZBandProbe.PaintOrder(Rows), Is.EqualTo("a,c,b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base empties the row container on each range render, so no departed
+        // row stays in it. Leaving what holds no slot standing has to leave no departed row there either.
+        [Test]
+        public void Given_AVirtualListRowLiftedInFrontOfTheRowsAfterIt_When_AScrollJumpsToARangeWithoutIt_Then_ItIsNoLongerInTheList()
+        {
+            // Arrange — "a" is positioned with no z, which paints it in front of the unpositioned rows after it.
+            (s_items, s_classedRow, s_classes) = (new[] { "a", "b", "c", "d", "e", "f" }, "a", "relative");
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 30f, viewportHeight: 30f);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("a"), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps each row where its range renders it, the positioned one
+        // included. Lifting it in front and back again as the rows after it come and go must keep it there.
+        [Test]
+        public void Given_AVirtualListRowLiftedThenLoweredAsTheRowsAfterItLeave_When_AScrollBringsThemBack_Then_ItIsStillInTheList()
+        {
+            // Arrange — "r5" is positioned with no z: in front of "r6" while that row is in the range, and in its
+            // own slot once a scroll up one row takes "r6" out.
+            (s_items, s_classedRow, s_classes) =
+                (new[] { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9" }, "r5", "relative");
+            using var mounted = V.Mount(_root, V.Component(ListHost, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 40f, viewportHeight: 30f);
+            controller.UpdateVisibleRange(scrollY: 30f, viewportHeight: 30f);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 40f, viewportHeight: 30f);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("r5")?.parent, Is.SameAs(Rows));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowARenderGaveAZIndex_When_ItLeavesTheList_Then_NoPlaceholderIsKeptForIt()
+        {
+            // Arrange
+            using var mounted = Mount();
+            Render(mounted);
+            s_classes = "relative z-10";
+            Render(mounted);
+
+            // Act
+            s_items = new[] { "a", "c" };
+            Render(mounted);
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler.Context.ZLayerPlaceholders.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowCreatedWithAZIndex_When_TheListPlacesIt_Then_ItTakesTheItemHeight()
+        {
+            // Arrange
+            s_classes = "relative z-10";
+            using var mounted = Mount();
+
+            // Act
+            Render(mounted);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("b").style.height.value.value, Is.EqualTo(ItemHeight));
+        }
+
+        // GREEN_ON_BASE(characterization): the base writes a relocated row's item height to its placeholder, not the row.
+        // Written to the row since, the height has to be handed back from the row when the list turns horizontal.
+        [Test]
+        public void Given_AVirtualListRowCreatedWithAZIndex_When_TheListTurnsHorizontal_Then_ItsHeightIsHandedBack()
+        {
+            // Arrange
+            s_classes = "relative z-10";
+            using var mounted = Mount();
+            Render(mounted);
+
+            // Act
+            s_horizontal = true;
+            Render(mounted);
+
+            // Assert
+            Assert.That(_root.Q<VisualElement>("b").style.height.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+    }
+}

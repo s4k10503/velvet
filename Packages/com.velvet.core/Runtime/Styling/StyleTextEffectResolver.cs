@@ -192,12 +192,17 @@ namespace Velvet
             {
                 if (!string.IsNullOrEmpty(cls) && StyleNamedTextSize.HasThemedLineHeight(StyleArbitraryValueResolver.StripImportant(cls, out _)))
                 {
-                    StyleThemeTokens.Follow(element, () => Apply(ctx, element, classNames));
+                    Follow(ctx, element, classNames);
                     return;
                 }
             }
             StyleThemeTokens.Unfollow(element);
         }
+
+        // The capture lives here rather than in FollowThemedLineHeight, which every Apply enters:
+        // RetextAllocationTests reddens when it moves back.
+        private static void Follow(ReconcilerContext ctx, VisualElement element, string[] classNames)
+            => StyleThemeTokens.Follow(element, () => Apply(ctx, element, classNames));
 
         // Syncs an element's OWN effect from its class list and applies the (cascade-resolved) effect to its own
         // text and — when it carries an effect (now OR before this call) — its descendant text. Called from the
