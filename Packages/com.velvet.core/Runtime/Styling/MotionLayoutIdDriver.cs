@@ -1496,6 +1496,8 @@ namespace Velvet
         private float _delaySec;
         private float _durationSec;
         private EasingMode _easing;
+        // The function StyleEaseCurve.CurveFor gives _easing, which the carry eases by in place of UI Toolkit's curve for it.
+        private EaseFunction? _function;
         // The curve of a transition taken over from UI Toolkit (TakeOver), in place of _easing until the target changes.
         private System.Func<float, float>? _curve;
         private float _eased;
@@ -1602,6 +1604,7 @@ namespace Velvet
             (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
                 : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                 : (_heldDurationSec, _heldDelaySec, _heldEasing);
+            _function = StyleEaseCurve.CurveFor(element, _easing);
             _durationSec *= _shortening;
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             if (_delaySec < 0f) _delaySec *= _shortening;
@@ -1612,7 +1615,8 @@ namespace Velvet
         {
             _elapsedSec += dtSec;
             var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
-            _eased = _curve?.Invoke(t) ?? UssEasing.Evaluate(_easing, t);
+            _eased = _curve?.Invoke(t)
+                ?? (_function is { } function ? StyleEaseCurve.Evaluate(function, t) : UssEasing.Evaluate(_easing, t));
             // Landed exactly, which the curve need not give at its end.
             Value = t < 1f ? Mathf.LerpUnclamped(_from, Target, _eased) : Target;
             return Value;
