@@ -1410,18 +1410,19 @@ order their entries were appended:
   there is none, so a run above that and short of the threshold, or one its model was not judged at,
   stays inside the range.
   Steps whose ranges share a commit share an issue.
-- An issue's markers name each of its steps by benchmark and range, and an issue is found again by any
-  step of the same benchmark whose first slow run lies in a range one of them names, so a step whose first
-  slow run moves earlier within that range keeps its issue, while one starting after the marked step is
-  another step.
-  Steps one issue names are written to it together; where they name two or more open issues, the
-  lowest-numbered holds them and each other is given a pointer to it and closed.
+- An issue's markers name each of its steps by benchmark and range. While a marked step still stands, the
+  issue is found again by that step alone, so a later step of the benchmark whose range reaches back over
+  it is another step; once the marked step has gone, by a step of the same benchmark whose range shares a
+  commit with it, so a step whose first slow run moved, earlier or later, keeps its issue. Steps one issue
+  names are written to it together. An issue a person reopened is never written to or closed; of the
+  other open issues one cluster's steps name, the lowest-numbered holds them, naming any reopened one, and
+  each other is given a pointer to it and closed.
 - An issue opens only for a step decided at one of the twelve latest entries, so a step decided further
   back opens none. An open issue is rewritten while the history holds its steps; a step a closed one
   names is left out, since closing it is how a step is accepted or answered, while another benchmark's
   step in the same range, or a later step of the same benchmark, still opens its own. An open issue none
   of whose steps the history holds any more, one whose runs have left the history's 200 entries for
-  instance, gets a line saying so, once.
+  instance, gets a line saying so, once, unless a person reopened it.
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 

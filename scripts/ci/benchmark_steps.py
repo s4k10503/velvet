@@ -6,7 +6,7 @@ Reads the history `.github/workflows/benchmarks.yml` appends to the `benchmark-d
 
     benchmark_steps.py HISTORY             the steps the history holds now
     benchmark_steps.py HISTORY --replay    every prefix of the history synced in turn, against issues kept in memory
-    benchmark_steps.py HISTORY --issues    open or rewrite the issues, through `gh`
+    benchmark_steps.py HISTORY --issues    open, rewrite or close the issues, through `gh`
 """
 
 import argparse
@@ -32,6 +32,7 @@ MARKER_PATTERN = re.compile(
     r"^<!-- benchmark-step: (?P<series>.+?) \| (?P<low>~?[0-9a-f]{40}) \| (?P<first>[0-9a-f]{40}) -->$", re.M)
 WITHDRAWN = "> The history this job last read holds none of the steps below."
 MERGED = "Merged into #{}, which holds these steps now.\n"
+KEPT = "#{} was reopened by hand and names steps here too; this job leaves it as it is."
 BODY_LIMIT = 60000
 CUT_NOTE = "\n\n... cut to fit an issue body\n"
 
@@ -220,13 +221,23 @@ def marked_span(match, order):
     return None if low is None or high is None else (low, high)
 
 
-def covers(matches, step, order):
-    """Whether a marker names `step`'s benchmark over a range holding `step`'s first slow run. A step that
-    starts after the marked one is another step, even where its range reaches back over it."""
-    _, high = span(step, order)
+def covers(matches, step, order, standing=frozenset()):
+    """Whether a marker names `step`: its own first slow run while the marked step still stands, or, once
+    that step has gone, a range of the same benchmark sharing a commit with `step`'s.
+
+    `standing` is every (benchmark, first slow commit) the history holds. A step that starts after a marked
+    one still standing is another step, even where its range reaches back over it; a marked step that has
+    gone is this one, moved."""
+    low, high = span(step, order)
     for match in matches:
-        marked = marked_span(match, order) if match["series"] == step.benchmark else None
-        if marked and marked[0] < high <= marked[1]:
+        if match["series"] != step.benchmark:
+            continue
+        if (match["series"], match["first"]) in standing:
+            if match["first"] == step.first_slow.commit:
+                return True
+            continue
+        marked = marked_span(match, order)
+        if marked and marked[0] < high and low < marked[1]:
             return True
     return False
 
@@ -247,8 +258,8 @@ def quoted(subject):
     return "`" + subject.replace("`", "'") + "`"
 
 
-def render(steps, repository):
-    """The title and body of the issue for one cluster of steps."""
+def render(steps, repository, kept=()):
+    """The title and body of the issue for one cluster of steps, naming the reopened issues in `kept`."""
     steps = sorted(steps, key=lambda step: (-step.ratio, step.benchmark, step.first_slow.timestamp))
     first = max((step.first_slow for step in steps), key=lambda run: run.timestamp)
     lasts = [step.last_fast for step in steps]
@@ -264,6 +275,7 @@ def render(steps, repository):
          if last else f"By `{first.commit[:8]}` ({quoted(first.subject)}), ")
         + f"{len(steps)} step(s) measured slower than the runs before them: https://github.com/" + repository
         + (f"/compare/{last.commit}...{first.commit}" if last else f"/commit/{first.commit}"),
+        *[KEPT.format(number) for number in kept],
         "",
         "| Benchmark | First slow run | Processor | Before | After | Ratio |",
         "|---|---|---|---:|---:|---:|",
@@ -290,7 +302,7 @@ def list_issues(repository, run):
     """Every issue carrying the first label, open or closed, read through the REST issues endpoint rather than
     `gh issue list`, whose label filter goes through search."""
     out = run(["api", "--paginate", f"repos/{repository}/issues?labels={LABELS[0]}&state=all&per_page=100",
-               "--jq", ".[] | select(.pull_request == null) | {number, state, body}"])
+               "--jq", ".[] | select(.pull_request == null) | {number, state, state_reason, body}"])
     return [json.loads(line) for line in out.splitlines() if line.strip()]
 
 
@@ -298,22 +310,29 @@ def is_open(issue):
     return str(issue.get("state", "")).lower() == "open"
 
 
-def sync_issues(steps, runs, repository, run=gh, rule=RULE):
-    """Keeps an issue for each cluster of steps, found by any step its markers name over an overlapping range.
+def is_reopened(issue):
+    """Whether a person reopened it: this job neither writes to nor closes such an issue."""
+    return is_open(issue) and issue.get("state_reason") == "reopened"
 
-    A step a closed issue names is left out: closing it is how a step is accepted or answered. Where a
-    cluster's steps name several open issues, the lowest-numbered holds them and the others are pointed at
-    it and closed. An open issue none of whose steps the history holds any longer is marked so rather than
-    left reading as current."""
+
+def sync_issues(steps, runs, repository, run=gh, rule=RULE):
+    """Keeps an issue for each cluster of steps, found by any step its markers name (`covers` says which).
+
+    A step a closed issue names is left out: closing it is how a step is accepted or answered. An issue a
+    person reopened is left as it is. Where a cluster's steps name several other open issues, the
+    lowest-numbered holds them and the rest are pointed at it and closed. An open issue none of whose steps
+    the history holds any longer is marked so rather than left reading as current."""
     issues = list_issues(repository, run)
     order = {run_.commit: index for index, run_ in enumerate(landed(runs))}
+    standing = {(step.benchmark, step.first_slow.commit) for step in steps}
     named = {issue["number"]: list(MARKER_PATTERN.finditer(issue.get("body") or "")) for issue in issues}
     by_number = {issue["number"]: issue for issue in issues}
 
     # Clusters an issue names share that issue, so they are merged before anything is written.
     components = []
     for members in clusters(steps, runs):
-        numbers = {number for number, matches in named.items() if any(covers(matches, s, order) for s in members)}
+        numbers = {number for number, matches in named.items()
+                   if any(covers(matches, s, order, standing) for s in members)}
         joined = [c for c in components if c[1] & numbers]
         for component in joined:
             components.remove(component)
@@ -325,19 +344,22 @@ def sync_issues(steps, runs, repository, run=gh, rule=RULE):
     for members, numbers in components:
         held |= numbers
         accepted = [match for number in numbers if not is_open(by_number[number]) for match in named[number]]
-        live = [step for step in members if not covers(accepted, step, order)]
+        live = [step for step in members if not covers(accepted, step, order, standing)]
         if not live:
             continue
-        title, body = render(live, repository)
         opened = sorted(number for number in numbers if is_open(by_number[number]))
-        if opened and by_number[opened[0]].get("body") != body:
-            run(["issue", "edit", str(opened[0]), "--repo", repository, "--title", title, "--body-file", "-"], body)
-            actions.append(f"rewrote #{opened[0]}")
-        for number in opened[1:]:
+        kept = [number for number in opened if is_reopened(by_number[number])]
+        writable = [number for number in opened if number not in kept]
+        title, body = render(live, repository, kept)
+        if writable and by_number[writable[0]].get("body") != body:
+            run(["issue", "edit", str(writable[0]), "--repo", repository, "--title", title, "--body-file", "-"],
+                body)
+            actions.append(f"rewrote #{writable[0]}")
+        for number in writable[1:]:
             # The pointer carries no marker, so once closed this issue accepts none of the steps.
-            run(["issue", "edit", str(number), "--repo", repository, "--body-file", "-"], MERGED.format(opened[0]))
+            run(["issue", "edit", str(number), "--repo", repository, "--body-file", "-"], MERGED.format(writable[0]))
             run(["issue", "close", str(number), "--repo", repository, "--reason", "not planned"])
-            actions.append(f"merged #{number} into #{opened[0]}")
+            actions.append(f"merged #{number} into #{writable[0]}")
         if not opened and openable & {step.decided.commit for step in live}:
             create = ["issue", "create", "--repo", repository, "--title", title, "--body-file", "-",
                       "--assignee", ASSIGNEE]
@@ -347,7 +369,8 @@ def sync_issues(steps, runs, repository, run=gh, rule=RULE):
             actions.append(f"opened an issue for {', '.join(sorted({s.first_slow.commit[:8] for s in live}))}")
     for issue in issues:
         body = issue.get("body") or ""
-        if is_open(issue) and named[issue["number"]] and issue["number"] not in held and not body.startswith(WITHDRAWN):
+        if (is_open(issue) and not is_reopened(issue) and named[issue["number"]] and issue["number"] not in held
+                and not body.startswith(WITHDRAWN)):
             run(["issue", "edit", str(issue["number"]), "--repo", repository, "--body-file", "-"],
                 WITHDRAWN + "\n\n" + body)
             actions.append(f"marked #{issue['number']} as no longer held")
@@ -362,7 +385,8 @@ class MemoryIssues:
 
     def __call__(self, args, stdin=None):
         if args[0] == "api":
-            return "".join(json.dumps({key: issue[key] for key in ("number", "state", "body")}) + "\n"
+            return "".join(json.dumps({key: issue.get(key) for key in ("number", "state", "state_reason", "body")})
+                           + "\n"
                            for issue in self.issues)
         if args[:2] == ["issue", "create"]:
             self.issues.append({"number": len(self.issues) + 1, "state": "open", "body": stdin,
