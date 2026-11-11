@@ -179,8 +179,10 @@ namespace Velvet.Tests
             s_setReaderOwn.Invoke(1);
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
-            var parkedWhileHidden = s_listFiber.HasPendingReconcileWorkForTest() && s_listFiber.IsOffscreen
-                && s_readings[LastRow] == "gen0:provided";
+            var notArranged = !s_listFiber.HasPendingReconcileWorkForTest() ? "the list was not parked"
+                : !s_listFiber.IsOffscreen ? "the parked list was not hidden"
+                : s_readings[LastRow] != "gen0:provided" ? "the hide rendered the last row: " + s_readings[LastRow]
+                : null;
 
             // Act — a frame's resume for each row while the primary is hidden, then the read resolves and the
             // Suspense reveals the primary.
@@ -189,11 +191,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert
-            var reading = parkedWhileHidden
-                ? ReadingOf(LastRow, mountedRow)
-                : "the list was not parked in a hidden primary";
-            Assert.That(reading, Is.EqualTo("gen1:provided"));
+            // Assert — an arrangement that fell short reads as what it missed rather than as the row's value.
+            Assert.That(notArranged ?? ReadingOf(LastRow, mountedRow), Is.EqualTo("gen1:provided"));
         }
 
         [Test]
@@ -635,7 +634,10 @@ namespace Velvet.Tests
                 V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[]
                 {
                     V.Component(ResuspendingReaderRender, key: "reader"),
-                    V.Component(MemoizedListRender, key: "list"),
+                    // In an element: a walk inside a Suspense patches the rows of a memoized component it reuses
+                    // (GeneralPathReconciler.RendersNothingHere), which renders the rows the parked pass had not
+                    // reached. The element's children reconcile in a walk of their own, which leaves them as they are.
+                    V.Div(children: new VNode[] { V.Component(MemoizedListRender, key: "list") }),
                 }),
             });
 
