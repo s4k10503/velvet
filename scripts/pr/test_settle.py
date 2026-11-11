@@ -618,8 +618,8 @@ class ExpectedCheckTests(unittest.TestCase):
                                    "36512896182)"])
 
     # GREEN_ON_BASE(characterization): the base reads no run, so an older failed run holds nothing.
-    # What it pins is that only the newest run of a workflow is read: `if workflow not in newest or
-    # order > newest[workflow][0]:` spelled `if True:` reddens it.
+    # What it pins is that only the newest run of a workflow is read: `if workflow_of(run) not in
+    # newest or order > newest[workflow_of(run)][0]:` spelled `if True:` reddens it.
     def test_Given_AFailedRunSupersededByANewerOne_When_Decided_Then_NothingBlocks(self):
         # Arrange — newest first, the order the runs listing answers in.
         newer = dict(TEST_PENDING, id=2, run_number=71, status="completed", conclusion="success")
@@ -1310,6 +1310,153 @@ class CampaignMergeTests(unittest.TestCase):
         self.assertIn("PR#1 0000000 Mutation campaign => pass", outcome.output)
 
 
+def head_run(run_id, name, workflow, number, status, conclusion, suite,
+             started="2026-11-11T18:18:34Z", attempt=1):
+    """One entry of the Actions runs listing for a head."""
+    return {"id": run_id, "name": name, "workflow_id": workflow, "run_number": number,
+            "run_attempt": attempt, "status": status, "conclusion": conclusion,
+            "check_suite_id": suite, "run_started_at": started}
+
+
+# Two runs of each required workflow on one head, as GitHub listed them: one of each cancelled and
+# the other still queued. All four were created and started in the same second, at their first
+# attempt, and the cancelled `Source generators` run carries the higher id and run number of its pair
+# where the cancelled `Test` run carries the lower.
+GENERATORS_QUEUED = head_run(43076528457, "Source generators", 310220724, 4255, "queued", None,
+                             116653194975)
+GENERATORS_CANCELLED = head_run(43076529231, "Source generators", 310220724, 4256, "completed",
+                                "cancelled", 116653197259)
+TEST_QUEUED = head_run(43076529433, "Test", 307106660, 4516, "queued", None, 116653197017)
+TEST_CANCELLED = head_run(43076528473, "Test", 307106660, 4514, "completed", "cancelled",
+                          116653195015)
+PAIRED_RUNS = [GENERATORS_QUEUED, GENERATORS_CANCELLED, TEST_QUEUED, TEST_CANCELLED]
+
+CANCELLED_CHECKS = [check_run("Required checks (Unity)", "failure", 116653195015),
+                    check_run("Unity tests (${{ matrix.testMode }})", "cancelled", 116653195015),
+                    check_run("Required checks (generators)", "failure", 116653197259),
+                    check_run("Source generators (dotnet)", "cancelled", 116653197259)]
+
+PAIRED_RUNS_OWED = ("workflow runs not finished at aaaaaaa: Source generators (queued, run "
+                 "43076528457: `gh run cancel 43076528457` if it is stuck), Test (queued, run "
+                 "43076529433: `gh run cancel 43076529433` if it is stuck)")
+
+
+class SupersededRunTests(unittest.TestCase):
+    """Which run of a workflow a head's verdict is read from, where the head carries several."""
+
+    def test_Given_ARunOfEachWorkflowCancelledBesideOneQueued_When_Decided_Then_OnlyWhatIsOwedIsNamed(self):
+        # Arrange — no queued run has put a check on the head yet, so the base's required context is
+        # owed rather than failed.
+        checks = CANCELLED_CHECKS
+
+        # Act
+        with rest_readings(checks, PAIRED_RUNS, labels=()):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [
+            "required by main and not reported at aaaaaaa: Required checks (Unity)", PAIRED_RUNS_OWED])
+
+    def test_Given_ARunOfEachWorkflowCancelledBesideOneQueued_When_WatchedUntilActionable_Then_ItKeepsPolling(self):
+        # Arrange — the checks are read over REST rather than from the table, so the cancelled runs'
+        # suites reach the watcher the way they reach the merge.
+        unpatched = settle.checks
+        answers = {"/check-runs": {"total_count": len(CANCELLED_CHECKS),
+                                   "check_runs": CANCELLED_CHECKS},
+                   "/status": NO_STATUSES}
+
+        # Act
+        watched = watch_until(until_actionable=True, bound=3, states={1: fabricate(1, runs=PAIRED_RUNS)},
+                              readings=[("checks", lambda _fabricated: unpatched),
+                                        ("rest_json", lambda _real: lambda path: next(
+                                            value for key, value in answers.items() if key in path))])
+
+        # Assert — None is what a watcher still polling at the clock's bound leaves.
+        self.assertIsNone(watched.code)
+
+    def test_Given_ACancelledRunCarryingTheHigherNumber_When_ItsSiblingReportsAPendingCheck_Then_ThatCheckIsRead(self):
+        # Arrange — the cancelled run has the higher id and run number, and the two started in the
+        # same second, so none of those fields ranks the running one above it: its conclusion does.
+        running = dict(GENERATORS_QUEUED, status="in_progress")
+        passed = dict(TEST_QUEUED, status="completed", conclusion="success")
+        checks = CANCELLED_CHECKS[2:] + [
+            {"name": "Source generators (dotnet)", "status": "in_progress", "conclusion": None,
+             "check_suite": {"id": 116653194975}},
+            check_run("Required checks (Unity)", "success", 116653197017)]
+
+        # Act
+        with rest_readings(checks, [running, GENERATORS_CANCELLED, passed], labels=()):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [
+            "workflow runs not finished at aaaaaaa: Source generators (in_progress, run 43076528457: "
+            "`gh run cancel 43076528457` if it is stuck)",
+            "still pending at aaaaaaa: Source generators (dotnet)"])
+
+    def test_Given_ARerunOfTheLowerNumberedRun_When_Decided_Then_TheRerunsChecksAreTheOnesRead(self):
+        # Arrange — in the runs listing a re-run keeps its run's id, run number, check suite and
+        # creation time, so its start time is the field that says it ran after the other did.
+        other = head_run(9071, "Test", 1, 71, "completed", "success", 7,
+                         started="2026-11-11T10:00:00Z")
+        rerun = head_run(9070, "Test", 1, 70, "completed", "failure", 8,
+                         started="2026-11-11T11:00:00Z", attempt=2)
+        checks = [check_run("Required checks (Unity)", "success", 7),
+                  check_run("Required checks (Unity)", "failure", 8)]
+
+        # Act
+        with rest_readings(checks, [other, rerun], labels=()):
+            results = settle.blocking_reasons(Path("."), 1).results
+
+        # Assert
+        self.assertEqual(results, [{"name": "Required checks (Unity)", "bucket": "fail"}])
+
+    def test_Given_TwoRunsThatStartedInTheSameSecond_When_Decided_Then_TheHigherNumberedRunsChecksAreRead(self):
+        # Arrange — both ran to the end, and they are listed lower number first, so what is read
+        # does not follow the listing's order: one listing of a real head put one pair that way
+        # round and the other the opposite way.
+        passed = dict(TEST_QUEUED, status="completed", conclusion="success")
+        lower = head_run(9232, "Benchmarks", 3, 232, "completed", "failure", 17)
+        higher = head_run(9233, "Benchmarks", 3, 233, "completed", "success", 18)
+        checks = [check_run("Required checks (Unity)", "success", 116653197017),
+                  check_run("Benchmarks (PlayMode)", "failure", 17),
+                  check_run("Benchmarks (PlayMode)", "success", 18)]
+
+        # Act
+        with rest_readings(checks, [passed, lower, higher], labels=()):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, [])
+
+    def test_Given_AWorkflowWhoseEveryRunWasCancelled_When_Decided_Then_ItsNewestRunStillBlocks(self):
+        # Arrange — a workflow no base requires, so its checks are all that could refuse.
+        passed = dict(TEST_QUEUED, status="completed", conclusion="success")
+        older = head_run(9232, "Benchmarks", 3, 232, "completed", "cancelled", 17)
+        newer = head_run(9233, "Benchmarks", 3, 233, "completed", "cancelled", 18)
+        checks = [check_run("Required checks (Unity)", "success", 116653197017),
+                  check_run("Benchmarks (PlayMode)", "cancelled", 17),
+                  check_run("Benchmarks (PlayMode)", "cancelled", 18)]
+
+        # Act
+        with rest_readings(checks, [passed, newer, older], labels=()):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["failing at aaaaaaa: Benchmarks (PlayMode)=cancel"])
+
+    def test_Given_ACancelledRunCarryingTheHigherNumber_When_ItsSiblingFailedWithNoCheck_Then_TheFailureIsNamed(self):
+        # Arrange — a base requiring nothing, so no absent context stands in for the failed run.
+        failed = dict(GENERATORS_QUEUED, status="completed", conclusion="startup_failure")
+        states = {1: fabricate(1, base="4.x", runs=(failed, GENERATORS_CANCELLED))}
+
+        # Act
+        with fabricated_readings(states, required={"4.x": ()}):
+            decided = settle.blocking_reasons(Path("."), 1).reasons
+
+        # Assert
+        self.assertEqual(decided, ["workflow runs failed at 0000000: Source generators "
+                                   "(startup_failure, run 43076528457)"])
 
 
 class ForkMergeTests(unittest.TestCase):

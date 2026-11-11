@@ -6,7 +6,7 @@ refused the merge because `Required checks (Unity)` had never reported. Two read
 each covers a case the other cannot:
 
 - a workflow run for the head that has not finished, which catches the jobs no ruleset requires, and
-  the newest run of a workflow that failed, which catches one that failed before reporting a check;
+  a workflow whose `current` run failed, which catches one that failed before reporting a check;
 - a context the base's rulesets require that no check on the head carries, which catches a workflow
   whose run does not exist yet, so that no listing of runs can show it unfinished.
 
@@ -105,21 +105,42 @@ def unfinished(runs, jobs, now):
                   for run in runs if conclusion(run, jobs, now) is None)
 
 
-def failed(runs, jobs, now):
-    """A reason for each workflow whose newest run on the head concluded as a failure.
+def current(runs, jobs, now):
+    """The run each workflow's verdict on the head is read from, by workflow.
 
-    Newest by run number and then attempt: an older run of the same workflow is superseded, and a
-    failure there would otherwise hold the head however often it ran again. What it concluded is
-    `conclusion`'s reading, so a run GitHub left open after its jobs failed counts.
+    One `conclusion` does not read as cancelled wherever the workflow has one, and among those the
+    one started last, then the one with the highest run number; `SupersededRunTests` poses why each
+    of those is read. Every other run of the workflow is superseded, since a failure there would
+    otherwise hold the head however often the workflow ran again.
     """
     newest = {}
     for run in runs:
-        workflow = run.get("workflow_id") or run.get("path") or name_of(run)
-        order = (run.get("run_number") or 0, run.get("run_attempt") or 1)
-        if workflow not in newest or order > newest[workflow][0]:
-            newest[workflow] = (order, run)
+        order = (conclusion(run, jobs, now) != "cancelled", run.get("run_started_at") or "",
+                 run.get("run_number") or 0)
+        if workflow_of(run) not in newest or order > newest[workflow_of(run)][0]:
+            newest[workflow_of(run)] = (order, run)
+    return {workflow: run for workflow, (_, run) in newest.items()}
+
+
+def superseded(runs, jobs, now):
+    """The runs whose workflow's verdict `current` reads off another of its runs."""
+    chosen = current(runs, jobs, now)
+    return [run for run in runs if chosen[workflow_of(run)] is not run]
+
+
+def failed(runs, jobs, now):
+    """A reason for each workflow whose `current` run concluded as a failure.
+
+    What it concluded is `conclusion`'s reading, so a run GitHub left open after its jobs failed
+    counts.
+    """
     return sorted(f"{name_of(run)} ({conclusion(run, jobs, now)}, run {run.get('id')})"
-                  for _, run in newest.values() if conclusion(run, jobs, now) in FAILED)
+                  for run in current(runs, jobs, now).values()
+                  if conclusion(run, jobs, now) in FAILED)
+
+
+def workflow_of(run):
+    return run.get("workflow_id") or run.get("path") or name_of(run)
 
 
 def name_of(run):

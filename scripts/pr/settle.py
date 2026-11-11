@@ -39,9 +39,10 @@ Eleven preconditions:
   whoever reads it decides.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
   Nor is a list complete while the head still has a workflow run to finish, carries a workflow
-  whose newest run failed, or lacks a context its base requires; `expected_checks.py` owns what each
+  whose current run failed, or lacks a context its base requires; `expected_checks.py` owns what each
   of those is and why it is read. A mutation campaign's runs and checks are left out of all of it,
-  since no merge waits on one; `campaign.py` says which those are.
+  since no merge waits on one; `campaign.py` says which those are. So are the checks of a run
+  another run of its workflow supersedes, which `expected_checks.superseded` names.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
@@ -357,15 +358,21 @@ _BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
 _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
 
 
-def checks(project, sha, runs=()):
+def checks(project, sha, runs=(), jobs=None, now=None):
     """Check results for one head, or an empty list when no workflow ever ran for it.
 
-    `runs` is `campaign_runs`' reading of the same head, whose campaigns' checks are left out.
+    `runs` is `campaign_runs`' reading of the same head, and `jobs` `run_jobs`' reading of its open
+    runs at `now`. The checks of a campaign's suite are left out, and so are those of a run
+    `expected_checks.superseded` names.
     """
     slug = repository(project)
+    others = campaign.others(runs)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
                          rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)),
-                         campaign.suites(runs))
+                         campaign.suites(runs) | {
+                             run.get("check_suite_id")
+                             for run in expected_checks.superseded(
+                                 others, jobs or {}, time.time() if now is None else now)})
 
 
 def campaign_runs(project, sha):
@@ -730,7 +737,7 @@ def blocking_reasons(project, number, base=None, states=None):
     now = time.time()
     others = campaign.others(runs)
     jobs = run_jobs(project, others, now)
-    results = checks(project, before.sha, runs)
+    results = checks(project, before.sha, runs, jobs, now)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])

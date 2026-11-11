@@ -377,6 +377,37 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, self.consulted()), (ALLOWED, READINGS))
 
+    def test_Given_ACheckOfARunCancelledBesideOneThatPassed_When_TheMergeIsAsked_Then_ItIsLetThrough(self):
+        # Arrange — the cancelled run's matrix job was never expanded, so no check of the run that
+        # passed carries its name. gh prints only the fields a call names, so this stub prints the
+        # links only to a call naming them.
+        runs = json.dumps({"total_count": 2, "workflow_runs": [
+            {"id": 43076529433, "name": "Test", "workflow_id": 307106660, "run_number": 4516,
+             "status": "completed", "conclusion": "success"},
+            {"id": 43076528473, "name": "Test", "workflow_id": 307106660, "run_number": 4514,
+             "status": "completed", "conclusion": "cancelled"}]})
+        entries = [{"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test",
+                    "link": "https://github.com/owner/name/actions/runs/43076529433/job/1"},
+                   {"name": "Unity tests (${{ matrix.testMode }})", "bucket": "cancel",
+                    "workflow": "Test",
+                    "link": "https://github.com/owner/name/actions/runs/43076528473/job/2"}]
+        unlinked = json.dumps([{key: value for key, value in entry.items() if key != "link"}
+                               for entry in entries])
+        stub = STUB_GH.replace(
+            """    printf '%s' "$VELVET_CHECKS"\n""",
+            f"""    case "$*" in *link*) printf '%s' "$VELVET_CHECKS" ;; """
+            f"""*) printf '%s' '{unlinked}' ;; esac\n""")
+        (self.binaries / "gh").write_text(stub, encoding="utf-8")
+
+        # Act
+        result = self.ask(checks=json.dumps(entries), runs=runs)
+        readings = (self.consulted() if result.returncode == ALLOWED and stub != STUB_GH
+                    else None)
+
+        # Assert — the reading count rides along for the reason the passing case above states, and
+        # a stub the replacement missed reads as None.
+        self.assertEqual(readings, READINGS)
+
     def test_Given_WorkflowRunsThatCameBackPartial_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
         # Arrange / Act — the page claims a run it did not carry, which may be the campaign.
         runs = json.dumps({"total_count": 2, "workflow_runs": []})
