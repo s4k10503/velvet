@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -76,15 +75,15 @@ namespace Velvet
 
         // The name and start of each transition of a value a carry takes over that the panel runs for the element now;
         // null where it runs none of them.
-        public static List<(string Name, double StartSec)>? Running(VisualElement element)
+        public static System.Collections.Generic.List<(string Name, double StartSec)>? Running(VisualElement element)
         {
-            List<(string Name, double StartSec)>? starts = null;
+            System.Collections.Generic.List<(string Name, double StartSec)>? starts = null;
             foreach (var (set, id, name) in s_carried)
             {
                 if (Find(element, set, id) is not { } found) continue;
                 try
                 {
-                    (starts ??= new List<(string Name, double StartSec)>()).Add((name, (double)Read(s_startTime!, found.Timing)));
+                    (starts ??= new()).Add((name, (double)Read(s_startTime!, found.Timing)));
                 }
                 catch (Exception)
                 {
