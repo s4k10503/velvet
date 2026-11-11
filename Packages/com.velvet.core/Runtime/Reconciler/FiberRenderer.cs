@@ -469,6 +469,17 @@ namespace Velvet
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
         }
 
+        // A render in a Portal's drain is at depth 0 as an isolated re-render is, but starts under the cursor the drain
+        // has populated from the Portal's snapshot and its walk (ChildReconciler.DrainPendingPortalMounts), as a nested
+        // expansion render starts under the walk's. A spine pushed there would sit above that cursor without reaching
+        // through the Portal.
+        private static bool RebuildsContextSpine(ComponentFiber fiber)
+        {
+            var context = fiber.Reconciler?.Context;
+            return fiber.Parent != null && (context?.SharedReconcileDepth ?? 1) == 0
+                && context?.CurrentPortalPlaceholder == null;
+        }
+
         // Returns whether this render's output became the fiber's PreviousTree.
         internal static bool RenderAndReconcile(ComponentFiber fiber, double frameBudgetMs = 0, bool deferReconcile = false)
         {
@@ -509,9 +520,7 @@ namespace Velvet
             // enclosing Providers from the spine before Render() reads them via UseContext. A
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
-            var reconstructSpine = fiber.Parent != null
-                && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
-            var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
+            var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
             var ownedJournal = OpenPassJournal(fiber);
             try
             {
@@ -816,9 +825,7 @@ namespace Velvet
             // The main render unwound its spine in RenderAndReconcile's finally; without re-pushing it the
             // consumer would read the context default here and report a spurious "impure render" divergence.
             // A nested diagnostic (depth > 0) already has the cursor populated by the enclosing expansion.
-            var reconstructSpine = fiber.Parent != null
-                && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
-            var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
+            var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
             VNode?[]? diagnosticTree = null;
             try
             {

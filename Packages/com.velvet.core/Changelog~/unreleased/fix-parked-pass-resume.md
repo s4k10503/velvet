@@ -23,3 +23,7 @@
   precedence; under the scheduled resume a Provider above the boundary read as its context's default; and for a
   Portal's child, a Provider that another boundary's fallback had just placed above the boundary gave way to one
   of the same context above that other boundary.
+
+- A component that a `V.Portal` mounts when the component rendering the Portal updates reads, in that first
+  render, the `V.Provider` value around the Portal rather than one of the same context above the component
+  rendering it. It read the farther Provider's value.

@@ -48,6 +48,7 @@ namespace Velvet.Tests
         private static string s_providedValue;
         private static ComponentFiber s_hostFiber;
         private static ComponentFiber s_providerFiber;
+        private static bool s_portalShown;
 
         private static readonly MountOptions s_recordingErrors = new()
         {
@@ -80,6 +81,7 @@ namespace Velvet.Tests
             s_providedValue = "first";
             s_hostFiber = null;
             s_providerFiber = null;
+            s_portalShown = false;
             Application.logMessageReceived += RecordLoggedError;
         }
 
@@ -357,6 +359,39 @@ namespace Velvet.Tests
             Assert.That(s_outsiderReading, Is.EqualTo("second"));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads the Portal's snapshot, the mount root having committed nothing yet.
+        // What this pins is that the root's output, still reconciling when the Portal drains, puts no Provider above
+        // the Portal over the one around it.
+        [Test]
+        public void Given_APortalInsideAProviderUnderAnotherOfTheSameContext_When_TheMountDrainsIt_Then_ItsChildReadsTheNearerProvider()
+        {
+            // Arrange
+            s_portalShown = true;
+            var tree = V.Provider(s_context, "outer", new VNode[] { V.Component(PortalDeclaringRender, key: "declaring") });
+
+            // Act
+            using var mounted = V.Mount(_root, tree);
+
+            // Assert
+            Assert.That(s_outsiderReading, Is.EqualTo("inner"));
+        }
+
+        [Test]
+        public void Given_APortalInsideAProviderUnderAnotherOfTheSameContext_When_AnUpdateMountsIt_Then_ItsChildReadsTheNearerProvider()
+        {
+            // Arrange
+            var tree = V.Provider(s_context, "outer", new VNode[] { V.Component(PortalDeclaringRender, key: "declaring") });
+            using var mounted = V.Mount(_root, tree);
+            s_portalShown = true;
+
+            // Act
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert
+            Assert.That(s_outsiderReading, Is.EqualTo("inner"));
+        }
+
         // The list re-renders every row on the Transition lane under a budget too small for one row, the last row
         // throwing in that render. True where the slice that parks stopped short of the last row: a throw in that
         // slice disposes the list, which leaves no parked pass behind.
@@ -529,6 +564,16 @@ namespace Velvet.Tests
         private static Action CleanupThatThrows() => ThrowCleanupError;
 
         private static void ThrowCleanupError() => throw new InvalidOperationException(CleanupError);
+
+        [Component(Compiler = false)]
+        private static VNode PortalDeclaringRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            VNode content = s_portalShown
+                ? V.Portal(s_portalTarget, children: new VNode[] { V.Component(OutsiderRender, key: "reader") })
+                : V.Label(text: "closed");
+            return V.Provider(s_context, "inner", new VNode[] { content });
+        }
 
         [Component(Compiler = false)]
         private static VNode ProviderHostRender()
