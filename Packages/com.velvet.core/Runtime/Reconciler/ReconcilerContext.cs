@@ -1630,8 +1630,10 @@ namespace Velvet
         // FiberZLayerCoordinator.ResortLayers' working copy of PendingZLayerResorts, kept so a drain allocates nothing.
         internal List<VisualElement> ZLayerArrangeQueue { get; } = new();
 
-        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it. A parent a diff is
-        // parked over keeps its slot occupants until the diff finishes (FiberZLayerCoordinator.Arrange).
+        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it, kept while a Portal
+        // drain sets the park aside (ChildReconciler.DrainPendingPortalMounts). Arrange leaves the slot occupants of
+        // such a parent until the diff finishes; a settle outside a pass does not wait, and NoteSlotOccupantChanged
+        // carries what it swaps to the parked diff.
         internal Dictionary<object, VisualElement> ParkedDiffParents { get; } = new();
 
         internal bool IsParkedParent(VisualElement parent)
@@ -2122,6 +2124,22 @@ namespace Velvet
         // (memo hits legitimately share instances across fibers' trees). Maintained by the park /
         // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
         internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
+
+        // The old instances of each general walk in progress, innermost last; OldSlotOccupants.ResolveAgain says
+        // who resolves them again and why.
+        internal List<OldSlotOccupants> OpenOldInstances { get; } = new();
+
+        // FiberZLayerCoordinator put `to` in the logical slot `from` held. Each diff holding old instances names that
+        // slot's element by `to` from here on, since the swap can come from outside the diff: an out-of-pass restack
+        // between two slices of a parked pass is one. A parked keyed Pass 2 also holds the old rows it already took,
+        // which its reorder places later, so those are rewritten too. Neither compares a parent. For the old instances
+        // OldSlotOccupants.ReplaceOccupant gives why; a taken row stays a child of its own container until the reorder
+        // places it, so a row naming `from` is one of the container the swap is in.
+        internal void NoteSlotOccupantChanged(VisualElement from, VisualElement to)
+        {
+            foreach (var occupants in BufferPool.RentedOldSlotOccupants) occupants.ReplaceOccupant(from, to);
+            foreach (var parked in ParkedDiffParents.Keys) (parked as ChildReconciler)?.ReplaceParkedRow(from, to);
+        }
 
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a

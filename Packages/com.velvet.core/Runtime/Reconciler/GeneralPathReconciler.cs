@@ -92,9 +92,12 @@ namespace Velvet
             // OffscreenChanges, which would have hidden or shown their effects to match, is never applied.
             public List<(ComponentFiber Fiber, bool IsOffscreen, VisualElement? HiddenUnder,
                 ComponentFiber? OffscreenUnder)>? OffscreenBefore;
-            // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
-            // it falls back.
+            // Whether an old leaf's slot is still occupied is asked through it; LogicalSlotCursor owns what it saves
+            // and when it falls back.
             public LogicalSlotCursor OldSlots;
+            // Which element an old leaf is, read before the walk and again where a drain wrote into the container
+            // (OldSlotOccupants.ResolveAgain).
+            public OldSlotOccupants OldOccupants = null!;
             // What a presence's removals of this walk keep until the removals run: the retirement of the
             // dropped ghosts' trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back
             // of the presence's per-key records and the unstaging of the settles it staged, applied where the walk
@@ -190,11 +193,14 @@ namespace Velvet
                 OldOwners = pairing.OldOwners,
                 Committed = new List<CommittedLeaf>(),
                 Placements = pool.RentPlacementList(),
+                OldOccupants = pool.RentOldSlotOccupants(),
             };
             var owner = _ctx.FiberStack.Current;
             var removalsRan = false;
             try
             {
+                if (parent != null) commit.OldOccupants.Resolve(parent, slotStart, oldNodes.Length, int.MaxValue, _patcher);
+                _ctx.OpenOldInstances.Add(commit.OldOccupants);
                 if (commit.OldKeys.Count == 0)
                 {
                     for (var i = 0; i < oldNodes.Length; i++) commit.OldKeys.Add(_keying.ReconcileKey(oldNodes[i], i));
@@ -285,6 +291,9 @@ namespace Velvet
                 pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
                 pool.ReturnKeySet(commit.NewKeys);
                 pool.Return(commit.NewElements);
+                var open = _ctx.OpenOldInstances.LastIndexOf(commit.OldOccupants);
+                if (open >= 0) _ctx.OpenOldInstances.RemoveAt(open);
+                pool.ReturnOldSlotOccupants(commit.OldOccupants);
             }
         }
 
@@ -352,8 +361,6 @@ namespace Velvet
             // A walk a catch on the aborting path stopped commits no further leaf: a leaf matched by slot would
             // patch whatever the fallback's reconcile left at that slot.
             if (_ctx.IsAborted) return;
-            var parent = commit.Parent!;
-            var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
             var oldNodes = commit.OldNodes!;
 
@@ -365,11 +372,11 @@ namespace Velvet
             }
             var ordinal = commit.NewElements.Count;
             var linear = ordinal == 0 || commit.Committed[ordinal - 1].Linear;
-            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear, out var oldPhysical);
+            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear);
             if (oldIndex >= 0)
             {
                 var oldNode = oldNodes[oldIndex];
-                var existingDom = parent.ElementAt(oldPhysical);
+                var existingDom = commit.OldOccupants.Occupant(oldIndex)!;
                 if (reusedByOwner && ReferenceEquals(oldNode, node) && node is ElementNode
                     && !_ctx.ZLayerPlaceholders.ContainsKey(existingDom)
                     && !_ctx.StackingFacts.ContainsKey(existingDom))
@@ -378,12 +385,8 @@ namespace Velvet
                 }
                 else if (ReconcileKeying.CanPatch(oldNode, node))
                 {
-                    var actual = _patcher.ResolveWrapped(existingDom);
-                    _patcher.PatchNode(actual, oldNode, node);
+                    existingDom = _patcher.PatchNode(commit.OldOccupants.Resolved(oldIndex)!, oldNode, node);
                     if (_ctx.IsAborted) return;
-                    // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
-                    commit.OldSlots.TryGetPhysical(parent, slotStart + oldIndex, out oldPhysical);
-                    existingDom = parent.ElementAt(oldPhysical);
                     commit.NewElements.Add((existingDom, true));
                 }
                 else
@@ -410,10 +413,8 @@ namespace Velvet
         // walk). The slot check degrades a stale oldNodes/DOM mismatch (e.g. after a prior aborted/suspended
         // commit) to a fresh create instead of throwing IndexOutOfRange — the time-sliced keyed path asserts
         // this invariant; the general path can be re-entered mid-suspend so it guards defensively.
-        private static int MatchOldLeaf(
-            GeneralCommitState commit, ChildKey key, int ordinal, bool linear, out int physical)
+        private static int MatchOldLeaf(GeneralCommitState commit, ChildKey key, int ordinal, bool linear)
         {
-            physical = -1;
             int oldIndex;
             if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key)
                 && !commit.UsedOldIndices.Contains(ordinal))
@@ -428,7 +429,7 @@ namespace Velvet
             {
                 return -1;
             }
-            return commit.OldSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out physical) ? oldIndex : -1;
+            return commit.OldSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
         }
 
         // Emits one expanded leaf under the key its position gives it: commits it in place under live context
