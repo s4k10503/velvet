@@ -368,6 +368,22 @@ namespace Velvet
         private static BoundaryCaughtSignal? ReconcileRows(ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree,
             double frameBudgetMs, ComponentFiber? catchingBoundary)
         {
+            fiber.ReconcilingTree = newTree;
+            try
+            {
+                return ReconcileAndPropagateRows(fiber, oldTree, newTree, frameBudgetMs, catchingBoundary);
+            }
+            finally
+            {
+                // Cleared rather than put back: a fallback swapped in during the fiber's own render supersedes the
+                // output that render was reconciling.
+                fiber.ReconcilingTree = null;
+            }
+        }
+
+        private static BoundaryCaughtSignal? ReconcileAndPropagateRows(ComponentFiber fiber, VNode?[] oldTree,
+            VNode?[] newTree, double frameBudgetMs, ComponentFiber? catchingBoundary)
+        {
             var reconciler = fiber.Reconciler!;
             if (!fiber.IsInlineMounted)
             {

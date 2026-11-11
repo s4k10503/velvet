@@ -10,8 +10,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what the rows a parked time-sliced pass reaches after it parked see and leave behind. A row a resumed
     /// slice re-renders reads the Provider above the parked component, as the rows of the slice that parked read it,
-    /// and a component outside that Provider rendering after the resume reads the default again. A pass parked in a
-    /// primary its Suspense hid waits for the reveal, whose walk places its rows under that Provider. A row that throws
+    /// and a component outside that Provider rendering after the resume reads the default again. A row that throws
     /// there, under a boundary above the parked component, is reported once by that boundary, whether the scheduled
     /// resume reaches it or a render of the parked component drains the pass first, and the boundary's fallback reads
     /// the Providers above the boundary rather than those at the row. So does a fallback swapped in for an error an
@@ -25,6 +24,7 @@ namespace Velvet.Tests
         private const int LastRow = RowCount - 1;
         private const string RowError = "Parked pass resume test throw";
         private const string EffectError = "Parked pass resume test effect throw";
+        private const string CleanupError = "Parked pass resume test cleanup throw";
 
         private static readonly ComponentContext<string> s_context = ComponentContext<string>.Create("default");
         private static readonly Dictionary<int, string> s_readings = new();
@@ -42,6 +42,12 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setReaderOwn;
         private static VelvetTaskCompletionSource<int> s_readSource;
         private static VisualElement s_portalTarget;
+        private static ComponentFiber s_outerFiber;
+        private static bool s_childThrows;
+        private static bool s_childShown;
+        private static string s_providedValue;
+        private static ComponentFiber s_hostFiber;
+        private static ComponentFiber s_providerFiber;
 
         private static readonly MountOptions s_recordingErrors = new()
         {
@@ -68,6 +74,12 @@ namespace Velvet.Tests
             s_setReaderOwn = default;
             s_readSource = null;
             s_portalTarget = new VisualElement();
+            s_outerFiber = null;
+            s_childThrows = false;
+            s_childShown = true;
+            s_providedValue = "first";
+            s_hostFiber = null;
+            s_providerFiber = null;
             Application.logMessageReceived += RecordLoggedError;
         }
 
@@ -273,6 +285,78 @@ namespace Velvet.Tests
             Assert.That(swapped ? s_outsiderReading : "the fallback never rendered", Is.EqualTo("default"));
         }
 
+        [Test]
+        public void Given_AFallbackProvidingAroundABoundaryWithAPortal_When_AnEffectErrorSwapsItInAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider()
+        {
+            // Arrange
+            var tree = V.Provider(s_context, "app", new VNode[] { V.Component(EffectGuardProvidingFallbackRender, key: "outer") });
+            using var mounted = V.Mount(_root, tree, s_recordingErrors);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_panelReading ?? "the fallback never rendered", Is.EqualTo("fallback"));
+        }
+
+        [Test]
+        public void Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateThrowsBelowItAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider()
+        {
+            // Arrange
+            var tree = V.Provider(s_context, "app", new VNode[] { V.Component(UpdateGuardProvidingFallbackRender, key: "outer") });
+            using var mounted = V.Mount(_root, tree, s_recordingErrors);
+            s_childThrows = true;
+
+            // Act
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert
+            Assert.That(s_panelReading ?? "the fallback never rendered", Is.EqualTo("fallback"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's inner fallback reads the outer fallback's Provider here.
+        // What this pins is that once the boundary's own update has swapped the fallback in, a spine through the
+        // boundary walks the fallback rather than the output that update was reconciling.
+        [Test]
+        public void Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateRemovesAChildWhoseCleanupThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider()
+        {
+            // Arrange — the child's effect has run, so its cleanup runs when the update removes it.
+            var tree = V.Provider(s_context, "app", new VNode[] { V.Component(RemovingGuardProvidingFallbackRender, key: "outer") });
+            using var mounted = V.Mount(_root, tree, s_recordingErrors);
+            mounted.FlushEffectsForTest();
+            s_childShown = false;
+
+            // Act
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert
+            Assert.That(s_panelReading ?? "the fallback never rendered", Is.EqualTo("fallback"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base walks the Provider's PreviousTree, which its parent's update replaced.
+        // What this pins is that a reconcile of the Provider's own rows leaves nothing behind for a later spine to walk.
+        [Test]
+        public void Given_AProviderWhoseOwnUpdateReconciledItsRows_When_ItsParentChangesItsValueAndAComponentBelowItRendersAlone_Then_ItReadsTheNewValue()
+        {
+            // Arrange — the Provider's own update reconciles its rows; its parent's update then renders it in its walk.
+            using var mounted = V.Mount(_root, V.Component(ProviderHostRender, key: "host"));
+            s_providerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_providerFiber);
+            s_providedValue = "second";
+            s_hostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_hostFiber);
+            s_outsiderReading = null;
+
+            // Act
+            s_outsiderFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outsiderFiber);
+
+            // Assert
+            Assert.That(s_outsiderReading, Is.EqualTo("second"));
+        }
+
         // The list re-renders every row on the Transition lane under a budget too small for one row, the last row
         // throwing in that render. True where the slice that parks stopped short of the last row: a throw in that
         // slice disposes the list, which leaves no parked pass behind.
@@ -401,6 +485,64 @@ namespace Velvet.Tests
         }
 
         private static Action ThrowEffectError() => throw new InvalidOperationException(EffectError);
+
+        private static VNode ProvidingFallbackAroundPortalGuard()
+            => V.Provider(s_context, "fallback", new VNode[] { V.Component(PortalGuardRender, key: "guard") });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode EffectGuardProvidingFallbackRender()
+        {
+            Hooks.UseFallback(_ => ProvidingFallbackAroundPortalGuard());
+            return V.Component(EffectThrowingRender, key: "thrower");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UpdateGuardProvidingFallbackRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            Hooks.UseFallback(_ => ProvidingFallbackAroundPortalGuard());
+            return V.Component(SwitchedThrowingRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SwitchedThrowingRender()
+        {
+            if (s_childThrows) throw new InvalidOperationException(RowError);
+            return V.Label(text: "child");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode RemovingGuardProvidingFallbackRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            Hooks.UseFallback(_ => ProvidingFallbackAroundPortalGuard());
+            return s_childShown ? V.Component(CleanupThrowingRender, key: "thrower") : V.Label(text: "removed");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CleanupThrowingRender()
+        {
+            Hooks.UseEffect(CleanupThatThrows, Array.Empty<object>());
+            return V.Label(text: "cleanup thrower");
+        }
+
+        private static Action CleanupThatThrows() => ThrowCleanupError;
+
+        private static void ThrowCleanupError() => throw new InvalidOperationException(CleanupError);
+
+        [Component(Compiler = false)]
+        private static VNode ProviderHostRender()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            return V.Component(ValueProvidingRender, key: "provider");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ValueProvidingRender()
+        {
+            s_providerFiber = FiberAmbientStack.Current;
+            return V.Provider(s_context, s_providedValue, new VNode[] { V.Component(OutsiderRender, key: "reader") });
+        }
 
         [Component(Compiler = false)]
         private static VNode SuspendingProviderRootRender()

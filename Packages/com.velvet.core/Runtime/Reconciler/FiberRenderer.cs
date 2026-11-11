@@ -506,7 +506,7 @@ namespace Velvet
             var pushedOnto = PushFiber(fiber);
             // Spine-rewalk-with-bailout: an isolated re-render (a standalone entry, not a
             // nested expansion render) starts with an empty live context cursor, so reconstruct the
-            // enclosing Providers from the committed spine before Render() reads them via UseContext. A
+            // enclosing Providers from the spine before Render() reads them via UseContext. A
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
             var reconstructSpine = fiber.Parent != null
@@ -560,7 +560,6 @@ namespace Velvet
                 }
 
                 reconciling = !deferReconcile;
-                fiber.ReconcilingTree = newTree;
                 ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
@@ -648,7 +647,6 @@ namespace Velvet
             }
             finally
             {
-                fiber.ReconcilingTree = null;
                 // Pop the spine Providers re-pushed for this isolated render, restoring the cursor.
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).

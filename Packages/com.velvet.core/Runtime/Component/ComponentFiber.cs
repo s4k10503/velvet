@@ -847,9 +847,9 @@ namespace Velvet
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
-        // The output this fiber's render is reconciling, from the start of that reconcile to the end of the render;
-        // null otherwise. PreviousTree takes it only once the reconcile has returned, so a FiberContextSpine
-        // rebuilt meanwhile reads this one — the drains that end a pass run inside its reconcile.
+        // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
+        // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
+        // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.
         internal VNode?[]? ReconcilingTree { get; set; }
 
         /// <summary>
@@ -873,7 +873,7 @@ namespace Velvet
         /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
         /// that render's output was committed AND reached this fiber, which is what
         /// <see cref="FiberContextSpine"/> tests before comparing nodes, against <see cref="ReconcilingTree"/>
-        /// instead while the render above is still reconciling: a render whose output was discarded
+        /// instead where the fiber above has one: a render whose output was discarded
         /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
         /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
         /// </summary>
