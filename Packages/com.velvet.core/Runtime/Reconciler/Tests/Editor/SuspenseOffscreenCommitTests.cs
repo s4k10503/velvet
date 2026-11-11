@@ -142,10 +142,13 @@ namespace Velvet.Tests
             return V.Component(SwappingBoundary, new SwappingBoundaryProps(current, props.ThrowerFirst));
         }
 
+        private static int s_swaps;
+
         private static MountedTree MountSwap(VisualElement root, Page page, bool throwerFirst)
         {
+            s_swaps = 0;
             var mounted = V.Mount(root, V.Component(SwapHost, new SwapProps(page, throwerFirst)),
-                new MountOptions { OnCaughtError = (_, _) => { } });
+                new MountOptions { OnCaughtError = (_, _) => s_swaps++ });
             mounted.DrainForTest();
             return mounted;
         }
@@ -250,9 +253,10 @@ namespace Velvet.Tests
             // Act
             GoTo(mounted, page, 1);
 
-            // Assert — a Label the swap did not keep in place reads as no display at all
+            // Assert — a boundary that did not catch once, or a Label the swap did not keep in place, reads as no
+            // display at all
             var after = root.Q<Label>("x");
-            Assert.That(ReferenceEquals(after, x) ? after.style.display.value : (DisplayStyle?)null,
+            Assert.That(s_swaps == 1 && ReferenceEquals(after, x) ? after.style.display.value : (DisplayStyle?)null,
                 Is.EqualTo(DisplayStyle.Flex));
         }
 
@@ -271,8 +275,9 @@ namespace Velvet.Tests
             // Act
             GoTo(mounted, page, 1);
 
-            // Assert — a Label the swap did not keep in place reads as no ref at all
-            Assert.That(ReferenceEquals(root.Q<Label>("x"), x) ? s_xRef : null, Is.SameAs(x));
+            // Assert — a boundary that did not catch once, or a Label the swap did not keep in place, reads as no ref
+            // at all
+            Assert.That(s_swaps == 1 && ReferenceEquals(root.Q<Label>("x"), x) ? s_xRef : null, Is.SameAs(x));
         }
     }
 }
