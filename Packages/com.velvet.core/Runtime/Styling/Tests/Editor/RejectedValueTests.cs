@@ -18,6 +18,7 @@ namespace Velvet.Tests
         [TestCase("ring-2 shadow-[0_4_8_#000] shadow-[#ff0000]")]
         [TestCase("ring-2 shadow-[0_4_8_#000] shadow-[color:red]")]
         [TestCase("ring-[length:2] ring-4")]
+        [TestCase("ring shadow-[0_0_var(--a)_var(--b)] shadow-[#ggg]")]
         [TestCase("ring shadow-[calc(1px)_4px] shadow-[#ggg]")]
         [TestCase("ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]")]
         [TestCase("ring-2 shadow-2xl/150 shadow-[calc(1px)_calc(2px)_red] shadow-red-500")]

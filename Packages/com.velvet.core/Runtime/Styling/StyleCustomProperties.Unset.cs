@@ -8,15 +8,13 @@ namespace Velvet
     internal static partial class StyleCustomProperties
     {
         // What an unresolvable var() computes to, as a utility, for the painted utilities where that is not
-        // nothing. A gradient stop's colour and position and a ring's offset are custom properties Tailwind registers
-        // with an initial value: transparent; 0%, 50% and 100%; 0px. A box shadow's size, outer or inset, is written as
-        // a bracket the browser rejects (shadow-[0]), which discards the whole box-shadow, as the browser discards it
-        // for the var(). A ring's width is written as ring-0, which leaves the rest of the box-shadow drawn, where the
-        // browser discards the whole of it. A ring's colour is one Tailwind registers without an initial value, which
-        // its shadow reads with a currentcolor fallback; an outline colour's initial value is currentcolor and its
-        // width's is medium (3px). Gap's initial value is no gap. A font's weight and family and a line height
-        // inherit. A skew axis is a custom property Tailwind registers without one, which the transform reads with an
-        // empty fallback: no shear on that axis, as a skew of 0 draws.
+        // nothing. A gradient stop's colour and position, a box shadow, a ring's shadow and its offset are custom
+        // properties Tailwind registers with an initial value: transparent; 0%, 50% and 100%; one that draws none;
+        // the same; 0px. A ring's colour is one it registers without one, which its shadow reads with a
+        // currentcolor fallback; an outline colour's initial value is currentcolor and its width's is medium (3px).
+        // Gap's initial value is no gap. A font's weight and family and a line height inherit. A skew axis is a
+        // custom property Tailwind registers without one, which the transform reads with an empty fallback: no
+        // shear on that axis, as a skew of 0 draws.
         private static string? PaintedUnset(string prefix, string? hint)
         {
             if (!s_paintedUnset.TryGetValue(prefix, out var unset))
@@ -30,16 +28,14 @@ namespace Velvet
         }
 
         // Per painted utility: what an unresolvable var() stands for when the value is untyped, a colour, a family
-        // name, and any other type. An untyped shadow is a box shadow, as Tailwind writes one it does not test, unless
-        // its value is a colour (InferredHint).
+        // name, and any other type. An untyped shadow is a box shadow, as Tailwind writes one it does not test.
         private static readonly Dictionary<string, (string? Untyped, string? Colour, string? Family, string? Typed)> s_paintedUnset =
             new(StringComparer.Ordinal)
             {
                 ["from-"] = ("from-transparent", "from-transparent", "from-transparent", "from-0%"),
                 ["via-"] = ("via-transparent", "via-transparent", "via-transparent", "via-50%"),
                 ["to-"] = ("to-transparent", "to-transparent", "to-transparent", "to-100%"),
-                ["shadow-"] = ("shadow-[0]", null, "shadow-[0]", "shadow-[0]"),
-                ["inset-shadow-"] = ("inset-shadow-[0]", null, "inset-shadow-[0]", "inset-shadow-[0]"),
+                ["shadow-"] = ("shadow-none", null, "shadow-none", "shadow-none"),
                 ["ring-"] = ("ring-current", "ring-current", "ring-current", "ring-0"),
                 ["ring-offset-"] = (null, null, null, "ring-offset-0"),
                 ["outline-"] = ("outline-current", "outline-current", "outline-current", "outline-[length:3px]"),
@@ -179,10 +175,5 @@ namespace Velvet
             var root = utility.Substring(utility[0] == '-' ? 1 : 0, shape.MainOpen - (utility[0] == '-' ? 2 : 1));
             return StyleColorValueParser.DefaultsToColour(root) ? "color" : root == "font" ? "weight" : null;
         }
-
-        // A colour hint for an unhinted value Tailwind's type test reads as a colour (`shadow-[rgb(var(--c))]`, the
-        // shadow's colour), where the unset of a shadow's colour is nothing and that of its size is not.
-        private static string? InferredHint(string utility, in UtilityShape shape)
-            => TailwindDataTypes.IsColor(utility.AsSpan(shape.BodyStart, shape.MainClose - shape.BodyStart)) ? "color" : null;
     }
 }

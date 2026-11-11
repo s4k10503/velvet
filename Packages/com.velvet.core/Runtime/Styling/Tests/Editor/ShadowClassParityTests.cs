@@ -538,40 +538,5 @@ namespace Velvet.Tests
             // Assert
             Assert.That(radius, Is.EqualTo(4f));
         }
-
-        // A var() bracket Tailwind types as a size holds the layers with nothing to draw, as the discard reading takes it,
-        // until StyleCustomProperties places what it resolves to after it.
-        [TestCase("shadow-lg/150 shadow-[var(--x)] shadow-red-500")]
-        [TestCase("shadow-2xl shadow-[length:rgb(var(--c))]")]
-        public void Given_AVarBracketTailwindTypesAsASize_When_Read_Then_NeitherReaderDrawsOrDiscards(string classes)
-        {
-            // Arrange
-            var classNames = StyleSpacingPrecedence.Normalize(classes.Split(' '));
-
-            // Act
-            var outcome = StyleRingClass.DiscardsBoxShadow(classNames) ? "discarded"
-                : StyleShadowClass.TryExtract(classNames, out _) ? "drawn" : "neither";
-
-            // Assert
-            Assert.That(outcome, Is.EqualTo("neither"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base drew a size beside a colour bracket holding a var() in the size's own colour.
-        // Tailwind types the bracket as the family's colour, which the drawing reader cannot parse, so the size keeps its
-        // own, as the browser draws it while the variable is undeclared.
-        [TestCase("shadow-2xl shadow-[rgb(var(--c))]", "00000040")]
-        [TestCase("shadow shadow-[hsl(var(--h))]", "0000001A")]
-        [TestCase("shadow-lg/50 shadow-[hsl(var(--h))]", "00000080")]
-        [TestCase("shadow-[0_0_5px_red] shadow-[rgb(var(--c))]", "FF0000FF")]
-        [TestCase("inset-shadow-2xs inset-shadow-[rgb(var(--c))]", "0000000D")]
-        public void Given_ASizeBesideAColourBracketHoldingAVar_When_Extracted_Then_TheSizeIsDrawnInItsOwnColour(
-            string classes, string expected)
-        {
-            // Act
-            var found = StyleShadowClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out var spec);
-
-            // Assert
-            Assert.That(found ? UnityEngine.ColorUtility.ToHtmlStringRGBA(spec[0].Color) : "none", Is.EqualTo(expected));
-        }
     }
 }

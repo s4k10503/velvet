@@ -382,13 +382,12 @@ namespace Velvet
             }
             // A color hint makes the bracket the family's colour whether or not it holds one: a hinted value that is no
             // colour sets nothing here (BoxShadowSlot reads it as a rejected colour), and is never a size.
-            var hint = StyleArbitraryValueResolver.TypeHintOf(cls);
-            if (hint == "color")
+            if (StyleArbitraryValueResolver.TypeHintOf(cls) == "color")
             {
                 // MUTANT_SURVIVES(equivalent, literal): Read, the only caller, hands a class this declines to the inset-ring reader, which takes no class of either root.
                 return true;
             }
-            if (!TryReadSize(suffix, presets, alpha, hint != null, out var layers))
+            if (!TryReadSize(suffix, presets, alpha, out var layers))
             {
                 return false;
             }
@@ -416,10 +415,8 @@ namespace Velvet
         }
 
         // A size of the family: its -none (which takes no modifier), a preset, or a bracketed shadow list. Tailwind
-        // writes `inset` ahead of each layer of an inset-shadow-[…]. A bracket holding a var() this cannot read is a
-        // size with nothing to draw where Tailwind types it as one, by a hint (hinted) or by a value that is no colour,
-        // as ReadBoxShadowClass takes it for a size whose value it cannot judge.
-        private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha, bool hinted,
+        // writes `inset` ahead of each layer of an inset-shadow-[…].
+        private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
             out ShadowSpec[] layers)
         {
             layers = Array.Empty<ShadowSpec>();
@@ -433,9 +430,7 @@ namespace Velvet
                 return true;
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && (TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers)
-                    || ((hinted || !TailwindDataTypes.IsColor(inner))
-                        && inner.IndexOf("var(".AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0));
+                && TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers);
         }
 
         // inset-ring (1px), inset-ring-<n>, inset-ring-[<length>] and inset-ring-<colour>, as Tailwind reads them.
@@ -755,22 +750,40 @@ namespace Velvet
             return false;
         }
 
-        // Whether Tailwind writes the family's colour variable into a bracket's layers (replace-shadow-colors.ts as 4.3.3
-        // has it). A layer does where one of its space-separated parts is a colour: a part opening with #, a named
-        // colour or a colour function. Otherwise it does where two parts are lengths, a part opening as one does (a digit,
-        // or a point and a digit, after an optional -, whatever follows) or calc(), clamp(), min(), max() or
-        // --spacing(), and at most one part is anything else, which it takes for the colour or appends one beside. A
-        // keyword (inset and the CSS-wide ones) is no part.
+        // Whether a bracket's layers read the family's colour variable, as Tailwind writes it into a layer holding no
+        // var() (replace-shadow-colors.ts as 4.3.3 has it). A layer does where one of its space-separated parts is a
+        // colour: a part opening with #, a named colour or a colour function. Otherwise it does where two parts are
+        // lengths, a part opening as one does (a digit, or a point and a digit, after an optional -, whatever follows)
+        // or calc(), clamp(), min(), max() or --spacing(), and at most one part is anything else, which it takes for the
+        // colour or appends one beside. A keyword (inset and the CSS-wide ones) is no part.
         private static bool ReadsShadowColour(string value)
         {
             foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
-                if (LayerReadsShadowColour(layer))
+                if (layer.Contains("var(", StringComparison.OrdinalIgnoreCase)
+                        ? OpensAsLengthTwice(layer)
+                        : LayerReadsShadowColour(layer))
                 {
                     return true;
                 }
             }
             return false;
+        }
+
+        // A layer holding a var() is not walked: two parts opening as a length read the colour there, which keeps a
+        // rejected colour beside 0_0_var(--a)_var(--b) discarding the box-shadow, as the browser discards it where
+        // neither var() is declared.
+        private static bool OpensAsLengthTwice(string layer)
+        {
+            var lengths = 0;
+            foreach (var part in StyleGradientClass.SplitTopLevel(layer.Trim(), ' '))
+            {
+                if (OpensAsLength(part))
+                {
+                    lengths++;
+                }
+            }
+            return lengths >= 2;
         }
 
         private static readonly HashSet<string> s_shadowKeywords = new(StringComparer.Ordinal)
