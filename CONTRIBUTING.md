@@ -1396,6 +1396,31 @@ or been skipped*: add it once review has settled, and remove it to hold the pull
 takes triage access or above, so only an account holding that can opt a pull request in. The workflow
 does not create the label; it has to exist in the repository.
 
+A pull request in a stack is merged through GitHub's asynchronous merge endpoint, since GitHub refuses
+a stack member on the one `settle.py merge` uses for every other pull request. GitHub documents that
+endpoint as merging every member below the one asked for as well, so settle merges only the lowest
+member not yet merged, judges it against the stack's base, and refuses one above it, naming the member
+to merge first; `watch` records none above it as ready. GitHub also documents a linear history as a
+requirement for merging a stack, lost when the base moves ahead or a lower branch is pushed to, so
+settle refuses a member whose stack does not read linear on its base: the lowest open branch holding
+the base's head, and each one above holding the head of the one below it, each with no merge commit
+since what sits below it. The refusal names the way back: `gh stack rebase`, then `gh stack push`,
+which force-pushes each branch with a lease. The rebase moves the branch of each clean worktree
+holding a member, so every such worktree is left clean, or removed, first. `settle.py update` refuses
+a stack member, since the merge it makes is a merge commit, and a stack member is not held to its
+base's newest release commit, which a linear stack holds. The request carries what the other one
+does: the head the checks were read at, and the pull request's own title and body. Once a member has
+merged, settle deletes its local branch and leaves the remote one to `delete_branch_on_merge`, and
+it refuses a stack member unless that setting is on: the member above targets that branch until
+GitHub moves it onto the stack's base. GitHub merges after the request returns, and settle waits up
+to ten minutes for the answer. A request GitHub refuses, and an answer that the merge failed, stop
+settle with GitHub's message, as a refused merge of any other pull request does. A request that does
+not answer, one GitHub's own answer says it already holds (HTTP 409), and an answer that does not
+come in that time or is neither merged nor failed, are reported as a merge requested with its
+outcome unknown: settle leaves the branch where it is and exits 0, so read the pull request before
+asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
+held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
+
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
@@ -1433,7 +1458,11 @@ carried would go unseen until some later push. The `upm` split would wait for th
 the secret, standalone merge and sweep jobs report an error and fail before reading or merging.
 It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
-Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
+Checks and Commit statuses read. A stack member's merge also reads the stack, through
+`repos/{owner}/{repo}/stacks/{number}`, and the repository's `delete_branch_on_merge`, and sends a
+PUT to `repos/{owner}/{repo}/pulls/{number}/merge-async`, so the token has to be allowed each of
+those. Where that setting does not come back in the repository's payload, settle refuses every stack
+member, naming it as reading nothing. The merge is attributed to the token's account, and `protect-main`
 holds it as it holds anyone: it lists no bypass actor. The hand-off dispatches the merge run with the
 workflow's own token instead, granted Actions write.
 

@@ -114,6 +114,14 @@
     "tools": [
       "Bash"
     ],
+    "script": "refuse/stack_merge_by_hand.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
     "script": "refuse/shared_git_state.py",
     "timeout": 10.0
   },

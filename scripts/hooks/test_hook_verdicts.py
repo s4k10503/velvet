@@ -672,6 +672,25 @@ class MergeWithoutBranchDeletionVerdicts(VerdictFixture):
         self.assertEqual(verdict, ALLOWED)
 
 
+class StackMergeByHandVerdicts(VerdictFixture):
+    HOOK = "refuse/stack_merge_by_hand.py"
+
+    def test_Given_AStackMergeTypedByHand_When_Posed_Then_ItRefuses(self):
+        # Arrange / Act — a refusal that does not say why answers None, which no verdict equals.
+        verdict, said = self.pose(bash("gh stack merge 1558 --yes --squash", self.root), self.root,
+                                  "merges every member of the stack")
+
+        # Assert
+        self.assertEqual(verdict if said else None, REFUSED)
+
+    def test_Given_AStackCommandThatMergesNothing_When_Posed_Then_ItAllows(self):
+        # Arrange / Act
+        verdict, _ = self.pose(bash("gh stack view", self.root), self.root)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED)
+
+
 class MessageOutsideItsWorktreeVerdicts(VerdictFixture):
     HOOK = "refuse/message_outside_its_worktree.py"
 
