@@ -10,9 +10,11 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what the rows a parked time-sliced pass reaches after it parked see and leave behind. A row a resumed
     /// slice re-renders reads the Provider above the parked component, as the rows of the slice that parked read it,
-    /// and a component outside that Provider rendering after the resume reads the default again. A row that throws
+    /// and a component outside that Provider rendering after the resume reads the default again. A pass parked in a
+    /// primary its Suspense hid waits for the reveal, whose walk places its rows under that Provider. A row that throws
     /// there, under a boundary above the parked component, is reported once by that boundary, whether the scheduled
-    /// resume reaches it or a render of the parked component drains the pass first.
+    /// resume reaches it or a render of the parked component drains the pass first, and the boundary's fallback reads
+    /// the Providers above the boundary rather than those at the row.
     /// </summary>
     [TestFixture]
     internal sealed class ParkedPassResumeTests
@@ -30,6 +32,12 @@ namespace Velvet.Tests
         private static ComponentFiber s_listFiber;
         private static ComponentFiber s_outsiderFiber;
         private static string s_outsiderReading;
+        private static readonly ComponentContext<string> s_belowGuardOnly =
+            ComponentContext<string>.Create("unprovided");
+        private static string s_panelReading;
+        private static string s_panelBelowGuardOnlyReading;
+        private static StateUpdater<int> s_setReaderOwn;
+        private static VelvetTaskCompletionSource<int> s_readSource;
 
         private static readonly MountOptions s_recordingErrors = new()
         {
@@ -51,6 +59,10 @@ namespace Velvet.Tests
             s_listFiber = null;
             s_outsiderFiber = null;
             s_outsiderReading = null;
+            s_panelReading = null;
+            s_panelBelowGuardOnlyReading = null;
+            s_setReaderOwn = default;
+            s_readSource = null;
             Application.logMessageReceived += RecordLoggedError;
         }
 
@@ -133,6 +145,81 @@ namespace Velvet.Tests
             Assert.That(ReportsAfter(parkedShortOfTheThrow), Is.EqualTo("caught:" + RowError));
         }
 
+        [Test]
+        public void Given_AMemoizedComponentParkedInAPrimaryItsSuspenseHid_When_FramesPassAndTheSuspenseReveals_Then_ARowItsPassReachesReadsTheProvidersValue()
+        {
+            // Arrange — the list parks re-rendering its rows, then the reader beside it suspends again, so the
+            // Suspense keeps the primary it had shown, hidden, with the list still parked in it.
+            using var mounted = V.Mount(_root, V.Component(SuspendingProviderRootRender, key: "root"));
+            var mountedRow = s_rowFibers[LastRow];
+            s_generation = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_listFiber.FlushStateWithTinyBudgetForTest();
+            s_setReaderOwn.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            var parkedWhileHidden = s_listFiber.HasPendingReconcileWorkForTest() && s_listFiber.IsOffscreen
+                && s_readings[LastRow] == "gen0:provided";
+
+            // Act — a frame's resume for each row while the primary is hidden, then the read resolves and the
+            // Suspense reveals the primary.
+            for (var frame = 0; frame < RowCount; frame++) FiberWorkLoop.ContinueReconcile(s_listFiber);
+            s_readSource.TrySetResult(5);
+            mounted.FlushStateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            var reading = parkedWhileHidden
+                ? ReadingOf(LastRow, mountedRow)
+                : "the list was not parked in a hidden primary";
+            Assert.That(reading, Is.EqualTo("gen1:provided"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseOutputProvidesAboveAParkedComponent_When_AResumedRowThrows_Then_ItsFallbackReadsTheProviderAboveTheBoundary()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ProvidedGuardRootRender, key: "root"), s_recordingErrors);
+            var parkedShortOfTheThrow = ParkWithTheLastRowThrowing();
+
+            // Act
+            s_listFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(PanelReadingAfter(parkedShortOfTheThrow, s_panelReading), Is.EqualTo("outer"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseOutputProvidesAboveAParkedComponent_When_ItsOwnRenderDrainsARowThatThrows_Then_ItsFallbackReadsTheProviderAboveTheBoundary()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ProvidedGuardRootRender, key: "root"), s_recordingErrors);
+            var parkedShortOfTheThrow = ParkWithTheLastRowThrowing();
+
+            // Act — a Normal render of the parked list, which pushes the Providers above it, drains the throwing row.
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_listFiber);
+
+            // Assert
+            Assert.That(PanelReadingAfter(parkedShortOfTheThrow, s_panelReading), Is.EqualTo("outer"));
+        }
+
+        [Test]
+        public void Given_ABoundaryWhoseOutputAloneProvidesAContext_When_ARenderBelowItThrows_Then_ItsFallbackReadsThatContextsDefault()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ProvidedGuardRootRender, key: "root"), s_recordingErrors);
+            var parkedShortOfTheThrow = ParkWithTheLastRowThrowing();
+
+            // Act — a Normal render of the parked list, which pushes the Providers above it, drains the throwing row.
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_listFiber);
+
+            // Assert
+            Assert.That(
+                PanelReadingAfter(parkedShortOfTheThrow, s_panelBelowGuardOnlyReading), Is.EqualTo("unprovided"));
+        }
+
         // The list re-renders every row on the Transition lane under a budget too small for one row, the last row
         // throwing in that render. True where the slice that parks stopped short of the last row: a throw in that
         // slice disposes the list, which leaves no parked pass behind.
@@ -153,6 +240,13 @@ namespace Velvet.Tests
             var fallbacks = _root.Query<Label>(name: "guard-fallback").ToList().Count;
             return fallbacks == 1 ? string.Join(" | ", s_reports) : "fallbacks shown: " + fallbacks;
         }
+
+        // A first slice that reached the throw caught it before any resume or drain, and a fallback that never
+        // rendered leaves the reading null, so each reads as a sentinel rather than as a value.
+        private static string PanelReadingAfter(bool parkedShortOfTheThrow, string reading)
+            => !parkedShortOfTheThrow
+                ? "the first slice reached the throwing row"
+                : reading ?? "the fallback never rendered";
 
         // A row the resume disposed, or replaced with a component of its own, reads as such rather than as what its
         // last render recorded.
@@ -197,10 +291,63 @@ namespace Velvet.Tests
             return V.Component(ListRender, key: "list");
         }
 
+        // The boundary provides the context again above the list, and provides a second one no Provider above it
+        // does.
+        [Component(Compiler = false)]
+        private static VNode ProvidedGuardRootRender()
+            => V.Provider(s_context, "outer", new VNode[] { V.Component(ProvidingGuardRender, key: "guard") });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode ProvidingGuardRender()
+        {
+            Hooks.UseFallback(_ => V.Component(ErrorPanelRender, key: "panel"));
+            return V.Provider(s_context, "inner", new VNode[]
+            {
+                V.Provider(s_belowGuardOnly, "below the guard", new VNode[] { V.Component(ListRender, key: "list") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ErrorPanelRender()
+        {
+            s_panelReading = Hooks.UseContext(s_context);
+            s_panelBelowGuardOnlyReading = Hooks.UseContext(s_belowGuardOnly);
+            return V.Label(name: "panel", text: s_panelReading);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspendingProviderRootRender()
+            => V.Provider(s_context, "provided", new VNode[]
+            {
+                V.Suspense(fallback: V.Label(text: "loading"), children: new VNode[]
+                {
+                    V.Component(ResuspendingReaderRender, key: "reader"),
+                    V.Component(MemoizedListRender, key: "list"),
+                }),
+            });
+
+        // Reads a value at once until its own update asks for one that is still pending.
+        [Component(Compiler = false)]
+        private static VNode ResuspendingReaderRender()
+        {
+            var (own, setOwn) = Hooks.UseState(0);
+            s_setReaderOwn = setOwn;
+            var value = Hooks.Use<int>(_ => own == 0
+                ? VelvetTask.FromResult(0)
+                : (s_readSource = new VelvetTaskCompletionSource<int>()).Task, own);
+            return V.Label(text: "reader:" + value);
+        }
+
+        // Memoized so the walk that hides the primary reuses it as it is, parked, rather than rendering it.
+        [Component(Compiler = false, Memoize = true)]
+        private static VNode MemoizedListRender() => Rows();
+
+        [Component(Compiler = false)]
+        private static VNode ListRender() => Rows();
+
         // Keyed elements at the top level keep the list's own reconcile on the path that time-slices; the row
         // component sits one level down, where an element's own children reach it once that row is reconciled.
-        [Component(Compiler = false)]
-        private static VNode ListRender()
+        private static VNode Rows()
         {
             s_listFiber = FiberAmbientStack.Current;
             var rows = new VNode[RowCount];
