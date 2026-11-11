@@ -1581,8 +1581,9 @@ namespace Velvet
 
         // The exiting children a PopLayout presence pinned out of flow, keyed by the ghost element, which paint as
         // positioned children for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken when
-        // the exit is cancelled or the ghost is removed.
-        internal PinnedGhostTable PinnedGhosts { get; } = new();
+        // the exit is cancelled or the ghost is removed. A pure side-table, enrolled in _pureElementSideTables: an
+        // exit's completion removes the ghost without unpinning it.
+        internal Dictionary<VisualElement, object> PinnedGhosts { get; } = new();
 
         // Real element -> its relocation bookkeeping. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();
@@ -1590,6 +1591,15 @@ namespace Velvet
         // Slot element -> the z, flex order and position its classes give it, for an element whose classes name
         // any of them. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, StackingFacts> StackingFacts { get; } = new();
+
+        // The elements given stacking facts or pinned since FiberZLayerCoordinator.ResortLayers last recorded the
+        // parent each stands in (StackingParents). A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, bool> StackingArrivals { get; } = new();
+
+        // The parents FiberZLayerCoordinator.Arrange looks through for a child with stacking facts or a pin: every
+        // parent such a child's slot stands in is here by the time the parent is arranged, and a parent leaves when
+        // a look finds none. A pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, bool> StackingParents { get; } = new();
 
         // Retired placeholders and anchors still standing in their parent, removed by
         // FiberZLayerCoordinator.DrainTeardowns once no diff can be holding a physical index into that parent.
@@ -3442,6 +3452,9 @@ namespace Velvet
                 ZLayerHosts,
                 ZLayerMembers,
                 StackingFacts,
+                StackingArrivals,
+                StackingParents,
+                PinnedGhosts,
             };
             FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
         }

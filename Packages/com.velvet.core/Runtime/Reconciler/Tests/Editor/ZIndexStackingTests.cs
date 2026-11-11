@@ -391,6 +391,38 @@ namespace Velvet.Tests
             Assert.That(stillPinned, Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the base looks through every parent a slice reconciled into, so it arranges x
+        // whichever slice placed it. What this pins is that an element the keyed diff creates in one slice and places in
+        // a later one is still arranged once it stands in its parent.
+        [Test]
+        public void Given_AKeyedTimeSlicedPassThatCreatesAnAbsoluteChildBeforePlacingIt_When_ThePassFinishes_Then_ItPaintsAfterItsUnpositionedSiblings()
+        {
+            // Arrange — no common head sends the diff through its key map, whose walk over the new keys creates x and
+            // yields between keys, ahead of the reorder that places it.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[] { V.Div(key: "a", name: "a"), V.Div(key: "b", name: "b"), V.Div(key: "c", name: "c") };
+            var after = new VNode[]
+            {
+                V.Div(key: "c", name: "c"),
+                V.Div(key: "x", name: "x", className: "absolute"),
+                V.Div(key: "a", name: "a"),
+                V.Div(key: "b", name: "b"),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, after, 1e-6);
+            var resumes = 0;
+            while (scope.Reconciler.HasPendingWork)
+            {
+                scope.Reconciler.ContinueReconcile(1e-6);
+                resumes++;
+            }
+
+            // Assert — null where the pass yielded fewer than three times, which the expected order cannot match
+            Assert.That(resumes >= 3 ? ZBandProbe.PaintOrder(scope.Root) : null, Is.EqualTo("c,a,b,x"));
+        }
+
         [Test]
         public void Given_AHoverFlexParent_When_HoverStartsAndEnds_Then_ItsChildrenTakeAndLoseTheirFlexOrder()
         {

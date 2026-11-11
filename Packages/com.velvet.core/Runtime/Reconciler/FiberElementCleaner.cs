@@ -253,9 +253,6 @@ namespace Velvet
             CleanupDndResources(element);
             CleanupControllerResources(element);
             _ctx.PrunePresenceParentElementState(element);
-            // Teardown takes a PopLayout pin back: an exit's completion drops the element without UnpinGhost, which only
-            // the paths that keep the element call.
-            if (_ctx.PinnedGhosts.Count != 0) _ctx.PinnedGhosts.Remove(element);
             _ctx.PruneSuspenseContainerState(element);
             _ctx.FiberMemoCache.Forget(element);
         }

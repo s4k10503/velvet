@@ -9,8 +9,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins what arranging a parent's stacking costs a time-sliced pass while nothing is tracked: the placeholder
-    /// lookups of a pass patching its rows one per slice grow with the rows rather than with their square.
+    /// Pins what arranging a parent's stacking costs a time-sliced pass over rows none of which is tracked: the
+    /// placeholder lookups of a pass patching the rows one per slice grow with the rows rather than with their square,
+    /// with a <c>relative</c> element in another parent as without one.
     /// </summary>
     [TestFixture]
     internal sealed class ZLayerArrangeCostTests
@@ -19,6 +20,13 @@ namespace Velvet.Tests
 
         // The budget ReconcilerBenchmarks yields per element with.
         private const double YieldPerRowBudgetMs = 1e-6;
+
+        private enum Shape
+        {
+            NothingStacked,
+            GhostPinnedAndUnpinned,
+            RelativeElementInAnotherParent,
+        }
 
         // Counts the keys the dictionary hashes.
         private sealed class CountingComparer : IEqualityComparer<VisualElement>
@@ -38,10 +46,10 @@ namespace Velvet.Tests
         public void Given_TwiceTheRowsAndNothingStacked_When_ATimeSlicedPassPatchesEveryRow_Then_ItsPlaceholderLookupsGrowNoFasterThanTheRows()
         {
             // Arrange
-            var fewer = PlaceholderLookupsOfASlicedPass(Rows, pinAndUnpinAGhost: false);
+            var fewer = PlaceholderLookupsOfASlicedPass(Rows, Shape.NothingStacked);
 
             // Act
-            var more = PlaceholderLookupsOfASlicedPass(2 * Rows, pinAndUnpinAGhost: false);
+            var more = PlaceholderLookupsOfASlicedPass(2 * Rows, Shape.NothingStacked);
 
             // Assert — what grows with the rows cancels here, and looking every row up again at the end of every slice
             // would leave a remainder growing with the square of their count. Where a count could not be taken, the
@@ -53,18 +61,32 @@ namespace Velvet.Tests
         public void Given_AGhostPinnedAndUnpinned_When_ATimeSlicedPassPatchesTwiceTheRows_Then_ItsPlaceholderLookupsGrowNoFasterThanTheRows()
         {
             // Arrange
-            var fewer = PlaceholderLookupsOfASlicedPass(Rows, pinAndUnpinAGhost: true);
+            var fewer = PlaceholderLookupsOfASlicedPass(Rows, Shape.GhostPinnedAndUnpinned);
 
             // Act
-            var more = PlaceholderLookupsOfASlicedPass(2 * Rows, pinAndUnpinAGhost: true);
+            var more = PlaceholderLookupsOfASlicedPass(2 * Rows, Shape.GhostPinnedAndUnpinned);
 
-            // Assert — as above: an unpinned ghost leaves nothing for the slices to look for
+            // Assert — as above: the rows' parent is looked through once after the unpin, and not again
+            Assert.That(fewer < 0 || more < 0 ? int.MaxValue : more - 2 * fewer, Is.LessThan(Rows));
+        }
+
+        [Test]
+        public void Given_ARelativeElementInAnotherParent_When_ATimeSlicedPassPatchesTwiceTheRows_Then_ItsPlaceholderLookupsGrowNoFasterThanTheRows()
+        {
+            // Arrange
+            var fewer = PlaceholderLookupsOfASlicedPass(Rows, Shape.RelativeElementInAnotherParent);
+
+            // Act
+            var more = PlaceholderLookupsOfASlicedPass(2 * Rows, Shape.RelativeElementInAnotherParent);
+
+            // Assert — as above: an element tracked elsewhere leaves nothing for the slices to look for here
             Assert.That(fewer < 0 || more < 0 ? int.MaxValue : more - 2 * fewer, Is.LessThan(Rows));
         }
 
         // The keys the placeholder table hashes during a pass that patches rows labels under the budget above, or -1
-        // where a lookup is not counted once or the pass yielded fewer times than once per two rows.
-        private static int PlaceholderLookupsOfASlicedPass(int rows, bool pinAndUnpinAGhost)
+        // where a lookup is not counted once, the shape's relative element went untracked, or the pass yielded fewer
+        // times than once per two rows.
+        private static int PlaceholderLookupsOfASlicedPass(int rows, Shape shape)
         {
             using var scope = new ReconcilerScope();
             var ctx = scope.Reconciler.Context;
@@ -72,20 +94,28 @@ namespace Velvet.Tests
             typeof(ReconcilerContext)
                 .GetField("<ZLayerPlaceholders>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(ctx, new Dictionary<VisualElement, VisualElement>(counter));
+            var parent = scope.Root;
+            if (shape == Shape.RelativeElementInAnotherParent)
+            {
+                scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(),
+                    new VNode[] { V.Div(className: "relative", name: "elsewhere"), V.Div(name: "rows") });
+                if (!ctx.StackingFacts.ContainsKey(scope.Root.Q("elsewhere"))) return -1;
+                parent = scope.Root.Q("rows");
+            }
             var before = Labels(rows, "old-");
             var after = Labels(rows, "new-");
-            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
-            if (pinAndUnpinAGhost)
+            scope.Reconciler.Reconcile(parent, Array.Empty<VNode>(), before);
+            if (shape == Shape.GhostPinnedAndUnpinned)
             {
-                FiberZLayerCoordinator.PinGhost(ctx, scope.Root[0]);
-                FiberZLayerCoordinator.UnpinGhost(ctx, scope.Root[0]);
+                FiberZLayerCoordinator.PinGhost(ctx, parent[0]);
+                FiberZLayerCoordinator.UnpinGhost(ctx, parent[0]);
             }
             counter.Lookups = 0;
-            ctx.ZLayerPlaceholders.TryGetValue(scope.Root, out _);
+            ctx.ZLayerPlaceholders.TryGetValue(parent, out _);
             if (counter.Lookups != 1) return -1;
             counter.Lookups = 0;
 
-            scope.Reconciler.Reconcile(scope.Root, before, after, YieldPerRowBudgetMs);
+            scope.Reconciler.Reconcile(parent, before, after, YieldPerRowBudgetMs);
             var resumes = 0;
             while (scope.Reconciler.HasPendingWork)
             {
