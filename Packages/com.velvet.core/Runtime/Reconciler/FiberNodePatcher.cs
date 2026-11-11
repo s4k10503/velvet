@@ -52,12 +52,11 @@ namespace Velvet
         // PatchNode must not modify the childCount or child order of element's
         // parent. Reconciling the child container (children of element itself) is not subject
         // to this constraint, but removing/inserting the element from its parent is forbidden.
-        // Violating this contract breaks the old.index == DOM index invariant in
-        // ChildReconciler.ReconcileKeyed Pass 2, causing the wrong element to be patched.
-        // New VNode types must preserve this contract.
-        // Exception: the MemoNode branch in PatchNode does replace the element itself, but it preserves
-        // childCount via parent.RemoveAt + Insert.
-        internal void PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
+        // The diff removes old leaves and inserts new ones by slot, so a patch that moved the slots would have a
+        // later removal take the wrong element. New VNode types must preserve this contract.
+        // Returns what occupies the element's slot once the patch is done, which a wrapper added or removed and a
+        // z-layer relocation in either direction change; the diff names the old leaf by it from then on.
+        internal VisualElement PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
         {
             switch (oldNode)
             {
@@ -65,8 +64,7 @@ namespace Velvet
                     // A relocated slot holds a PLACEHOLDER (FiberZLayerCoordinator), and whether a slot is
                     // relocated depends on the element's siblings as well as its own classes, so the patch
                     // always reads the slot through the registry rather than deciding from either class list.
-                    PatchZLayerElement(element, oldElem, newElem);
-                    break;
+                    return SlotOccupantOf(PatchZLayerElement(element, oldElem, newElem));
                 case TextNode oldText when newNode is TextNode newText:
                     // Invariant: TextNode is always mapped to Label by CreateElement.
                     // Assert (rather than silently ignore) if `element is Label` does not hold.
@@ -79,8 +77,7 @@ namespace Velvet
                     }
                     break;
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
-                    PatchMotionSlot(element, oldMotion, newMotion);
-                    break;
+                    return SlotOccupantOf(PatchMotionSlot(element, oldMotion, newMotion));
                 // AnimatePresence is DOM-less (inline-expanded by ChildReconciler), so it is never a
                 // patchable leaf — no case here.
                 case VirtualListNode oldVirtualList when newNode is VirtualListNode newVirtualList:
@@ -105,7 +102,12 @@ namespace Velvet
                     PatchIndirectNode(element, oldNode, newNode);
                     break;
             }
+            return ResolveOuter(element);
         }
+
+        // The placeholder standing at real's slot while real is relocated, else real.
+        private VisualElement SlotOccupantOf(VisualElement real)
+            => FiberZLayerCoordinator.PlaceholderOf(_ctx, real) ?? real;
 
         // The node kinds whose VisualElement is a placeholder (Portal / WorldSpace: the children live in
         // another panel) or a fiber anchor (Provider / Component), rather than the
@@ -266,9 +268,9 @@ namespace Velvet
         // stands for — and hands the result to FiberZLayerCoordinator, which relocates it or returns it to its slot
         // when its own z or flex order says so. Contract-preserving, exactly like PatchElement: the net effect on
         // the slot's parent's logical children is zero — a placeholder inserted at the element's physical index
-        // with the element turned invisible, or the two exchanged by a sort — so ProcessKeyedNode / CommitLeaf's
-        // post-patch re-fetch at the same slot picks up the new occupant without any change to those call sites.
-        private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
+        // with the element turned invisible, or the two exchanged by a sort — so what PatchNode returns for it is
+        // what holds the slot.
+        private VisualElement PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
             var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             var classElement = _wrappers.ResolveWrapped(slot);
@@ -277,10 +279,11 @@ namespace Velvet
             var resolved = ResolveGateClasses(classElement, newNode.ClassNames);
             if (NoteHeldZ(classElement, resolved))
             {
-                return;
+                return real;
             }
             FiberZLayerCoordinator.OnPatched(_ctx, real, classElement, newNode.ClassNames, resolved,
                 newNode.Props?.Anchored != null);
+            return real;
         }
 
         // The element occupying the slot after a patch, which a clip-path wrapper added or removed by that patch
@@ -297,7 +300,7 @@ namespace Velvet
 
         // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
         // resolves, so the new side is read once the patch ran.
-        private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
+        private VisualElement PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
             var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
             var motion = _wrappers.ResolveWrapped(slot);
@@ -307,9 +310,10 @@ namespace Velvet
             var resolved = ResolveGateClasses(motion, applied);
             if (NoteHeldZ(motion, resolved))
             {
-                return;
+                return real;
             }
             FiberZLayerCoordinator.OnPatched(_ctx, real, motion, applied, resolved, newNode.Props?.Anchored != null);
+            return real;
         }
 
         // Whether a Motion play holds classElement's stack position, in which case the z this patch resolved is left

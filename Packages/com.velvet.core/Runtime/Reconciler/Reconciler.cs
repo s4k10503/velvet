@@ -771,7 +771,9 @@ namespace Velvet
         public void Dispose()
         {
             // Per-Reconciler pending state always needs releasing — even non-owners may have
-            // suspended their own keyed run while sharing the root's registries.
+            // suspended their own run while sharing the root's registries, and a parked run's old instances stay
+            // on the shared pool's rented list until they go back (ReconcilerBufferPool.RentedOldSlotOccupants).
+            _childReconciler?.DiscardPendingIndexedState();
             _childReconciler?.DiscardPendingKeyedState();
 
             // Owner-only teardown: ctx-level state is the root's responsibility. Disposing it from
