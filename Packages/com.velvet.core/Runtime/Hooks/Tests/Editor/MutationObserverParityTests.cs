@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
@@ -22,7 +23,8 @@ namespace Velvet.Tests
     /// <item>Observer events name the observer.</item>
     /// <item>Options are filled in from <see cref="QueryClientOptions.Mutations"/> and from the defaults registered
     /// for a key leading theirs, a later registration winning, and a function can come from there.</item>
-    /// <item><see cref="QueryClient.ResumePausedMutations"/> continues a paused call at once while online.</item>
+    /// <item><see cref="QueryClient.ResumePausedMutations"/> continues a paused call at once while online, and its task
+    /// completes once the run of each call it woke has ended.</item>
     /// <item><see cref="MutationOptionsBase.ThrowOnError"/> throws the failure the handle shows to the nearest
     /// error boundary.</item>
     /// <item>A scoped call that the scope frees while the device is offline stays paused.</item>
@@ -423,6 +425,76 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(resumed.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        // GREEN_ON_BASE(refactor): the base's resume task waits on the woken function and completes as it settles.
+        [Test]
+        public void Given_ACallPausedOffline_When_TheClientResumesItOnline_Then_TheResumeTaskWaitsForItsFunctionToSettle()
+        {
+            // Arrange
+            var online = false;
+            NetworkSignals.IsOnline = () => online;
+            s_options = Labelled("A", gated: true);
+            using var mounted = Mount();
+            s_captured!.Mutate(1);
+            online = true;
+            var resumed = s_client.ResumePausedMutations();
+            var waited = resumed.Status == VelvetTaskStatus.Pending;
+
+            // Act
+            s_gates[1].TrySetResult(1);
+
+            // Assert — read only over a task that was still waiting while the function ran.
+            Assert.That(waited ? resumed.Status : (VelvetTaskStatus?)null, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        [Test]
+        public void Given_TwoCallsOfAScopePausedOffline_When_TheClientResumesThemOnline_Then_TheResumeTaskWaitsForTheSecondCallsFunction()
+        {
+            // Arrange — the first call's function returns at once, and the second's waits on its gate.
+            var online = false;
+            NetworkSignals.IsOnline = () => online;
+            s_options = new MutationOptions<int, int, string>(MutationFn: (v, _) =>
+            {
+                if (v == 1) return VelvetTask.FromResult(v);
+                var gate = new VelvetTaskCompletionSource<int>();
+                s_gates[v] = gate;
+                return gate.Task;
+            })
+            {
+                Scope = new MutationScope("todos"),
+            };
+            using var mounted = Mount();
+            s_captured!.Mutate(1);
+            s_captured.Mutate(2);
+            online = true;
+            var resumed = s_client.ResumePausedMutations();
+            var waited = resumed.Status == VelvetTaskStatus.Pending;
+
+            // Act
+            s_gates[2].TrySetResult(2);
+
+            // Assert — read only over a task that was still waiting while the second function ran.
+            Assert.That(waited ? resumed.Status : (VelvetTaskStatus?)null, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        // GREEN_ON_BASE(refactor): the base hands back a completed task once the woken call's run has ended.
+        [Test]
+        public void Given_ACallPausedOfflineThatItsCallerCancelled_When_TheCacheResumesIt_Then_TheResumeTaskHasCompleted()
+        {
+            // Arrange — offline, so the call is paused when its caller cancels it.
+            NetworkSignals.IsOnline = () => false;
+            using var cancellation = new CancellationTokenSource();
+            using var mounted = Mount();
+            s_captured!.Mutate(1, new MutateOptions<int, int> { CancellationToken = cancellation.Token });
+            cancellation.Cancel();
+            var paused = s_client.GetMutationCache().GetAll().Single().State.IsPaused;
+
+            // Act
+            var resumed = s_client.GetMutationCache().ResumePausedMutations();
+
+            // Assert — read only over a call that was paused, so a cache holding nothing to resume cannot pass it.
+            Assert.That(paused ? resumed.Status : (VelvetTaskStatus?)null, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
         #endregion
