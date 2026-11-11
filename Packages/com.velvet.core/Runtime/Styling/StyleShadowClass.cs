@@ -771,8 +771,7 @@ namespace Velvet
         }
 
         // A layer holding a var() is not walked: two parts opening as a length read the colour there, which keeps a
-        // rejected colour beside 0_0_var(--a)_var(--b) discarding the box-shadow, as the browser discards it where
-        // neither var() is declared.
+        // rejected colour beside 0_0_var(--a)_var(--b) discarding the box-shadow.
         private static bool OpensAsLengthTwice(string layer)
         {
             var lengths = 0;

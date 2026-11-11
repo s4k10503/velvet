@@ -53,6 +53,17 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
+        [TestCase("ring-2 shadow-[0_0_hypot(1px)_hypot(2px)] shadow-[#ggg]")]
+        public void Given_ARingBesideARejectedColourAndALayerTailwindWritesNoColourInto_When_Extracted_Then_TheRingIsDrawn(
+            string classes)
+        {
+            // Act
+            var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
+
+            // Assert
+            Assert.That(ok, Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base drew these shadows, whose box-shadow holds no value the browser rejects.
         [TestCase("ring-2 ring-[oklch(62.3%_0.214_259.815)] shadow-md")]
         [TestCase("ring-01 ring-[5PX] shadow-md")]

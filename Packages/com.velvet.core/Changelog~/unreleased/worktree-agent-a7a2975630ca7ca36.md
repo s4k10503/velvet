@@ -22,10 +22,12 @@
   rule for, no longer replaces a rejected shadow colour beside it: `shadow-lg shadow-inherit/50
   shadow-[color:0_4px_8px]` draws no box-shadow, as the browser does, where it used to draw `shadow-lg`. The same
   applies to `inset-shadow-inherit` and `inset-shadow-initial`.
-- A rejected shadow colour class discards the box-shadow beside a bracketed shadow whose offsets are `calc()`,
-  `clamp()`, `min()` or `max()`, as Tailwind 4.3.3 writes the colour variable into such a layer:
-  `ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]` draws no box-shadow, a ring included. It used to
-  draw the ring.
+- A rejected shadow colour class discards the box-shadow beside a bracketed shadow layer where Tailwind 4.3.3 writes
+  the colour variable into that layer. A layer whose offsets are `calc()`, `clamp()`, `min()` or `max()` takes it:
+  `ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]` draws no box-shadow, a ring included, where it used
+  to draw the ring. A layer with two lengths and two further parts that are no keyword, length or colour does not:
+  `ring-2 shadow-[0_0_hypot(1px)_hypot(2px)] shadow-[#ggg]` draws the ring and the shadow, where it used to draw
+  neither. A layer that also holds a `var()` (`calc(1px)_calc(2px)_var(--c)`) is read as before.
 - The bare `shadow` with an opacity modifier (`shadow/50`) draws its layers at that alpha. It used to draw
   nothing.
 - The outer box-shadow of an element that clips its content (`overflow-hidden`) takes `shadow-current` and `em`
