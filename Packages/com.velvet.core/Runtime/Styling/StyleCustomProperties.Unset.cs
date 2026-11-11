@@ -9,14 +9,14 @@ namespace Velvet
     {
         // What an unresolvable var() computes to, as a utility, for the painted utilities where that is not
         // nothing. A gradient stop's colour and position and a ring's offset are custom properties Tailwind registers
-        // with an initial value: transparent; 0%, 50% and 100%; 0px. A box shadow's size and a ring's width are
-        // written as shadow-none and ring-0, which leave the rest of the box-shadow drawn, where the browser discards
-        // the whole of it. A ring's colour is one Tailwind registers without an initial value, which its shadow reads
-        // with a currentcolor fallback; an outline colour's initial value is currentcolor and its width's is medium
-        // (3px).
-        // Gap's initial value is no gap. A font's weight and family and a line height inherit. A skew axis is a
-        // custom property Tailwind registers without one, which the transform reads with an empty fallback: no
-        // shear on that axis, as a skew of 0 draws.
+        // with an initial value: transparent; 0%, 50% and 100%; 0px. A box shadow's size, outer or inset, is written as
+        // a bracket the browser rejects (shadow-[0]), which discards the whole box-shadow, as the browser discards it
+        // for the var(). A ring's width is written as ring-0, which leaves the rest of the box-shadow drawn, where the
+        // browser discards the whole of it. A ring's colour is one Tailwind registers without an initial value, which
+        // its shadow reads with a currentcolor fallback; an outline colour's initial value is currentcolor and its
+        // width's is medium (3px). Gap's initial value is no gap. A font's weight and family and a line height
+        // inherit. A skew axis is a custom property Tailwind registers without one, which the transform reads with an
+        // empty fallback: no shear on that axis, as a skew of 0 draws.
         private static string? PaintedUnset(string prefix, string? hint)
         {
             if (!s_paintedUnset.TryGetValue(prefix, out var unset))
@@ -38,7 +38,8 @@ namespace Velvet
                 ["from-"] = ("from-transparent", "from-transparent", "from-transparent", "from-0%"),
                 ["via-"] = ("via-transparent", "via-transparent", "via-transparent", "via-50%"),
                 ["to-"] = ("to-transparent", "to-transparent", "to-transparent", "to-100%"),
-                ["shadow-"] = ("shadow-none", null, "shadow-none", "shadow-none"),
+                ["shadow-"] = ("shadow-[0]", null, "shadow-[0]", "shadow-[0]"),
+                ["inset-shadow-"] = ("inset-shadow-[0]", null, "inset-shadow-[0]", "inset-shadow-[0]"),
                 ["ring-"] = ("ring-current", "ring-current", "ring-current", "ring-0"),
                 ["ring-offset-"] = (null, null, null, "ring-offset-0"),
                 ["outline-"] = ("outline-current", "outline-current", "outline-current", "outline-[length:3px]"),

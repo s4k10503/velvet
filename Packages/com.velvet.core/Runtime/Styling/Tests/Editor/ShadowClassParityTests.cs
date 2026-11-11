@@ -539,6 +539,23 @@ namespace Velvet.Tests
             Assert.That(radius, Is.EqualTo(4f));
         }
 
+        // A var() bracket Tailwind types as a size holds the layers with nothing to draw, as the discard reading takes it,
+        // until StyleCustomProperties places what it resolves to after it.
+        [TestCase("shadow-lg/150 shadow-[var(--x)] shadow-red-500")]
+        [TestCase("shadow-2xl shadow-[length:rgb(var(--c))]")]
+        public void Given_AVarBracketTailwindTypesAsASize_When_Read_Then_NeitherReaderDrawsOrDiscards(string classes)
+        {
+            // Arrange
+            var classNames = StyleSpacingPrecedence.Normalize(classes.Split(' '));
+
+            // Act
+            var outcome = StyleRingClass.DiscardsBoxShadow(classNames) ? "discarded"
+                : StyleShadowClass.TryExtract(classNames, out _) ? "drawn" : "neither";
+
+            // Assert
+            Assert.That(outcome, Is.EqualTo("neither"));
+        }
+
         // GREEN_ON_BASE(characterization): the base drew a size beside a colour bracket holding a var() in the size's own colour.
         // Tailwind types the bracket as the family's colour, which the drawing reader cannot parse, so the size keeps its
         // own, as the browser draws it while the variable is undeclared.

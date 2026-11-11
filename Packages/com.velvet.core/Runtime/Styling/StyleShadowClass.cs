@@ -382,12 +382,13 @@ namespace Velvet
             }
             // A color hint makes the bracket the family's colour whether or not it holds one: a hinted value that is no
             // colour sets nothing here (BoxShadowSlot reads it as a rejected colour), and is never a size.
-            if (StyleArbitraryValueResolver.TypeHintOf(cls) == "color")
+            var hint = StyleArbitraryValueResolver.TypeHintOf(cls);
+            if (hint == "color")
             {
                 // MUTANT_SURVIVES(equivalent, literal): Read, the only caller, hands a class this declines to the inset-ring reader, which takes no class of either root.
                 return true;
             }
-            if (!TryReadSize(suffix, presets, alpha, out var layers))
+            if (!TryReadSize(suffix, presets, alpha, hint != null, out var layers))
             {
                 return false;
             }
@@ -415,8 +416,10 @@ namespace Velvet
         }
 
         // A size of the family: its -none (which takes no modifier), a preset, or a bracketed shadow list. Tailwind
-        // writes `inset` ahead of each layer of an inset-shadow-[…].
-        private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
+        // writes `inset` ahead of each layer of an inset-shadow-[…]. A bracket holding a var() this cannot read is a
+        // size with nothing to draw where Tailwind types it as one, by a hint (hinted) or by a value that is no colour,
+        // as ReadBoxShadowClass takes it for a size whose value it cannot judge.
+        private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha, bool hinted,
             out ShadowSpec[] layers)
         {
             layers = Array.Empty<ShadowSpec>();
@@ -430,7 +433,9 @@ namespace Velvet
                 return true;
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers);
+                && (TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers)
+                    || ((hinted || !TailwindDataTypes.IsColor(inner))
+                        && inner.IndexOf("var(".AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0));
         }
 
         // inset-ring (1px), inset-ring-<n>, inset-ring-[<length>] and inset-ring-<colour>, as Tailwind reads them.
@@ -735,16 +740,14 @@ namespace Velvet
 
         // Whether the browser rejects value as a box-shadow, each layer behind an inset where inset says Tailwind
         // writes one there. Each layer is two to four lengths in a row, the third not negative, with at most one
-        // colour and one inset around them; a function or a word as a colour is not judged
-        // (StyleColorValueParser.RejectsAsColour). A layer holding a var() is rejected: StyleCustomProperties places
-        // what it resolves one to after it, so the one read here resolved to nothing, which RejectedValueTests pins as
-        // discarding the box-shadow.
+        // colour and one inset around them; a layer holding a var() is not judged, nor is a function or a word as a
+        // colour (StyleColorValueParser.RejectsAsColour).
         private static bool RejectsAsBoxShadow(string value, bool inset)
         {
             foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
-                if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
-                    || RejectsAsLayer(inset ? "inset " + layer : layer))
+                if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
+                    && RejectsAsLayer(inset ? "inset " + layer : layer))
                 {
                     return true;
                 }

@@ -504,6 +504,7 @@ namespace Velvet
             {
                 payloads = new[] { consumer.UnsetUtility };
             }
+            payloads = CarryImportance(consumer, payloads);
             Withdraw(target, consumer);
             consumer.Source = source;
             consumer.Resolved = true;
@@ -595,6 +596,25 @@ namespace Velvet
 
         // A consumer on the base layer shares it with the literal base utilities writing the same property, so
         // whichever of them ranks last is put back once this one is gone.
+        // An important consumer's box-shadow payload keeps the bang, which is what lets it hold over the consumer's own
+        // important class in the composed class source (StyleVariantPayload.TrackVariantGate).
+        private static string[]? CarryImportance(Consumer consumer, string[]? payloads)
+        {
+            if (payloads == null || (consumer.Priority & StyleLayerPriority.Important) == 0)
+            {
+                return payloads;
+            }
+            var carried = (string[])payloads.Clone();
+            for (var i = 0; i < carried.Length; i++)
+            {
+                if (StyleShadowClass.IsShadowClass(carried[i]) || StyleShadowClass.IsInsetBoxShadowClass(carried[i]))
+                {
+                    carried[i] = "!" + carried[i];
+                }
+            }
+            return carried;
+        }
+
         private static void Withdraw(VisualElement target, Consumer consumer)
         {
             var (applied, unset) = (consumer.Applied, consumer.Unset);

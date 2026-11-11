@@ -646,20 +646,70 @@ namespace Velvet.Tests
             Assert.That(AuthoredTransform.TryGetSkew(child, out var xDeg, out _) ? xDeg : 0f, Is.EqualTo(0f));
         }
 
-        [Test]
-        public void Given_AnInsetShadowLayerReadingAnUndeclaredProperty_When_Mounted_Then_TheRingBesideItIsNotDrawn()
+        [TestCase("shadow-[0_0_var(--a)_var(--b)]")]
+        [TestCase("inset-shadow-[0_0_var(--a)_var(--b)]")]
+        [TestCase("!shadow-[var(--x)]")]
+        [TestCase("!inset-shadow-[var(--x)]")]
+        public void Given_AShadowLayerReadingAnUndeclaredProperty_When_Mounted_Then_TheRingBesideItIsNotDrawn(string shadow)
         {
             // Arrange / Act — the browser discards the whole box-shadow; the control is the same ring alone.
             _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
             {
                 V.Div(name: "control", className: "ring-2"),
-                V.Div(name: "reader", className: "ring-2 inset-shadow-[0_0_var(--a)_var(--b)]"),
+                V.Div(name: "reader", className: "ring-2 " + shadow),
             }));
             var control = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("control"));
             var reader = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("reader"));
 
             // Assert
             Assert.That(control == null ? "no control" : reader == null ? "not drawn" : "drawn", Is.EqualTo("not drawn"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drew both the ring and the shadow an important consumer resolves to.
+        [TestCase("!shadow-[var(--x)]", "0 0 5 0")]
+        [TestCase("!inset-shadow-[var(--x)]", "inset 0 0 5 0")]
+        public void Given_AnImportantShadowReadingADeclaredProperty_When_Mounted_Then_TheRingAndTheShadowAreDrawn(
+            string shadow, string expected)
+        {
+            // Arrange / Act
+            var child = Mount("[--x:0_0_5px_#ff0000]", "ring-2 " + shadow);
+            var layers = BoxShadowSilhouette.TryGet(child)?.Layers;
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(child) == null ? "no ring"
+                    : layers == null || layers.Length == 0 ? "no shadow"
+                    : string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0}{1} {2} {3} {4}",
+                        layers[0].Inset ? "inset " : "", layers[0].OffsetX, layers[0].OffsetY, layers[0].Blur, layers[0].Spread),
+                Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base drew the ring beside a shadow whose numeric modifier keeps it a class.
+        [TestCase("[--x:0_0_5px_#ff0000]", "shadow-[var(--x)]/50")]
+        [TestCase("[--x:0_0_5px_#ff0000]", "inset-shadow-[var(--x)]/50")]
+        [TestCase("[--a:5px]", "shadow-[0_0_var(--a)_red]/50")]
+        public void Given_AShadowWithANumericModifierReadingADeclaredProperty_When_Mounted_Then_TheRingIsDrawn(
+            string declaration, string shadow)
+        {
+            // Arrange / Act — Velvet substitutes no var() before a numeric modifier, and does not take one for nothing.
+            var child = Mount(declaration, "ring-2 " + shadow);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(child), Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base kept an important size over a plain consumer's resolved shadow.
+        [Test]
+        public void Given_AnImportantSizeBesideAPlainShadowReadingADeclaredProperty_When_Mounted_Then_TheImportantSizeHolds()
+        {
+            // Arrange / Act
+            var child = Mount("[--x:0_0_5px_#ff0000]", "!shadow-2xl shadow-[var(--x)]");
+            var binding = BoxShadowSilhouette.TryGet(child);
+
+            // Assert — shadow-2xl's own black at 25%.
+            Assert.That(binding != null && binding.Layers.Length > 0
+                    ? UnityEngine.ColorUtility.ToHtmlStringRGBA(binding.Layers[0].Color)
+                    : "unbound",
+                Is.EqualTo("00000040"));
         }
 
         [Test]
