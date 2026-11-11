@@ -12,6 +12,8 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class UssCustomPropertyTextTests
     {
+        // GREEN_ON_BASE(refactor): the base already quotes every one of these; the rewrite is bounded here so one that
+        // never returns fails its case rather than holding the suite.
         [TestCase(":root { --spacing: 0.25rem; }", ":root { --spacing: \"0.25rem\"; }")]
         [TestCase(":root { --text-big: 1.5em }", ":root { --text-big: \"1.5em\"}")]
         [TestCase(":root { --radius-card: calc(var(--spacing) * 4); }", ":root { --radius-card: \"calc(var(--spacing) * 4)\"; }")]
@@ -25,7 +27,7 @@ namespace Velvet.Tests
         {
             // Arrange
             // Act
-            var rewritten = UssCustomPropertyText.Rewrite(uss);
+            var rewritten = RewriteWithin(uss);
 
             // Assert
             Assert.That(rewritten, Is.EqualTo(expected));
@@ -58,11 +60,16 @@ namespace Velvet.Tests
         [TestCase(":root { --x: rgba(255 0 0 / 0.5) rgba(255, 0, 0, / 0.5); }")]
         [TestCase(":root { --x: none() filter() url() URL(); }")]
         [TestCase(":root { --x: a\\!IMPORTANT; }")]
+        [TestCase(":root { --x: rgb(0 0 0 / 50%) rgb(255, 0, 0, 50%) rgb(1, 2, 3, foo) rgb(var(--r), 0, 0, 0); }")]
+        [TestCase(":root { --x: rgba(255 0 / 0 0.5) rgba(255 0 0 0.5 / 1) rgba(a, 1, 2, 3, 4); }")]
+        [TestCase(":root { --x: rgb(5., 0, 0) rgb(1e3, 2, 3) rgb(#123, 1, 2, 3); }")]
+        [TestCase(":root { --x: var(--a, 1px) var(--a,1px) var(--a,,1px) var( --a ) var( ) Var(a); }")]
+        [TestCase(":root { --x: rgb(+1, 2, 3) rgba(-1, 2, 3, +.5); }")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
             // Act
-            var rewritten = UssCustomPropertyText.Rewrite(uss);
+            var rewritten = RewriteWithin(uss);
 
             // Assert
             Assert.That(rewritten, Is.EqualTo(uss));
@@ -209,8 +216,15 @@ namespace Velvet.Tests
         [TestCase(":root { --x: rgb(); }", ":root { --x: \"rgb()\"; }")]
         [TestCase(":root { --x: NONE(); }", ":root { --x: \"NONE()\"; }")]
         [TestCase(":root { --x: rgb(255 0 0 / 0.5); }", ":root { --x: \"rgb(255 0 0 / 0.5)\"; }")]
-        [TestCase(":root { --x: rgba(255 0 / 0 0.5); }", ":root { --x: \"rgba(255 0 / 0 0.5)\"; }")]
-        [TestCase(":root { --x: rgb(5., 0, 0); }", ":root { --x: \"rgb(5., 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb((1), 2, 3); }", ":root { --x: \"rgb((1), 2, 3)\"; }")]
+        [TestCase(".a { --x: rgb(1, 2, a", ".a { --x: \"rgb(1, 2, a\"")]
+        [TestCase(":root { --x: var(--a,); }", ":root { --x: \"var(--a,)\"; }")]
+        [TestCase(":root { --x: var(--a, ); }", ":root { --x: \"var(--a, )\"; }")]
+        [TestCase(":root { --x: var(--a, 1px, 2px); }", ":root { --x: \"var(--a, 1px, 2px)\"; }")]
+        [TestCase(":root { --x: var(a); }", ":root { --x: \"var(a)\"; }")]
+        [TestCase(":root { --x: var(abc); }", ":root { --x: \"var(abc)\"; }")]
+        [TestCase(":root { --x: var(--); }", ":root { --x: \"var(--)\"; }")]
+        [TestCase(":root { --x: var(--a b); }", ":root { --x: \"var(--a b)\"; }")]
         [TestCase(":root { --x: rgb(var(--r), 0, 0); }", ":root { --x: \"rgb(var(--r), 0, 0)\"; }")]
         [TestCase(":root { --x: rgb(a, 0, 0); }", ":root { --x: \"rgb(a, 0, 0)\"; }")]
         public void Given_ATokenTheImporterRejectsOrDrops_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(

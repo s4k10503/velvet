@@ -20,7 +20,10 @@ namespace Velvet
         internal abstract void Match(QueryObserver? held, object? computer, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
         internal abstract object Refresh(IQueryResultSource source);
-        internal abstract object Latest(IQueryResultSource source);
+        // TanStack's #result[i]: the result the hook last recorded or notified of, which a change the query does not
+        // notify of leaves in place.
+        internal abstract void RecordNotified();
+        internal abstract object Notified(IQueryResultSource source);
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
@@ -43,6 +46,7 @@ namespace Velvet
         private QueryObserver<TQueryFnData, TQueryFnData> _observer = null!;
         private QueryObserver<TQueryFnData, TData> _computer = null!;
         private QueryEntry<TQueryFnData> _entry = null!;
+        private QuerySnapshot<TData> _notified;
 
         internal QueriesItem(QueryOptionsBase<TQueryFnData, TData> options) => _options = options;
 
@@ -87,9 +91,15 @@ namespace Velvet
         }
 
         internal override object Refresh(IQueryResultSource source)
-            => _computer.Refresh(_observer.Entry ?? _entry, _settings, source);
+        {
+            var result = _computer.Refresh(_observer.Entry ?? _entry, _settings, source);
+            RecordNotified();
+            return result;
+        }
 
-        internal override object Latest(IQueryResultSource source) => _computer.Latest(source);
+        internal override void RecordNotified() => _notified = _computer.Current;
+
+        internal override object Notified(IQueryResultSource source) => new QueryResult<TData>(_notified, source);
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
@@ -373,6 +383,10 @@ namespace Velvet
             {
                 observer.RecordResult();
             }
+            foreach (var item in _items)
+            {
+                item.RecordNotified();
+            }
             _resultVersion++;
         }
 
@@ -390,6 +404,7 @@ namespace Velvet
             }
             if (!Notifies(_items[index])) return;
             observer.RecordResult();
+            _items[index].RecordNotified();
             _resultVersion++;
             Notify(refreshed: false);
         }
@@ -427,8 +442,9 @@ namespace Velvet
         // TanStack's #notify: without a combine the component re-renders; with one, while a suspending query holds no
         // data yet the combine is passed over and the component re-renders, and otherwise it re-renders only when
         // what the combine returns changed. A commit hands combine every result computed afresh, as setQueries reads
-        // each observer's; one observer's change hands it the others as they were last computed, as #onUpdate replaces
-        // its own alone, so no other query's result moves before its own observer is told and compares against it.
+        // each observer's; one observer's change hands it the others as last recorded or notified of, as #onUpdate
+        // replaces its own alone, so no other query's result moves before its own observer is told and compares
+        // against it.
         private void Notify(bool refreshed)
         {
             var invokeCombine = _invokeCombine;
@@ -458,7 +474,7 @@ namespace Velvet
             for (var i = 0; i < results.Length; i++)
             {
                 var source = new QueriesResultSource(_observers, i, TrackOf(_items[i]));
-                results[i] = refreshed ? _items[i].Refresh(source) : _items[i].Latest(source);
+                results[i] = refreshed ? _items[i].Refresh(source) : _items[i].Notified(source);
             }
             return results;
         }

@@ -1661,9 +1661,6 @@ namespace Velvet
             return had ? _current.DifferencesFrom(previous) : QueryProperties.All;
         }
 
-        // The result computed last, left as it is, for UseQueries, none of whose queries pages.
-        internal QueryResult<TData> Latest(IQueryResultSource source) => new(_current, source);
-
         // A result computed outside a render from the entry as it stands, as v5 reads a query's result after its
         // observer told of a change.
         internal QueryResult<TData> Refresh(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, IQueryResultSource source)

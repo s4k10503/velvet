@@ -17,6 +17,10 @@ namespace Velvet.Tests
 
         private static bool FailsTheSheet(string value) => Imported(value, sheet => sheet.importedWithErrors);
 
+        // How many value handles the importer stored for the property, or -1 where it failed the sheet or stored no
+        // such property.
+        private static int StoredValueCount(string value) => Imported(value, sheet => sheet.importedWithErrors ? -1 : ValueCount(sheet));
+
         // The property's stored value spelled back as CSS, or null where the importer failed the sheet or stored no
         // such property.
         private static string? StoredText(string value) => Imported(value, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
@@ -34,6 +38,24 @@ namespace Velvet.Tests
             {
                 UnityEngine.Object.DestroyImmediate(sheet);
             }
+        }
+
+        private static int ValueCount(StyleSheet sheet)
+        {
+            var rules = EngineMember.StyleSheetRules.ResolveProperty()?.GetValue(sheet) as Array;
+            foreach (var rule in rules ?? Array.Empty<object>())
+            {
+                var properties = EngineMember.StyleRuleProperties.ResolveProperty()?.GetValue(rule) as Array;
+                foreach (var property in properties ?? Array.Empty<object>())
+                {
+                    if (EngineMember.StylePropertyName.ResolveProperty()?.GetValue(property) as string == Name
+                        && EngineMember.StylePropertyValues.ResolveProperty()?.GetValue(property) is Array handles)
+                    {
+                        return handles.Length;
+                    }
+                }
+            }
+            return -1;
         }
 
         private static string? Spelled(StyleSheet sheet)
@@ -106,9 +128,10 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
         // The tokens UssCustomPropertyText.HasUnheldToken takes for ones that fail the sheet: a delimiter, at the top
         // level or among a function's arguments, a bracket no function name opens, a hex colour whose digits number
-        // other than three, four, six or eight, an rgb() of other than three plain numbers or an rgba() of fewer than
-        // four, and a function other than none() and filter() with nothing between its parentheses; and an
-        // `!important` in another case, which UssCustomPropertyText writes in lower case.
+        // other than three, four, six or eight, an rgb() of other than three number tokens or an rgba() of fewer than
+        // four, a function with nothing between its parentheses other than none(), filter() and the URL functions,
+        // and a var() whose arguments ValidateVarFunction refuses; and an `!important` in another case, which
+        // UssCustomPropertyText writes in lower case.
         [TestCase("16 / 9")]
         [TestCase(".5.p")]
         [TestCase("3.5.p")]
@@ -126,6 +149,11 @@ namespace Velvet.Tests
         [TestCase("resource()")]
         [TestCase("rgb()")]
         [TestCase("4px !IMPORTANT")]
+        [TestCase("var(--a,)")]
+        [TestCase("var(--a, 1px, 2px)")]
+        [TestCase("var(a)")]
+        [TestCase("var(--)")]
+        [TestCase("var(--a b)")]
         public void Given_ATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
         {
             // Arrange
@@ -152,13 +180,19 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
-        // UssCustomPropertyText.HasUnheldToken leaves a function it lists, whatever its case, and a hex colour of
-        // three, four, six or eight digits unquoted because the importer stores them.
+        // UssCustomPropertyText.HasUnheldToken leaves a function it lists, whatever its case, an rgb() or rgba() of as
+        // many number tokens as the importer counts whatever else it holds, a hex colour of three, four, six or eight
+        // digits, and a `!` a backslash escapes unquoted because the importer stores them.
         [TestCase("blur(4px)", "blur(4px)")]
         [TestCase("BLUR(4px)", "blur(4px)")]
         [TestCase("Var(--b)", "var(--b)")]
         [TestCase("#ff0066", "#ff0066ff")]
         [TestCase("rgba(255 0 0 / 0)", "#ff000000")]
+        [TestCase("rgba(255 0 / 0 0)", "#ff000000")]
+        [TestCase("rgb(0 0 0 / 50%)", "#000000ff")]
+        [TestCase("rgb(1, 2, 3, foo)", "#010203ff")]
+        [TestCase("rgb(1e3, 2, 3)", "#030203ff")]
+        [TestCase("a\\!IMPORTANT", "a!IMPORTANT")]
         public void Given_AKnownFunctionOrAParsableHexColour_When_TheStockImporterReadsTheRawSheet_Then_ItStoresIt(
             string value, string expected)
         {
@@ -185,18 +219,24 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
-        // UssCustomPropertyText leaves these unquoted because the importer keeps the sheet.
+        // UssCustomPropertyText leaves these unquoted because the importer stores a value for them rather than failing
+        // the sheet or dropping them.
         [TestCase("none()")]
         [TestCase("filter()")]
         [TestCase("url()")]
-        public void Given_AFunctionTheImporterTakesWithNothingInIt_When_TheStockImporterReadsTheRawSheet_Then_ItKeepsTheSheet(string value)
+        [TestCase("url-prefix()")]
+        [TestCase("domain()")]
+        [TestCase("var(--a, 1px)")]
+        [TestCase("var(--a,,1px)")]
+        [TestCase("var( )")]
+        public void Given_AValueTheImporterHolds_When_TheStockImporterReadsTheRawSheet_Then_ItStoresSomeValue(string value)
         {
             // Arrange
             // Act
-            var failed = FailsTheSheet(value);
+            var count = StoredValueCount(value);
 
             // Assert
-            Assert.That(failed, Is.False);
+            Assert.That(count, Is.GreaterThan(0));
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.

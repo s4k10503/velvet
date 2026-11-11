@@ -259,12 +259,13 @@ namespace Velvet.Editor
 
         // Reads value token by token as UI Toolkit's lexer does, and answers whether one is a token the importer fails
         // the sheet on or drops: a delimiter, a bracket no function name opens, a colon, a function it does not know
-        // (a CSS math function, cubic-bezier(), steps()), one with no arguments, an rgb() or rgba() whose arguments it
-        // does not read as a colour, a hex colour it cannot parse or CSS reads further, a number it misreads, or a
-        // full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere.
-        // A value of identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all
-        // the same. What resource() encloses is left unread, as the importer takes it as a path whatever it holds.
-        // UssValueImportTests holds each of those. What url() encloses is left unread too.
+        // (a CSS math function, cubic-bezier(), steps()), one it fails the sheet on with nothing in it or, for var(),
+        // with arguments ValidateVarFunction refuses, an rgb() or rgba() of a number count it fails the sheet on, a hex
+        // colour it cannot parse or CSS reads further, a number it misreads, or a full stop no digit follows, which it
+        // drops after an integer and fails the sheet on elsewhere. A value of identifiers and delimiters alone, which
+        // the importer keeps as one string instead, is quoted all the same. What a resource() with something in it
+        // encloses is left unread, as the importer takes it as a path whatever it holds. UssValueImportTests holds
+        // each of those. What the URL functions enclose is left unread too.
         private static bool HasUnheldToken(string value)
         {
             var functions = 0;
@@ -314,8 +315,7 @@ namespace Velvet.Editor
             return !MisreadsNumber(value, ref i);
         }
 
-        // An identifier or a function name: digits inside it are no number. A function the importer is handed with
-        // nothing between its parentheses fails the sheet.
+        // An identifier or a function name: digits inside it are no number.
         private static bool ReadsHeldName(string value, ref int i, ref int functions)
         {
             var start = i;
@@ -344,14 +344,139 @@ namespace Velvet.Editor
             }
             if (name is "rgb" or "rgba")
             {
-                var close = CloseOf(value, i);
-                var arguments = value.Substring(i + 1, close - i - 1);
-                i = close + 1;
-                return HoldsChannels(arguments, alpha: name == "rgba");
+                return ReadsHeldChannels(value, ref i, alpha: name == "rgba");
+            }
+            if (name == "var" && !HoldsVarArguments(value, i))
+            {
+                // MUTANT_SURVIVES(equivalent, literal): i is left at the parenthesis, which the caller then reads as one no function name opens.
+                return false;
             }
             functions++;
             i++;
             return name == "filter" || s_importerFunctions.Contains(name);
+        }
+
+        // The `)` that closes the `(` at open, or the end of value where none does.
+        private static int MatchOf(string value, int open)
+        {
+            var depth = 0;
+            for (var k = open; k < value.Length; k++)
+            {
+                if (value[k] == '(')
+                {
+                    depth++;
+                }
+                else if (value[k] == ')' && --depth == 0)
+                {
+                    return k;
+                }
+            }
+            return value.Length;
+        }
+
+        // Where the importer's lexer ends the token at k, a function's arguments included.
+        private static int TokenEnd(string value, int k)
+        {
+            if (char.IsWhiteSpace(value[k]))
+            {
+                return SpaceEnd(value, k);
+            }
+            if (value[k] == '#')
+            {
+                return HexEnd(value, k + 1);
+            }
+            if (StartsIdentifier(value, k))
+            {
+                k = NameEnd(value, k + 1);
+                return k < value.Length && value[k] == '(' ? MatchOf(value, k) + 1 : k;
+            }
+            if (!StartsNumber(value, k))
+            {
+                return k + 1;
+            }
+            if (value[k] is '+' or '-')
+            {
+                k++;
+            }
+            MisreadsNumber(value, ref k);
+            return k;
+        }
+
+        // The arguments of rgb() or rgba() from the `(` at i, moving i past their `)`. TryCreateColorFromFunctionToken
+        // counts their number tokens and passes over every other one, failing the sheet on an rgb() of other than
+        // three and an rgba() of fewer than four. A bracket no function name opens ends the importer's arguments early,
+        // which leaves their `)` to fail the sheet.
+        private static bool ReadsHeldChannels(string value, ref int i, bool alpha)
+        {
+            var close = MatchOf(value, i);
+            var numbers = 0;
+            var held = true;
+            for (var k = i + 1; k < close;)
+            {
+                held &= value[k] != '(';
+                var end = TokenEnd(value, k);
+                if (StartsNumber(value, k) && IsDigit(value[end - 1]))
+                {
+                    numbers++;
+                }
+                k = end;
+            }
+            i = close + 1;
+            return held && (alpha ? numbers >= 4 : numbers == 3);
+        }
+
+        // ValidateVarFunction, from the `(` at open: nothing but whitespace, or a name of `--` and at least one more
+        // character, then nothing, or a comma and a fallback holding no second comma. It passes over the token after
+        // the comma unread, and the fallback must leave one there.
+        private static bool HoldsVarArguments(string value, int open)
+        {
+            var close = MatchOf(value, open);
+            var k = SpaceEnd(value, open + 1);
+            if (k == close)
+            {
+                return true;
+            }
+            var name = value.Substring(k, NameEnd(value, k) - k);
+            if (name.Length < 3 || !name.StartsWith("--", StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var comma = false;
+            for (k += name.Length; k < close;)
+            {
+                if (char.IsWhiteSpace(value[k]))
+                {
+                    k++;
+                }
+                else if (value[k] != ',')
+                {
+                    if (!comma)
+                    {
+                        return false;
+                    }
+                    k = TokenEnd(value, k);
+                }
+                else if (comma || value.Substring(k + 1, close - k - 1).Trim().Length == 0)
+                {
+                    return false;
+                }
+                else
+                {
+                    comma = true;
+                    k = TokenEnd(value, k + 1);
+                }
+            }
+            return true;
+        }
+
+        private static int SpaceEnd(string value, int k)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): value is trimmed and every argument list ends at a `)` or before the trim, so whitespace never runs to its end.
+            while (k < value.Length && char.IsWhiteSpace(value[k]))
+            {
+                k++;
+            }
+            return k;
         }
 
         // The `)` after the `(` at open, or the end of value where none follows.
@@ -367,39 +492,6 @@ namespace Velvet.Editor
         private static bool IsUrl(string name)
             => name.Equals("url", StringComparison.OrdinalIgnoreCase) || name.Equals("url-prefix", StringComparison.OrdinalIgnoreCase)
                || name.Equals("domain", StringComparison.OrdinalIgnoreCase);
-
-        // The arguments of rgb() or rgba(): the importer counts the plain numbers among them, a percentage or a unit
-        // counting as none, and passes over a `/`, which CSS takes between an rgba()'s third number and its fourth. It
-        // fails the sheet on an rgb() of other than three and an rgba() of fewer than four, and reads an rgba() of more
-        // as its first four.
-        private static bool HoldsChannels(string arguments, bool alpha)
-        {
-            var parts = arguments.Replace(",", " ").Replace("/", " / ").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            var numbers = 0;
-            for (var k = 0; k < parts.Length; k++)
-            {
-                if (alpha && k == 3 && parts[k] == "/")
-                {
-                    continue;
-                }
-                if (!IsPlainNumber(parts[k]))
-                {
-                    return false;
-                }
-                numbers++;
-            }
-            return alpha ? numbers >= 4 : numbers == 3;
-        }
-
-        private static bool IsPlainNumber(string text)
-        {
-            if (!StartsNumber(text, 0))
-            {
-                return false;
-            }
-            var i = text[0] is '+' or '-' ? 1 : 0;
-            return !MisreadsNumber(text, ref i) && i == text.Length && IsDigit(text[i - 1]);
-        }
 
         private static bool StartsIdentifier(string value, int i)
         {

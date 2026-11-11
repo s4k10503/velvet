@@ -576,6 +576,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AQueryListingOnlyError_When_ItsDataAndThenAnothersChange_Then_TheCombineSeesItsNotifiedDataFirst()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 10);
+            using var mounted = Mount(ErrorListedSumReader);
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("a"), 2));
+            var renders = s_combined.Count;
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("b"), 20));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_combined.Skip(renders)), Is.EqualTo("21,22"),
+                "v5's #result keeps the result a query last notified of, and the commit after reads the one it holds");
+        }
+
+        [Test]
         public void Given_TwoQueries_When_TheSecondTurnsToTheFirstsEntry_Then_ItTakesAnObserverOfItsOwn()
         {
             // Arrange
@@ -806,6 +825,15 @@ namespace Velvet.Tests
             s_setTick = setTick;
             s_combined.Add(Hooks.UseQueries(Queries(), s_dataSet, s_client));
             return V.Label(text: "set");
+        }
+
+        private static readonly Func<QueryResult<int>, QueryResult<int>, int> s_pairSum = (a, b) => a.Data + b.Data;
+
+        [Component]
+        private static VNode ErrorListedSumReader()
+        {
+            s_combined.Add(Hooks.UseQueries(Options("a") with { NotifyOnChangeProps = QueryProperties.Error }, Options("b"), s_pairSum, s_client));
+            return V.Label(text: "sum");
         }
 
         [Component]
