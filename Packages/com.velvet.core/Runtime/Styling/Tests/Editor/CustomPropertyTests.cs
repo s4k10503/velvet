@@ -554,20 +554,38 @@ namespace Velvet.Tests
             Assert.That(PaintOrder(), Is.EqualTo("lit,inner"));
         }
 
-        // GREEN_ON_BASE(characterization): the base already relocates an element whose order a resolution outside a pass
-        // gives it. What this pins is the order Reorder records: the tick resolves it outside a pass, so no patch records
-        // it again.
+        // GREEN_ON_BASE(characterization): the base already relocates an element whose order a hover declaration gives it.
+        // What this pins is the order Reorder records: the hover resolves it outside a pass, so no patch records it again.
         [Test]
-        public void Given_AnOrderReadingADeclarationInAFlexParent_When_Resolved_Then_TheElementLeavesItsSlot()
+        public void Given_AnOrderReadingAHoverDeclarationInAFlexParent_When_TheParentIsHovered_Then_TheElementLeavesItsSlot()
         {
-            // Arrange
-            var child = MountStacked("flex [--o:2]", "order-(--o)");
+            // Arrange — nothing declares --o until the hover, so the order is 0 at mount.
+            var child = MountStacked("flex hover:[--o:2]", "order-(--o)");
             var before = IsRelocated(child);
+            var parent = _window.rootVisualElement.Q<VisualElement>("outer");
 
             // Act
-            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+            using (var over = PointerOverEvent.GetPooled()) parent.SimulateEvent(over);
 
-            // Assert — null where the order had already moved it at mount, which True cannot match
+            // Assert — null where the element had left its slot before the hover, which True cannot match
+            bool? relocated = before ? null : IsRelocated(child);
+            Assert.That(relocated, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already relocates an element whose z a hover declaration gives it.
+        // What this pins is the z Restack records: the hover resolves it outside a pass, so no patch records it again.
+        [Test]
+        public void Given_AZIndexReadingAHoverDeclaration_When_TheParentIsHovered_Then_TheElementLeavesItsSlot()
+        {
+            // Arrange — nothing declares --z until the hover, so the element is unstacked at mount.
+            var child = MountStacked("hover:[--z:20]", "absolute z-(--z)");
+            var before = IsRelocated(child);
+            var parent = _window.rootVisualElement.Q<VisualElement>("outer");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled()) parent.SimulateEvent(over);
+
+            // Assert — null where the element had left its slot before the hover, which True cannot match
             bool? relocated = before ? null : IsRelocated(child);
             Assert.That(relocated, Is.True);
         }
