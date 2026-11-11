@@ -424,6 +424,50 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AKeyedTimeSlicedPassParkedWithAClipPathChildItHasNotPlaced_When_AFreshPassDiscardsIt_Then_NoStackingFactOutlivesTheChild()
+        {
+            // Arrange — as above, with x wrapped for its clip-path, and parked once x is created and before it is placed.
+            using var scope = new ReconcilerScope();
+            var ctx = scope.Reconciler.Context;
+            var before = new VNode[] { V.Div(key: "a", name: "a"), V.Div(key: "b", name: "b"), V.Div(key: "c", name: "c") };
+            var after = new VNode[]
+            {
+                V.Div(key: "c", name: "c"),
+                V.Div(key: "x", name: "x", className: "relative clip-path-[circle(40%)]"),
+                V.Div(key: "a", name: "a"),
+                V.Div(key: "b", name: "b"),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+            scope.Reconciler.Reconcile(scope.Root, before, after, 1e-6);
+            for (var i = 0; i < 2 * after.Length && scope.Reconciler.HasPendingWork && FactsOutsideTheTree(ctx) == 0; i++)
+            {
+                scope.Reconciler.ContinueReconcile(1e-6);
+            }
+            var unplaced = FactsOutsideTheTree(ctx);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, before);
+
+            // Assert — -1 where no created child stood unplaced before the discard, which 0 cannot match
+            Assert.That(unplaced > 0 ? FactsOutsideTheTree(ctx) : -1, Is.EqualTo(0));
+
+            // The elements holding stacking facts that stand in no parent.
+            static int FactsOutsideTheTree(ReconcilerContext context)
+            {
+                var count = 0;
+                foreach (var element in context.StackingFacts.Keys)
+                {
+                    if (element.hierarchy.parent == null)
+                    {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        }
+
+
+        [Test]
         public void Given_AHoverFlexParent_When_HoverStartsAndEnds_Then_ItsChildrenTakeAndLoseTheirFlexOrder()
         {
             // Arrange
@@ -834,6 +878,34 @@ namespace Velvet.Tests
                     Band(root.Q<VisualElement>("parent"), front: true).Contains(wrapper),
                     ReferenceEquals(wrapper.parent, root.Q<VisualElement>("parent"))),
                 Is.EqualTo((true, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already moves the card's facts to the wrapper. What this pins is that
+        // move, since a play holding the z skips the patch's own record of the wrapper (NoteHeldZ).
+        [Test]
+        public void Given_APlayHoldingARelocatedElementsZ_When_APatchWrapsItInAClipPath_Then_TheWrapperPaintsInTheFrontBand()
+        {
+            // Arrange
+            using var store = new ToggleStore<bool>(false);
+            s_clipAddedStore = store;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(ClipAddedHost, key: "root"));
+            var ctx = mounted.Root.Reconciler.Context;
+            var card = root.Q<VisualElement>("card");
+            var stacked = new[] { "z-10" };
+            ctx.PaintLeases.Open(card, stacked, stacked, isExit: false);
+            var holdsZ = ctx.PaintLeases.Holds(card, FiberPaintLeases.Layer.Z);
+
+            // Act
+            store.Set(true);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the play holds no z or the card went unwrapped, which True cannot match
+            var wrapper = card.parent;
+            bool? inFront = holdsZ && wrapper.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass)
+                ? Band(root.Q<VisualElement>("parent"), front: true).Contains(wrapper)
+                : null;
+            Assert.That(inFront, Is.True);
         }
 
         // 0 shows the card bare, 1 wraps it in a clip-path, 2 removes it.

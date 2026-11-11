@@ -7,3 +7,5 @@
   list's length.
 - An element an `AnimatePresenceMode.PopLayout` exit pinned out of flow gives the pin up when it is removed, so a
   pooled `V.Label` or `V.Button` no longer brings one into its next mount.
+- A `clip-path-*` element carrying an `absolute`, `relative`, `z-*` or `order-*` class that a time-sliced pass
+  created, and a fresh pass discarded before it was placed, no longer stays in the reconciler's stacking tables.

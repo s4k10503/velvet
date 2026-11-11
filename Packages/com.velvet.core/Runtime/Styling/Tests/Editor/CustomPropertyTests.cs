@@ -554,6 +554,24 @@ namespace Velvet.Tests
             Assert.That(PaintOrder(), Is.EqualTo("lit,inner"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already relocates an element whose order a resolution outside a pass
+        // gives it. What this pins is the order Reorder records: the tick resolves it outside a pass, so no patch records
+        // it again.
+        [Test]
+        public void Given_AnOrderReadingADeclarationInAFlexParent_When_Resolved_Then_TheElementLeavesItsSlot()
+        {
+            // Arrange
+            var child = MountStacked("flex [--o:2]", "order-(--o)");
+            var before = IsRelocated(child);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(child.panel);
+
+            // Assert — null where the order had already moved it at mount, which True cannot match
+            bool? relocated = before ? null : IsRelocated(child);
+            Assert.That(relocated, Is.True);
+        }
+
         [Test]
         public void Given_AStylesheetRuleRedeclaringAProperty_When_ItsClassIsRemoved_Then_TheReaderTakesTheOuterValue()
         {
