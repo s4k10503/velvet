@@ -63,6 +63,7 @@ namespace Velvet
                     if (!hidden || _lastEntry[element] != i) continue;
                     _hidden.Add(element);
                     _hiddenSet.Add(element);
+                    SuspenseHiddenElements.HoldForHide(element);
                 }
             }
             // The walk takes a fiber's first hide out of the list's order, so what the list holds for that fiber
@@ -87,7 +88,7 @@ namespace Velvet
                 }
             }
             Disappear();
-            foreach (var element in _hidden) SuspenseHiddenElements.Hide(element);
+            foreach (var element in _hidden) SuspenseHiddenElements.HideHeld(element);
             // After the hides: a reveal attaches the refs below it short of an element a Suspense hides, and the walk
             // has just taken those of the elements hidden here off.
             if (displayChanges != null)

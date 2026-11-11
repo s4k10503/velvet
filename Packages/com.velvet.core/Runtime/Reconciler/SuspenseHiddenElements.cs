@@ -53,6 +53,23 @@ namespace Velvet
             return null;
         }
 
-        internal static void Release(VisualElement element) => s_hidden.Remove(element);
+        // The elements SuspenseOffscreenCommit hides once the cleanups ahead of its hide have run. Release drops the
+        // hold of one returned to the pool meanwhile, which VNodePool resets as it takes it back, so the hide does not
+        // reach the element's next consumer (SuspenseOffscreenCommitTests).
+        private static readonly ConditionalWeakTable<VisualElement, object> s_heldForHide = new();
+        private static readonly object s_hold = new();
+
+        internal static void HoldForHide(VisualElement element) => s_heldForHide.GetValue(element, _ => s_hold);
+
+        internal static void HideHeld(VisualElement element)
+        {
+            if (s_heldForHide.Remove(element)) Hide(element);
+        }
+
+        internal static void Release(VisualElement element)
+        {
+            s_hidden.Remove(element);
+            s_heldForHide.Remove(element);
+        }
     }
 }

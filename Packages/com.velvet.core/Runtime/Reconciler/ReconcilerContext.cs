@@ -2253,15 +2253,15 @@ namespace Velvet
         private readonly Dictionary<VisualElement, System.Func<VisualElement, System.Action>> _refsDetachedWhileHidden =
             new();
 
-        // Over element and every element below it: a setup still queued is taken back with the installed one. A
-        // render of the Suspense hiding an element patches it like any other, queueing a setup where its callback
-        // changed, and the hide that render ends with takes that setup back here.
         internal void DetachRefsWhileHidden(VisualElement element)
         {
             DetachRefWhileHidden(element);
             foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
         }
 
+        // A setup still queued is taken back with the installed one. A render of the Suspense hiding an element
+        // patches it like any other, queueing a setup where its callback changed, and the hide that render ends with
+        // takes that setup back here.
         internal void DetachRefWhileHidden(VisualElement element)
         {
             var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)

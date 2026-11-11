@@ -32,6 +32,7 @@ namespace Velvet.Tests
             s_innerAttaches = 0;
             s_lastAttachedTick = -1;
             s_nested = false;
+            s_refBelowRow = false;
             s_withInner = false;
             s_withSlow = false;
             s_slowLayoutSetups = 0;
@@ -59,6 +60,25 @@ namespace Velvet.Tests
             // Assert
             Assert.That((whileHidden, s_outerAttaches), Is.EqualTo((0, 1)),
                 "The portal's child mounts after the boundary hid its tree, and its ref waits for the reveal");
+        }
+
+        // GREEN_ON_BASE(characterization): the base takes back a queued setup below a row, not only on it.
+        // It does so for a Portal that mounts while its primary is hidden, and attaches the ref at the reveal.
+        [Test]
+        public void Given_ARefdElementBelowAPortalRowMountedWhileItsPrimaryIsHidden_When_TheBoundaryReveals_Then_TheRefAttachesOnlyThen()
+        {
+            // Arrange
+            s_refBelowRow = true;
+            using var mounted = V.Mount(_root, V.Component(HostRender, key: "host"));
+            SetBlocked(mounted);
+            ShowPortal(mounted);
+            var whileHidden = s_outerAttaches;
+
+            // Act
+            Reveal(mounted);
+
+            // Assert — a ref that has not attached exactly once by the end of the reveal reads as -1
+            Assert.That(s_outerAttaches == 1 ? whileHidden : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -278,6 +298,7 @@ namespace Velvet.Tests
         private static VisualElement s_outerTarget;
         private static VisualElement s_innerTarget;
         private static bool s_nested;
+        private static bool s_refBelowRow;
         private static int s_outerAttaches;
         private static int s_outerCleanups;
         private static int s_innerAttaches;
@@ -418,6 +439,8 @@ namespace Velvet.Tests
                         }),
                     }),
                 }
+                : s_refBelowRow
+                ? new VNode[] { V.Div(name: "row", children: new VNode[] { V.Div(name: "outer", refCallback: outerRef) }) }
                 : new VNode[] { V.Div(name: "outer", refCallback: outerRef) };
             return V.Div(children: new VNode[] { V.Portal(s_outerTarget, children: portaled) });
         }
