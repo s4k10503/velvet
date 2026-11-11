@@ -60,17 +60,18 @@ namespace Velvet
             // Both are therefore constants of one edge rather than readings of where the descent has
             // got to, so the key resolves SpineChild at every container holding the same position and
             // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
-            // node instead, where WalksCommittedTree says that node can be compared. Two occurrences a
+            // node instead, where OwnOutput says that node can be compared. Two occurrences a
             // declaring body builds from one shared node instance are one node, so those stay
             // unseparated and the walk still takes the first.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
 
-            // Whether the nodes being walked are Ancestor's current PreviousTree. False for a detached
-            // mount's captured DescendantNodes, which is stamped onto a fiber only on the drain that
-            // created it — so after the declaring body renders again that array still holds the nodes
-            // of the render that captured it, which ComponentFiber.SourceNode no longer names.
-            internal bool WalksCommittedTree { get; init; }
+            // The array being walked where it is Ancestor's own output: its ReconcilingTree while a render of it
+            // is reconciling, else its PreviousTree. Null for a detached mount's captured DescendantNodes, which is
+            // stamped onto a fiber only on the drain that created it — so after the declaring body renders again
+            // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
+            // longer names.
+            internal VNode?[]? OwnOutput { get; init; }
             // One per Push, cleared at each edge. An element's children are reconciled by a new walk,
             // so PushScope starts their occurrence count over where that walk's claim does.
             internal InlineKeyClaims Claims { get; init; }
@@ -179,7 +180,7 @@ namespace Velvet
                             IsInlineSpineChild = true,
                             PortalScope = detachedScope,
                             Container = detachedContainer,
-                            WalksCommittedTree = false,
+                            OwnOutput = null,
                             Claims = claims,
                         };
                         // A VirtualList item is one rendered node rather than a reconciled child array.
@@ -193,7 +194,7 @@ namespace Velvet
                     continue;
                 }
 
-                var tree = ancestor.PreviousTree;
+                var tree = ancestor.ReconcilingTree ?? ancestor.PreviousTree;
                 if (tree == null || tree.Length == 0) continue;
 
                 var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
@@ -210,7 +211,7 @@ namespace Velvet
                     IsInlineSpineChild = isInline,
                     PortalScope = childScope,
                     Container = childContainer,
-                    WalksCommittedTree = true,
+                    OwnOutput = tree,
                     Claims = claims,
                 };
                 PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
@@ -379,8 +380,8 @@ namespace Velvet
             var occurrence = component.Key is { } explicitKey
                 ? walk.Claims.Claim(position.SlotPath, explicitKey, identity)
                 : 0;
-            if (walk.WalksCommittedTree
-                && ReferenceEquals(walk.SpineChild.SourceTree, walk.Ancestor.PreviousTree)
+            if (walk.OwnOutput != null
+                && ReferenceEquals(walk.SpineChild.SourceTree, walk.OwnOutput)
                 && !ReferenceEquals(component, walk.SpineChild.SourceNode))
             {
                 return false;

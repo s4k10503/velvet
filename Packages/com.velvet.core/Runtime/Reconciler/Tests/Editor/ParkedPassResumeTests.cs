@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// primary its Suspense hid waits for the reveal, whose walk places its rows under that Provider. A row that throws
     /// there, under a boundary above the parked component, is reported once by that boundary, whether the scheduled
     /// resume reaches it or a render of the parked component drains the pass first, and the boundary's fallback reads
-    /// the Providers above the boundary rather than those at the row.
+    /// the Providers above the boundary rather than those at the row. So does a fallback swapped in for an error an
+    /// effect throws, or one thrown in a Portal's drain before the mount has committed its output, and the Providers
+    /// pushed for a fallback are off the cursor once it has rendered.
     /// </summary>
     [TestFixture]
     internal sealed class ParkedPassResumeTests
@@ -22,6 +24,7 @@ namespace Velvet.Tests
         private const int RowCount = 8;
         private const int LastRow = RowCount - 1;
         private const string RowError = "Parked pass resume test throw";
+        private const string EffectError = "Parked pass resume test effect throw";
 
         private static readonly ComponentContext<string> s_context = ComponentContext<string>.Create("default");
         private static readonly Dictionary<int, string> s_readings = new();
@@ -38,6 +41,7 @@ namespace Velvet.Tests
         private static string s_panelBelowGuardOnlyReading;
         private static StateUpdater<int> s_setReaderOwn;
         private static VelvetTaskCompletionSource<int> s_readSource;
+        private static VisualElement s_portalTarget;
 
         private static readonly MountOptions s_recordingErrors = new()
         {
@@ -63,6 +67,7 @@ namespace Velvet.Tests
             s_panelBelowGuardOnlyReading = null;
             s_setReaderOwn = default;
             s_readSource = null;
+            s_portalTarget = new VisualElement();
             Application.logMessageReceived += RecordLoggedError;
         }
 
@@ -220,6 +225,54 @@ namespace Velvet.Tests
                 PanelReadingAfter(parkedShortOfTheThrow, s_panelBelowGuardOnlyReading), Is.EqualTo("unprovided"));
         }
 
+        // GREEN_ON_BASE(characterization): the base reads the Portal's snapshot, which the Portal's drain pushes.
+        // What this pins is that a fallback swapped in during that drain reads the mount's output still reconciling.
+        [Test]
+        public void Given_ABoundaryUnderAProviderWhosePortalChildThrowsInTheMountsDrain_When_TheBoundaryCatches_Then_ItsFallbackReadsTheProvider()
+        {
+            // Arrange — the Provider is the mount's own output, which the mount commits only after the Portal's
+            // drain, at the end of its reconcile, has run.
+            var tree = V.Provider(s_context, "app", new VNode[] { V.Component(PortalGuardRender, key: "guard") });
+
+            // Act
+            using var mounted = V.Mount(_root, tree, s_recordingErrors);
+
+            // Assert
+            Assert.That(s_panelReading ?? "the fallback never rendered", Is.EqualTo("app"));
+        }
+
+        [Test]
+        public void Given_ABoundaryUnderAProviderWhoseChildsEffectThrows_When_TheEffectsRun_Then_ItsFallbackReadsTheProvider()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(EffectGuardBesideOutsiderRender, key: "root"), s_recordingErrors);
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_panelReading ?? "the fallback never rendered", Is.EqualTo("p"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pushes nothing for a fallback, so it leaves nothing behind it.
+        // What this pins is that the Providers pushed for one are off the cursor once it has rendered.
+        [Test]
+        public void Given_ABoundaryWhoseFallbackAnEffectErrorSwappedIn_When_AComponentOutsideItsProviderRendersAlone_Then_ItReadsTheDefault()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(EffectGuardBesideOutsiderRender, key: "root"), s_recordingErrors);
+            mounted.FlushEffectsForTest();
+            var swapped = s_panelReading != null;
+            s_outsiderReading = null;
+
+            // Act
+            s_outsiderFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outsiderFiber);
+
+            // Assert
+            Assert.That(swapped ? s_outsiderReading : "the fallback never rendered", Is.EqualTo("default"));
+        }
+
         // The list re-renders every row on the Transition lane under a budget too small for one row, the last row
         // throwing in that render. True where the slice that parks stopped short of the last row: a throw in that
         // slice disposes the list, which leaves no parked pass behind.
@@ -314,6 +367,40 @@ namespace Velvet.Tests
             s_panelBelowGuardOnlyReading = Hooks.UseContext(s_belowGuardOnly);
             return V.Label(name: "panel", text: s_panelReading);
         }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode PortalGuardRender()
+        {
+            Hooks.UseFallback(_ => V.Component(ErrorPanelRender, key: "panel"));
+            return V.Portal(s_portalTarget, children: new VNode[] { V.Component(ThrowingRender, key: "thrower") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThrowingRender() => throw new InvalidOperationException(RowError);
+
+        [Component(Compiler = false)]
+        private static VNode EffectGuardBesideOutsiderRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Provider(s_context, "p", new VNode[] { V.Component(EffectGuardRender, key: "guard") }),
+                V.Component(OutsiderRender, key: "outsider"),
+            });
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode EffectGuardRender()
+        {
+            Hooks.UseFallback(_ => V.Component(ErrorPanelRender, key: "panel"));
+            return V.Component(EffectThrowingRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode EffectThrowingRender()
+        {
+            Hooks.UseEffect(ThrowEffectError, Array.Empty<object>());
+            return V.Label(text: "effect thrower");
+        }
+
+        private static Action ThrowEffectError() => throw new InvalidOperationException(EffectError);
 
         [Component(Compiler = false)]
         private static VNode SuspendingProviderRootRender()

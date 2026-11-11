@@ -431,7 +431,27 @@ namespace Velvet
             // the reveal in one pass: a resolved resource schedules the boundary itself, not the
             // suspended child. Leave IsDirty set so that re-render picks this fiber up via the expansion.
             var context = fiber.Reconciler?.Context;
-            if (WaitsForAReveal(fiber, context)) return;
+            if (context is { AnyBoundaryShowingFallback: true })
+            {
+                // Defer only PRIMARY (offscreen) descendants — a discarded primary's slot is occupied by the
+                // fallback, so an independent flush would write into the fallback's range. A visible fallback-subtree
+                // fiber carries no offscreen mark and may flush normally (the fallback renders while the
+                // primary is offscreen).
+                //
+                // Every enclosing boundary, not the nearest: a Suspense is marked a boundary whenever it is
+                // expanded, whether or not it suspended, so a resolved one between the fiber and the
+                // boundary that did suspend is what a nearest-only reading stops at — and the mark it
+                // stops short of is the one an outer expansion wrote.
+                //
+                // No IsSuspenseBoundary test beside the lookup: only a fiber ExpandSuspenseInline marked
+                // as one is ever recorded as showing a fallback, in the same branch that marks it.
+                var offscreen = fiber.IsOffscreen;
+                for (var f = fiber.Parent; f != null; f = f.Parent)
+                {
+                    if (offscreen && context.IsBoundaryShowingFallback(f)) return;
+                    if (f.IsOffscreen) offscreen = true;
+                }
+            }
 
             // Detached-host guard: an inline-mounted fiber commits its body into a slot RANGE of a MountPoint it
             // shares with sibling fibers (the parent expansion owns the range; PreviousTree is the patch baseline
@@ -564,30 +584,6 @@ namespace Velvet
             if (!endsEnclosingCommit) FiberEffects.CommitStrandedLayoutWork(context!);
         }
 
-        // Defer only PRIMARY (offscreen) descendants — a discarded primary's slot is occupied by the
-        // fallback, so an independent flush would write into the fallback's range. A visible fallback-subtree
-        // fiber carries no offscreen mark and may flush normally (the fallback renders while the
-        // primary is offscreen).
-        //
-        // Every enclosing boundary, not the nearest: a Suspense is marked a boundary whenever it is
-        // expanded, whether or not it suspended, so a resolved one between the fiber and the
-        // boundary that did suspend is what a nearest-only reading stops at — and the mark it
-        // stops short of is the one an outer expansion wrote.
-        //
-        // No IsSuspenseBoundary test beside the lookup: only a fiber ExpandSuspenseInline marked
-        // as one is ever recorded as showing a fallback, in the same branch that marks it.
-        private static bool WaitsForAReveal(ComponentFiber fiber, ReconcilerContext? context)
-        {
-            if (context is not { AnyBoundaryShowingFallback: true }) return false;
-            var offscreen = fiber.IsOffscreen;
-            for (var f = fiber.Parent; f != null; f = f.Parent)
-            {
-                if (offscreen && context.IsBoundaryShowingFallback(f)) return true;
-                if (f.IsOffscreen) offscreen = true;
-            }
-            return false;
-        }
-
         private static void SettleCompletedTransition(ComponentFiber fiber)
         {
             if (fiber.PendingReconcileDrainsTransitionWork)
@@ -658,7 +654,7 @@ namespace Velvet
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
             if (fiber.ParkedPassSuspended) return;
-            if (WaitsForAReveal(fiber, fiber.Reconciler.Context))
+            if (fiber.IsOffscreen)
             {
                 // Held as FlushFiber holds a flush, and left dirty for the same reveal to render: its walk renders a
                 // dirty inline fiber it reaches, GeneralPathReconciler.SetPrimaryHidden asks for the render of a dirty

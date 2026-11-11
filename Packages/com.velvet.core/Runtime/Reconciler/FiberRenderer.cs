@@ -560,6 +560,7 @@ namespace Velvet
                 }
 
                 reconciling = !deferReconcile;
+                fiber.ReconcilingTree = newTree;
                 ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
@@ -647,6 +648,7 @@ namespace Velvet
             }
             finally
             {
+                fiber.ReconcilingTree = null;
                 // Pop the spine Providers re-pushed for this isolated render, restoring the cursor.
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).
