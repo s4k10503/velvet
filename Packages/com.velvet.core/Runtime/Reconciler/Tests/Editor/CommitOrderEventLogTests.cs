@@ -38,7 +38,9 @@ namespace Velvet.Tests
             });
         }
 
-        [Component]
+        // Without the compiler a and b are fresh elements each render, so both children render on the reorder; the
+        // compiler would cache them, and a child handed back its own element bails.
+        [Component(Compiler = false)]
         private static VNode Reorderer()
         {
             var (reversed, _) = EventLog.UseState("Order", false);
