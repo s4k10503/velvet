@@ -1219,6 +1219,7 @@ on every platform.
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
 | `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
+| `Benchmarks ▸ regressions` | push (filtered) to `main`, after `trend-main`; skipped when the workflow runs in a fork | not required | no |
 | `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
@@ -1364,8 +1365,9 @@ operations that missed the memoized path.
 
 A run uploads the results XML as `Benchmark results`, writes the medians as a table to the job summary
 and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/github-action-benchmark`
-reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
-benchmark that throws fails the run like any other test. The history is not gated on a number:
+reads, each value carrying in its `extra` the processor that Unity's run-info line names for the machine
+(`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
+benchmark that throws fails the run like any other test. No job fails on a number:
 
 - `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per commit
   and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
@@ -1374,18 +1376,62 @@ benchmark that throws fails the run like any other test. The history is not gate
   site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
   refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
   lacks the page until `main` has recorded a first entry and a docs deployment has followed.
+- `regressions` runs after `trend-main`, on `main` in this repository alone, reads the whole history back
+  from the branch and files the steps up it finds (below) as issues labelled `performance` and `bug` and
+  assigned to s4k10503 (`scripts/ci/benchmark_steps.py`, held by `scripts/ci/test_benchmark_steps.py`).
+  Its concurrency group runs one at a time, and it lists the issues through the REST issues endpoint,
+  because `gh issue list --label` reads them through search.
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
 
-The numbers are one consistent CI series, not absolute ones: the editor runs them with
+The numbers are for comparing runs with each other, not absolute ones: the editor runs them with
 `-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
-workflow asks for (`test.yml` says so beside its coverage options), so the history is for comparing runs
-with each other.
+workflow asks for (`test.yml` says so beside its coverage options), and GitHub runs them on several
+processor models whose timings differ by more than the steps worth catching.
 
-Both flag a median above 150% of the previous entry in the summary and neither fails: CI runners'
-timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for the head
-like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled pull
-request, and a failed newest run blocks its merge.
+What `regressions` reads as a step up, over the runs in the order their commits landed rather than the
+order their entries were appended:
+
+- **A time** is compared only with times on the same processor model. It steps up at a run when the
+  fewest runs from it that make four on at least two models, counting models that ran at least three
+  times before it, each measured at least 1.2 times the slowest of the last five runs on its own model.
+  The decision is taken on those runs, so a run landing after them cannot withdraw a step once its issue
+  is open; where they are fewer than eight, the runs after them up to eight only add to the medians the
+  issue shows. The timing canary (`InstrumentCanary_TimingBaseline`) is no substitute for the model: it ranks the models
+  differently from the benchmarks.
+- **An allocation count** (a `.GC()` group and the other unit-less ones) does not depend on the model, so
+  counts are compared across all runs, by the same rule with one model, and must also rise by at least
+  two. Byte-valued groups are left out: the one `E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint`
+  records reads anything from 0 to 12 KB from one run to the next.
+- Every step in a benchmark's history is found, not only its first. After a step, a model is judged again
+  only once it has run since, so the slowest of its last five runs includes one measured since.
+- The range a step names starts after the latest run at which its model was judged and measured no higher
+  than the slowest of that model's last five runs before it, or before the benchmark's first run where
+  there is none, so a run above that and short of the threshold, or one its model was not judged at,
+  stays inside the range.
+- An issue names each of its steps by a marker holding the benchmark and the first slow commit, and
+  nothing else ties a step to an issue. Only issues labelled `performance` are read, so removing that
+  label from one detaches it, and a step it names can be filed again. A step decided at one of the twelve latest entries that no issue
+  names, open or closed, is new; the new steps one run finds whose ranges share a commit go into one new
+  issue, and a new step goes into a new issue even where an open one holds a step in the same range.
+- The job rewrites an issue only if it opened it, and only while it is open, nobody has reopened it, and
+  the history holds every step it names; it never closes one. Closing an issue is how a step is accepted or answered: its
+  marker keeps naming the step, so the step is not filed again.
+- What this costs: a step whose first slow run moves, as when an entry for a commit among its runs is
+  appended late, no longer matches its marker; decided at one of the twelve latest entries, it is filed
+  again as a new issue, and the old one is left as it was either way. Steps one commit causes that are
+  found by different job runs get an issue each.
+- Entries written before the processor was recorded carry none, so times are read from the first runs
+  that do and counts from the whole history.
+
+Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` syncs every prefix of that history in
+turn against issues it keeps in memory and prints what it opened, which is how a change to the rule is
+measured before it ships.
+
+The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
+runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
+the head like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled
+pull request, and a failed newest run blocks its merge.
 
 ### Merging a pull request
 
