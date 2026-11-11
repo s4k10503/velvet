@@ -7,10 +7,9 @@ namespace Velvet
     // A Motion transition eases EaseIn, EaseOut and EaseInOut by Framer Motion's easeIn, easeOut and easeInOut, the
     // cubic-beziers motion-utils' ease.ts declares, and EaseInBack, EaseOutBack and EaseInOutBack by its backIn, backOut
     // and backInOut (back.ts), where UI Toolkit's transition eases those modes by quadratics and by back curves of its
-    // own (UssEasing). Every other mode keeps UI Toolkit's curve.
-    //
-    // A value Framer hands the Web Animations API (accelerated) eases backIn by the CSS curve its supportedWaapiEasing
-    // table names, cubic-bezier(0.31, 0.01, 0.66, -0.59), rather than by back.ts's.
+    // own (UssEasing). A value Framer hands the Web Animations API (accelerated) eases backIn, circIn and circOut by the
+    // CSS curves its supportedWaapiEasing table names instead. Every other mode keeps UI Toolkit's curve, and EaseInCirc
+    // and EaseOutCirc keep it off that path.
     internal static class MotionEasing
     {
         private static readonly KeywordCurves s_keywords =
@@ -22,10 +21,12 @@ namespace Velvet
         private static readonly BezierCurve s_backIn =
             new(1f - s_backOut.X2, 1f - s_backOut.Y2, 1f - s_backOut.X1, 1f - s_backOut.Y1);
 
-        // waapi/easing/supported.ts's backIn.
+        // waapi/easing/supported.ts's backIn, circIn and circOut.
         private static readonly BezierCurve s_acceleratedBackIn = new(0.31f, 0.01f, 0.66f, -0.59f);
+        private static readonly BezierCurve s_acceleratedCircIn = new(0f, 0.65f, 0.55f, 1f);
+        private static readonly BezierCurve s_acceleratedCircOut = new(0.55f, 0f, 1f, 0.45f);
 
-        private static readonly (EasingMode Mode, Func<float, float> Curve, Func<float, float> Accelerated)[] s_named =
+        private static readonly (EasingMode Mode, Func<float, float>? Curve, Func<float, float>? Accelerated)[] s_named =
         {
             Named(EasingMode.EaseIn),
             Named(EasingMode.EaseOut),
@@ -33,10 +34,15 @@ namespace Velvet
             Named(EasingMode.EaseInBack),
             Named(EasingMode.EaseOutBack),
             Named(EasingMode.EaseInOutBack),
+            Named(EasingMode.EaseInCirc),
+            Named(EasingMode.EaseOutCirc),
         };
 
-        private static (EasingMode, Func<float, float>, Func<float, float>) Named(EasingMode mode)
-            => (mode, t => Evaluate(mode, t), t => Evaluate(mode, t, accelerated: true));
+        private static (EasingMode, Func<float, float>?, Func<float, float>?) Named(EasingMode mode)
+            => (mode, CurveOf(mode, accelerated: false), CurveOf(mode, accelerated: true));
+
+        private static Func<float, float>? CurveOf(EasingMode mode, bool accelerated)
+            => FunctionOf(mode, accelerated) is { } function ? function.Evaluate : null;
 
         internal static EaseFunction? FunctionOf(EasingMode mode, bool accelerated)
         {
@@ -48,6 +54,10 @@ namespace Velvet
                     return s_backOut;
                 case EasingMode.EaseInOutBack:
                     return EaseFunction.MirrorOf(s_backIn);
+                case EasingMode.EaseInCirc:
+                    return accelerated ? s_acceleratedCircIn : null;
+                case EasingMode.EaseOutCirc:
+                    return accelerated ? s_acceleratedCircOut : null;
                 default:
                     return s_keywords.For(mode);
             }
@@ -56,10 +66,16 @@ namespace Velvet
         internal static float Evaluate(EasingMode mode, float t, bool accelerated = false)
             => FunctionOf(mode, accelerated) is { } function ? function.Evaluate(t) : UssEasing.Evaluate(mode, t);
 
-        // The curve a transition UI Toolkit runs on its own curve for one of the six modes above eases by instead.
-        // That curve is told by its values at two points against UssEasing's, which UssEasingTests holds within 1e-6
-        // of the engine's for every mode: a curve within 1e-5 of one of the six at both is taken for it, and any
-        // other gets null.
+        // The mode a keyframe of a sequence segment Framer hands the Web Animations API eases by: map-easing.ts looks
+        // each named easing of the keyframes' array up in supportedWaapiEasing, and takes ease-out for backInOut and
+        // circInOut, which that table leaves out.
+        internal static EasingMode PerKeyframeAccelerated(EasingMode mode)
+            => mode == EasingMode.EaseInOutBack || mode == EasingMode.EaseInOutCirc ? EasingMode.EaseOut : mode;
+
+        // The curve a transition UI Toolkit runs on its own curve for one of the modes above eases by instead, null where
+        // that is the engine's own. That curve is told by its values at two points against UssEasing's, which
+        // UssEasingTests holds within 1e-6 of the engine's for every mode: a curve within 1e-5 of one of those modes at
+        // both is taken for it, and any other gets null.
         internal static Func<float, float>? InPlaceOfEngineCurve(Func<float, float> engineCurve, bool accelerated)
         {
             foreach (var (mode, curve, acceleratedCurve) in s_named)

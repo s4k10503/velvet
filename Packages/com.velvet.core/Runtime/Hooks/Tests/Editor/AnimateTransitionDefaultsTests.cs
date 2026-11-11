@@ -32,8 +32,15 @@ namespace Velvet.Tests
         private static float FramerBackInOut(float t)
             => t <= 0.5f ? FramerBackIn(2f * t) / 2f : (2f - FramerBackIn(2f * (1f - t))) / 2f;
 
-        // The backIn Framer's supportedWaapiEasing table gives the Web Animations API.
+        // Framer Motion's circIn, as circ.ts writes it, and circOut, its reverse.
+        private static float FramerCircIn(float t) => 1f - Mathf.Sin(Mathf.Acos(t));
+
+        private static float FramerCircOut(float t) => 1f - FramerCircIn(1f - t);
+
+        // The backIn and circIn Framer's supportedWaapiEasing table gives the Web Animations API.
         private static float WebAnimationsBackIn(float t) => CubicBezierEvaluator.Evaluate(0.31f, 0.01f, 0.66f, -0.59f, t);
+
+        private static float WebAnimationsCircIn(float t) => CubicBezierEvaluator.Evaluate(0f, 0.65f, 0.55f, 1f, t);
 
         private static float OpacityAfter(AnimateControls controls, VisualElement element, float elapsedSec)
         {
@@ -191,6 +198,36 @@ namespace Velvet.Tests
             Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base eases an X tween's EaseInCirc on the curve this case expects.
+        // Having MotionEasing.FunctionOf give EaseInCirc its Web Animations curve whatever the path reddens it.
+        [Test]
+        public void Given_AnXTweenEasingInCirc_When_ThreeTenthsOfItsSecondPass_Then_XIsWhereFramersCircInPutsIt()
+        {
+            // Arrange
+            var expected = 100f * FramerCircIn(0.3f);
+
+            // Act
+            var x = XAfterOneSecondTween(EasingMode.EaseInCirc, 0.3f);
+
+            // Assert
+            Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base eases an X tween's EaseOutCirc on the curve this case expects.
+        // Having MotionEasing.FunctionOf give EaseOutCirc its Web Animations curve whatever the path reddens it.
+        [Test]
+        public void Given_AnXTweenEasingOutCirc_When_SevenTenthsOfItsSecondPass_Then_XIsWhereFramersCircOutPutsIt()
+        {
+            // Arrange
+            var expected = 100f * FramerCircOut(0.7f);
+
+            // Act
+            var x = XAfterOneSecondTween(EasingMode.EaseOutCirc, 0.7f);
+
+            // Assert
+            Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
         [Test]
         public void Given_AnOpacityTweenEasingInBack_When_ThreeQuartersOfItsSecondPass_Then_OpacityIsWhereTheWebAnimationsBackInPutsIt()
         {
@@ -258,14 +295,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ThreeOpacityKeyframesOnAnEaseInCircSecond_When_SevenTenthsOfItPass_Then_OpacityIsWhereCircInOverTheWholeRunPutsIt()
+        public void Given_ThreeOpacityKeyframesOnAnEaseInCircSecond_When_SevenTenthsOfItPass_Then_OpacityIsWhereTheWebAnimationsCircInOverTheWholeRunPutsIt()
         {
-            // Arrange — Framer's supportedWaapiEasing gives circIn cubic-bezier(0, 0.65, 0.55, 1), circOut's shape, which
-            // inverts its own circIn, 1 - sin(acos(p)); this keeps circIn's curve over the run the Web Animations path eases.
+            // Arrange — the Web Animations circIn carries the run past its middle keyframe seven tenths of the way in.
             var element = new VisualElement();
             var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
                 new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInCirc });
-            var along = 2f * (1f - Mathf.Sqrt(1f - 0.7f * 0.7f));
+            var along = 2f * WebAnimationsCircIn(0.7f);
 
             // Act
             var opacity = OpacityAfter(controls, element, 0.7f);
@@ -274,6 +310,79 @@ namespace Velvet.Tests
             Assert.That(opacity, Is.EqualTo(2f - along).Within(1e-3f));
         }
 
+        [Test]
+        public void Given_AnOpacityTweenEasingInOutBack_When_FourTenthsOfItsSecondPass_Then_OpacityIsWhereFramersBackInOutPutsIt()
+        {
+            // Arrange — Framer swaps a single call's backInOut for back.ts's before the Web Animations API sees it.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInOutBack });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.4f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(FramerBackInOut(0.4f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentOfOpacityEasingInOutBack_When_AQuarterOfItsSecondPasses_Then_OpacityIsWhereTheWebAnimationsEaseOutPutsIt()
+        {
+            // Arrange — a sequence hands the Web Animations API its eases as an array, where supportedWaapiEasing has no
+            // backInOut.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                    new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInOutBack }),
+            });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.25f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(FramerEaseOut(0.25f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentOfOpacityEasingInOutCirc_When_AQuarterOfItsSecondPasses_Then_OpacityIsWhereTheWebAnimationsEaseOutPutsIt()
+        {
+            // Arrange — a sequence hands the Web Animations API its eases as an array, where supportedWaapiEasing has no
+            // circInOut.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                    new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInOutCirc }),
+            });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.25f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(FramerEaseOut(0.25f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentOfXEasingInOutBack_When_AQuarterOfItsSecondPasses_Then_XIsWhereFramersBackInOutPutsIt()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { X = new[] { 0f, 100f } },
+                    new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInOutBack }),
+            });
+
+            // Act
+            controls.Tick(0.25f);
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(100f * FramerBackInOut(0.25f)).Within(1e-2f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base eases each pair of a single call's opacity keyframes on this curve.
+        // Dropping the BezierX1 clause from Animator's OnWebAnimations reddens it.
         [Test]
         public void Given_ThreeOpacityKeyframesOnABezierWhoseFirstXPassesOne_When_ThreeTenthsOfItsSecondPass_Then_TheFirstPairIsAlongTheCurve()
         {
@@ -289,6 +398,8 @@ namespace Velvet.Tests
             Assert.That(opacity, Is.EqualTo(CubicBezierEvaluator.Evaluate(1.2f, 0f, 0.8f, 1f, 0.6f)).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the base eases each pair of a single call's opacity keyframes on this curve.
+        // Dropping the BezierX2 clause from Animator's OnWebAnimations reddens it.
         [Test]
         public void Given_ThreeOpacityKeyframesOnABezierWhoseSecondXPassesOne_When_ThreeTenthsOfItsSecondPass_Then_TheFirstPairIsAlongTheCurve()
         {

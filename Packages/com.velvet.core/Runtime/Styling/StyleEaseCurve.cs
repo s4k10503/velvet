@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine.UIElements;
 using System.Runtime.CompilerServices;
@@ -257,9 +258,13 @@ namespace Velvet
             public EasingMode LayerMode;
             public bool Classed;
             public bool Tweened;
-            // The repeat of the latest tween NoteTween saw.
+            // The repeat of the latest tween NoteTween saw, and the PropertyOverrides entries it lists.
             public MotionRepeat TweenRepeat;
+            public IReadOnlyList<StylePropertyTransition>? TweenOverrides;
             public bool Registered;
+
+            public bool HasEntryFor(string property)
+                => DrivenTweenTiming.LastNaming(TweenOverrides, DrivenTweenTiming.Named(property)) != null;
             public EaseFunction ShapedFor;
             public Func<float, float>? Shaped;
             public Func<Func<float, float>, Func<float, float>?>? ToShaped;
@@ -353,18 +358,21 @@ namespace Velvet
 
         // Whether Framer runs the property on the Web Animations API under the tween timing the element: opacity and filter
         // are among the values accelerated-values.ts names, and the tween's repeat can keep them off it
-        // (MotionRepeat.KeepsWebAnimations).
+        // (MotionRepeat.KeepsWebAnimations), but not off a PropertyOverrides entry, which Framer's getValueTransition
+        // hands the value whole, with no repeat of the tween's.
         private static bool OnWebAnimations(VisualElement element, string? property)
             => (property == "opacity" || property == "filter")
-                && (!s_bindings.TryGetValue(element, out var binding) || binding.TweenRepeat.KeepsWebAnimations);
+                && (!s_bindings.TryGetValue(element, out var binding) || binding.TweenRepeat.KeepsWebAnimations || binding.HasEntryFor(property));
 
-        // For an element whose transitions a Motion's tween on that repeat is about to time, which UI Toolkit then runs;
-        // listened to until NoteTweenEnded finds no tween left playing on it.
-        internal static void NoteTween(VisualElement element, MotionRepeat repeat)
+        // For an element whose transitions a Motion's tween on that repeat and those entries is about to time, which UI
+        // Toolkit then runs; listened to until NoteTweenEnded finds no tween left playing on it.
+        internal static void NoteTween(VisualElement element, MotionRepeat repeat,
+            IReadOnlyList<StylePropertyTransition>? overrides)
         {
             var binding = s_bindings.GetValue(element, static _ => new Binding());
             binding.Tweened = true;
             binding.TweenRepeat = repeat;
+            binding.TweenOverrides = overrides;
             Sync(element, binding);
         }
 

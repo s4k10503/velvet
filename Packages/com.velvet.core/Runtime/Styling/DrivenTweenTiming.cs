@@ -104,9 +104,8 @@ namespace Velvet
                 ? entry.TimingFor(Entry(entry).delaySec - StartDelaySec, kind, from, to, Accelerated(longhands))
                 : null;
 
-        // Whether Framer runs the value these longhands make up on the Web Animations API (accelerated-values.ts):
-        // opacity alone among the channels a driven play writes, its transforms going through its TransformAnimation,
-        // which samples the keyframes generator.
+        // Whether Framer eases the value these longhands make up by the curves its supportedWaapiEasing table hands the
+        // Web Animations API: opacity, the one channel a driven play writes that accelerated-values.ts names.
         internal static bool Accelerated(StyleLonghandSet longhands) => longhands.Contains(StyleLonghand.Opacity);
 
         // The last entry naming any of the longhands, which UI Toolkit's transition and Framer both let win.

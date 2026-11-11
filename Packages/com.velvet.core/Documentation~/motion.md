@@ -567,19 +567,23 @@ ease-out a transition naming none takes — run on the curve of the Framer Motio
 | `EaseInBack` | `backIn` | `backOut` reversed, `cubic-bezier(0.31, 0.01, 0.67, -0.53)`; on the Web Animations path below, `cubic-bezier(0.31, 0.01, 0.66, -0.59)` |
 | `EaseInOutBack` | `backInOut` | `backIn` mirrored: its first half on `backIn` at twice the speed, its second half the first turned about the middle |
 
-Framer runs opacity and filter on the Web Animations API, unless a `RepeatDelaySec` or a `Mirror` `RepeatType` keeps
-them off it, and gives that API the `backIn` its `supportedWaapiEasing` table names. Velvet eases by that `backIn`
-the opacity of a play, driven or UI Toolkit's own, of a `PropertyOverrides` entry, of a single `UseAnimate` call and
-of a sequence segment, whose repeat Framer writes into its keyframes rather than leaving the animation one, and a
-filter a Motion's tween times.
+Framer runs opacity and filter on the Web Animations API, unless a `RepeatDelaySec` or a `Mirror` `RepeatType` of
+the transition timing them keeps them off it, and gives that API the curves its `supportedWaapiEasing` table names:
+`backIn` as `cubic-bezier(0.31, 0.01, 0.66, -0.59)`, `circIn` as `cubic-bezier(0, 0.65, 0.55, 1)` and `circOut` as
+`cubic-bezier(0.55, 0, 1, 0.45)`, which Velvet runs `EaseInBack`, `EaseInCirc` and `EaseOutCirc` on there. A sequence
+segment's eases reach that API as an array, which takes `ease-out` for each easing the table does not name, so there
+`EaseInOutBack` and `EaseInOutCirc` run on `easeOut`. That path is the opacity of a play, driven or UI Toolkit's own;
+of a `PropertyOverrides` entry, which Framer hands its value whole, with no repeat of the play's; of a single
+`UseAnimate` call; of a sequence segment, whose repeat Framer writes into its keyframes rather than leaving the
+animation one; the element's own opacity a `layoutId` crossfade carries; and a filter a Motion's tween times.
 
 UI Toolkit's own transition eases those modes by quadratics and by back curves of its own, so where it plays the tween
 Velvet has each transition it starts ease along Framer's curve for its own mode from its first frame, the engine
 keeping the duration, delay and reversal; a transition the tween did not start keeps the curve it started on. A
 driven `Tween` (*Clocks*), a `layoutId` move, a spring or bezier play's entry, `UseAnimate` and a timeline's step run
 the same curve, and so do the transitions Velvet runs in the engine's place
-([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Every other
-`EasingMode` runs on the curve UI Toolkit eases a USS transition by.
+([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Where this
+section says nothing else of it, an `EasingMode` runs on the curve UI Toolkit eases a USS transition by.
 
 ## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
 

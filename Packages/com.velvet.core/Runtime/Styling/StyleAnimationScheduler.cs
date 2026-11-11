@@ -2090,7 +2090,7 @@ namespace Velvet
                 (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
             var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
             timing = MotionTweenTiming.Begin(element);
-            StyleEaseCurve.NoteTween(element, spec.Repeat);
+            StyleEaseCurve.NoteTween(element, spec.Repeat, allProperties ? propertyOverrides : null);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no

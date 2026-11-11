@@ -25,6 +25,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALayoutIdTweenProgressEasingInBack_When_ThreeQuartersOfItsSecondHaveElapsed_Then_WhatRemainsIsWhatBackTsBackInLeaves()
+        {
+            // Arrange — Framer Motion's backIn, backOut reversed, three quarters of the way along: a layout move runs no
+            // value on the Web Animations API.
+            var progress = LayoutIdTiming.From(new StyleTransitionConfig { DurationSec = 1f, Easing = UnityEngine.UIElements.EasingMode.EaseInBack })
+                .Start();
+            var expected = CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 0.25f);
+
+            // Act
+            progress.Step(0.75f);
+
+            // Assert
+            Assert.That(progress.Value, Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_ALayoutIdSpringProgress_When_ExactlyItsPassHasElapsed_Then_ItHasEnded()
         {
             // Arrange — stiffness 100, damping 10, mass 1: Framer's generator first rests over the projection's

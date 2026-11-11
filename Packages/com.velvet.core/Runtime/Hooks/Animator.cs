@@ -477,7 +477,7 @@ namespace Velvet
                 }
                 else if (transition != null)
                 {
-                    var easing = transition.Easing;
+                    var easing = accelerated && !single ? MotionEasing.PerKeyframeAccelerated(transition.Easing) : transition.Easing;
                     _ease = t => MotionEasing.Evaluate(easing, t, accelerated);
                 }
             }
@@ -489,8 +489,8 @@ namespace Velvet
 
         public double EndSec => _startSec + _totalSec;
 
-        // Whether Framer runs the value on the Web Animations API (supportsBrowserAnimation): opacity, the one of the five
-        // in accelerated-values.ts, unless a single call's repeat keeps it off (MotionRepeat.KeepsWebAnimations) or its
+        // Whether Framer runs the value on the Web Animations API (supportsBrowserAnimation): opacity, the one AnimateChannel
+        // accelerated-values.ts names, unless a single call's repeat keeps it off (MotionRepeat.KeepsWebAnimations) or its
         // cubic-bezier has an x outside [0, 1], which the browser refuses and Framer then runs on its keyframes
         // generator. A sequence writes its repeats into its keyframes and leaves the animation none.
         private static bool OnWebAnimations(AnimateChannel channel, StyleTransitionConfig? transition, bool single)
