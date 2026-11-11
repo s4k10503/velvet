@@ -26,5 +26,5 @@
 
 - A component that a `V.Portal` mounts reads, in that first render, the `V.Provider` value around the Portal
   rather than one of the same context farther up, whether the Portal mounts with the component rendering it or
-  when that component updates. It read the farther Provider's value: on an update wherever that Provider sat,
-  and at the mount where a component above rendered it.
+  when that component updates, where no other Portal and no `V.VirtualList` item encloses the Portal. It read the
+  farther Provider's value on an update, and at the mount where a component above rendered it.

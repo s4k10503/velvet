@@ -471,8 +471,7 @@ namespace Velvet
 
         // A render in a Portal's drain is at depth 0 as an isolated re-render is, but starts under the cursor the drain
         // has populated from the Portal's snapshot and its walk (ChildReconciler.DrainPendingPortalMounts), as a nested
-        // expansion render starts under the walk's. A spine pushed there would sit above that cursor without reaching
-        // through the Portal.
+        // expansion render starts under the walk's.
         private static bool RebuildsContextSpine(ComponentFiber fiber)
         {
             var context = fiber.Reconciler?.Context;
