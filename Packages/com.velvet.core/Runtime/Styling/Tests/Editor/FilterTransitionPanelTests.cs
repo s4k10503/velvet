@@ -1336,6 +1336,9 @@ namespace Velvet.Tests
             }
             var wholeProperty = !element.resolvedStyle.transitionProperty
                 .Select(p => p.ToString()).Contains("filter");
+            // Half way along Tailwind's --default-transition-timing-function, on which transition-all's ease-in-out runs
+            // from its first frame (StyleEaseCurve).
+            var filterMidpoint = 12f * CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
 
             // Act — AddClass writes padding before changing duration. The ordered replay then writes
             // padding again under the new duration; skipping it retains the earlier one-second run.
@@ -1366,7 +1369,7 @@ namespace Velvet.Tests
 
             // Assert — paint distinguishes the two runs while their inline target and settled paint agree.
             Assert.That(actual, Is.EqualTo(classDiff ? new[] { 4f, 16f, 16f, 2f }
-                : new[] { 6f, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
+                : new[] { filterMidpoint, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
         }
 
         [Test]
