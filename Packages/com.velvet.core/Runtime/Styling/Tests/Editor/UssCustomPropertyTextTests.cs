@@ -74,6 +74,9 @@ namespace Velvet.Tests
         [TestCase(":root { --x: url(a\\31 b); }")]
         [TestCase(":root { --x: url(a\\(b); }")]
         [TestCase(":root { --x: url(a\u000bb); }")]
+        [TestCase(":root { --x: url(\"a\\31\nb\"); }")]
+        [TestCase(":root { --x: url(\"a\\\r\nb\"); }")]
+        [TestCase(":root { --x: url(a\\31\r\nb); }")]
         [TestCase(".a { --x: url(a")]
         [TestCase(".a { --x: url(\"a")]
         [TestCase(":root { --x: up+1; }")]
@@ -135,8 +138,10 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already declines to rewrite each of these declarations as written.
+        // An escape before a `--` makes it part of a name that is no custom property's.
         [TestCase(".a { --x\u007f: 1rem; }")]
         [TestCase(":root { --x: \"a\" 1rem; }")]
+        [TestCase(":root { \\41 --x: 1rem; }")]
         public void Given_ADeclarationTheRewriteDeclines_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -148,7 +153,11 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already quotes each of these values and leaves the rest as written.
+        // A line break between a value's tokens is written as a space, and so is a comment after a URL the lexer refuses.
         [TestCase(".a { --x: 1rem", ".a { --x: \"1rem\"")]
+        [TestCase(":root { --x: 1rem\n2rem; }", ":root { --x: \"1rem 2rem\"\n; }")]
+        [TestCase(":root { --x: url(a b) /* c */ 1rem; }", ":root { --x: \"url(a b)   1rem\"; }")]
+        [TestCase(".a { /* c */ --x: 1rem; }", ".a { /* c */ --x: \"1rem\"; }")]
         [TestCase(":root { --bg: url(a;b.png) 1rem; }", ":root { --bg: \"url(a;b.png) 1rem\"; }")]
         [TestCase(".a { --x: 1rem /; }", ".a { --x: \"1rem /\"; }")]
         [TestCase(".a { --x: 1rem/* c */2rem; }", ".a { --x: \"1rem 2rem\"; }")]
@@ -319,8 +328,10 @@ namespace Velvet.Tests
         [TestCase(":root { --x: url(a(b)); }", ":root { --x: \"url(a(b))\"; }")]
         [TestCase(":root { --x: url(a'b'); }", ":root { --x: \"url(a'b')\"; }")]
         [TestCase(":root { --x: url(a\u0001b); }", ":root { --x: \"url(a\u0001b)\"; }")]
-        [TestCase(":root { --x: url(\"a\nb\"); }", ":root { --x: \"url(\\\"a b\\\")\"\n; }")]
-        [TestCase(":root { --x: url(a\\\nb); }", ":root { --x: \"url(a\\\\ b)\"\n; }")]
+        [TestCase(":root { --x: url(\"a\nb); }", ":root { --x: \"url(\\\"a\\a b)\"\n; }")]
+        [TestCase(":root { --x: url(a\\\nb); }", ":root { --x: \"url(a\\\\\\a b)\"\n; }")]
+        [TestCase(":root { --x: url(a\fb); }", ":root { --x: \"url(a\\c b)\"; }")]
+        [TestCase(":root { --x: url(a\rb); }", ":root { --x: \"url(a\\d b)\"; }")]
         [TestCase(":root { --x: url(a\\1234567 b); }", ":root { --x: \"url(a\\\\1234567 b)\"; }")]
         [TestCase(":root { --x: url(a\\31(b)); }", ":root { --x: \"url(a\\\\31(b))\"; }")]
         [TestCase(".a { --x: url(", ".a { --x: \"url(\"")]
@@ -354,10 +365,52 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(expected));
         }
 
+        [TestCase(":root { --icons: url(icons/*.svg); --y: 1rem; }", ":root { --icons: url(icons/*.svg); --y: \"1rem\"; }")]
+        [TestCase(".a { background-image: url(icons/*.svg); --y: 1rem; }", ".a { background-image: url(icons/*.svg); --y: \"1rem\"; }")]
+        [TestCase(":root { --hero: url(images/don't-panic.png); --gap: 1rem; }", ":root { --hero: \"url(images/don't-panic.png)\"; --gap: \"1rem\"; }")]
+        [TestCase(":root { --bg: url(images/bg.png\"); --y: 1rem; }", ":root { --bg: \"url(images/bg.png\\\")\"; --y: \"1rem\"; }")]
+        [TestCase(":root { --x: url(a'\\)/*b*/); }", ":root { --x: \"url(a'\\\\)/*b*/)\"; }")]
+        public void Given_AnUnquotedUrlPathHoldingACommentOpenerOrAQuote_When_TheSheetIsRewritten_Then_ItEndsAtItsParenthesis(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: url(\t\"\n); --y: 1rem; }", ":root { --x: \"url(\t\\\"\\a )\"\n; --y: \"1rem\"; }")]
+        [TestCase(":root { --x: url(\"a\nb\"); }", ":root { --x: \"url(\\\"a\\a b\\\"); }\"\n")]
+        [TestCase(":root { --x: url(a b) a\\;b; --y: 1rem; }", ":root { --x: \"url(a b) a\\\\;b\"; --y: \"1rem\"; }")]
+        public void Given_AStringALineBreakEndsOrAnEscapedSemicolon_When_TheSheetIsRewritten_Then_TheValueEndsWhereCssEndsIt(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: 1rem\f2rem; }", ":root { --x: \"1rem 2rem\"; }")]
+        public void Given_AFormFeedBetweenTokens_When_ItsValueIsQuoted_Then_ItIsWrittenAsASpace(string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
         [TestCase(":root { --x: 4px !IMPORTANT; }", ":root { --x: 4px !important; }")]
         [TestCase(":root { --x: red ! Important; }", ":root { --x: red !important; }")]
         [TestCase(":root { --x: \"a /* b */ c\" !IMPORTANT; }", ":root { --x: \"a /* b */ c\" !important; }")]
         [TestCase(":root { --x: a\\\\!IMPORTANT; }", ":root { --x: a\\\\ !important; }")]
+        [TestCase(":root { --x: \"a\\\nb\" !IMPORTANT; }", ":root { --x: \"a\\\nb\" !important; }")]
         public void Given_AnImportantSpelledInAnotherCase_When_TheSheetIsRewritten_Then_ItIsWrittenInLowerCase(
             string uss, string expected)
         {

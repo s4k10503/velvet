@@ -50,8 +50,17 @@ namespace Velvet.Editor
             while (i < uss.Length)
             {
                 var c = uss[i];
-                if (SkipTrivia(uss, ref i, output))
+                if (SkipWhole(uss, ref i, output))
                 {
+                    // An escape begins the name that stands there, so a `--` after it is no custom property's.
+                    atStart &= c != '\\';
+                    continue;
+                }
+                if (c == '(' && IsUrl(FunctionName(uss, i)))
+                {
+                    var end = PathEnd(uss, i);
+                    output.Append(uss, i, end - i);
+                    i = end;
                     continue;
                 }
                 if (c == '{')
@@ -87,10 +96,10 @@ namespace Velvet.Editor
             return output.ToString();
         }
 
-        // A comment or a string, copied through whole.
-        private static bool SkipTrivia(string text, ref int i, StringBuilder? output)
+        // A comment, a string or an escape, copied through whole.
+        private static bool SkipWhole(string text, ref int i, StringBuilder? output)
         {
-            var end = TriviaEnd(text, i);
+            var end = WholeEnd(text, i);
             if (end == i)
             {
                 return false;
@@ -100,7 +109,7 @@ namespace Velvet.Editor
             return true;
         }
 
-        private static int TriviaEnd(string text, int i)
+        private static int WholeEnd(string text, int i)
         {
             var c = text[i];
             if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
@@ -109,19 +118,29 @@ namespace Velvet.Editor
                 // MUTANT_SURVIVES(equivalent, boundary): the search starts at i + 2, so a match is never at 0.
                 return close < 0 ? text.Length : close + 2;
             }
+            if (c == '\\')
+            {
+                return Math.Min(EscapeLast(text, i + 1) + 1, text.Length);
+            }
             if (c != '"' && c != '\'')
             {
                 return i;
             }
+            // A line break or a form feed no escape takes ends the string, as CSS ends a bad string there; it is taken
+            // with the string so Flatten keeps it as written.
             for (var j = i + 1; j < text.Length; j++)
             {
                 if (text[j] == '\\')
                 {
-                    j++;
+                    j = EscapeLast(text, j + 1);
                 }
                 else if (text[j] == c)
                 {
                     return j + 1;
+                }
+                else if (text[j] is '\n' or '\r' or '\f')
+                {
+                    return CharacterLast(text, j) + 1;
                 }
             }
             return text.Length;
@@ -142,7 +161,7 @@ namespace Velvet.Editor
                 {
                     colon++;
                 }
-                else if (!SkipTrivia(uss, ref colon, null))
+                else if (!SkipWhole(uss, ref colon, null))
                 {
                     break;
                 }
@@ -154,7 +173,7 @@ namespace Velvet.Editor
             var valueStart = colon + 1;
             var valueEnd = ValueEnd(uss, valueStart);
             var written = uss.Substring(valueStart, valueEnd - valueStart);
-            var value = StripComments(written, out var badUrl);
+            var value = Flatten(written, out var badUrl);
             var important = SplitImportant(ref value, out var importantAsWritten);
             value = value.Trim();
             var quoted = badUrl || NeedsQuoting(value, written);
@@ -162,24 +181,46 @@ namespace Velvet.Editor
             {
                 return;
             }
-            var newlines = 0;
-            for (var k = valueStart; k < valueEnd; k++)
-            {
-                newlines += uss[k] == '\n' ? 1 : 0;
-            }
-            var quote = quoted ? "\"" : string.Empty;
-            output.Append(uss, i, valueStart - i).Append(' ').Append(quote);
-            foreach (var ch in value)
-            {
-                if (quoted && ch is '"' or '\\')
-                {
-                    output.Append('\\');
-                }
-                output.Append(ch is '\r' or '\n' ? ' ' : ch);
-            }
-            // The line breaks the value held, so an importer message names the line the author wrote.
-            output.Append(quote).Append(important).Append('\n', newlines);
+            var text = quoted ? Quote(value) : value;
+            // The line breaks the value held and the text does not, so an importer message names the line the author
+            // wrote.
+            var newlines = LineBreaks(written) - LineBreaks(text);
+            output.Append(uss, i, valueStart - i).Append(' ').Append(text).Append(important).Append('\n', newlines);
             i = valueEnd;
+        }
+
+        // value as a string the importer's lexer reads back as value. The lexer fails the sheet on a raw line break or
+        // form feed inside the quotes, and reads each escape written for one back as the character, its space ending it
+        // before a hex digit can join it; UssValueImportTests holds both.
+        private static string Quote(string value)
+        {
+            var text = new StringBuilder("\"");
+            foreach (var c in value)
+            {
+                if (c is '"' or '\\')
+                {
+                    text.Append('\\').Append(c);
+                }
+                else if (c is '\r' or '\n' or '\f')
+                {
+                    text.Append('\\').Append(c == '\r' ? 'd' : c == '\n' ? 'a' : 'c').Append(' ');
+                }
+                else
+                {
+                    text.Append(c);
+                }
+            }
+            return text.Append('"').ToString();
+        }
+
+        private static int LineBreaks(string text)
+        {
+            var count = 0;
+            foreach (var c in text)
+            {
+                count += c == '\n' ? 1 : 0;
+            }
+            return count;
         }
 
         private static bool IsIdentChar(char c) => char.IsLetterOrDigit(c) || c is '-' or '_' || c > 127;
@@ -191,7 +232,7 @@ namespace Velvet.Editor
             var i = start;
             while (i < text.Length)
             {
-                if (SkipTrivia(text, ref i, null))
+                if (SkipWhole(text, ref i, null))
                 {
                     continue;
                 }
@@ -199,6 +240,11 @@ namespace Velvet.Editor
                 if (c == '(')
                 {
                     parens++;
+                    if (IsUrl(FunctionName(text, i)))
+                    {
+                        i = PathEnd(text, i);
+                        continue;
+                    }
                 }
                 else if (c == ')')
                 {
@@ -213,30 +259,27 @@ namespace Velvet.Editor
             return text.Length;
         }
 
-        // A comment becomes a space, and a string and an unquoted URL path are kept whole, so what reads as a comment
-        // inside them stays; CSS reads a quoted path as a string among a function's arguments. badUrl says whether the
-        // importer's lexer raises an error on a URL path, which fails the sheet; the rest of the value after an
-        // unquoted one is then kept as written.
-        private static string StripComments(string value, out bool badUrl)
+        // A comment becomes a space, and so does a line break or a form feed, while a string, an escape and an unquoted
+        // URL path are kept whole, so what reads as one inside them stays. badUrl says whether the importer's lexer
+        // raises an error on a URL path, which fails the sheet.
+        private static string Flatten(string value, out bool badUrl)
         {
             badUrl = false;
             var text = new StringBuilder(value.Length);
             var i = 0;
             while (i < value.Length)
             {
-                var end = TriviaEnd(value, i);
+                var end = WholeEnd(value, i);
                 if (value[i] == '(' && IsUrl(FunctionName(value, i)))
                 {
-                    var close = UrlEnd(value, i);
-                    badUrl |= close == -1;
-                    if (At(value, UrlSpaceEnd(value, i + 1)) is not ('"' or '\''))
-                    {
-                        end = close == -1 ? value.Length : close;
-                    }
+                    badUrl |= UrlEnd(value, i) == -1;
+                    end = PathEnd(value, i);
                 }
                 if (end == i)
                 {
-                    text.Append(value[i++]);
+                    var c = value[i];
+                    text.Append(c is '\r' or '\n' or '\f' ? ' ' : c);
+                    i++;
                     continue;
                 }
                 if (value[i] == '/')
@@ -295,7 +338,7 @@ namespace Velvet.Editor
             var k = 0;
             while (k < written.Length)
             {
-                var comment = written[k] == '/' ? TriviaEnd(written, k) : k;
+                var comment = written[k] == '/' ? WholeEnd(written, k) : k;
                 if (comment > k)
                 {
                     if (functions.TryPeek(out var function) && function is not ("rgb" or "rgba"))
@@ -592,12 +635,36 @@ namespace Velvet.Editor
             return text.Substring(start, open - start);
         }
 
+        // Where a reading by token resumes after the `(` at open of a URL function: past it where the path is quoted, its
+        // quote opening a string, and otherwise at the first `)` no backslash escapes, or the end of text where none
+        // does, which is where CSS ends a `url()`, bad or not. A path UrlEnd refuses ends there rather than where the
+        // importer's lexer ends it, as the importer fails a sheet holding one.
+        private static int PathEnd(string text, int open)
+        {
+            if (At(text, UrlSpaceEnd(text, open + 1)) is '"' or '\'')
+            {
+                return open + 1;
+            }
+            for (var k = open + 1; k < text.Length; k++)
+            {
+                if (text[k] == ')')
+                {
+                    return k;
+                }
+                if (text[k] == '\\')
+                {
+                    k++;
+                }
+            }
+            return text.Length;
+        }
+
         // The `)` that ends the URL function whose `(` is at open as the importer's lexer reads its path, the end of
         // text where none does, or -1 where the lexer raises an error on the path, which fails the sheet: nothing after
-        // the `(`; in a quoted path, a line break or a backslash the text ends after; anything but whitespace between a
-        // quoted path and the `)`; and in an unquoted one, whitespace before anything but the `)`, a quote, a bracket,
-        // a control character other than a vertical tab, or a backslash a line break or the end of text follows.
-        // UssValueImportTests holds each of those.
+        // the `(`; in a quoted path, a line break no escape takes or a backslash the text ends after; anything but
+        // whitespace between a quoted path and the `)`; and in an unquoted one, whitespace before anything but the `)`,
+        // a quote, a `(`, a control character other than a vertical tab, or a backslash a line break or the end of text
+        // follows. UssValueImportTests holds each of those.
         private static int UrlEnd(string text, int open)
         {
             var k = UrlSpaceEnd(text, open + 1);
@@ -628,9 +695,13 @@ namespace Velvet.Editor
                 {
                     return -1;
                 }
-                if (c == '\\' && At(text, ++k) == Eof)
+                if (c == '\\')
                 {
-                    return -1;
+                    if (At(text, k + 1) == Eof)
+                    {
+                        return -1;
+                    }
+                    k = EscapeLast(text, k + 1);
                 }
             }
         }
@@ -677,7 +748,8 @@ namespace Velvet.Editor
         private static int ParenthesisAt(string text, int k) => At(text, k) == ')' ? k : -1;
 
         // The last character ConsumeEscape reads of the escape whose first character after the backslash is at k:
-        // that character, or up to six hex digits and one whitespace character after them.
+        // that character, or up to six hex digits and one whitespace character after them, a CR and the LF after it
+        // being one character to the lexer.
         private static int EscapeLast(string text, int k)
         {
             var end = k;
@@ -687,10 +759,12 @@ namespace Velvet.Editor
             }
             if (end == k)
             {
-                return k;
+                return CharacterLast(text, k);
             }
-            return IsUrlSpace(At(text, end)) ? end : end - 1;
+            return IsUrlSpace(At(text, end)) ? CharacterLast(text, end) : end - 1;
         }
+
+        private static int CharacterLast(string text, int k) => At(text, k) == '\r' && At(text, k + 1) == '\n' ? k + 1 : k;
 
         private static int UrlSpaceEnd(string text, int k)
         {

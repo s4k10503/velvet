@@ -135,8 +135,9 @@ namespace Velvet.Tests
         // none(), filter() and the URL functions, a var() whose arguments ValidateVarFunction refuses, and a range; a
         // comment among the arguments of blur(), var() and linear-gradient(), which
         // UssCustomPropertyText.HasCommentInArguments takes for one; a URL path the lexer raises an error on, which
-        // UssCustomPropertyText.UrlEnd takes for one; and an `!important` in another case, which UssCustomPropertyText
-        // writes in lower case.
+        // UssCustomPropertyText.UrlEnd takes for one; an `!important` in another case, which UssCustomPropertyText
+        // writes in lower case; and a line break or a form feed in a string, which UssCustomPropertyText escapes inside
+        // the quotes it writes.
         [TestCase("16 / 9")]
         [TestCase(".5.p")]
         [TestCase("3.5.p")]
@@ -176,6 +177,9 @@ namespace Velvet.Tests
         [TestCase("url(\"a\nb\")")]
         [TestCase("url(a\\\nb)")]
         [TestCase("url(a\\1234567 b)")]
+        [TestCase("\"a\nb\"")]
+        [TestCase("\"a\fb\"")]
+        [TestCase("\"a\rb\"")]
         public void Given_ATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
         {
             // Arrange
@@ -203,14 +207,17 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.
         // UssCustomPropertyText.HasUnheldToken leaves a function it lists, whatever its case, an rgb() or rgba() of
-        // three integers and an alpha, a comment among them included, a hex colour of three, four, six or eight
-        // digits, and a `!` a backslash escapes unquoted because the importer stores them.
+        // three integers and an alpha, a comment among them included and an alpha with a fraction leaving the channels
+        // scaled, a hex colour of three, four, six or eight digits, and a `!` a backslash escapes unquoted because the
+        // importer stores them.
         [TestCase("blur(4px)", "blur(4px)")]
         [TestCase("BLUR(4px)", "blur(4px)")]
         [TestCase("Var(--b)", "var(--b)")]
         [TestCase("#ff0066", "#ff0066ff")]
         [TestCase("rgba(255 0 0 / 0)", "#ff000000")]
         [TestCase("rgb(1 /* c */ 2 3)", "#010203ff")]
+        [TestCase("rgba(1, 2, 3, 0.5)", "#01020380")]
+        [TestCase("rgba(1 2 3 / 0.5)", "#01020380")]
         [TestCase("a\\!IMPORTANT", "a!IMPORTANT")]
         public void Given_AKnownFunctionOrAParsableHexColour_When_TheStockImporterReadsTheRawSheet_Then_ItStoresIt(
             string value, string expected)
@@ -266,6 +273,9 @@ namespace Velvet.Tests
         [TestCase("url(a\\31 b)")]
         [TestCase("url(a\\(b)")]
         [TestCase("url(a\u000bb)")]
+        [TestCase("url(\"a\\31\nb\")")]
+        [TestCase("url(\"a\\\r\nb\")")]
+        [TestCase("url(a\\31\r\nb)")]
         [TestCase("up+1")]
         [TestCase("u 1")]
         public void Given_AValueTheImporterHolds_When_TheStockImporterReadsTheRawSheet_Then_ItStoresSomeValue(string value)
@@ -300,6 +310,11 @@ namespace Velvet.Tests
         [TestCase("url(a b)", "url(a b)")]
         [TestCase("url(a /* c */)", "url(a /* c */)")]
         [TestCase("url(\"a\" /* c */)", "url(\"a\"  )")]
+        [TestCase("url(\"a\nb)", "url(\"a\nb)")]
+        [TestCase("url(a\\\nb)", "url(a\\\nb)")]
+        [TestCase("url(a\fb)", "url(a\fb)")]
+        [TestCase("url(a\rb)", "url(a\rb)")]
+        [TestCase("url(images/don't-panic.png)", "url(images/don't-panic.png)")]
         [TestCase("u+1", "u+1")]
         public void Given_AValueTheImporterFailsTheSheetOn_When_TheRewrittenSheetIsImported_Then_ItStoresItsText(
             string value, string expected)
