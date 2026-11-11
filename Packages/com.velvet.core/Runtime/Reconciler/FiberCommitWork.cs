@@ -320,6 +320,7 @@ namespace Velvet
         internal static void DrainPendingWork(ComponentFiber fiber)
         {
             fiber.ParkedPassSuspended = false;
+            using var portal = new PortalScope(fiber.Reconciler!.Context, fiber);
             if (fiber.IsInlineMounted)
             {
                 var drain = new RowCountWindow(fiber);
@@ -369,28 +370,38 @@ namespace Velvet
             double frameBudgetMs, ComponentFiber? catchingBoundary)
         {
             var reconciler = fiber.Reconciler!;
-            // The fibers these rows hold are stamped with the Portal the rows sit in, as the Portal's own reconcile
-            // stamped them, and the value goes back once the rows are done.
-            var context = reconciler.Context;
-            var enclosingPortal = context.CurrentPortalPlaceholder;
-            context.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
-            try
+            using var portal = new PortalScope(reconciler.Context, fiber);
+            if (!fiber.IsInlineMounted)
             {
-                if (!fiber.IsInlineMounted)
-                {
-                    return reconciler.ReconcileCatching(
-                        fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catchingBoundary);
-                }
-                var rows = new RowCountWindow(fiber);
-                var slotLimit = NextInlineSiblingSlotStart(fiber);
-                var caught = reconciler.ReconcileCatching(
-                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
-                PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
-                return caught;
+                return reconciler.ReconcileCatching(
+                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catchingBoundary);
             }
-            finally
+            var rows = new RowCountWindow(fiber);
+            var slotLimit = NextInlineSiblingSlotStart(fiber);
+            var caught = reconciler.ReconcileCatching(
+                fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
+            PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
+            return caught;
+        }
+
+        // Names the Portal a fiber's rows sit in while those rows are reconciled, by ReconcileRows or by a resumed
+        // slice of them, so the fibers they hold are stamped with it as the Portal's own reconcile stamped them; the
+        // enclosing value goes back once the rows are done.
+        internal readonly struct PortalScope : IDisposable
+        {
+            private readonly ReconcilerContext _context;
+            private readonly VisualElement? _enclosing;
+
+            internal PortalScope(ReconcilerContext context, ComponentFiber fiber)
             {
-                context.CurrentPortalPlaceholder = enclosingPortal;
+                _context = context;
+                _enclosing = context.CurrentPortalPlaceholder;
+                context.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
+            }
+
+            public void Dispose()
+            {
+                _context.CurrentPortalPlaceholder = _enclosing;
             }
         }
 

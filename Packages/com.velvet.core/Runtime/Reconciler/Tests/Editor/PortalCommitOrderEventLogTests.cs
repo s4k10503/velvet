@@ -19,6 +19,16 @@ namespace Velvet.Tests
 
         private sealed record Dep(string Name, int Value);
 
+        private sealed class Slicing
+        {
+            internal ComponentFiber? Fiber;
+            internal TransitionStarter Start;
+        }
+
+        private sealed record SlicedProps(VisualElement Target, Slicing Slicing);
+
+        private const int SlicedRowCount = 4;
+
         [Component]
         private static VNode Probed(Named props)
         {
@@ -74,6 +84,39 @@ namespace Velvet.Tests
             => V.Fragment(
                 V.Portal(props.Target, new VNode[] { V.Component(PortalChild, key: "child") }, key: "portal"),
                 V.Component(After, key: "after"));
+
+        [Component]
+        private static VNode SlicedPortalHost(SlicedProps props)
+            => V.Fragment(
+                V.Portal(props.Target, new VNode[] { V.Component(SlicedRows, props.Slicing, key: "rows") }, key: "portal"),
+                V.Component(After, key: "after"));
+
+        // Keyed elements with a component one level down, so a time-sliced update of this component parks between
+        // rows.
+        [Component]
+        private static VNode SlicedRows(Slicing slicing)
+        {
+            slicing.Fiber = FiberAmbientStack.Current;
+            EventLog.UseRender("Rows");
+            var (version, _) = EventLog.UseState("Version", 0);
+            var (_, start) = Hooks.UseTransition();
+            slicing.Start = start;
+            var rows = new VNode[SlicedRowCount];
+            for (var i = 0; i < SlicedRowCount; i++)
+            {
+                rows[i] = V.Div(key: "row" + i,
+                    children: new VNode?[] { V.Component(SlicedRow, new Dep("R" + i, version), key: "row") });
+            }
+            return V.Fragment(rows);
+        }
+
+        [Component]
+        private static VNode SlicedRow(Dep props)
+        {
+            var (value, _) = EventLog.UseState(props.Name, 0);
+            EventLog.UseEffects(props.Name, new object[] { value });
+            return V.Fragment(Array.Empty<VNode>());
+        }
 
         private static string MountAndLog(bool lastRendersNothing)
         {
@@ -150,6 +193,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(mounted.Root.Reconciler!.Context.CurrentPortalPlaceholder, Is.Null);
+        }
+
+        [Test]
+        public void Given_APortalChildsRowReachedByAResumedSliceOfItsUpdate_When_ThatRowAndASiblingAfterThePortalUpdateTogether_Then_TheRowsEffectsRunFirst()
+        {
+            // Arrange — a transition of the Portal's child parks, and its resumed slices reach the rows it left
+            var log = new EventLog();
+            var slicing = new Slicing();
+            using var mounted = V.Mount(new VisualElement(),
+                log.Provide(V.Component(SlicedPortalHost, new SlicedProps(new VisualElement(), slicing))));
+            mounted.DrainForTest();
+            slicing.Start.Invoke(() => log.Setter<int>("Version").Invoke(1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            slicing.Fiber!.FlushStateWithTinyBudgetForTest();
+            var parked = slicing.Fiber.HasPendingReconcileWorkForTest();
+            log.Clear();
+            slicing.Fiber.DrainTimeSlicedReconcileForTest();
+            mounted.DrainForTest();
+            var renderedAfterTheSlices = log.ToString().Contains("render:Rows");
+            log.Clear();
+            var last = "R" + (SlicedRowCount - 1);
+
+            // Act
+            log.Setter<int>(last).Invoke(1);
+            log.Setter<int>("After").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert — a pass that never parked reaches every row in its first slice, and a render of the Portal's
+            // child after its slices reaches every row again, so neither says anything here
+            Assert.That(parked && !renderedAfterTheSlices ? log.ToString() : "the rows were not left as the slices reached them", Is.EqualTo(
+                $"ins-x:{last} ins:{last} lay-x:{last} ins-x:After ins:After lay-x:After lay:{last} lay:After"
+                + $" eff-x:{last} eff-x:After eff:{last} eff:After"));
         }
     }
 }

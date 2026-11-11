@@ -682,6 +682,7 @@ namespace Velvet
                 resumeContext.SuspendDeclinedByRevealedBoundary = false;
                 try
                 {
+                    using var portal = new FiberCommitWork.PortalScope(resumeContext, fiber);
                     if (fiber.IsInlineMounted)
                     {
                         // Logical (container-blind) count, not raw childCount: this same ContinueReconcile call
