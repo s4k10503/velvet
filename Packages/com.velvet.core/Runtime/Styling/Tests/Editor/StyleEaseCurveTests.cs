@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -231,6 +233,54 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(curve, Is.Null);
+        }
+
+        [Test]
+        public void Given_AClassedElementWhoseNarrowingWritesItsCurveList_When_ItsCurveIsAskedFor_Then_ItIsTailwindsCurveForTheKeyword()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+            MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.5f);
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseInOut);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.5f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the probe already counts a list's allocation.
+        // The zero below would read the same from a probe stuck at zero.
+        [Test]
+        public void Given_TheAllocationProbe_When_ADelegateBuildsATimingList_Then_ItCountsBlocks()
+        {
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(() => _ = new List<EasingFunction> { new(EasingMode.Ease) });
+
+            // Assert
+            Assert.That(blocks, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's CurveFor reads no tween's timing state. Calling `Adopt` from
+        // MotionTweenTiming.PeekOwn copies the list code holds inline on every read, which reddens this case.
+        [Test]
+        public void Given_ATweenedClassedElementWhoseCodeHoldsATimingInline_When_ItsCurveIsAskedFor_Then_NothingIsAllocated()
+        {
+            // Arrange — asked once first, so a first call's own costs fall outside the windows.
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+            MotionTweenTiming.End(element, MotionTweenTiming.Begin(element));
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Ease) };
+            StyleEaseCurve.CurveFor(element, EasingMode.Ease);
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(() => StyleEaseCurve.CurveFor(element, EasingMode.Ease));
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(0));
         }
     }
 }

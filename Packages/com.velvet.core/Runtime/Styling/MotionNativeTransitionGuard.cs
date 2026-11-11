@@ -396,7 +396,7 @@ namespace Velvet
             {
                 return (element.style.transitionDuration, element.style.transitionDelay, element.style.transitionTimingFunction);
             }
-            return MotionTweenTiming.Own(element);
+            return MotionTweenTiming.PeekOwn(element);
         }
 
         // Whether the element's own lists have changed since the narrowed ones were derived from them, as when its code
@@ -405,7 +405,7 @@ namespace Velvet
         private static bool OwnTimingChanged(VisualElement element, Suspension suspension)
         {
             if (!suspension.WroteTiming || MotionTweenTiming.Playing(element)) return false;
-            var (duration, delay, curve) = MotionTweenTiming.Own(element);
+            var (duration, delay, curve) = MotionTweenTiming.PeekOwn(element);
             return !Same(duration, suspension.OwnDuration) || !Same(delay, suspension.OwnDelay) || !Same(curve, suspension.OwnCurve);
         }
 

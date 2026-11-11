@@ -134,13 +134,16 @@ The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner a
 `jump-both`, or `start` or `end`; `step-start` and `step-end` too), or one of CSS's easing keywords, and
 `ease-[cubic-bezier(…)]` and `ease-[steps(…)]` take it in place. `ease-in`, `ease-out` and `ease-in-out`, behind a
 variant or not, run along Tailwind v4's curves (`cubic-bezier(0.4, 0, 1, 1)`, `(0, 0, 0.2, 1)` and `(0.4, 0, 0.2, 1)`),
-as does the `ease-in-out` every `transition-*` utility bundles (`--default-transition-timing-function`); a project's
-`--ease-in`, `--ease-out` or `--ease-in-out` replaces its curve. UI Toolkit's `transition-timing-function` takes an
+as does the `ease-in-out` each `transition-*` utility but `transition-none` bundles
+(`--default-transition-timing-function`); a project's `--ease-in`, `--ease-out` or `--ease-in-out` replaces its
+curve. UI Toolkit's `transition-timing-function` takes an
 `EasingMode` keyword and no cubic-bezier, so the element carries the keyword nearest the function, and Velvet has the
 transition the engine runs ease along the function once the engine reports it running. The engine keeps the duration,
-delay and reversal, per property, a transition running keeps the function it started on, and `transition-filter`'s tween
-eases by the same function. A timing function written inline, as a Motion's is, is the keyword it names. A
-name is a token of its namespace only where a sheet declares it.
+delay and reversal, per property, a transition running keeps the function it started on, and these transitions Velvet
+runs itself ease by the same function: `transition-filter`'s tween, a `backdrop-*` change, a dashed or dotted divider's
+colour, and a background or border colour repainted in the engine's place under a `shadow-*`, a `border-dashed` or
+`border-dotted`, or a layoutId Motion's per-axis corners. A timing function written inline, as a Motion's is, is the
+keyword it names. A name is a token of its namespace only where a sheet declares it.
 
 A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled
 utilities of that namespace (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`,
