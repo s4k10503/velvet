@@ -27,6 +27,9 @@ namespace Velvet.Tests
                 + (wide ? "w-[100px]" : "w-[0px]"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already retimes a transition an ease-[…] class names.
+        // Returning no function from StyleEaseCurve.CurveFor's layer path leaves the keyword to ease it, which
+        // reddens this case.
         [Test]
         public void Given_AnElementTransitioningEverythingOverASecondOnAnEaseClassCurve_When_ItsWidthClassChanges_Then_AQuarterSecondInItIsWhereTheCurveStandsThere()
         {
