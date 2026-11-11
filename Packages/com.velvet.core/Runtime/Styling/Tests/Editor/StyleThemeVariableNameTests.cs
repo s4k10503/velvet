@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Globalization;
 using System.Reflection;
@@ -10,39 +11,51 @@ namespace Velvet.Tests
     /// The table is a memo of a pure concatenation, so emptying it around a case changes no other case's answer.
     /// GWT, one assert per case.
     /// </summary>
+    /// <remarks>
+    /// The table is reached by name, so the fixture compiles on a tree that has no such table; there the case reads
+    /// null, which its expected value is not.
+    /// </remarks>
     internal sealed class StyleThemeVariableNameTests
     {
-        private static IDictionary Names()
-            => (IDictionary)typeof(StyleThemeVariableName)
-                .GetField("s_names", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetValue(null);
+        private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Static;
 
-        private static int Cap()
-            => (int)typeof(StyleThemeVariableName)
-                .GetField("MaxCached", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetRawConstantValue();
+        private static readonly Type s_table = typeof(StyleThemeClass).Assembly.GetType("Velvet.StyleThemeVariableName");
+
+        private static IDictionary Names() => s_table?.GetField("s_names", Private)?.GetValue(null) as IDictionary;
+
+        private static Func<string, string, string> Builder()
+        {
+            var method = s_table?.GetMethod("Of", Private);
+            return method == null
+                ? null
+                : (Func<string, string, string>)Delegate.CreateDelegate(typeof(Func<string, string, string>), method);
+        }
+
+        private static int Cap() => s_table?.GetField("MaxCached", Private)?.GetRawConstantValue() is int cap ? cap : 0;
 
         [SetUp]
-        public void SetUp() => Names().Clear();
+        public void SetUp() => Names()?.Clear();
 
         [TearDown]
-        public void TearDown() => Names().Clear();
+        public void TearDown() => Names()?.Clear();
 
         [Test]
         public void Given_ATableHoldingAsManyNamesAsItIsCappedAt_When_ANewNameIsAskedForTwice_Then_EachAskBuildsItAgain()
         {
             // Arrange
-            for (var i = 0; i < Cap(); i++)
+            var build = Builder();
+            for (var i = 0; build != null && i < Cap(); i++)
             {
-                StyleThemeVariableName.Of("--test-", i.ToString(CultureInfo.InvariantCulture));
+                build("--test-", i.ToString(CultureInfo.InvariantCulture));
             }
 
             // Act
-            var first = StyleThemeVariableName.Of("--test-", "beyond");
-            var second = StyleThemeVariableName.Of("--test-", "beyond");
+            var kept = build == null
+                ? (bool?)null
+                : ReferenceEquals(build("--test-", "beyond"), build("--test-", "beyond"));
 
             // Assert
-            Assert.That(ReferenceEquals(first, second), Is.False);
+            Assert.That(kept, Is.EqualTo(false));
         }
     }
 }

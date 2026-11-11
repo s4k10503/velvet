@@ -6,9 +6,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what the readers a patch hands each class of a list allocate: nothing for a class their family
-    /// cannot claim, and, where no sheet declares the theme variable they look up, nothing more inside a mount's theme
-    /// scope than outside it. GWT, one assert per case.
+    /// Specifies what the readers a patch hands each class of a list allocate for the classes named below: nothing
+    /// where no part of the class has to be cut out as a string, one string where a theme lookup has to be handed the
+    /// utility after a variant by name, and, where no sheet declares the theme variable a reader looks up, nothing
+    /// more inside a mount's theme scope than outside it. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     [Category("Performance")]

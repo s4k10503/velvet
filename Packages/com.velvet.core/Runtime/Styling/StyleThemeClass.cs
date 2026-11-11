@@ -114,8 +114,9 @@ namespace Velvet
             return false;
         }
 
-        // Whether core, read from start, has the shape of a class a theme variable could make (a family prefix and a
-        // name), declared or not.
+        // Whether core, read from start, opens with the first segment of a family prefix and a dash after it. Classes
+        // no theme variable makes pass it too (scroll-smooth): it is the cheap test ahead of the lookups, not their
+        // answer.
         private static bool IsFamilyShaped(string core, int start)
         {
             var head = start < core.Length && core[start] == '-' ? start + 1 : start;
@@ -129,7 +130,7 @@ namespace Velvet
 
         // Whether the class is one a theme variable makes, or one with the shape of such a class that nothing else
         // gives a meaning to (so a sheet declaring its variable later would make it one). The utility after the last
-        // variant is cut out only once its shape qualifies, so a class no family opens allocates nothing
+        // variant is cut out only once IsFamilyShaped passes it, so a class it turns away allocates nothing
         // (ClassReadAllocationTests).
         internal static bool MayBecomeThemeClass(string core)
         {

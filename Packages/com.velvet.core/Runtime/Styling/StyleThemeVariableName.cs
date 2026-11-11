@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace Velvet
 {
     // The custom property a theme namespace gives a name (`--breakpoint-` and `sm` make `--breakpoint-sm`), built once
-    // per pair: the class readers look one up for a class on each patch while a mount's scope is open, and a
-    // concatenation there allocates every time (ClassReadAllocationTests).
+    // per pair while the table has room: the class readers look one up for a class on each patch while a mount's
+    // scope is open, and a concatenation there allocates every time (ClassReadAllocationTests).
     internal static class StyleThemeVariableName
     {
         // Past this many pairs a name is built on each call and not kept, so a stream of distinct classes cannot grow
