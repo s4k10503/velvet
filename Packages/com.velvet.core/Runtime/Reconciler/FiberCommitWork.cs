@@ -217,7 +217,7 @@ namespace Velvet
 
         // Read off the nearest fiber of the chain that carries a placeholder, since a fiber below a Portal's
         // own child can have lost its own — ComponentFiber.OwningPortalPlaceholder owns when.
-        internal static VisualElement? OwningPortalOf(ComponentFiber fiber, VisualElement? mountPoint)
+        private static VisualElement? OwningPortalOf(ComponentFiber fiber, VisualElement? mountPoint)
         {
             for (var holder = fiber; IsTenantOf(holder, mountPoint); holder = holder!.Parent)
             {
@@ -320,15 +320,25 @@ namespace Velvet
         internal static void DrainPendingWork(ComponentFiber fiber)
         {
             fiber.ParkedPassSuspended = false;
-            if (fiber.IsInlineMounted)
+            var drainContext = fiber.Reconciler!.Context;
+            var enclosingPortal = drainContext.CurrentPortalPlaceholder;
+            drainContext.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
+            try
             {
-                var drain = new RowCountWindow(fiber);
-                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
-                PropagateInlineSlotShift(fiber, drain.UnshiftedChange);
+                if (fiber.IsInlineMounted)
+                {
+                    var drain = new RowCountWindow(fiber);
+                    fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
+                    PropagateInlineSlotShift(fiber, drain.UnshiftedChange);
+                }
+                else
+                {
+                    fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
+                }
             }
-            else
+            finally
             {
-                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
+                drainContext.CurrentPortalPlaceholder = enclosingPortal;
             }
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
             // Detach the parked baseline BEFORE retiring it: the sweep's own mark treats
@@ -393,18 +403,36 @@ namespace Velvet
             // The array this reconcile is expanding, for the children it stamps on the way through.
             var treeContext = fiber.Reconciler?.Context;
             var enclosingFiberTree = treeContext?.CurrentFiberTree;
+            var enclosingPortal = treeContext?.CurrentPortalPlaceholder;
             if (treeContext != null) treeContext.CurrentFiberTree = newTree;
             try
             {
                 if (deferReconcile) return null;
+                if (treeContext != null) treeContext.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
                 if (fiber.CatchesErrors) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
                 ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
                 return null;
             }
             finally
             {
-                if (treeContext != null) treeContext.CurrentFiberTree = enclosingFiberTree;
+                if (treeContext != null)
+                {
+                    treeContext.CurrentFiberTree = enclosingFiberTree;
+                    treeContext.CurrentPortalPlaceholder = enclosingPortal;
+                }
             }
+        }
+
+        // The Portal whose children the fiber's rows are among, for a reconcile of the fiber's own rows to stamp
+        // the fibers it reaches with, as the Portal's own reconcile stamped them: the fiber's stamp, or the nearest
+        // one up its chain.
+        internal static VisualElement? EnclosingPortalOf(ComponentFiber fiber)
+        {
+            for (var holder = fiber; holder != null; holder = holder.Parent)
+            {
+                if (holder.OwningPortalPlaceholder != null) return holder.OwningPortalPlaceholder;
+            }
+            return null;
         }
 
         // Returns the prior committed tree to the VNode pool after the reconcile, or parks / defers it.

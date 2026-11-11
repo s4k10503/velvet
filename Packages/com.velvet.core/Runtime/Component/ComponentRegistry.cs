@@ -210,11 +210,11 @@ namespace Velvet
                 // makes the later traversal short-circuit while the rendered output is already committed.
                 // MountSlotStart is deliberately not written here; ComponentFiber.MountSlotStart owns where it
                 // is written instead.
-                // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the
-                // stamp a fiber below a Portal's own child was given at creation — its parent's isolated
-                // re-render is such a reconcile. Losing it costs nothing: that is the same fiber
-                // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork
-                // reads the nearest stamp up its chain.
+                // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the stamp it
+                // was given at creation. A reconcile of a fiber's own rows names the Portal they sit in
+                // (FiberCommitWork.ReconcileIntoSlotRange), so the isolated re-render of a Portal's child keeps the
+                // stamps below it. A fiber left without one is the same fiber DisposeInlineFibersOwnedByPortal
+                // already reaches through the parent index, and FiberCommitWork reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (!reusedAsIs)
                 {

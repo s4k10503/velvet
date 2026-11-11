@@ -14,7 +14,7 @@ namespace Velvet
         private static readonly Stack<RenderedChildrenCache> s_pool = new();
 
         private readonly Dictionary<VisualElement, List<VisualElement>> _of = new();
-        private readonly Dictionary<VisualElement, (int Index, int Slot)> _positionOf = new();
+        private readonly Dictionary<VisualElement, (VisualElement Container, int Index, int Slot)> _positionOf = new();
         private readonly Stack<List<VisualElement>> _spare = new();
 
         internal static RenderedChildrenCache Rent() => s_pool.Count > 0 ? s_pool.Pop() : new RenderedChildrenCache();
@@ -45,7 +45,7 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
-                _positionOf[child] = (i, rendered.Count);
+                _positionOf[child] = (container, i, rendered.Count);
                 if (!LogicalChildSlots.IsInvisible(child)) rendered.Add(child);
             }
             _of[container] = rendered;
@@ -56,7 +56,9 @@ namespace Velvet
         internal int IndexIn(VisualElement container, VisualElement child)
         {
             Of(container);
-            return _positionOf.TryGetValue(child, out var position) ? position.Index : -1;
+            return _positionOf.TryGetValue(child, out var position) && ReferenceEquals(position.Container, container)
+                ? position.Index
+                : -1;
         }
 
         // LogicalChildSlots.ToLogical(container, container.IndexOf(child)): the slots ahead of the child, 0 for an
@@ -64,7 +66,9 @@ namespace Velvet
         internal int SlotIn(VisualElement container, VisualElement child)
         {
             Of(container);
-            return _positionOf.TryGetValue(child, out var position) ? position.Slot : 0;
+            return _positionOf.TryGetValue(child, out var position) && ReferenceEquals(position.Container, container)
+                ? position.Slot
+                : 0;
         }
 
         // Where the fiber's output starts: its first row, or the row a fiber holding none sits in front of. Null for

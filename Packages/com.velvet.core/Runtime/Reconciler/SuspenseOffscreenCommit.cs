@@ -126,9 +126,7 @@ namespace Velvet
         {
             var mount = fiber.MountPoint;
             if (mount == null) return;
-            // Read up the fibers sharing its rows' container, as FiberCommitWork reads it: an isolated render of a
-            // Portal's child erases the stamp of the fibers below it.
-            var owning = FiberCommitWork.OwningPortalOf(fiber, mount);
+            var owning = fiber.OwningPortalPlaceholder;
             // A child of a Portal holding no row at the end of the Portal's rows is taken down where the walk leaves
             // them: the target's next row there belongs to something else, if the target holds one.
             if (owning != null

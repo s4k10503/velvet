@@ -679,6 +679,9 @@ namespace Velvet
                 var resumeContext = fiber.Reconciler.Context;
                 var enclosingFiberTree = resumeContext.CurrentFiberTree;
                 resumeContext.CurrentFiberTree = fiber.PreviousTree;
+                // FiberCommitWork.EnclosingPortalOf owns why.
+                var enclosingPortal = resumeContext.CurrentPortalPlaceholder;
+                resumeContext.CurrentPortalPlaceholder = FiberCommitWork.EnclosingPortalOf(fiber);
                 resumeContext.SuspendDeclinedByRevealedBoundary = false;
                 try
                 {
@@ -702,6 +705,7 @@ namespace Velvet
                 finally
                 {
                     resumeContext.CurrentFiberTree = enclosingFiberTree;
+                    resumeContext.CurrentPortalPlaceholder = enclosingPortal;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
                     TransitionDrainFiber = wasTransitionDrainFiber;
                     RenderLane = wasRenderLane;

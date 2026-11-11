@@ -19,7 +19,7 @@ namespace Velvet.Tests
     {
         private sealed record ListProps(int Rows, VisualElement? Target);
 
-        // Counts the reads of its children that ask for contentContainer; ReadsToHide and ReadsToMount check the ones
+        // Counts the reads of its children that ask for contentContainer; ReadsToHide and ReadingToMount check the ones
         // they rely on.
         private sealed class CountingContainer : VisualElement
         {
@@ -35,7 +35,7 @@ namespace Velvet.Tests
             }
         }
 
-        // Counts the comparisons an equality search makes against it; ReadsToMount checks that a search of a child
+        // Counts the comparisons an equality search makes against it; ReadingToMount checks that a search of a child
         // list is counted once for each child it passes.
         private sealed class CountingChild : VisualElement
         {

@@ -215,7 +215,7 @@ namespace Velvet.Tests
                         => new VNode[] { V.Component(PortalIntoOwnOuter, props, key: "outer"), reader },
                     Shape.PortalChildRenderedAlone => new VNode[]
                     {
-                        V.Component(MemoizedPortalOuter, props, key: "outer"), reader,
+                        V.Div(children: new VNode[] { V.Component(MemoizedPortalOuter, props, key: "outer") }), reader,
                     },
                     Shape.PortalToMissingTarget => new VNode[]
                     {
@@ -466,8 +466,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_APortalChildThatRenderedAloneUnderAComponentThatBails_When_ItSuspendsAgain_Then_ItsChildRenderingNothingIsTakenDownWhereItSits()
         {
-            // Arrange — the Portal's child re-renders on its own, and the update that suspends passes over the memoized
-            // component holding the Portal
+            // Arrange — the Portal's child re-renders on its own, under a memoized component inside an element
             var log = new EventLog();
             using var mounted = MountShown(log, Shape.PortalChildRenderedAlone);
             log.Setter<int>("C1").Invoke(1);
