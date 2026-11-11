@@ -10,7 +10,8 @@ namespace Velvet.Editor
     /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …), in most values a delimiter (the <c>/</c> of
     /// <c>16 / 9</c>), or a hex colour it cannot parse fails the whole sheet, one with a function it does not know (a
     /// CSS math function, <c>cubic-bezier()</c>, <c>steps()</c>) is dropped, and one with a number its lexer reads
-    /// otherwise than CSS does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>). Such a value
+    /// otherwise than CSS does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>), as an
+    /// <c>rgb()</c> holding a percentage is stored as another colour (<c>rgb(0 0 0 / 50%)</c> as opaque). Such a value
     /// becomes a quoted string of its own text, which the importer stores as written and the theme readers take back
     /// as CSS (<see cref="StyleCustomProperties.Spell"/>).
     /// </summary>
@@ -29,6 +30,14 @@ namespace Velvet.Editor
         private static readonly HashSet<string> s_importerUnits = new(StringComparer.Ordinal)
         {
             "px", "s", "ms", "deg", "grad", "rad", "turn",
+        };
+
+        // In NumberShape's letters: three integers separated alike, and for rgba() an alpha after them.
+        private static readonly HashSet<string> s_heldChannels = new(StringComparer.Ordinal) { "i,i,i", "iii" };
+
+        private static readonly HashSet<string> s_heldAlphaChannels = new(StringComparer.Ordinal)
+        {
+            "i,i,i,i", "i,i,i,n", "iii/i", "iii/n",
         };
 
         internal static string Rewrite(string uss)
@@ -143,10 +152,11 @@ namespace Velvet.Editor
             }
             var valueStart = colon + 1;
             var valueEnd = ValueEnd(uss, valueStart);
-            var value = StripComments(uss.Substring(valueStart, valueEnd - valueStart));
+            var written = uss.Substring(valueStart, valueEnd - valueStart);
+            var value = StripComments(written);
             var important = SplitImportant(ref value, out var importantAsWritten);
             value = value.Trim();
-            var quoted = NeedsQuoting(value);
+            var quoted = NeedsQuoting(value, written);
             if (!quoted && importantAsWritten)
             {
                 return;
@@ -251,21 +261,66 @@ namespace Velvet.Editor
             return slashes % 2 == 1;
         }
 
-        // Whether the importer would fail, drop or split value: a token it rejects or drops, or a number its lexer reads
-        // otherwise than CSS does or with a unit it does not keep. A value holding a quote or a backslash is left as
-        // written, so such a token in it still fails the importer.
-        internal static bool NeedsQuoting(string value)
-            => value.IndexOfAny(new[] { '"', '\'', '\\' }) < 0 && HasUnheldToken(value);
+        // Whether the importer would fail, drop or misread value: a token HasUnheldToken finds, or a comment
+        // HasCommentInArguments finds in written, the value before its comments are taken out. A value holding a quote
+        // or a backslash is left as written, so such a token in it still fails the importer.
+        internal static bool NeedsQuoting(string value, string written)
+            => value.IndexOfAny(new[] { '"', '\'', '\\' }) < 0 && (HasUnheldToken(value) || HasCommentInArguments(written));
+
+        // The importer's lexer hands a function a comment among its arguments as a token, which rgb() and rgba() pass
+        // over, blur(), var() and linear-gradient() fail the sheet on, and resource() stores, left unread here as in
+        // HasUnheldToken; it reads a URL function's `/*` as part of the path. UssValueImportTests holds each of those.
+        private static bool HasCommentInArguments(string written)
+        {
+            var functions = new Stack<string>();
+            var k = 0;
+            while (k < written.Length)
+            {
+                var comment = written[k] == '/' ? TriviaEnd(written, k) : k;
+                if (comment > k)
+                {
+                    if (functions.TryPeek(out var function) && function is not ("rgb" or "rgba"))
+                    {
+                        return true;
+                    }
+                    k = comment;
+                    continue;
+                }
+                if (written[k] == '(')
+                {
+                    var start = k;
+                    while (start > 0 && IsIdentChar(written[start - 1]))
+                    {
+                        start--;
+                    }
+                    var name = written.Substring(start, k - start);
+                    if (IsUrl(name) || name == "resource")
+                    {
+                        k = CloseOf(written, k);
+                    }
+                    else
+                    {
+                        functions.Push(name);
+                    }
+                }
+                else if (written[k] == ')')
+                {
+                    functions.TryPop(out _);
+                }
+                k++;
+            }
+            return false;
+        }
 
         // Reads value token by token as UI Toolkit's lexer does, and answers whether one is a token the importer fails
-        // the sheet on or drops: a delimiter, a bracket no function name opens, a colon, a function it does not know
-        // (a CSS math function, cubic-bezier(), steps()), one it fails the sheet on with nothing in it or, for var(),
-        // with arguments ValidateVarFunction refuses, an rgb() or rgba() of a number count it fails the sheet on, a hex
-        // colour it cannot parse or CSS reads further, a number it misreads, or a full stop no digit follows, which it
-        // drops after an integer and fails the sheet on elsewhere. A value of identifiers and delimiters alone, which
-        // the importer keeps as one string instead, is quoted all the same. What a resource() with something in it
-        // encloses is left unread, as the importer takes it as a path whatever it holds. UssValueImportTests holds
-        // each of those. What the URL functions enclose is left unread too.
+        // the sheet on, drops or reads otherwise than CSS: a delimiter, a bracket no function name opens, a colon, a
+        // function it does not know (a CSS math function, cubic-bezier(), steps()), one it fails the sheet on with
+        // nothing in it or, for var(), with arguments ValidateVarFunction refuses, an rgb() or rgba() in another shape
+        // than ReadsHeldChannels holds, a hex colour it cannot parse or CSS reads further, a number it misreads, or a
+        // full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere. A value of
+        // identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all the same.
+        // What a resource() with something in it encloses is left unread, as the importer takes it as a path whatever
+        // it holds. UssValueImportTests holds each of those. What the URL functions enclose is left unread too.
         private static bool HasUnheldToken(string value)
         {
             var functions = 0;
@@ -402,27 +457,40 @@ namespace Velvet.Editor
             return k;
         }
 
-        // The arguments of rgb() or rgba() from the `(` at i, moving i past their `)`. TryCreateColorFromFunctionToken
-        // counts their number tokens and passes over every other one, failing the sheet on an rgb() of other than
-        // three and an rgba() of fewer than four. A bracket no function name opens ends the importer's arguments early,
-        // which leaves their `)` to fail the sheet.
+        // The arguments of rgb() or rgba() from the `(` at i, moving i past their `)`, held only in the shapes
+        // s_heldChannels and s_heldAlphaChannels list. TryCreateColorFromFunctionToken counts number tokens and passes
+        // over every other one, so a percentage, a function or a unit among them is lost or fails the sheet, and it
+        // scales no channel when one of the first three holds a fraction; UssValueImportTests holds each of those.
         private static bool ReadsHeldChannels(string value, ref int i, bool alpha)
         {
             var close = MatchOf(value, i);
-            var numbers = 0;
-            var held = true;
+            var shape = new StringBuilder();
             for (var k = i + 1; k < close;)
             {
-                held &= value[k] != '(';
                 var end = TokenEnd(value, k);
-                if (StartsNumber(value, k) && IsDigit(value[end - 1]))
+                if (!char.IsWhiteSpace(value[k]))
                 {
-                    numbers++;
+                    shape.Append(value[k] is ',' or '/' ? value[k] : NumberShape(value, k, end));
                 }
                 k = end;
             }
             i = close + 1;
-            return held && (alpha ? numbers >= 4 : numbers == 3);
+            return (alpha ? s_heldAlphaChannels : s_heldChannels).Contains(shape.ToString());
+        }
+
+        // `i` for the token from k to end that is a plain integer, `n` for one with a fraction, `x` for anything else.
+        private static char NumberShape(string value, int k, int end)
+        {
+            if (value[k] is '+' or '-')
+            {
+                k++;
+            }
+            var digits = DigitsEnd(value, k);
+            if (digits == end)
+            {
+                return digits > k ? 'i' : 'x';
+            }
+            return value[digits] == '.' && digits + 1 < end && DigitsEnd(value, digits + 1) == end ? 'n' : 'x';
         }
 
         // ValidateVarFunction, from the `(` at open: nothing but whitespace, or a name of `--` and at least one more
@@ -487,8 +555,8 @@ namespace Velvet.Editor
             return close < 0 ? value.Length : close;
         }
 
-        // The importer's lexer takes url(), url-prefix() and domain() in any case as a path, which the importer reads
-        // whatever it holds, empty included.
+        // The importer's lexer takes url(), url-prefix() and domain() in any case as a path rather than as tokens, which
+        // the importer stores where the lexer accepts it, empty included.
         private static bool IsUrl(string name)
             => name.Equals("url", StringComparison.OrdinalIgnoreCase) || name.Equals("url-prefix", StringComparison.OrdinalIgnoreCase)
                || name.Equals("domain", StringComparison.OrdinalIgnoreCase);

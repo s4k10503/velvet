@@ -22,6 +22,7 @@ namespace Velvet
         internal abstract object Refresh(IQueryResultSource source);
         internal abstract void RecordNotified();
         internal abstract object Notified(IQueryResultSource source);
+        internal abstract bool ChangedSinceNotified { get; }
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
@@ -97,6 +98,8 @@ namespace Velvet
         internal override void RecordNotified() => _computer.RecordNotified();
 
         internal override object Notified(IQueryResultSource source) => _computer.Notified(source);
+
+        internal override bool ChangedSinceNotified => _computer.ChangedSinceNotified;
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
@@ -365,11 +368,17 @@ namespace Velvet
             if (notify || committed) Notify(refreshed: true);
         }
 
+        // TanStack's hasResultChange compares each query's selected result with #result[i]; the observers hold the
+        // entry's data under no select, so a commit that changes only a select changes no result of theirs.
         private bool ResultsChanged()
         {
             foreach (var observer in _observers)
             {
                 if (observer.ResultChangedSinceRecorded) return true;
+            }
+            foreach (var item in _items)
+            {
+                if (item.ChangedSinceNotified) return true;
             }
             return false;
         }

@@ -1556,6 +1556,8 @@ namespace Velvet
 
         internal QueryResult<TData> Notified(IQueryResultSource source) => new(_notified, source);
 
+        internal bool ChangedSinceNotified => _current.DifferencesFrom(_notified) != QueryProperties.None;
+
         // TanStack's createResult: the entry's state, with the fetch a subscription is about to start, then the
         // selected data, then the placeholder data, then a failure of the select.
         // A function form a render asks throws from the render, as v5's does; one asked by an update outside a

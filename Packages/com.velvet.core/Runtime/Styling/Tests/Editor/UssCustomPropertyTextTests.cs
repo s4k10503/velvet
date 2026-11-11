@@ -56,15 +56,17 @@ namespace Velvet.Tests
         [TestCase(":root{--x:!important}")]
         [TestCase(":root{--x:4px}")]
         [TestCase(".a { --x: rgb(0, 0, 0")]
-        [TestCase(":root { --x: rgba(255, 0, 0, 1, 9); }")]
-        [TestCase(":root { --x: rgba(255 0 0 / 0.5) rgba(255, 0, 0, / 0.5); }")]
+        [TestCase(":root { --x: rgba(255 0 0 / 0.5) rgba(0 0 0 / 1) rgba(0, 0, 0, 1); }")]
         [TestCase(":root { --x: none() filter() url() URL(); }")]
         [TestCase(":root { --x: a\\!IMPORTANT; }")]
-        [TestCase(":root { --x: rgb(0 0 0 / 50%) rgb(255, 0, 0, 50%) rgb(1, 2, 3, foo) rgb(var(--r), 0, 0, 0); }")]
-        [TestCase(":root { --x: rgba(255 0 / 0 0.5) rgba(255 0 0 0.5 / 1) rgba(a, 1, 2, 3, 4); }")]
-        [TestCase(":root { --x: rgb(5., 0, 0) rgb(1e3, 2, 3) rgb(#123, 1, 2, 3); }")]
         [TestCase(":root { --x: var(--a, 1px) var(--a,1px) var(--a,,1px) var( --a ) var( ) Var(a); }")]
         [TestCase(":root { --x: rgb(+1, 2, 3) rgba(-1, 2, 3, +.5); }")]
+        [TestCase(":root { --x: rgb(1 /* c */ 2 3); }")]
+        [TestCase(":root { --x: url(a/*c*/); }")]
+        [TestCase(":root { --x: resource(/* c */ a); }")]
+        [TestCase(":root { --x: filter(url(a/*c*/)); }")]
+        [TestCase(":root { --x: blur(4px) /* c */; }")]
+        [TestCase(":root{--x:blur(4px)}")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -75,6 +77,7 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(uss));
         }
 
+        // GREEN_ON_BASE(refactor): the base keeps the line count, and only the bound on the rewrite is new here.
         [Test]
         public void Given_AValueSpanningLines_When_TheSheetIsRewritten_Then_TheSheetKeepsItsLineCount()
         {
@@ -82,7 +85,7 @@ namespace Velvet.Tests
             const string uss = ".a {\n  --m: calc(1rem\n    + 2px);\n  --n: 3px;\n}\n";
 
             // Act
-            var lines = UssCustomPropertyText.Rewrite(uss).Split('\n').Length;
+            var lines = RewriteWithin(uss)?.Split('\n').Length;
 
             // Assert
             Assert.That(lines, Is.EqualTo(uss.Split('\n').Length));
@@ -238,6 +241,66 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(expected));
         }
 
+        [TestCase(":root { --x: rgb(0 0 0 / 50%); }", ":root { --x: \"rgb(0 0 0 / 50%)\"; }")]
+        [TestCase(":root { --x: rgb(255, 0, 0, 50%); }", ":root { --x: \"rgb(255, 0, 0, 50%)\"; }")]
+        [TestCase(":root { --x: rgb(1, 2, 3, foo); }", ":root { --x: \"rgb(1, 2, 3, foo)\"; }")]
+        [TestCase(":root { --x: rgb(var(--r), 0, 0, 0); }", ":root { --x: \"rgb(var(--r), 0, 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(59 130 246 / var(--o)); }", ":root { --x: \"rgb(59 130 246 / var(--o))\"; }")]
+        [TestCase(":root { --x: rgba(255 0 / 0 0.5); }", ":root { --x: \"rgba(255 0 / 0 0.5)\"; }")]
+        [TestCase(":root { --x: rgba(255 0 0 0.5 / 1); }", ":root { --x: \"rgba(255 0 0 0.5 / 1)\"; }")]
+        [TestCase(":root { --x: rgba(a, 1, 2, 3, 4); }", ":root { --x: \"rgba(a, 1, 2, 3, 4)\"; }")]
+        [TestCase(":root { --x: rgba(255, 0, 0, 1, 9); }", ":root { --x: \"rgba(255, 0, 0, 1, 9)\"; }")]
+        [TestCase(":root { --x: rgba(255, 0, 0, / 0.5); }", ":root { --x: \"rgba(255, 0, 0, / 0.5)\"; }")]
+        [TestCase(":root { --x: rgb(5., 0, 0); }", ":root { --x: \"rgb(5., 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(#123, 1, 2, 3); }", ":root { --x: \"rgb(#123, 1, 2, 3)\"; }")]
+        [TestCase(":root { --x: rgb(0.5, 0, 0); }", ":root { --x: \"rgb(0.5, 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(1, 2 3); }", ":root { --x: \"rgb(1, 2 3)\"; }")]
+        [TestCase(":root { --x: rgba(0 0 0 0.5); }", ":root { --x: \"rgba(0 0 0 0.5)\"; }")]
+        [TestCase(":root { --x: rgb(1, 2, +); }", ":root { --x: \"rgb(1, 2, +)\"; }")]
+        [TestCase(":root { --x: rgba(1, 2, 3, .); }", ":root { --x: \"rgba(1, 2, 3, .)\"; }")]
+        [TestCase(":root { --x: rgb(u+1 2 3); }", ":root { --x: \"rgb(u+1 2 3)\"; }")]
+        public void Given_AnRgbTheImporterReadsOtherwiseThanCss_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): the base quotes a value holding a math function or a rem wherever it stands.
+        // ReadsHeldChannels quotes these all the same, as the importer stores the colour of the numbers around them.
+        [TestCase(":root { --x: rgb(0 0 0 / calc(0.5)); }", ":root { --x: \"rgb(0 0 0 / calc(0.5))\"; }")]
+        [TestCase(":root { --x: rgb(calc(0.5), 0, 0, 0); }", ":root { --x: \"rgb(calc(0.5), 0, 0, 0)\"; }")]
+        [TestCase(":root { --x: rgb(1rem, 0, 0, 0); }", ":root { --x: \"rgb(1rem, 0, 0, 0)\"; }")]
+        public void Given_AnRgbHoldingAMathFunctionOrARem_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: blur(/* x */ 4px); }", ":root { --x: \"blur(  4px)\"; }")]
+        [TestCase(":root { --x: var(--a /* c */); }", ":root { --x: \"var(--a  )\"; }")]
+        [TestCase(":root { --x: linear-gradient(red /* a */, blue); }", ":root { --x: \"linear-gradient(red  , blue)\"; }")]
+        [TestCase(":root { --x: filter(/* c */ a); }", ":root { --x: \"filter(  a)\"; }")]
+        public void Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
         [TestCase(":root { --x: 4px !IMPORTANT; }", ":root { --x: 4px !important; }")]
         [TestCase(":root { --x: red ! Important; }", ":root { --x: red !important; }")]
         [TestCase(":root { --x: \"a /* b */ c\" !IMPORTANT; }", ":root { --x: \"a /* b */ c\" !important; }")]
@@ -270,8 +333,8 @@ namespace Velvet.Tests
         private static readonly TimeSpan RewriteBound = TimeSpan.FromSeconds(10);
 
         // On a thread of its own, so a rewrite that never returns fails its case rather than holding the suite; it then
-        // reads as null, which no expected text equals.
-        private static string RewriteWithin(string uss)
+        // reads as null, which each caller fails its case on.
+        internal static string RewriteWithin(string uss)
         {
             string rewritten = null;
             Exception thrown = null;

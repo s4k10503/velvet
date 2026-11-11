@@ -717,7 +717,9 @@ query whose error its `ThrowOnError` throws is thrown from the hook. With a `com
 makes of the results: it runs again only when a query's result has changed, the queries' keys have changed or
 it is another instance, what it returns keeps the previous instance where the two are deeply equal, and the
 component re-renders only when that instance changes, or without running it while a suspending query holds no
-data, as v5's `shouldSkipCombine` does. `UseSuspenseQueries` takes each query as
+data, as v5's `shouldSkipCombine` does. A change to one query hands `combine` its new result and each other query's
+as the hook last committed or notified it, as v5's `#onUpdate` replaces its own alone, so a change a query's
+`NotifyOnChangeProps` leaves out reaches `combine` once a commit follows. `UseSuspenseQueries` takes each query as
 `UseSuspenseQuery` does: a render with any result pending starts each pending query's request and suspends
 until all of them hold data or have settled.
 

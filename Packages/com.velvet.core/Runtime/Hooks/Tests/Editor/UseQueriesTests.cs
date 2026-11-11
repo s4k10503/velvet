@@ -510,9 +510,9 @@ namespace Velvet.Tests
                 "Each query takes the observer it held, so v5's setQueries finds no structural change to notify of");
         }
 
-        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change told one observer and
-        // rendered once; an observer for each query must still render once, which recording every observer at the
-        // first one's change does not.
+        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change there rendered once.
+        // An observer for each query must still render once, which recording every observer at the first one's change
+        // does not.
         [Test]
         public void Given_TwoQueriesOverOneEntry_When_ItsDataLands_Then_TheComponentRendersOnce()
         {
@@ -532,9 +532,9 @@ namespace Velvet.Tests
                 "v5's #onUpdate records each observer's own result, so the commit after the change finds nothing new");
         }
 
-        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change told one observer and
-        // rendered once; a combine whose output is never shared must still render once, which refreshing the second
-        // query's result at the first observer's change does not.
+        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change there rendered once.
+        // A combine whose output is never shared must still render once, which refreshing the second query's result
+        // at the first observer's change does not.
         [Test]
         public void Given_TwoQueriesOverOneEntryAndACombineOfANewSet_When_TheirDataLands_Then_TheComponentRendersOnce()
         {
@@ -594,8 +594,31 @@ namespace Velvet.Tests
                 "v5's #result keeps the result a query last notified of, and the commit after reads the one it holds");
         }
 
-        // GREEN_ON_BASE(characterization): the base computed every query afresh at another's change, so it saw the
-        // query stale; this pins that the result a commit computes afresh is the one a later change hands combine.
+        [Test]
+        public void Given_ACommitChangingOnlyAQuerysSelect_When_AnotherQuerysDataChanges_Then_TheCombineReadsTheNewSelectAtEach()
+        {
+            // Arrange
+            s_client.SetQueryData(Lists, new[] { 1, 2, 3 });
+            s_client.SetQueryData(Firsts, new[] { 10 });
+            using var mounted = Mount(SelectSumReader);
+            Rerender(mounted);
+            s_select = data => data.Length * 100;
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+            var renders = s_combined.Count;
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+            Settle(mounted, () => s_client.SetQueryData(Firsts, new[] { 20 }));
+
+            // Assert
+            Assert.That(string.Join(",", s_combined.Skip(renders)), Is.EqualTo("310,320"),
+                "v5's setQueries replaces #result where a query's selected result changed, and notifies");
+        }
+
+        // GREEN_ON_BASE(characterization): the base computed every query afresh at another's change and saw it stale.
+        // This pins that the result a commit computes afresh is the one a later change hands combine.
         [Test]
         public void Given_AQueryTurningStaleBetweenARenderAndItsCommit_When_AnotherQuerysDataChanges_Then_TheCombineSeesItStale()
         {
@@ -866,6 +889,22 @@ namespace Velvet.Tests
             var queries = s_keys.Select(key => key == "a" ? Options(key) with { StaleTime = TimeSpan.FromSeconds(1) } : Options(key)).ToArray();
             s_combined.Add(Hooks.UseQueries(queries, s_staleWhenTwenty, s_client));
             return V.Label(text: "stale-after");
+        }
+
+        private static readonly QueryKey Firsts = new("firsts");
+
+        [Component]
+        private static VNode SelectSumReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var first = new QueryOptions<int[], int>(Firsts, () => VelvetTask.FromResult(new[] { 9 }))
+            {
+                Select = data => data[0],
+                StaleTime = TimeSpan.MaxValue,
+            };
+            s_combined.Add(Hooks.UseQueries(new[] { LengthOptions(), first }, s_sum, s_client));
+            return V.Label(text: "select-sum");
         }
 
         [Component]

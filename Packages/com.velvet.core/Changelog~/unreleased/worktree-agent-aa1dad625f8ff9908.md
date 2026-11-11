@@ -5,11 +5,15 @@
   (`1e3px`, `1e3`), one a `-`, a `_` or a non-ASCII character directly follows (`1-2`, `1_a`, `1-a`), most
   delimiters, such as the `/` of Tailwind's `--aspect-video: 16 / 9` or a full stop no digit follows after a fraction
   (`.5.p`), a hex colour of other than three, four, six or eight digits (`#zzz`, `#12345`), an `rgb()` of other
-  than three plain numbers or an `rgba()` of fewer than four, a percentage counting as none (`rgb(100%, 0%, 0%)`,
-  `rgba(0, 0, 0)`), a function with nothing between its parentheses other than `none()`, `filter()` and the URL
-  functions `url()`, `url-prefix()` and `domain()` (`blur()`, `var()`), and a `var()` whose arguments the importer
-  refuses (`var(--a,)`, which Tailwind v4 writes, `var(--a, 1px, 2px)`, `var(a)`, `var(--a b)`). The importer used
-  to leave the whole file empty.
+  than three plain numbers or an `rgba()` of fewer than four, a percentage or a range such as `u+1` counting as none
+  (`rgb(100%, 0%, 0%)`, `rgba(0, 0, 0)`, `rgb(u+1 2 3)`), a function with nothing between its parentheses other than
+  `none()`, `filter()` and the URL functions `url()`, `url-prefix()` and `domain()` (`blur()`, `var()`), a `var()`
+  whose arguments the importer refuses (`var(--a,)`, which Tailwind v4 writes, `var(--a, 1px, 2px)`, `var(a)`,
+  `var(--a b)`), and a comment among the arguments of a function such as `blur()`, `var()` or `linear-gradient()`
+  (`blur(/* x */ 4px)`, `var(--a /* c */)`). The importer used to leave the whole file empty.
+- `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` run `combine` again once a commit changes only a query's
+  `Select`, as TanStack Query v5 does. The value from before the change used to stay until another change ran it
+  again.
 - A custom property whose `!important` is written in another case, which UI Toolkit's importer fails the file on,
   has it written in lower case.
 - A custom property in a USS file calling a function UI Toolkit's importer does not know, such as `mysteps(3)` or

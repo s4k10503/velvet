@@ -71,11 +71,12 @@ namespace Velvet.Tests
             Assert.That(stored, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(refactor): the base stores the quoted text, and only the bound on the rewrite is new here.
         [Test]
         public void Given_TheSameCustomPropertyRewritten_When_TheStockImporterReadsIt_Then_ItStoresTheQuotedText()
         {
             // Arrange
-            var uss = UssCustomPropertyText.Rewrite(":root { " + Name + ": cubic-bezier(0.2, 0.8, 0.2, 1); }");
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": cubic-bezier(0.2, 0.8, 0.2, 1); }") ?? string.Empty;
 
             // Act
             var stored = StoredValueCount(uss);
