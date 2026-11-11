@@ -198,19 +198,28 @@ namespace Velvet.Editor
             return text.Length;
         }
 
+        // A comment becomes a space, and a string is kept whole, so what reads as a comment inside it stays.
         private static string StripComments(string value)
         {
             var text = new StringBuilder(value.Length);
             var i = 0;
             while (i < value.Length)
             {
-                if (value[i] == '/' && i + 1 < value.Length && value[i + 1] == '*')
+                var end = TriviaEnd(value, i);
+                if (end == i)
                 {
-                    i = TriviaEnd(value, i);
-                    text.Append(' ');
+                    text.Append(value[i++]);
                     continue;
                 }
-                text.Append(value[i++]);
+                if (value[i] == '/')
+                {
+                    text.Append(' ');
+                }
+                else
+                {
+                    text.Append(value, i, end - i);
+                }
+                i = end;
             }
             return text.ToString();
         }
@@ -221,7 +230,7 @@ namespace Velvet.Editor
         {
             asWritten = true;
             var bang = value.LastIndexOf('!');
-            var keyword = bang < 0 ? string.Empty : value.Substring(bang + 1).Trim();
+            var keyword = bang < 0 || IsEscaped(value, bang) ? string.Empty : value.Substring(bang + 1).Trim();
             if (!string.Equals(keyword, "important", StringComparison.OrdinalIgnoreCase))
             {
                 return string.Empty;
@@ -229,6 +238,17 @@ namespace Velvet.Editor
             asWritten = string.Equals(keyword, "important", StringComparison.Ordinal);
             value = value.Substring(0, bang);
             return " !important";
+        }
+
+        // Whether an odd run of backslashes comes before the character at at, escaping it.
+        private static bool IsEscaped(string text, int at)
+        {
+            var slashes = 0;
+            while (at - slashes > 0 && text[at - slashes - 1] == '\\')
+            {
+                slashes++;
+            }
+            return slashes % 2 == 1;
         }
 
         // Whether the importer would fail, drop or split value: a token it rejects or drops, or a number its lexer reads
@@ -305,12 +325,19 @@ namespace Velvet.Editor
                 return true;
             }
             var name = value.Substring(start, i - start);
+            if (IsUrl(name))
+            {
+                i = CloseOf(value, i) + 1;
+                return true;
+            }
             if (i + 1 == value.Length || value[i + 1] == ')')
             {
-                // MUTANT_SURVIVES(equivalent, literal): i is left at the parenthesis, which the caller then reads as one no function name opens.
-                return false;
+                // The importer takes none() and filter() with nothing between their parentheses, and fails the sheet on
+                // any other function with nothing there.
+                i = CloseOf(value, i) + 1;
+                return name is "none" or "filter";
             }
-            if (EnclosesAPath(name))
+            if (name == "resource")
             {
                 i = CloseOf(value, i) + 1;
                 return true;
@@ -320,7 +347,7 @@ namespace Velvet.Editor
                 var close = CloseOf(value, i);
                 var arguments = value.Substring(i + 1, close - i - 1);
                 i = close + 1;
-                return HoldsChannels(arguments, name == "rgb" ? 3 : 4);
+                return HoldsChannels(arguments, alpha: name == "rgba");
             }
             functions++;
             i++;
@@ -335,26 +362,33 @@ namespace Velvet.Editor
             return close < 0 ? value.Length : close;
         }
 
-        // The importer's lexer takes url(), url-prefix() and domain() in any case as a path, and its importer takes
-        // resource() as one as written.
-        private static bool EnclosesAPath(string name)
+        // The importer's lexer takes url(), url-prefix() and domain() in any case as a path, which the importer reads
+        // whatever it holds, empty included.
+        private static bool IsUrl(string name)
             => name.Equals("url", StringComparison.OrdinalIgnoreCase) || name.Equals("url-prefix", StringComparison.OrdinalIgnoreCase)
-               || name.Equals("domain", StringComparison.OrdinalIgnoreCase) || name == "resource";
+               || name.Equals("domain", StringComparison.OrdinalIgnoreCase);
 
         // The arguments of rgb() or rgba(): the importer counts the plain numbers among them, a percentage or a unit
-        // counting as none, and where they are not as many as the colour's channels it fails the sheet or drops those
-        // past the fourth.
-        private static bool HoldsChannels(string arguments, int channels)
+        // counting as none, and passes over a `/`, which CSS takes between an rgba()'s third number and its fourth. It
+        // fails the sheet on an rgb() of other than three and an rgba() of fewer than four, and reads an rgba() of more
+        // as its first four.
+        private static bool HoldsChannels(string arguments, bool alpha)
         {
-            var numbers = arguments.Replace(',', ' ').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var number in numbers)
+            var parts = arguments.Replace(",", " ").Replace("/", " / ").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            var numbers = 0;
+            for (var k = 0; k < parts.Length; k++)
             {
-                if (!IsPlainNumber(number))
+                if (alpha && k == 3 && parts[k] == "/")
+                {
+                    continue;
+                }
+                if (!IsPlainNumber(parts[k]))
                 {
                     return false;
                 }
+                numbers++;
             }
-            return numbers.Length == channels;
+            return alpha ? numbers >= 4 : numbers == 3;
         }
 
         private static bool IsPlainNumber(string text)

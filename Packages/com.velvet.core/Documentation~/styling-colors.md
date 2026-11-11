@@ -150,8 +150,8 @@ still generate theirs.
 A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--spacing: 0.25rem`,
 `--breakpoint-3xl: 120rem`), and `calc()`, `min()`, `max()` and `clamp()` are evaluated. UI Toolkit's own importer fails
 a whole file on a `rem`, in most values a delimiter (the `/` of `16 / 9`), a hex colour it cannot parse (`#zzz`), an
-`rgb()` it cannot read as a colour (`rgb(100%, 0%, 0%)`) or a function with nothing between its parentheses it meets in
-a custom property, drops a function it does not know (a math function, `cubic-bezier()`, `steps()`, …), and fails the
+`rgb()` it cannot read as a colour (`rgb(100%, 0%, 0%)`) or a function other than `none()`, `filter()` and `url()` with
+nothing between its parentheses it meets in a custom property, drops a function it does not know (a math function, `cubic-bezier()`, `steps()`, …), and fails the
 file on or splits a number it reads otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as `3 px`, `1px_a` as
 `1px _a`), so `Velvet.Editor` imports such a file itself, storing those custom properties as the text they were
 written with, and writing an `!important` in another case, which the importer also fails the file on, in lower case. A new or edited file is imported first by

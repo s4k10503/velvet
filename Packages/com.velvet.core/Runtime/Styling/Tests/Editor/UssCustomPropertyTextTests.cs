@@ -54,6 +54,10 @@ namespace Velvet.Tests
         [TestCase(":root{--x:!important}")]
         [TestCase(":root{--x:4px}")]
         [TestCase(".a { --x: rgb(0, 0, 0")]
+        [TestCase(":root { --x: rgba(255, 0, 0, 1, 9); }")]
+        [TestCase(":root { --x: rgba(255 0 0 / 0.5) rgba(255, 0, 0, / 0.5); }")]
+        [TestCase(":root { --x: none() filter() url() URL(); }")]
+        [TestCase(":root { --x: a\\!IMPORTANT; }")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -201,10 +205,14 @@ namespace Velvet.Tests
         [TestCase(":root { --x: rgb(255, 0, 0, 0.5); }", ":root { --x: \"rgb(255, 0, 0, 0.5)\"; }")]
         [TestCase(":root { --x: blur(); }", ":root { --x: \"blur()\"; }")]
         [TestCase(":root { --x: var(); }", ":root { --x: \"var()\"; }")]
+        [TestCase(":root { --x: resource(); }", ":root { --x: \"resource()\"; }")]
+        [TestCase(":root { --x: rgb(); }", ":root { --x: \"rgb()\"; }")]
+        [TestCase(":root { --x: NONE(); }", ":root { --x: \"NONE()\"; }")]
+        [TestCase(":root { --x: rgb(255 0 0 / 0.5); }", ":root { --x: \"rgb(255 0 0 / 0.5)\"; }")]
+        [TestCase(":root { --x: rgba(255 0 / 0 0.5); }", ":root { --x: \"rgba(255 0 / 0 0.5)\"; }")]
         [TestCase(":root { --x: rgb(5., 0, 0); }", ":root { --x: \"rgb(5., 0, 0)\"; }")]
         [TestCase(":root { --x: rgb(var(--r), 0, 0); }", ":root { --x: \"rgb(var(--r), 0, 0)\"; }")]
         [TestCase(":root { --x: rgb(a, 0, 0); }", ":root { --x: \"rgb(a, 0, 0)\"; }")]
-        [TestCase(":root { --x: rgba(255, 0, 0, 1, 9); }", ":root { --x: \"rgba(255, 0, 0, 1, 9)\"; }")]
         public void Given_ATokenTheImporterRejectsOrDrops_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
             string uss, string expected)
         {
@@ -218,6 +226,8 @@ namespace Velvet.Tests
 
         [TestCase(":root { --x: 4px !IMPORTANT; }", ":root { --x: 4px !important; }")]
         [TestCase(":root { --x: red ! Important; }", ":root { --x: red !important; }")]
+        [TestCase(":root { --x: \"a /* b */ c\" !IMPORTANT; }", ":root { --x: \"a /* b */ c\" !important; }")]
+        [TestCase(":root { --x: a\\\\!IMPORTANT; }", ":root { --x: a\\\\ !important; }")]
         public void Given_AnImportantSpelledInAnotherCase_When_TheSheetIsRewritten_Then_ItIsWrittenInLowerCase(
             string uss, string expected)
         {

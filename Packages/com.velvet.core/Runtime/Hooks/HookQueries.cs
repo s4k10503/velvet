@@ -20,6 +20,7 @@ namespace Velvet
         internal abstract void Match(QueryObserver? held, object? computer, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
         internal abstract object Refresh(IQueryResultSource source);
+        internal abstract object Latest(IQueryResultSource source);
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
@@ -87,6 +88,8 @@ namespace Velvet
 
         internal override object Refresh(IQueryResultSource source)
             => _computer.Refresh(_observer.Entry ?? _entry, _settings, source);
+
+        internal override object Latest(IQueryResultSource source) => _computer.Latest(source);
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
@@ -352,7 +355,7 @@ namespace Velvet
             var notify = _changedWhileSyncing && AnyQueryNotifies();
             if (!notify && !structural && !ResultsChanged()) return;
             RecordResults();
-            if (notify || committed) Notify();
+            if (notify || committed) Notify(refreshed: true);
         }
 
         private bool ResultsChanged()
@@ -388,7 +391,7 @@ namespace Velvet
             if (!Notifies(_items[index])) return;
             observer.RecordResult();
             _resultVersion++;
-            Notify();
+            Notify(refreshed: false);
         }
 
         // TanStack's trackResult: a property read from one result is tracked for them all, and a result whose query
@@ -423,8 +426,10 @@ namespace Velvet
 
         // TanStack's #notify: without a combine the component re-renders; with one, while a suspending query holds no
         // data yet the combine is passed over and the component re-renders, and otherwise it re-renders only when
-        // what the combine returns changed.
-        private void Notify()
+        // what the combine returns changed. A commit hands combine every result computed afresh, as setQueries reads
+        // each observer's; one observer's change hands it the others as they were last computed, as #onUpdate replaces
+        // its own alone, so no other query's result moves before its own observer is told and compares against it.
+        private void Notify(bool refreshed)
         {
             var invokeCombine = _invokeCombine;
             if (_combine == null || invokeCombine == null || ShouldSkipCombine())
@@ -434,7 +439,7 @@ namespace Velvet
             }
             var hadCombined = _hasCombined;
             var before = _combined;
-            var after = Combine(CommittedResults(), KeysOf(), _combine, invokeCombine);
+            var after = Combine(CommittedResults(refreshed), KeysOf(), _combine, invokeCombine);
             if (!hadCombined || !QueryData.Same(before, after)) _rerender();
         }
 
@@ -447,12 +452,13 @@ namespace Velvet
             return false;
         }
 
-        private object[] CommittedResults()
+        private object[] CommittedResults(bool refreshed)
         {
             var results = new object[_observers.Length];
             for (var i = 0; i < results.Length; i++)
             {
-                results[i] = _items[i].Refresh(new QueriesResultSource(_observers, i, TrackOf(_items[i])));
+                var source = new QueriesResultSource(_observers, i, TrackOf(_items[i]));
+                results[i] = refreshed ? _items[i].Refresh(source) : _items[i].Latest(source);
             }
             return results;
         }

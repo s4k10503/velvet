@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// <c>useSuspenseQueries</c>.
     /// <list type="bullet">
     /// <item>Each query is read as <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> reads it, the results in the
-    /// list's order; an observer is kept while a query reads its entry, whatever its position, and one
-    /// that leaves the list leaves its entry.</item>
+    /// list's order; the queries over one entry are handed the observers held over it in the list's order, whatever
+    /// their positions, and a query that leaves the list leaves its entry.</item>
     /// <item>A property read from one result is tracked for every result.</item>
     /// <item>Combine runs again only when a result changed, and its output keeps its instance where it is deeply
     /// equal, so the component does not re-render for a change the combine does not see.</item>
@@ -532,6 +532,49 @@ namespace Velvet.Tests
                 "v5's #onUpdate records each observer's own result, so the commit after the change finds nothing new");
         }
 
+        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change told one observer and
+        // rendered once; a combine whose output is never shared must still render once, which refreshing the second
+        // query's result at the first observer's change does not.
+        [Test]
+        public void Given_TwoQueriesOverOneEntryAndACombineOfANewSet_When_TheirDataLands_Then_TheComponentRendersOnce()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(SetReader);
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+            var renders = s_combined.Count;
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_combined.Count, Is.EqualTo(renders + 1),
+                "v5's #onUpdate runs combine over each observer's own result, so the commit after the change finds nothing new");
+        }
+
+        // GREEN_ON_BASE(characterization): the base announced each query's changed result from one observer's pass;
+        // with an observer each, refreshing the second query's result at the first observer's change announces it
+        // nowhere.
+        [Test]
+        public void Given_TwoQueriesOverOneEntryAndACombine_When_TheirDataLands_Then_TheCacheIsToldOfEachResult()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(SetReader);
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+            s_client.GetQueryCache().Subscribe(s_events.Add);
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+
+            // Assert
+            Assert.That(s_events.Count(e => e.Type == QueryCacheEventType.ObserverResultsUpdated), Is.EqualTo(2),
+                "v5's observer tells the cache of its own result that changed");
+        }
+
         [Test]
         public void Given_TwoQueries_When_TheSecondTurnsToTheFirstsEntry_Then_ItTakesAnObserverOfItsOwn()
         {
@@ -750,6 +793,19 @@ namespace Velvet.Tests
             var results = Hooks.UseQueries(Queries(), s_client);
             s_renders.Add(results);
             return V.Label(text: "reader");
+        }
+
+        // A new set every run, which structural sharing keeps only as the very instance it already holds.
+        private static readonly Func<IReadOnlyList<QueryResult<int>>, HashSet<int>> s_dataSet
+            = results => new HashSet<int>(results.Select(result => result.Data));
+
+        [Component]
+        private static VNode SetReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_combined.Add(Hooks.UseQueries(Queries(), s_dataSet, s_client));
+            return V.Label(text: "set");
         }
 
         [Component]
