@@ -8,6 +8,8 @@ namespace Velvet
     {
         private readonly List<Action<TEvent>> _listeners = new();
 
+        public bool HasListeners => _listeners.Count > 0;
+
         public Action Subscribe(Action<TEvent> listener)
         {
             if (listener == null) throw new ArgumentNullException(nameof(listener));
