@@ -1664,7 +1664,7 @@ namespace Velvet.Tests
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — every trailing item resumed and patched at its correct physical index: an off-by-one
-            // resume patches (and renames, via PatchCommon) the WRONG physical element, leaving a stale or
+            // resume patches (and renames, via PatchBaseElement) the WRONG physical element, leaving a stale or
             // duplicated name in this join. The relocation itself is a term too: with item0 left in its slot
             // nothing moved for the resume to miss, and the order alone reads correct.
             Assert.That(

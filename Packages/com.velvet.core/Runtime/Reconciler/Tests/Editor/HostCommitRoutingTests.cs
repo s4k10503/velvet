@@ -7,10 +7,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Fails when the walk writes a child list itself rather than through <see cref="HostCommitQueue"/>: a call, in
-    /// <see cref="ChildReconciler"/>, <see cref="GeneralPathReconciler"/> or <see cref="ChildElementPlacement"/> or
-    /// in a type the compiler generated inside one of them, to a child-list writer of <c>VisualElement</c> or of its
-    /// <c>Hierarchy</c> (<c>ChildListWriters</c>), or to <see cref="FiberElementCleaner"/>'s removal, which the queue
-    /// is what calls. Read from the compiled assembly, so a call is found by what it calls and not by its spelling.
+    /// <see cref="ChildReconciler"/>, <see cref="GeneralPathReconciler"/>, <see cref="ChildElementPlacement"/> or
+    /// <see cref="NodePatchWalk"/> or in a type the compiler generated inside one of them, to a child-list writer of
+    /// <c>VisualElement</c> or of its <c>Hierarchy</c> (<c>ChildListWriters</c>), or to
+    /// <see cref="FiberElementCleaner"/>'s removal, which the queue is what calls. Read from the compiled assembly, so
+    /// a call is found by what it calls and not by its spelling.
     /// </summary>
     [TestFixture]
     internal sealed class HostCommitRoutingTests
@@ -32,6 +33,7 @@ namespace Velvet.Tests
             typeof(ChildReconciler).FullName!,
             typeof(GeneralPathReconciler).FullName!,
             typeof(ChildElementPlacement).FullName!,
+            typeof(NodePatchWalk).FullName!,
         };
 
         private static bool WritesAChildList(MethodReference callee)

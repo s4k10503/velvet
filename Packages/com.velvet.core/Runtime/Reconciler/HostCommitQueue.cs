@@ -7,8 +7,9 @@ namespace Velvet
     // Ops for the writes a reconcile makes into a container: its child list, the rows each fiber and each Portal is
     // recorded at, a Suspense's hide and reveal, and the fibers it drops. The container can be one the same walk
     // created — a new element's children reconcile through the same diff — and nothing here tells that apart from
-    // a committed one. ChildReconciler, GeneralPathReconciler and ChildElementPlacement call no child-list writer of
-    // their own (HostCommitRoutingTests), though a method they call can. Each op applies where it is called.
+    // a committed one. ChildReconciler, GeneralPathReconciler, ChildElementPlacement and NodePatchWalk call no
+    // child-list writer of their own (HostCommitRoutingTests), though a method they call can. Each op applies where it
+    // is called.
     internal sealed class HostCommitQueue
     {
         private readonly ReconcilerContext _ctx;
