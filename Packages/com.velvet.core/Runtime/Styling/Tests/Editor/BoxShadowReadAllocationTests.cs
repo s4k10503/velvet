@@ -66,6 +66,17 @@ namespace Velvet.Tests
             Assert.That(blocks, Is.Zero);
         }
 
+        // transparent is a palette name as well, which the palette takes as a string.
+        [Test]
+        public void Given_AShadowTransparentColour_When_TheBoxShadowIsReadAgain_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(new[] { "shadow-transparent" });
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
         [Test]
         public void Given_AnImportantClassOfAnotherFamily_When_TheBoxShadowIsReadAgain_Then_NothingIsAllocated()
         {
