@@ -114,7 +114,7 @@ namespace Velvet
                     Property = WrittenProperty(utility, Shape, AddedHint, out _);
                     UnsetUtility = Property == null && Shape.MainOpen > 0
                         ? PaintedUnset(utility.Substring(utility[0] == '-' ? 1 : 0, Shape.MainOpen - (utility[0] == '-' ? 1 : 0)),
-                            EffectiveHint)
+                            EffectiveHint ?? InferredHint(utility, Shape))
                         : null;
                 }
             }

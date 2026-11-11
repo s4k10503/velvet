@@ -647,6 +647,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInsetShadowLayerReadingAnUndeclaredProperty_When_Mounted_Then_TheRingBesideItIsNotDrawn()
+        {
+            // Arrange / Act — the browser discards the whole box-shadow; the control is the same ring alone.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(children: new VNode?[]
+            {
+                V.Div(name: "control", className: "ring-2"),
+                V.Div(name: "reader", className: "ring-2 inset-shadow-[0_0_var(--a)_var(--b)]"),
+            }));
+            var control = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("control"));
+            var reader = RingOverlay.TryGet(_window.rootVisualElement.Q<VisualElement>("reader"));
+
+            // Assert
+            Assert.That(control == null ? "no control" : reader == null ? "not drawn" : "drawn", Is.EqualTo("not drawn"));
+        }
+
+        [Test]
+        public void Given_AShadowColourReadingAnUndeclaredProperty_When_Mounted_Then_TheSizeKeepsItsOwnColour()
+        {
+            // Arrange / Act — Tailwind types the bracket as the shadow's colour, whose variable falls back to the size's.
+            var child = Mount("", "shadow-2xl shadow-[rgb(var(--c))]");
+            var binding = BoxShadowSilhouette.TryGet(child);
+
+            // Assert — shadow-2xl's own black at 25%.
+            Assert.That(binding != null && binding.Layers.Length > 0
+                    ? UnityEngine.ColorUtility.ToHtmlStringRGBA(binding.Layers[0].Color)
+                    : "unbound",
+                Is.EqualTo("00000040"));
+        }
+
+        [Test]
         public void Given_AStylesheetDeclaringAProperty_When_AChildReadsIt_Then_TheChildTakesItsValue()
         {
             // Arrange

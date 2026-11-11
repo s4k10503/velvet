@@ -415,9 +415,7 @@ namespace Velvet
         }
 
         // A size of the family: its -none (which takes no modifier), a preset, or a bracketed shadow list. Tailwind
-        // writes `inset` ahead of each layer of an inset-shadow-[…]. A bracket Tailwind does not type as a colour that
-        // holds a var() this cannot read is a size with nothing to draw, as ReadBoxShadowClass takes it for a size whose
-        // value it cannot judge; one it types as a colour is no size.
+        // writes `inset` ahead of each layer of an inset-shadow-[…].
         private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
             out ShadowSpec[] layers)
         {
@@ -432,8 +430,7 @@ namespace Velvet
                 return true;
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
-                && (TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers)
-                    || (!TailwindDataTypes.IsColor(inner) && inner.IndexOf("var(".AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0));
+                && TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers);
         }
 
         // inset-ring (1px), inset-ring-<n>, inset-ring-[<length>] and inset-ring-<colour>, as Tailwind reads them.
@@ -738,14 +735,16 @@ namespace Velvet
 
         // Whether the browser rejects value as a box-shadow, each layer behind an inset where inset says Tailwind
         // writes one there. Each layer is two to four lengths in a row, the third not negative, with at most one
-        // colour and one inset around them; a layer holding a var() is not judged, nor is a function or a word as a
-        // colour (StyleColorValueParser.RejectsAsColour).
+        // colour and one inset around them; a function or a word as a colour is not judged
+        // (StyleColorValueParser.RejectsAsColour). A layer holding a var() is rejected: StyleCustomProperties places
+        // what it resolves one to after it, so the one read here resolved to nothing, which RejectedValueTests pins as
+        // discarding the box-shadow.
         private static bool RejectsAsBoxShadow(string value, bool inset)
         {
             foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))
             {
-                if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) < 0
-                    && RejectsAsLayer(inset ? "inset " + layer : layer))
+                if (layer.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
+                    || RejectsAsLayer(inset ? "inset " + layer : layer))
                 {
                     return true;
                 }
@@ -754,11 +753,11 @@ namespace Velvet
         }
 
         // Whether Tailwind writes the family's colour variable into a bracket's layers (replace-shadow-colors.ts as 4.3.3
-        // has it). A layer does where one of its space-separated parts is a colour: a #hex, a named colour or a colour
-        // function. Otherwise it does where two parts are lengths, a part opening as one does (a sign then a digit or a
-        // point and a digit, whatever follows) or calc(), clamp(), min(), max() or --spacing(), and at most one part
-        // is anything else, which it takes for the colour or appends one beside. A keyword (inset and the CSS-wide
-        // ones) is no part.
+        // has it). A layer does where one of its space-separated parts is a colour: a part opening with #, a named
+        // colour or a colour function. Otherwise it does where two parts are lengths, a part opening as one does (a digit,
+        // or a point and a digit, after an optional -, whatever follows) or calc(), clamp(), min(), max() or
+        // --spacing(), and at most one part is anything else, which it takes for the colour or appends one beside. A
+        // keyword (inset and the CSS-wide ones) is no part.
         private static bool ReadsShadowColour(string value)
         {
             foreach (var layer in StyleGradientClass.SplitTopLevel(value.Replace('_', ' '), ','))

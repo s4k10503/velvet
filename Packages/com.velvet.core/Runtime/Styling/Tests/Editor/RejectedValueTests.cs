@@ -21,6 +21,11 @@ namespace Velvet.Tests
         [TestCase("ring shadow-[calc(1px)_4px] shadow-[#ggg]")]
         [TestCase("ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]")]
         [TestCase("ring-2 shadow-2xl/150 shadow-[calc(1px)_calc(2px)_red] shadow-red-500")]
+        [TestCase("ring shadow-[var(--shadow)]")]
+        [TestCase("ring shadow-[var(--shadow)] shadow-[#ggg]")]
+        [TestCase("ring-2 shadow-[0_0_var(--a)_var(--b)]")]
+        [TestCase("ring-2 shadow-[0_0_5px_var(--c)]")]
+        [TestCase("ring-2 inset-shadow-[0_0_var(--a)_var(--b)]")]
         public void Given_ARingWhoseBoxShadowTheBrowserDiscards_When_Extracted_Then_NoRingIsDrawn(string classes)
         {
             // Act
@@ -36,8 +41,6 @@ namespace Velvet.Tests
         [TestCase("ring ring-[currentColor]")]
         [TestCase("ring ring-[rebeccapurple]")]
         [TestCase("ring ring-[length:var(--w)]")]
-        [TestCase("ring shadow-[var(--shadow)]")]
-        [TestCase("ring shadow-[var(--shadow)] shadow-[#ggg]")]
         [TestCase("ring inset-ring-[length:0]")]
         [TestCase("ring shadow-md shadow-red-500 shadow-[#ggg]")]
         [TestCase("ring-2 ring-[5PX] ring-current")]
@@ -52,15 +55,16 @@ namespace Velvet.Tests
             Assert.That(ok, Is.True);
         }
 
-        [Test]
-        public void Given_ARejectedShadowColourBesideALayerThatReadsNoColour_When_Extracted_Then_TheRingIsDrawn()
+        // GREEN_ON_BASE(characterization): the base discarded these, where a layer's var() resolves to nothing beside a rejected colour.
+        [TestCase("ring shadow-[0_0_var(--a)_var(--b)] shadow-[#ggg]")]
+        [TestCase("ring-2 inset-shadow-[0_0_var(--a)_var(--b)] inset-shadow-[#ggg]")]
+        public void Given_ARingBesideALayerHoldingAVarAndARejectedColour_When_Extracted_Then_NoRingIsDrawn(string classes)
         {
-            // Act — Tailwind writes a layer with two parts besides its lengths as it stands, without the colour variable.
-            var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(
-                "[--a:5px] [--b:red] ring shadow-[0_0_var(--a)_var(--b)] shadow-[#ggg]".Split(' ')), out _);
+            // Act
+            var ok = StyleRingClass.TryExtract(StyleSpacingPrecedence.Normalize(classes.Split(' ')), out _);
 
             // Assert
-            Assert.That(ok, Is.True);
+            Assert.That(ok, Is.False);
         }
 
         // GREEN_ON_BASE(characterization): the base drew these shadows, whose box-shadow holds no value the browser rejects.
