@@ -175,11 +175,10 @@ namespace Velvet
             }
         }
 
-        // Has every transition the panel runs for the element ease along curve, in place of the curve its
-        // transition-timing-function named, except one that keepsCurve says already runs on a curve it was given. A member
-        // that does not resolve leaves the transitions on the curve they started with.
-        // StyleEaseCurveTransitionTests fails when the swap stops reaching the transition.
-        public static void Retime(VisualElement element, Func<float, float> curve, Predicate<Func<float, float>> keepsCurve)
+        // Has every transition the panel runs for the element ease along the curve replace gives for the one it runs
+        // on, and leaves one replace gives none for on its own. A member that does not resolve leaves the transitions on
+        // the curve they started with. StyleEaseCurveTransitionTests fails when the swap stops reaching the transition.
+        public static void Retime(VisualElement element, Func<Func<float, float>, Func<float, float>?> replace)
         {
             if (!s_readable || s_valuesByProperty == null || s_elements == null || s_count == null || element.panel == null)
             {
@@ -212,7 +211,7 @@ namespace Velvet
                         }
                         var timing = timings.GetValue(i)!;
                         var field = (FieldInfo)Close(s_curve!, timing.GetType());
-                        if (field.GetValue(timing) is Func<float, float> current && !keepsCurve(current))
+                        if (field.GetValue(timing) is Func<float, float> current && replace(current) is { } curve)
                         {
                             field.SetValue(timing, curve);
                             timings.SetValue(timing, i);

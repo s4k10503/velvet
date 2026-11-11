@@ -69,6 +69,11 @@ namespace Velvet.Tests
             Tick();
         }
 
+        // Framer Motion's easeIn and easeOut.
+        private static float FramerEaseIn(float t) => CubicBezierEvaluator.Evaluate(0.42f, 0f, 1f, 1f, t);
+
+        private static float FramerEaseOut(float t) => CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, t);
+
         [Test]
         public void Given_ABezierPlayOnAHeldClock_When_ThePanelTicksAndThenTheClockStepsAFrame_Then_ItMovesOnlyThatFrame()
         {
@@ -342,7 +347,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(opacities,
-                Is.EqualTo(new[] { 1f, 1f - UssEasing.Evaluate(EasingMode.EaseIn, (float)FrameSec) }).Within(1e-6f));
+                Is.EqualTo(new[] { 1f, 1f - FramerEaseIn((float)FrameSec) }).Within(1e-6f));
         }
 
         [Test]
@@ -431,7 +436,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(values,
-                Is.EqualTo(new[] { UssEasing.Evaluate(EasingMode.EaseIn, (float)(2 * FrameSec)), 1f }).Within(1e-6f));
+                Is.EqualTo(new[] { FramerEaseIn((float)(2 * FrameSec)), 1f }).Within(1e-6f));
         }
 
         // GREEN_ON_BASE(characterization): the linear override timing this case pins, which the entry now names
@@ -1288,6 +1293,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(opacity, Is.EqualTo((float)(2 * FrameSec)).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_ASpringPlayWhoseOpacityEntryEasesOut_When_TheClockStepsTwoFramesPastItsDelay_Then_OpacityIsTwoFramesAlongFramersEaseOut()
+        {
+            // Arrange — ShorterEntryDelay's spring, its opacity entry easing out.
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring, DurationSec = 1f, DelaySec = (float)(8 * FrameSec),
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("opacity", durationSec: 1f, easing: EasingMode.EaseOut, delaySec: (float)(4 * FrameSec)),
+                },
+            };
+
+            // Act
+            var opacity = OpacityTwoFramesPastFourFrameDelay(config);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(FramerEaseOut((float)(2 * FrameSec))).Within(1e-5f));
         }
 
         [Test]

@@ -133,8 +133,8 @@ namespace Velvet
         public bool SeekedToStart;
         public MotionRepeat Repeat;
 
-        // Set for a Tween a mount's clock drives (StyleAnimationScheduler.StartDrivenTween): the curve UI Toolkit
-        // eases that tween's transition by, which takes the control points' place.
+        // Set for a Tween a mount's clock drives (StyleAnimationScheduler.StartDrivenTween): the easing its transition
+        // names, on MotionEasing's curve for it, which takes the control points' place.
         public EasingMode? Easing;
         // How long after the tick starts a channel with no Timing of its own begins its curve.
         public float DelaySec;
@@ -806,7 +806,7 @@ namespace Velvet
             var progress = Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec);
             return own.Curve
                 ? CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress)
-                : UssEasing.Evaluate(own.Easing, progress);
+                : MotionEasing.Evaluate(own.Easing, progress);
         }
 
         // A zero duration reads as complete once its delay has passed rather than dividing by zero — the scheduler
@@ -824,7 +824,7 @@ namespace Velvet
             var activeSec = state.ElapsedSec - state.DelaySec;
             if (state.Repeat.Count == 0f)
             {
-                return UssEasing.Evaluate(mode, Progress(state, activeSec, state.DurationSec));
+                return MotionEasing.Evaluate(mode, Progress(state, activeSec, state.DurationSec));
             }
             if (activeSec <= 0f)
             {
@@ -836,7 +836,7 @@ namespace Velvet
             }
             var progress = (float)(state.Repeat.PassTime(activeSec, state.DurationSec, out var mirrored)
                 / state.DurationSec);
-            var eased = UssEasing.Evaluate(mode, progress);
+            var eased = MotionEasing.Evaluate(mode, progress);
             return mirrored ? 1f - eased : eased;
         }
 

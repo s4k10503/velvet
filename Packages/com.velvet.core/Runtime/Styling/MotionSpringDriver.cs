@@ -638,7 +638,7 @@ namespace Velvet
                 return channel.Target;
             }
             var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
-            return Mathf.LerpUnclamped(channel.Origin, channel.Target, UssEasing.Evaluate(own.Easing, progress));
+            return Mathf.LerpUnclamped(channel.Origin, channel.Target, MotionEasing.Evaluate(own.Easing, progress));
         }
 
         /// <summary>

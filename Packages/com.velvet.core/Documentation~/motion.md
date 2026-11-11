@@ -306,9 +306,9 @@ as Framer's `getValueTransition` hands a value its own transition whole: a null 
 the play rather than after the enclosing config's `DelaySec`, a stagger the play waits still counting, as Framer's
 `animateTarget` hands it only the orchestration delay, which a named `DelaySec` replaces, a `BeforeChildren` or
 `AfterChildren` wait still counting since Framer sequences it ahead of the play; and a null `DurationSec` or
-`Easing` takes 0.3 s and an
-ease-out, Framer's keyframes defaults, not the enclosing config's. An entry naming neither is no transition, as
-`isTransitionDefined` reads one, so its value takes the default Framer picks for it (*Transition semantics*), after
+`Easing` takes 0.3 s, the duration Framer's keyframes generator defaults to, and an ease-out, the easing Framer's
+`animateMotionValue` gives a value before its transition, not the enclosing config's. An entry naming neither is no
+transition, as `isTransitionDefined` reads one, so its value takes the default Framer picks for it (*Transition semantics*), after
 the entry's delay and once whatever the play repeats. A `Tween` holding such an entry, or a play whose own
 `DurationSec` is 0 holding an entry that animates, plays on the per-frame driver a `Bezier` plays on, the play's own
 curve landing at once. Where an entry's delay is shorter than the play's, the entry's value starts then and the rest
@@ -538,8 +538,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
 ## Cubic-bezier easing
 
 `TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s fixed set of
-curves (UI Toolkit's native transitions take one of its 22 modes, whose `ease-in-out` is a quadratic standing in
-for `cubic-bezier(0.42, 0, 0.58, 1)` rather than the Tailwind curve), it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
+curves (UI Toolkit's native transitions take one of its 22 modes; *Named eases* below says which curve each runs on), it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
 algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
@@ -553,6 +552,18 @@ back to the default curve with a one-shot console warning. The CSS `cubic-bezier
 still requires `x1` and `x2` in `[0,1]`, as CSS does.
 `BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
 target mid-tween.
+
+## Named eases
+
+`EaseIn`, `EaseOut` and `EaseInOut` — as a `Tween`'s `Easing` or `ExitEasing`, a `PropertyOverrides` entry's
+`Easing`, or the ease-out a transition naming none takes — run on Framer Motion's `easeIn`, `easeOut` and `easeInOut`:
+`cubic-bezier(0.42, 0, 1, 1)`, `cubic-bezier(0, 0, 0.58, 1)` and `cubic-bezier(0.42, 0, 0.58, 1)`. UI Toolkit's own
+transition eases those keywords by quadratics, so where it plays the tween Velvet has each transition ease along
+Framer's curve for its own keyword once the engine reports it running, the engine keeping the duration, delay and
+reversal. A driven `Tween` (*Clocks*), a `layoutId` move, a spring or bezier play's entry, `UseAnimate` and a
+timeline's step run the same curve, and so do the transitions Velvet runs in the engine's place
+([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Every other
+`EasingMode` runs on the curve UI Toolkit eases a USS transition by.
 
 ## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
 
@@ -701,8 +712,8 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   also changed variants. It takes the Motion's own `transition:` rather than an active pose's — a
   rect delta is not a swap into a pose — or that transition's `Layout` in its place when set
   (Framer's `transition.layout`). Its `Type` decides the curve as for a variant swap: a spring by
-  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing` on the curve UI Toolkit eases a
-  USS transition by for that `EasingMode`, a bezier by its control points, each after `DelaySec`, and a
+  `Stiffness` / `Damping` / `Mass`, a tween by `DurationSec` / `Easing` on that `EasingMode`'s curve
+  ([Named eases](#named-eases)), a bezier by its control points, each after `DelaySec`, and a
   zero duration lands the move at once. A Motion whose caller names no `transition`, `duration`,
   `easing` or `delay` moves on Framer's default layout transition, a 0.45 s tween eased by
   `cubic-bezier(0.4, 0, 0.1, 1)`. One given a `duration`, `easing` or `delay` and no `transition` moves on a tween
@@ -872,7 +883,7 @@ frame's worth:
   wait for its `DelaySec` and stagger slot; a step that passes the delay carries what it passed it by into
   the play. A `Tween` is played by the per-frame driver a `Bezier` plays on, rather than by UI Toolkit's
   transition, which would run on the panel's time: on the tween's own duration, delay and
-  `PropertyOverrides`, eased by the curve UI Toolkit eases that transition by for each `Easing`. So it
+  `PropertyOverrides`, eased by the curve that transition runs each `Easing` on ([Named eases](#named-eases)). So it
   animates the channels *Driven channels* lists, a `StyleTransition` preset's opacity, translate and scale
   among them. A property outside them lands with the swap where the play suspends the element's own
   transitions, which it does while they name a property one of its channels writes (`transition-all` does);
@@ -982,8 +993,8 @@ but the zero spring duration the `To` bullet above names, and not the same insta
 
 A `Tween` play -- the default `Type`, and that of the transition a step naming none takes -- follows the
 controls on any clock: on a sequence's playback it is played by the per-frame
-driver a `Bezier` plays on, eased by the curve UI Toolkit's transition would ease it by
-([Clocks](#clocks-holding-motion-with-game-time)). A `Tween` the element starts from outside the sequence, an exit
+driver a `Bezier` plays on, eased by the curve UI Toolkit's transition would run it on
+([Clocks](#clocks-holding-motion-with-game-time), [Named eases](#named-eases)). A `Tween` the element starts from outside the sequence, an exit
 included, is not on the playback, and on the default clock it stays UI Toolkit's own transition unless it
 repeats.
 
@@ -1037,7 +1048,11 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   keyframe when the animation ends.
 - **Transition.** A `StyleTransitionConfig` per call or segment. `Tween` runs `DurationSec` on `Easing`, `Bezier` on its
   control points, and `Spring` as the spring it describes. A `Tween` or `Bezier` eases its keyframes pair by pair, each
-  pair over an even share of the duration, as Framer's keyframes generator eases them. `DelaySec` delays the segment.
+  pair over an even share of the duration, as Framer's keyframes generator eases them, but for a single call's
+  `Opacity`: that runs its keyframes, evenly spaced, along one easing over the whole duration, as Framer hands opacity
+  to the Web Animations API with one easing for the whole animation. A `RepeatDelaySec` or a `Mirror` `RepeatType`,
+  even with no `Repeat`, keeps Framer's opacity on its keyframes generator, and Velvet's on the pair-by-pair easing.
+  `DelaySec` delays the segment.
 - **Per-value transitions.** A `PropertyOverrides` entry naming `"opacity"`, `"translate"` (`X` and `Y`),
   `"scale"`, `"rotate"` or `"all"` times that value, the last entry naming it winning. A single call takes the entry
   in place of the transition, as Framer's `getValueTransition` hands it, so an entry naming no `DurationSec` and no
@@ -1045,7 +1060,8 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   `animateMotionValue` reads `valueTransition.delay || transition.delay`. A sequence segment lays the entry over the
   segment's transition, as Framer's sequence does.
 - **No transition.** A single call whose transition is null, or names nothing as *Transition semantics* below reads
-  one, takes Framer's `getDefaultTransition` for each value: more than two keyframes run 0.8 s on an ease-out; `X`, `Y`
+  one, takes Framer's `getDefaultTransition` for each value: more than two keyframes run 0.8 s on an ease-out, eased
+  as *Transition* above says; `X`, `Y`
   and `RotateDeg` the spring of 500 stiffness and 25 damping, and `Scale` the one of 550 stiffness and 30 damping,
   critically damped where it heads for 0, each with a rest speed of 10; `Opacity` a 0.3 s ease of
   `cubic-bezier(0.25, 0.1, 0.35, 1)`. A sequence segment takes no per-value default, as Framer's sequence does not: it

@@ -46,7 +46,7 @@ namespace Velvet
             var progress = DurationSec > 0f ? Math.Min(1f, (float)(activeSec / DurationSec)) : 1f;
             return Bezier is { } curve
                 ? CubicBezierEvaluator.Evaluate(curve.X1, curve.Y1, curve.X2, curve.Y2, progress)
-                : UssEasing.Evaluate(Easing, progress);
+                : MotionEasing.Evaluate(Easing, progress);
         }
 
         // This timing over a travel of `travel`, where a spring rests elsewhere than the travel it was measured on.

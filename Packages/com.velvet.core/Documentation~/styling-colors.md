@@ -142,8 +142,9 @@ transition the engine runs ease along the function once the engine reports it ru
 delay and reversal, per property, a transition running keeps the function it started on, and these transitions Velvet
 runs itself ease by the same function: `transition-filter`'s tween, a `backdrop-*` change, a dashed or dotted divider's
 colour, and a background or border colour repainted in the engine's place under a `shadow-*`, a `border-dashed` or
-`border-dotted`, or a layoutId Motion's per-axis corners. A timing function written inline, as a Motion's is, is the
-keyword it names. A name is a token of its namespace only where a sheet declares it.
+`border-dotted`, or a layoutId Motion's per-axis corners. A timing function written inline is the keyword it names,
+and one a Motion's tween writes runs on the curve [motion.md](motion.md#named-eases) gives that keyword. A name is a
+token of its namespace only where a sheet declares it.
 
 A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled
 utilities of that namespace (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`,

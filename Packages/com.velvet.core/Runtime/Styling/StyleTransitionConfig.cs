@@ -308,7 +308,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Easing mode. Applied as the inline transition-timing-function style.
+        /// Easing mode. Applied as the inline transition-timing-function style; <c>EaseIn</c>, <c>EaseOut</c> and
+        /// <c>EaseInOut</c> run on Framer Motion's curves for those names (<c>Documentation~/motion.md</c>).
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
         /// A <see cref="TransitionType.Spring"/> play's own curve is its physics; it reads this only for a sequence
         /// segment <see cref="Animator"/> plays over more than two keyframes, which runs as a tween. Ignored when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>: the
@@ -390,7 +391,9 @@ namespace Velvet
 
         /// <summary>
         /// How each pass after the first runs — Framer Motion's <c>repeatType</c>. Defaults to
-        /// <see cref="TransitionRepeatType.Loop"/>. Read only when <see cref="Repeat"/> is above zero.
+        /// <see cref="TransitionRepeatType.Loop"/>. Read only when <see cref="Repeat"/> is above zero, but for the
+        /// opacity of a single <see cref="Animator"/> call, whose keyframes <see cref="TransitionRepeatType.Mirror"/>
+        /// eases pair by pair (<c>Documentation~/motion.md</c>).
         /// </summary>
         public TransitionRepeatType RepeatType { get; init; } = TransitionRepeatType.Loop;
 
@@ -670,8 +673,8 @@ namespace Velvet
     /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>. It
     /// replaces the enclosing config for its property, as Framer Motion's per-value transition does: a null
     /// <see cref="DelaySec"/> starts the value with the play, not after its <see cref="StyleTransitionConfig.DelaySec"/>
-    /// (a stagger the play waits still counts), and a null <see cref="DurationSec"/> or
-    /// <see cref="Easing"/> takes Framer's keyframes defaults of 0.3 s and an ease-out. An entry naming neither is no
+    /// (a stagger the play waits still counts), and a null <see cref="DurationSec"/> or <see cref="Easing"/> takes
+    /// 0.3 s and an ease-out, as Framer Motion's per-value transition takes them. An entry naming neither is no
     /// transition, and its value takes the default transition Framer Motion picks for it.
     /// </summary>
     public readonly struct StylePropertyTransition

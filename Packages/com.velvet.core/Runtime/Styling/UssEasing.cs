@@ -6,7 +6,7 @@ using UitkEasing = UnityEngine.UIElements.Experimental.Easing;
 namespace Velvet
 {
     // The curve UI Toolkit eases a USS transition by for each EasingMode, for a driver that steps a value
-    // itself and has to land on the curve a variant swap's transition takes. UssEasingTests compares every
+    // itself and has to land on the curve the engine's own transition takes. UssEasingTests compares every
     // mode against UI Toolkit's own mapping.
     internal static class UssEasing
     {

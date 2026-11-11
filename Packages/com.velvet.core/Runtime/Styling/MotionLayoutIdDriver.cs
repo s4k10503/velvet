@@ -1434,7 +1434,7 @@ namespace Velvet
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
-            : UssEasing.Evaluate(_config.Easing, t);
+            : MotionEasing.Evaluate(_config.Easing, t);
     }
 
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.

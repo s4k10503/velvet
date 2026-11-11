@@ -6,7 +6,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the transition <c>Animator.Animate</c> plays a value on where its caller names none or only orchestration,
-    /// the repeat options it honours, and how a sequence segment differs from a single animation in both.
+    /// the repeat options it honours, and how a sequence segment differs from a single animation in both; the curves
+    /// its named eases take; and how a single call eases opacity's keyframes.
     /// </summary>
     [TestFixture]
     internal sealed class AnimateTransitionDefaultsTests
@@ -17,6 +18,11 @@ namespace Velvet.Tests
             => new() { DurationSec = 1f, Easing = EasingMode.EaseIn, Repeat = 1f, RepeatType = type, RepeatDelaySec = repeatDelaySec };
 
         private static float TranslateX(VisualElement element) => element.style.translate.value.x.value;
+
+        // Framer Motion's easeIn and easeOut.
+        private static float FramerEaseIn(float t) => CubicBezierEvaluator.Evaluate(0.42f, 0f, 1f, 1f, t);
+
+        private static float FramerEaseOut(float t) => CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, t);
 
         [Test]
         public void Given_AnXAnimationWithNoTransition_When_ATenthOfASecondPasses_Then_ItIsWhereTheTransformSpringPutsIt()
@@ -78,7 +84,6 @@ namespace Velvet.Tests
             Assert.That(controls.IsFinished, Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base already eases it out; deleting `_ease = EaseOut;` from ScopedTrack's constructor reddens it.
         [Test]
         public void Given_ASequenceSegmentWithNoTransition_When_HalfOfThreeTenthsOfASecondPasses_Then_ItIsHalfwayAlongTheEaseOut()
         {
@@ -90,7 +95,7 @@ namespace Velvet.Tests
             controls.Tick(0.15f);
 
             // Assert
-            Assert.That(TranslateX(element), Is.EqualTo(100f * UssEasing.Evaluate(EasingMode.EaseOut, 0.5f)).Within(1e-3f));
+            Assert.That(TranslateX(element), Is.EqualTo(100f * FramerEaseOut(0.5f)).Within(1e-3f));
         }
 
         [Test]
@@ -105,7 +110,115 @@ namespace Velvet.Tests
             controls.Tick(0.25f);
 
             // Assert
-            Assert.That(TranslateX(element), Is.EqualTo(100f * UssEasing.Evaluate(EasingMode.EaseOut, 0.5f)).Within(1e-3f));
+            Assert.That(TranslateX(element), Is.EqualTo(100f * FramerEaseOut(0.5f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeXKeyframesWithNoTransition_When_AQuarterOfTheirEightTenthsOfASecondPasses_Then_TheFirstPairIsHalfwayAlongItsOwnEaseOut()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { X = new[] { 0f, 100f, 200f } });
+
+            // Act
+            controls.Tick(0.2f);
+
+            // Assert
+            Assert.That(TranslateX(element), Is.EqualTo(100f * FramerEaseOut(0.5f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesWithNoTransition_When_HalfOfTheirEightTenthsOfASecondPasses_Then_OpacityIsWhereOneEaseOutOverTheWholeRunPutsIt()
+        {
+            // Arrange — halfway along the run is the middle keyframe; the run eased out is past it, on the second pair.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } });
+
+            // Act
+            controls.Tick(0.4f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(2f - 2f * FramerEaseOut(0.5f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesOnAnEaseInSecond_When_HalfASecondPasses_Then_OpacityIsWhereOneEaseInOverTheWholeRunPutsIt()
+        {
+            // Arrange — halfway along the run is the middle keyframe; the run eased in is short of it, on the first pair.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseIn });
+
+            // Act
+            controls.Tick(0.5f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(2f * FramerEaseIn(0.5f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesOnABezierOvershootingTheirRun_When_HalfASecondPasses_Then_OpacityCarriesOnAlongTheLastPair()
+        {
+            // Arrange — the curve stands at 1.25 half way along, so the run is half a pair past the last keyframe.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0.5f } },
+                new StyleTransitionConfig
+                {
+                    Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0.25f, BezierY1 = 1.5f, BezierX2 = 0.75f, BezierY2 = 1.5f,
+                });
+
+            // Act
+            controls.Tick(0.5f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(0.25f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesRepeatingAsAMirrorWithNoTransition_When_SevenTenthsOfTheFirstPassHaveRun_Then_TheSecondPairIsAlongItsOwnEaseOut()
+        {
+            // Arrange — seven tenths of the run is four tenths of the way along the second pair.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { Repeat = 1f, RepeatType = TransitionRepeatType.Mirror });
+
+            // Act
+            controls.Tick(0.56f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(1f - FramerEaseOut(0.4f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesWithARepeatDelayAndNoTransition_When_SevenTenthsOfTheFirstPassHaveRun_Then_TheSecondPairIsAlongItsOwnEaseOut()
+        {
+            // Arrange — seven tenths of the run is four tenths of the way along the second pair.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { Repeat = 1f, RepeatDelaySec = 0.5f });
+
+            // Act
+            controls.Tick(0.56f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(1f - FramerEaseOut(0.4f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentOfThreeOpacityKeyframesWithNoTransition_When_SevenTenthsOfItsThreeTenthsOfASecondPass_Then_TheSecondPairIsAlongItsOwnEaseOut()
+        {
+            // Arrange — seven tenths of the run is four tenths of the way along the second pair.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } }),
+            });
+
+            // Act
+            controls.Tick(0.21f);
+
+            // Assert
+            Assert.That(element.style.opacity.value, Is.EqualTo(1f - FramerEaseOut(0.4f)).Within(1e-4f));
         }
 
         [Test]
@@ -136,7 +249,7 @@ namespace Velvet.Tests
             controls.Tick(1.25f);
 
             // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseIn, 0.75f)).Within(1e-4f));
+            Assert.That(element.style.opacity.value, Is.EqualTo(FramerEaseIn(0.75f)).Within(1e-4f));
         }
 
         [Test]
@@ -151,7 +264,7 @@ namespace Velvet.Tests
             controls.Tick(1.25f);
 
             // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(1f - UssEasing.Evaluate(EasingMode.EaseIn, 0.25f)).Within(1e-4f));
+            Assert.That(element.style.opacity.value, Is.EqualTo(1f - FramerEaseIn(0.25f)).Within(1e-4f));
         }
 
         [Test]
@@ -166,7 +279,7 @@ namespace Velvet.Tests
             controls.Tick(1.75f);
 
             // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseIn, 0.25f)).Within(1e-4f));
+            Assert.That(element.style.opacity.value, Is.EqualTo(FramerEaseIn(0.25f)).Within(1e-4f));
         }
 
         [Test]
@@ -183,7 +296,7 @@ namespace Velvet.Tests
             controls.Tick(1.25f);
 
             // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(1f - UssEasing.Evaluate(EasingMode.EaseIn, 0.25f)).Within(1e-4f));
+            Assert.That(element.style.opacity.value, Is.EqualTo(1f - FramerEaseIn(0.25f)).Within(1e-4f));
         }
 
         [Test]
@@ -263,7 +376,7 @@ namespace Velvet.Tests
             controls.Tick(0.25f);
 
             // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseOut, 0.5f)).Within(1e-4f));
+            Assert.That(element.style.opacity.value, Is.EqualTo(FramerEaseOut(0.5f)).Within(1e-4f));
         }
 
         [Test]
