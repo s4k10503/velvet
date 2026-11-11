@@ -47,10 +47,6 @@ namespace Velvet
         bool BeginRangeForController();
         void EndRangeForController(VisualElement container, bool opened);
 
-        // The abort an error boundary raises as it swaps in its fallback (ReconcilerContext.IsAborted).
-        bool IsAbortedForController { get; }
-        void RestoreAbortForController(bool aborted);
-
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
         // context cursor is empty and FiberStack.Current is null — which would give each item fiber a null

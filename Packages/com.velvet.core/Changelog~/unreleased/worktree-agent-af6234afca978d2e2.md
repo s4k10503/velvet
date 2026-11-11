@@ -7,10 +7,6 @@
   list's item length, which went to the element standing in its slot.
 - A `V.VirtualList` row that is a `V.Portal` now mounts its children in the target before the scroll that brings it
   into view returns, in the order a render mounts them, a Component row beside it in that range included.
-- A `V.VirtualList` row built after a row whose error boundary swapped in its fallback in the same render of the
-  list's host, as one does when a ref cleanup it owns throws while the row is patched, is now built whole, and the
-  children after that boundary in its own row are patched. The first was created without its children, and the
-  second kept what the render before gave them.
 - A `V.VirtualList` row that a scroll mounts inside a `V.Provider` of its own now reads that Provider's value. Where a
   Provider of the same context enclosed the component rendering the list, the row read that one's value instead.
 - A `V.Motion` holding a `layoutId` now runs a change of its own translate during its move, and after the move while

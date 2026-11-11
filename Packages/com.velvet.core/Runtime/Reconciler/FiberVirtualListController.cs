@@ -413,7 +413,6 @@ namespace Velvet
             // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
             // cursor for the item bodies, then stamps the new fibers for isolated-re-render reconstruction.
             var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, outsidePass);
-            var abortedAtStart = _reconciler.IsAbortedForController;
             try
             {
                 for (var i = 0; i < newCount; i++)
@@ -478,12 +477,7 @@ namespace Velvet
                         // Store the patch's RETURN: a class-driven wrap/unwrap (shadow-*/clip-path-*)
                         // swaps the slot's top-level element, and re-mounting a stale reference would
                         // strip the wrapper (or re-mount an emptied one).
-                        newElements[i] = PatchRow(
-                            existing.element, existing.node, vnode, abortedAtStart, out var patched);
-                        if (!patched)
-                        {
-                            newNodes[i] = existing.node;
-                        }
+                        newElements[i] = _reconciler.PatchNodeForController(existing.element, existing.node, vnode);
                     }
                     else
                     {
@@ -522,39 +516,6 @@ namespace Velvet
             {
                 _reconciler.EndDetachedItemScope(_hostFiber, _enclosingContext, scopeToken);
             }
-        }
-
-        // A boundary in the row that swapped in its fallback as the patch ran stopped the rest of the row's walk short
-        // of newNode. The patch runs again from the same baseline, the fallback now standing where the boundary's
-        // content threw, as a pass that aborted diffs its next render from the tree before it
-        // (FiberRenderer.RenderAndReconcile). One that stops short again leaves patched false, and the caller keeps the
-        // row's prior node, which the list's next range patches the row from.
-        private VisualElement PatchRow(
-            VisualElement element, VNode oldNode, VNode newNode, bool abortedAtStart, out bool patched)
-        {
-            var row = _reconciler.PatchNodeForController(element, oldNode, newNode);
-            patched = true;
-            if (RowAborted(abortedAtStart))
-            {
-                row = _reconciler.PatchNodeForController(row, oldNode, newNode);
-                patched = !RowAborted(abortedAtStart);
-            }
-            return row;
-        }
-
-        // Whether the walk of the row just patched ran under an abort, and so stopped short: one a boundary inside the
-        // row raised, or one the range started under. A boundary's is the row's: the rows after it lie outside that
-        // boundary, as FiberRenderer.ReconcileRenderedTree keeps the abort of a row that is itself a boundary to that
-        // row's reconcile, so the range's goes back to what it started with. One a boundary above the list raised
-        // stands: that boundary's swap disposed the list, which ends the loop.
-        private bool RowAborted(bool abortedAtStart)
-        {
-            if (_isDisposed || !_reconciler.IsAbortedForController)
-            {
-                return false;
-            }
-            _reconciler.RestoreAbortForController(abortedAtStart);
-            return true;
         }
 
         private enum OldRowTable : byte

@@ -3348,6 +3348,11 @@ namespace Velvet
         // OUTERMOST Reconcile pass across the entire fiber tree completes. Using an instance-local depth would
         // treat each fiber-owned Reconciler.Reconcile call as a fresh top-level and run that reset mid-pass.
         internal int SharedReconcileDepth { get; set; }
+
+        // The SharedReconcileDepth the bracket of a VirtualList range rendered outside a pass holds while it is open
+        // (Reconciler's BeginRangeForController), and 0 while none is. For the abort the bracket is no pass: a boundary
+        // catching at its depth raises none (FiberErrorBoundary.TryCatch).
+        internal int RangeBracketDepth { get; set; }
         public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }
 

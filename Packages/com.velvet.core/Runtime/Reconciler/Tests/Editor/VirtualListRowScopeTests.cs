@@ -8,12 +8,12 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what a <see cref="V.VirtualList{T}"/> row's render takes from around it and leaves to the rows after
-    /// it, in a range a scroll renders and in one a render of the list's host renders.
+    /// it.
     /// <list type="bullet">
-    /// <item>A boundary inside a row that swaps in its fallback as the range patches the row leaves the rest of that
-    /// row patched, and the rows after it in the range built whole; where a second boundary in the row does the same
-    /// as the patch runs again, the list's next range patches what is left. The node a patch no boundary stops renders
-    /// is the one the next range patches the row from.</item>
+    /// <item>In a range a scroll renders, a boundary inside a row that swaps in its fallback as the range patches the
+    /// row leaves the rest of that row patched, a Component the patch drops from the row gone, and the rows after it
+    /// built whole. A render after such a range still keeps the tree it had before where a boundary in its walk aborts
+    /// it.</item>
     /// <item>A row a scroll mounts reads the value its enclosing Provider holds now, under a memoized host that has not
     /// rendered since that value changed; a row a render of the host mounts reads the value that render gave the
     /// Provider, a scroll having rendered a range before it; one inside a Provider of the row's own reads that
@@ -26,10 +26,13 @@ namespace Velvet.Tests
     {
         private VisualElement _root;
         private static bool s_refHeld;
-        private static int s_boundaries;
         private static string s_title;
+        private static bool s_badge;
+        private static bool s_fallbackShown;
         private static bool s_rowProvided;
-        private static StateUpdater<int> s_render;
+        private static bool s_hostMemoized;
+        private static ComponentFiber s_hostFiber;
+        private static StateUpdater<bool> s_setFlipped;
         private static StateUpdater<string> s_setTheme;
         private static StateUpdater<int> s_renderOutside;
 
@@ -45,47 +48,68 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             FiberStrictMode.Enabled = false;
-            (s_refHeld, s_boundaries, s_title, s_rowProvided, s_render, s_setTheme, s_hostMemoized, s_renderOutside) =
-                (true, 1, "x", false, default, default, true, default);
+            (s_refHeld, s_title, s_badge, s_fallbackShown, s_rowProvided, s_hostMemoized) =
+                (true, "x", false, false, false, true);
+            (s_hostFiber, s_setFlipped, s_setTheme, s_renderOutside) = (null, default, default, default);
         }
 
         [Component(Compiler = false, IsErrorBoundary = true)]
         private static VNode RefBoundary(bool holdRef)
         {
-            Hooks.UseFallback(_ => V.Label(name: "fallback", text: "fallback"));
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "fallback", text: "fallback");
+            });
             return V.Label(name: "held", refCallback: holdRef ? s_refWithThrowingCleanup : null);
         }
 
-        // Rows "a" to "d"; "b" holds s_boundaries boundaries and then a label titled s_title, the others a label named
-        // after the row.
+        [Component(Compiler = false)]
+        private static VNode Badge() => V.Label(name: "badge", text: "badge");
+
+        // Rows "a" to "d"; "b" holds the badge where s_badge says, the boundary and a label titled s_title; the others
+        // a label named after the row.
         [Component(Compiler = false)]
         private static VNode BoundaryRowsHost()
-        {
-            var (_, setRender) = Hooks.UseState(0);
-            s_render = setRender;
-            return V.Div(children: new VNode[]
+            => V.Div(children: new VNode[]
             {
                 V.VirtualList(
                     items: new[] { "a", "b", "c", "d" },
                     keySelector: item => item,
                     itemHeight: 10f,
-                    renderer: item => item == "b"
-                        ? V.Div(name: item, children: BoundaryRow())
-                        : V.Div(name: item, children: new VNode[] { V.Label(name: item + "-label", text: item) }),
+                    renderer: item => item != "b"
+                        ? V.Div(name: item, children: new VNode[] { V.Label(name: item + "-label", text: item) })
+                        : BoundaryRow(),
                     overscan: 0,
                     key: "list"),
             });
-        }
 
-        private static VNode[] BoundaryRow()
-        {
-            var children = new VNode[s_boundaries + 1];
-            for (var i = 0; i < s_boundaries; i++)
+        private static VNode BoundaryRow()
+            => V.Div(name: "b", children: new VNode[]
             {
-                children[i] = V.Component(RefBoundary, s_refHeld, key: "boundary-" + i);
-            }
-            children[s_boundaries] = V.Label(name: "after", text: s_title);
-            return children;
+                s_badge ? V.Component(Badge, key: "badge") : null,
+                V.Component(RefBoundary, s_refHeld, key: "boundary"),
+                V.Label(name: "after", text: s_title),
+            });
+
+        // The host's own boundary, beside the list, takes the ref away from its label once flipped.
+        [Component(Compiler = false)]
+        private static VNode ListBesideABoundaryHost()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            var (flipped, setFlipped) = Hooks.UseState(false);
+            s_setFlipped = setFlipped;
+            return V.Div(name: flipped ? "host-flipped" : "host-initial", children: new VNode[]
+            {
+                V.VirtualList(
+                    items: new[] { "a", "b" },
+                    keySelector: item => item,
+                    itemHeight: 10f,
+                    renderer: item => V.Label(name: item, text: item),
+                    overscan: 0,
+                    key: "list"),
+                V.Component(RefBoundary, !flipped, key: "boundary"),
+            });
         }
 
         private static VNode Row(string item) => s_rowProvided
@@ -112,8 +136,6 @@ namespace Velvet.Tests
                 itemHeight: 10f,
                 renderer: Row,
                 overscan: 0);
-
-        private static bool s_hostMemoized;
 
         [Component(Compiler = false)]
         private static VNode ThemeRoot()
@@ -162,28 +184,6 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>("d-label"), Is.Not.Null);
         }
 
-        [Test]
-        public void Given_ARowWhoseBoundarySwapsInItsFallbackAsTheHostsRenderPatchesIt_When_ThatRenderBuildsARowAfterIt_Then_ThatRowIsBuiltWhole()
-        {
-            // Arrange — the viewport height a geometry pass would have left, so a render of the host renders the range
-            // inside its pass; "b"'s boundary holds a ref after a first render.
-            using var mounted = V.Mount(_root, V.Component(BoundaryRowsHost, key: "host"), CaughtErrors.Unlogged);
-            var viewportHeight = typeof(FiberVirtualListController)
-                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            viewportHeight.SetValue(Controller(mounted), 30f);
-            s_render.Invoke(previous => previous + 1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            s_refHeld = false;
-            viewportHeight.SetValue(Controller(mounted), 40f);
-
-            // Act — a render that patches "b", taking its ref away, and builds "d" after it.
-            s_render.Invoke(previous => previous + 1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(_root.Q<Label>("d-label"), Is.Not.Null);
-        }
-
         // GREEN_ON_BASE(characterization): the base patches a scrolled range's rows with no pass around them.
         // A boundary's catch in a row stops nothing after it there, so the row's later children are patched too.
         [Test]
@@ -201,69 +201,41 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>("after")?.text, Is.EqualTo("y"));
         }
 
-        [Test]
-        public void Given_ARowWhoseBoundarySwapsInItsFallbackAsTheHostsRenderPatchesIt_When_TheRowHoldsALabelAfterTheBoundary_Then_TheLabelIsPatched()
-        {
-            // Arrange — the viewport height a geometry pass would have left, so a render of the host renders the range
-            // inside its pass; "b"'s boundary holds a ref, and its label reads "x", after a first render.
-            using var mounted = V.Mount(_root, V.Component(BoundaryRowsHost, key: "host"), CaughtErrors.Unlogged);
-            var viewportHeight = typeof(FiberVirtualListController)
-                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            viewportHeight.SetValue(Controller(mounted), 30f);
-            s_render.Invoke(previous => previous + 1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            (s_refHeld, s_title) = (false, "y");
-            viewportHeight.SetValue(Controller(mounted), 40f);
-
-            // Act — a render that patches "b", taking its ref away and retitling its label.
-            s_render.Invoke(previous => previous + 1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-
-            // Assert
-            Assert.That(_root.Q<Label>("after")?.text, Is.EqualTo("y"));
-        }
-
         // GREEN_ON_BASE(characterization): the base patches a scrolled range's rows with no pass around them.
-        // Two boundaries' catches in a row stop nothing after them there, so a later scroll finds the row patched.
+        // A boundary's catch in a row aborts nothing there, so a Component the patch drops leaves with its elements.
         [Test]
-        public void Given_ARowWhoseTwoBoundariesEachSwapInTheirFallbackAsAScrollPatchesIt_When_TheNextScrollRendersTheRange_Then_TheLabelAfterThemIsPatched()
+        public void Given_ARowWhoseBoundarySwapsInItsFallbackAsAScrollPatchesIt_When_ThatPatchDropsAComponentAheadOfIt_Then_TheComponentsElementsLeave()
         {
-            // Arrange — two boundaries in "b", each holding a ref, and a label reading "x", after a first scroll; a
-            // second scroll takes the refs away and retitles the label, the patch it runs again stopping at the second
-            // boundary.
-            s_boundaries = 2;
+            // Arrange — "b" holds the badge ahead of its boundary, which holds a ref, after a first scroll.
+            s_badge = true;
             using var mounted = V.Mount(_root, V.Component(BoundaryRowsHost, key: "host"), CaughtErrors.Unlogged);
             Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
-            (s_refHeld, s_title) = (false, "y");
+            (s_badge, s_refHeld) = (false, false);
+
+            // Act — a scroll that patches "b", dropping the badge and taking the boundary's ref away.
             Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 40f);
 
-            // Act — the next scroll, which renders "b" again.
-            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
-
             // Assert
-            Assert.That(_root.Q<Label>("after")?.text, Is.EqualTo("y"));
+            Assert.That(_root.Q<Label>("badge"), Is.Null);
         }
 
-        // GREEN_ON_BASE(characterization): the base records each row's new node as the range patches it.
-        // It does so whatever the walk did; a patch that completes has to go on recording it, the next range diffing
-        // from it.
+        // GREEN_ON_BASE(characterization): the base aborts a pass in whose walk a boundary catches a failing ref cleanup.
+        // It does so whatever ran before the pass, which a scroll's range that ended ahead of it must not change.
         [Test]
-        public void Given_ARowAScrollPatched_When_TheNextScrollRendersItAsItWasBefore_Then_ItShowsThatAgain()
+        public void Given_ARangeAScrollRendered_When_ABoundaryInTheHostsNextRenderAbortsIt_Then_TheHostKeepsTheTreeItHadBefore()
         {
-            // Arrange — "b" holds no boundary, whose held ref's cleanup would throw as the tree unmounts; its label reads
-            // "x" after a first scroll and "y" after a second.
-            s_boundaries = 0;
-            using var mounted = V.Mount(_root, V.Component(BoundaryRowsHost, key: "host"), CaughtErrors.Unlogged);
-            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
-            s_title = "y";
-            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 40f);
-            s_title = "x";
+            // Arrange — a scroll renders the list's range ahead of the host's render.
+            using var mounted = V.Mount(_root, V.Component(ListBesideABoundaryHost, key: "host"), CaughtErrors.Unlogged);
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 20f);
 
-            // Act
-            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
+            // Act — the host's render takes the ref of the boundary's label away, whose cleanup the boundary catches.
+            s_setFlipped.Invoke(true);
+            mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(_root.Q<Label>("after")?.text, Is.EqualTo("x"));
+            // Assert — null where the boundary caught nothing, which the name the host had before never equals.
+            Assert.That(
+                s_fallbackShown ? (s_hostFiber?.PreviousTree?[0] as BaseElementNode)?.Name : null,
+                Is.EqualTo("host-initial"));
         }
 
         [Test]
