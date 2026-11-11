@@ -1410,16 +1410,17 @@ order their entries were appended:
   there is none, so a run above that and short of the threshold, or one its model was not judged at,
   stays inside the range.
 - An issue names each of its steps by a marker holding the benchmark and the first slow commit, and
-  nothing else ties a step to an issue. A step decided at one of the twelve latest entries that no issue
+  nothing else ties a step to an issue. Only issues labelled `performance` are read, so removing that
+  label from one detaches it, and a step it names can be filed again. A step decided at one of the twelve latest entries that no issue
   names, open or closed, is new; the new steps one run finds whose ranges share a commit go into one new
   issue, and a new step goes into a new issue even where an open one holds a step in the same range.
-- The job rewrites an issue only while it is open, nobody has reopened it, and the history holds every
-  step it names; it never closes one. Closing an issue is how a step is accepted or answered: its
+- The job rewrites an issue only if it opened it, and only while it is open, nobody has reopened it, and
+  the history holds every step it names; it never closes one. Closing an issue is how a step is accepted or answered: its
   marker keeps naming the step, so the step is not filed again.
 - What this costs: a step whose first slow run moves, as when an entry for a commit among its runs is
   appended late, no longer matches its marker; decided at one of the twelve latest entries, it is filed
   again as a new issue, and the old one is left as it was either way. Steps one commit causes that are
-  decided at different runs get an issue each.
+  found by different job runs get an issue each.
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 

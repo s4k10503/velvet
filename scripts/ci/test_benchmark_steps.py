@@ -84,8 +84,8 @@ class FakeGh:
         return "".join(json.dumps(issue) + "\n" for issue in self.issues) if args[0] == "api" else ""
 
 
-def issue(number, state, *markers):
-    return {"number": number, "state": state, "body": "\n".join(markers) + "\nbody"}
+def issue(number, state, *markers, user=benchmark_steps.AUTHOR):
+    return {"number": number, "state": state, "body": "\n".join(markers) + "\nbody", "user": user}
 
 
 class ReadHistoryTests(unittest.TestCase):
@@ -438,7 +438,7 @@ class SyncIssuesTests(unittest.TestCase):
         # Arrange
         runs = stepped()
         _, body = benchmark_steps.render(steps(runs), "o/r")
-        gh = FakeGh([{"number": 3, "state": "open", "body": body}])
+        gh = FakeGh([{"number": 3, "state": "open", "body": body, "user": benchmark_steps.AUTHOR}])
 
         # Act
         benchmark_steps.sync_issues(steps(runs), runs, "o/r", gh)
@@ -456,6 +456,28 @@ class SyncIssuesTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(gh.calls), 1)
+
+    def test_Given_AnIssueAPersonOpenedWithThisStepsMarker_When_IssuesSync_Then_ItIsNotWritten(self):
+        # Arrange: a write-up a person opened, carrying the job's marker line copied from its issue.
+        runs = stepped()
+        gh = FakeGh([issue(7, "open", benchmark_steps.marker(steps(runs)[0]), user="someone")])
+
+        # Act
+        benchmark_steps.sync_issues(steps(runs), runs, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(gh.calls), 1)
+
+    def test_Given_AnyHistory_When_IssuesSync_Then_EachIssueIsReadWithWhoOpenedIt(self):
+        # Arrange
+        runs = stepped()
+        gh = FakeGh([])
+
+        # Act
+        benchmark_steps.sync_issues(steps(runs), runs, "o/r", gh)
+
+        # Assert
+        self.assertIn("user: .user.login", gh.calls[0][-1])
 
     def test_Given_AReopenedIssueNamingAFreshStep_When_IssuesSync_Then_NothingIsWritten(self):
         # Arrange

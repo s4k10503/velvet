@@ -27,6 +27,8 @@ PROCESSOR = "processor: "
 
 LABELS = ("performance", "bug")
 ASSIGNEE = "s4k10503"
+# Who opens the issues the job writes, as the REST listing names it.
+AUTHOR = "github-actions[bot]"
 MARKER = "<!-- benchmark-step: {series} | {first} -->"
 MARKER_PATTERN = re.compile(r"^<!-- benchmark-step: (?P<series>.+?) \| (?P<first>[0-9a-f]{40}) -->$", re.M)
 BODY_LIMIT = 60000
@@ -257,7 +259,8 @@ def render(steps, repository):
                          f"| {amount(before, step.unit)} ({before_runs} runs) "
                          f"| {amount(after, step.unit)} ({after_runs} runs) | {ratio_text(times(after, before))} |")
     lines += ["", "Before and After are medians over the runs counted. `.github/workflows/benchmarks.yml` "
-              "opened this and rewrites it while it is open and the history holds these steps; "
+              "opened this and rewrites it while it is open, nobody has reopened it and the history holds "
+              "these steps; "
               "CONTRIBUTING.md's benchmarks section says what counts as a step."]
     body = "\n".join(lines) + "\n"
     if len(body) > BODY_LIMIT:
@@ -273,7 +276,7 @@ def list_issues(repository, run):
     """Every issue carrying the first label, open or closed, read through the REST issues endpoint rather than
     `gh issue list`, whose label filter goes through search."""
     out = run(["api", "--paginate", f"repos/{repository}/issues?labels={LABELS[0]}&state=all&per_page=100",
-               "--jq", ".[] | select(.pull_request == null) | {number, state, state_reason, body}"])
+               "--jq", ".[] | select(.pull_request == null) | {number, state, state_reason, body, user: .user.login}"])
     return [json.loads(line) for line in out.splitlines() if line.strip()]
 
 
@@ -286,19 +289,20 @@ def is_reopened(issue):
 
 
 def sync_issues(steps, runs, repository, run=gh, rule=RULE):
-    """Rewrites the open issues this job wrote, and opens one for the fresh steps no issue names.
+    """Rewrites the open issues this job opened, and opens one for the fresh steps no issue names.
 
-    An issue names a step by its marker alone: the benchmark and the first slow commit. It is rewritten only
-    while it is open, nobody has reopened it, and the history holds every step it names; nothing here
-    closes an issue. A step decided at one of the latest runs that no issue names, in any state, is new, and
-    new steps whose ranges share a commit go into one new issue."""
+    An issue names a step by its marker alone: the benchmark and the first slow commit, whoever opened it.
+    One this job opened is rewritten only while it is open, nobody has reopened it, and the history holds
+    every step it names; nothing here closes an issue. A step decided at one of the latest runs that no
+    issue names, in any state, is new, and new steps whose ranges share a commit go into one new issue."""
     issues = list_issues(repository, run)
     by_key = {key(step): step for step in steps}
     named, actions = set(), []
     for issue in issues:
         keys = {(match["series"], match["first"]) for match in MARKER_PATTERN.finditer(issue.get("body") or "")}
         named |= keys
-        if not keys or not is_open(issue) or is_reopened(issue) or not keys <= by_key.keys():
+        if (not keys or issue.get("user") != AUTHOR or not is_open(issue) or is_reopened(issue)
+                or not keys <= by_key.keys()):
             continue
         title, body = render([by_key[k] for k in keys], repository)
         if issue.get("body") != body:
@@ -326,10 +330,11 @@ class MemoryIssues:
 
     def __call__(self, args, stdin=None):
         if args[0] == "api":
-            return "".join(json.dumps({key: issue.get(key) for key in ("number", "state", "state_reason", "body")})
+            return "".join(json.dumps({key: issue.get(key) for key in ("number", "state", "state_reason", "body",
+                                                                       "user")})
                            + "\n" for issue in self.issues)
         if args[:2] == ["issue", "create"]:
-            self.issues.append({"number": len(self.issues) + 1, "state": "open", "body": stdin,
+            self.issues.append({"number": len(self.issues) + 1, "state": "open", "body": stdin, "user": AUTHOR,
                                 "title": args[args.index("--title") + 1], "opened": self.now})
             self.log.append((self.now, "opened", len(self.issues)))
         elif args[:2] == ["issue", "edit"]:
