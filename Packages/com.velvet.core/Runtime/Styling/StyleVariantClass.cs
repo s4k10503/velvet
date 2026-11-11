@@ -455,7 +455,7 @@ namespace Velvet
         /// </summary>
         public static float BreakpointPx(StyleVariantKind kind)
             => StyleThemeTokens.Current is { } scope && s_themeNames.TryGetValue(kind, out var name)
-                && scope.TryGetPx("--breakpoint-" + name, out var themed)
+                && scope.TryGetPx(StyleThemeVariableName.Of("--breakpoint-", name), out var themed)
                     ? themed
                     : s_breakpointPx[kind];
 

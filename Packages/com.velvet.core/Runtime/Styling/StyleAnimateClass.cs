@@ -157,7 +157,7 @@ namespace Velvet
             // spells, over a built-in of the same name when its keyframes are registered. The keyframes themselves are
             // registered with VelvetKeyframes: USS has no @keyframes.
             if (overrideSec == null && StyleThemeTokens.Current is { } scope
-                && scope.Values.TryGetValue("--animate-" + rest, out var declared)
+                && scope.Values.TryGetValue(StyleThemeVariableName.Of("--animate-", rest), out var declared)
                 && TryParseThemed(declared, out spec))
             {
                 return true;

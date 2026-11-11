@@ -91,7 +91,6 @@ Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs	3
 Packages/com.velvet.core/Runtime/Styling/StyleFilterEngineWrite.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleFilterValueParser.cs	4
 Packages/com.velvet.core/Runtime/Styling/StyleFontUnits.cs	5
-Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs	1
 Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs	20
 Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs	2
 Packages/com.velvet.core/Runtime/Styling/StyleHasVariantManipulator.cs	4

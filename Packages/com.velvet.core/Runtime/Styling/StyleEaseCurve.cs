@@ -240,6 +240,14 @@ namespace Velvet
             {
                 foreach (var name in classNames)
                 {
+                    // A peel leaves a suffix of its class, so a class holding neither word cannot leave one of these.
+                    // It is passed over before the peel, which allocates its variants and would run on each patch
+                    // (ClassReadAllocationTests).
+                    if (name == null || (name.IndexOf("ease-", StringComparison.Ordinal) < 0
+                            && name.IndexOf("transition", StringComparison.Ordinal) < 0))
+                    {
+                        continue;
+                    }
                     var leaf = name;
                     while (StyleVariantClass.TryParse(leaf, out _, out var payload))
                     {
