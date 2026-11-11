@@ -1488,10 +1488,6 @@ namespace Velvet
         // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
         internal VisualElement? CurrentPortalPlaceholder { get; set; }
 
-        // Above zero while a VirtualList renders its items under the context it restored for them
-        // (Reconciler.BeginDetachedItemScope).
-        internal int DetachedItemScopeDepth { get; set; }
-
         // The same placeholder, for the levels of that Portal's children whose ComponentRegistry parent is
         // still the declaring component's own fiber — every level the reconcile reaches while the fiber
         // stack stands where it did. Those all share a whole registry key with what the declaring

@@ -592,7 +592,6 @@ namespace Velvet
         object? IReconcilerBridge.BeginDetachedItemScope(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext)
         {
-            _ctx.DetachedItemScopeDepth++;
             var stack = _ctx.ComponentContextStack;
             if (enclosingContext != null)
             {
@@ -638,7 +637,6 @@ namespace Velvet
         void IReconcilerBridge.EndDetachedItemScope(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken)
         {
-            _ctx.DetachedItemScopeDepth--;
             if (host != null)
             {
                 _ctx.FiberStack.Pop();
