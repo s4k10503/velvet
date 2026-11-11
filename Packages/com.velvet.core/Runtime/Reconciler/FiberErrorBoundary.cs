@@ -265,8 +265,9 @@ namespace Velvet
                 ctx.DropCompletions(failedCompletions);
                 // Only a pass on the stack has sibling work left for the abort to stop. Set outside one, the flag
                 // outlives the catch, and a pass starting while it is still set discards its whole reconcile —
-                // CommitPhaseCatchAbortLeakTests holds that.
-                if (ctx.SharedReconcileDepth > 0) fiber.Reconciler.SetAborted();
+                // CommitPhaseCatchAbortLeakTests holds that. A VirtualList range's bracket adds a depth that is no pass
+                // here (ReconcilerContext.RangeBracketDepth).
+                if (ctx.SharedReconcileDepth > ctx.RangeBracketDepth) fiber.Reconciler.SetAborted();
                 RecordCatch(ctx, fiber, exception, info!);
                 FiberEffects.CommitStrandedLayoutWork(ctx);
                 return true;

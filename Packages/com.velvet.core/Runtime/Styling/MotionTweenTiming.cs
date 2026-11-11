@@ -113,6 +113,31 @@ namespace Velvet
         internal static bool Playing(VisualElement element) =>
             s_holds.TryGetValue(element, out var hold) && hold.Plays.Count > 0;
 
+        // PlaysCurve and PeekOwn read a slot code has written since this last did as Adopt would take it, without taking
+        // it: StyleEaseCurve and MotionNativeTransitionGuard read them while another writer's lists may stand in the slots,
+        // and a write its writer puts back, as DndSortable does around a drag, would otherwise stay the element's own
+        // (Given_ATransitionUtilityOnATweenedElementWhoseCodeWritesATimingAndPutsItBack_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere,
+        // Given_ANarrowingOfPairedTimingWhoseListsADragPutsBack_When_AProjectionPassRunsMidDrag_Then_NoTimingIsLeftInlineOnceItEnds).
+        internal static bool PlaysCurve(VisualElement element)
+            => s_holds.TryGetValue(element, out var hold) && Same(element.style.transitionTimingFunction, hold.WrittenCurve)
+                && hold.Plays.Exists(play => play.Curve != null);
+
+        internal static (StyleList<TimeValue> Duration, StyleList<TimeValue> Delay, StyleList<EasingFunction> Curve) PeekOwn(
+            VisualElement element)
+        {
+            var style = element.style;
+            if (!s_holds.TryGetValue(element, out var hold))
+            {
+                return (style.transitionDuration, style.transitionDelay, style.transitionTimingFunction);
+            }
+            return (Peek(style.transitionDuration, hold.WrittenDuration, hold.Own.Duration!.Value),
+                Peek(style.transitionDelay, hold.WrittenDelay, hold.Own.Delay!.Value),
+                Peek(style.transitionTimingFunction, hold.WrittenCurve, hold.Own.Curve!.Value));
+        }
+
+        private static StyleList<T> Peek<T>(StyleList<T> slot, StyleList<T> written, StyleList<T> own)
+            => Same(slot, written) ? own : slot;
+
         internal static void Forget(VisualElement element) => s_holds.Remove(element);
 
         // A slot that differs from the value this class last wrote there is code's: it becomes the element's own, and

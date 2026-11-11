@@ -49,7 +49,6 @@
 317ec3ae2644	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
 321a7221d702	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 32270e79cd32	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-33e0f45e86b7	Runtime/Styling/MotionSlotContext.cs,Runtime/Styling/StyleRingClass.cs
 36360447977b	Runtime/Preview/VelvetPreviewEnvironment.cs,Runtime/Reconciler/FiberElementProps.cs,Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/CornerRadiusFit.cs,Runtime/Styling/MotionSpringClassParser.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/VariantSignalSource.cs
 367209b4982d	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 3688bab418b0	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
@@ -76,7 +75,6 @@
 4ccfb9cc4c92	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 4eba047e9086	Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Reconciler/WrapperInfrastructure.cs,Runtime/Styling/StyleFilterValueParser.cs
 54d3bb3c85aa	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
-5502d0cb7c74	Runtime/Styling/StyleRingClass.cs,Runtime/Styling/VelvetPalette.cs
 5566fb485951	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 55a910e1b222	Runtime/Reconciler/FiberElementFactory.cs,Runtime/Reconciler/FiberNodePatcher.cs
 56dd323f605b	Runtime/Styling/RunningStyleTransition.cs,Runtime/Styling/StyleCascade.cs
@@ -86,10 +84,10 @@
 57edfde1dd5b	Runtime/Component/ComponentFiber.cs,Runtime/Hooks/FocusManager.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Styling/StyleGradientClass.cs
 589e61a90167	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 5a5349e5d244	Runtime/Reconciler/FiberBoxShadowApplier.cs,Runtime/Reconciler/FiberRingApplier.cs
-5bc003a4eacf	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleVariantPayload.cs
+5bc003a4eacf	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleVariantPayload.cs
 5cfce2736675	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
 5faaabbda6bc	Runtime/Reconciler/FiberBoxShadowApplier.cs,Runtime/Reconciler/FiberRingApplier.cs
-5ff06fc3cabb	Runtime/Component/DndContextHost.cs,Runtime/Component/DragOverlayHost.cs,Runtime/Component/SortableHosts.cs,Runtime/Component/VNodeTypes.cs,Runtime/Hooks/AnimateSelector.cs,Runtime/Preview/VelvetPreviewHost.cs,Runtime/Reconciler/ChildElementPlacement.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberFocusNavigator.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/GeneralPathReconciler.cs,Runtime/Reconciler/ReconcileState.cs,Runtime/Reconciler/ReconcilerBufferPool.cs
+5ff06fc3cabb	Runtime/Component/DndContextHost.cs,Runtime/Component/DragOverlayHost.cs,Runtime/Component/SortableHosts.cs,Runtime/Component/VNodeTypes.cs,Runtime/Hooks/AnimateSelector.cs,Runtime/Preview/VelvetPreviewHost.cs,Runtime/Reconciler/ChildElementPlacement.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberFocusNavigator.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/GeneralPathReconciler.cs,Runtime/Reconciler/OldSlotOccupants.cs,Runtime/Reconciler/ReconcileState.cs,Runtime/Reconciler/ReconcilerBufferPool.cs
 60178cab6b48	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 608acca9f532	Runtime/Styling/GestureChannelMask.cs,Runtime/Styling/MotionDrawnValues.cs
 60f2e5f1dd78	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
@@ -203,7 +201,6 @@ d8f407e24e34	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/Sty
 daecfdc25184	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 dfd110799bbe	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 e02e21de4409	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
-e2432c85a815	Runtime/Styling/StyleRingClass.cs,Runtime/Styling/VelvetPalette.cs
 e275b783405b	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 e3b057f99e1a	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 e68ecfa189d7	Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/ReconcilerContext.cs

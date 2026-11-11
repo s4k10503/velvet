@@ -47,7 +47,7 @@ namespace Velvet
 
         private readonly TextElement _element;
         private readonly bool _centred;
-        private readonly MiddleAlignment _alignment = new();
+        private MiddleAlignment _alignment;
         // Made the first time the element shows text without tags.
         private LineBoxFontOwner? _font;
         private ReconcilerContext? _context;
@@ -82,7 +82,7 @@ namespace Velvet
         private TextAnchor _settledAlign;
         // The element's last few measures by width, since the layout serves a width it measured before from its
         // own cache rather than asking again.
-        private readonly Vector2[] _measured = { new(float.NaN, float.NaN), new(float.NaN, float.NaN), new(float.NaN, float.NaN), new(float.NaN, float.NaN) };
+        private MeasuredSizes _measured = MeasuredSizes.None;
         private int _measuredNext;
 
         public TextLineBox(TextElement element, bool centred)
@@ -258,7 +258,7 @@ namespace Velvet
             if (!string.Equals(display, _unraised, StringComparison.Ordinal))
             {
                 // Another text measures differently at every width.
-                Array.Fill(_measured, new Vector2(float.NaN, float.NaN));
+                _measured = MeasuredSizes.None;
             }
             _unraised = display;
             return Raise;
@@ -271,7 +271,7 @@ namespace Velvet
             _context = null;
             _unraised = null;
             _settledShown = null;
-            Array.Fill(_measured, new Vector2(float.NaN, float.NaN));
+            _measured = MeasuredSizes.None;
             _tagged = false;
             _ownMarkup = false;
             _spansLines = false;
@@ -437,8 +437,9 @@ namespace Velvet
 
         private bool IsMeasuredSize(Rect content)
         {
-            foreach (var size in _measured)
+            for (var i = 0; i < _measured.Length; i++)
             {
+                var size = _measured[i];
                 if (Mathf.Abs(content.width - size.x) < 0.5f)
                 {
                     return Mathf.Abs(content.height - size.y) < 0.5f;
@@ -464,6 +465,32 @@ namespace Velvet
             }
             _measured[_measuredNext] = new Vector2(width, height);
             _measuredNext = (_measuredNext + 1) % _measured.Length;
+        }
+
+        // Four sizes held in place, the widths in one vector and the heights in another, rather than in an array, which
+        // every box would allocate.
+        private struct MeasuredSizes
+        {
+            private Vector4 _widths;
+            private Vector4 _heights;
+
+            public static MeasuredSizes None => new()
+            {
+                _widths = new Vector4(float.NaN, float.NaN, float.NaN, float.NaN),
+                _heights = new Vector4(float.NaN, float.NaN, float.NaN, float.NaN),
+            };
+
+            public int Length => 4;
+
+            public Vector2 this[int slot]
+            {
+                get => new(_widths[slot], _heights[slot]);
+                set
+                {
+                    _widths[slot] = value.x;
+                    _heights[slot] = value.y;
+                }
+            }
         }
 
         // The raise that puts the first line's glyphs half a leading below the top of the first line box, which a
@@ -549,7 +576,10 @@ namespace Velvet
     // (StyleCascade.TextAlign) rather than by clearing it, so a rule outside Velvet's own and a theme's default both
     // reach it. An inline value somebody else wrote is left alone, and where the rules cannot be read
     // the alignment is given back rather than written once and kept.
-    internal sealed class MiddleAlignment
+    //
+    // A struct, so that its holder allocates nothing beside itself for it. A field holding one is not readonly, which
+    // would hand Settle and Release a copy to write.
+    internal struct MiddleAlignment
     {
         // The alignment this wrote inline, or null while the element's alignment is its own.
         private TextAnchor? _owned;

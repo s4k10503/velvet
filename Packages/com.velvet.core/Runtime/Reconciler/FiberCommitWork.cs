@@ -331,6 +331,10 @@ namespace Velvet
                 fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
             }
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
+            if (fiber.Reconciler != null)
+            {
+                foreach (var open in fiber.Reconciler.Context.OpenOldInstances) open.ResolveAgain();
+            }
             // Detach the parked baseline BEFORE retiring it: the sweep's own mark treats
             // owner.PendingOldTree as live (other fibers' retirements must spare a parked diff's
             // baseline), and a still-attached reference would spare this very sweep's target.

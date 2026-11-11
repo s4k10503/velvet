@@ -106,6 +106,8 @@ namespace Velvet
             // paint bindings, geometry callbacks, the binding dictionary entries) and either pool it or recurse.
             if (_ctx.WrapperToInnerMap.TryGetValue(element, out var innerOfWrapper))
             {
+                // The factory records stacking facts on the wrapper, which the inner's cleanup below does not reach.
+                _ctx.ClearElementSideTables(element);
                 _ctx.WrapperToInnerMap.Remove(element);
                 innerOfWrapper.RemoveFromHierarchy();
                 ReturnRolledBackOrphan(innerOfWrapper);

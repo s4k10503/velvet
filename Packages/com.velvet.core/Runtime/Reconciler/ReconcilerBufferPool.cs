@@ -68,6 +68,30 @@ namespace Velvet
 
         #endregion
 
+        #region ChildReconciler / GeneralPathReconciler — a container's old instances
+
+        private readonly ClearablePool<OldSlotOccupants> _oldSlotOccupantsPool = new(o => o.Clear());
+
+        // Every instance rented and not yet returned, parked passes' among them: ReconcilerContext
+        // .NoteSlotOccupantChanged reaches each one through it.
+        internal List<OldSlotOccupants> RentedOldSlotOccupants { get; } = new();
+
+        public OldSlotOccupants RentOldSlotOccupants()
+        {
+            var occupants = _oldSlotOccupantsPool.Rent();
+            RentedOldSlotOccupants.Add(occupants);
+            return occupants;
+        }
+
+        public void ReturnOldSlotOccupants(OldSlotOccupants occupants)
+        {
+            var rented = RentedOldSlotOccupants.LastIndexOf(occupants);
+            if (rented >= 0) RentedOldSlotOccupants.RemoveAt(rented);
+            _oldSlotOccupantsPool.Return(occupants);
+        }
+
+        #endregion
+
         #region For DOM-less AnimatePresence (GeneralPathReconciler.ExpandAnimatePresenceInline) + BuildKeyedMapCopy
 
         private readonly ClearablePool<List<(string key, VNode node)>> _presenceListPool = new(l => l.Clear());

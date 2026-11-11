@@ -6,8 +6,12 @@ namespace Velvet
     // Bridge interface that decouples FiberVirtualListController from Reconciler.
     internal interface IReconcilerBridge
     {
+        // The controller keeps rows, not what holds their slots: CreateElementForController and
+        // PatchNodeForController return the row's outermost element (a shadow-* / clip-path-* row's structural
+        // WRAPPER), and SlotOccupantForController answers what holds its slot at the time it is asked.
         VisualElement CreateElementForController(VNode node);
-        void CleanupElementForController(VisualElement element);
+        void CleanupElementForController(VisualElement row);
+        VisualElement SlotOccupantForController(VisualElement row);
 
         // A row the item loop creates or patches attaches its refs and commits its layout work once the controller
         // has placed it in the list, rather than where the row was created, for the reason
@@ -29,13 +33,19 @@ namespace Velvet
         // FiberEffects.CommitStrandedLayoutWork, so the controller calls this where a range render returns.
         void CommitStrandedLayoutWorkForController();
 
-        // Patches an item element previously returned by CreateElementForController or by this
-        // method. element may be a structural WRAPPER (shadow-* / clip-path-* item roots —
-        // CreateElement returns the wrapper): the implementation resolves the real inner before
-        // PatchNode, mirroring ChildReconciler. Returns the slot's CURRENT top-level element —
-        // a class-driven wrap/unwrap during the patch swaps which element must be (re)mounted, so
-        // the controller must store this return value, not its stale pre-patch reference.
-        VisualElement PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode);
+        // Patches a row previously returned by CreateElementForController or by this method. Returns the row's
+        // outermost element now — a class-driven wrap/unwrap during the patch swaps it, so the controller must
+        // store this return value, not its stale pre-patch reference.
+        VisualElement PatchNodeForController(VisualElement row, VNode oldNode, VNode newNode);
+
+        // Called before the controller's rewrite of the container's rows, which leaves standing what holds no slot
+        // of its own.
+        void BeginRowPlacementForController(VisualElement container);
+
+        // Bracket a range render: Begin before its first row is built, End once the buffers name the rows placed.
+        // End can throw the suspend of a Portal child it mounts.
+        bool BeginRangeForController();
+        void EndRangeForController(VisualElement container, bool opened);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
@@ -48,7 +58,9 @@ namespace Velvet
         // test driving the controller directly); then the scope is context-only and no stamping occurs. The
         // returned token must be passed back to End (carries the pre-scope child set for stamping; supports
         // nested VirtualLists).
-        object? BeginDetachedItemScope(ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext);
+        // outsidePass is whether the range opened its bracket (BeginRangeForController).
+        object? BeginDetachedItemScope(
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
         // DescendantNodes is THIS item's rendered vnode — so an isolated re-render can rebuild not just the
