@@ -12,9 +12,10 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>In a range a scroll renders, a boundary inside a row that swaps in its fallback as the range patches the
     /// row leaves the rest of that row patched, a Component the patch drops from the row gone, and the rows after it
-    /// built whole; so does one whose fallback fails as it is swapped in, caught by a boundary outside it, and one
-    /// catching in the resume of a component's parked render that the patch drains. A render after such a range still
-    /// keeps the tree it had before where a boundary in its walk aborts it.</item>
+    /// built whole. The rows after a row are built whole too where a boundary's fallback in it fails as it is swapped
+    /// in, caught by a boundary outside it, and where a boundary catches in the resume of a component's parked render
+    /// that the patch drains. A render after such a range still keeps the tree it had before where a boundary in its
+    /// walk aborts it.</item>
     /// <item>A row a scroll mounts reads the value its enclosing Provider holds now, under a memoized host that has not
     /// rendered since that value changed; a row a render of the host mounts reads the value that render gave the
     /// Provider, a scroll having rendered a range before it; one inside a Provider of the row's own reads that
@@ -98,8 +99,8 @@ namespace Velvet.Tests
         private static VNode NestedBoundariesRow()
             => V.Div(name: "b", children: new VNode[] { V.Component(OuterBoundary, key: "outer") });
 
-        // The child's layout cleanup throws as a patch drops it, which the inner boundary catches; that boundary's
-        // fallback throws as it renders, which the outer boundary catches. The child sits at the inner boundary's own
+        // The child's layout cleanup throws as a patch drops it, which the inner boundary takes up by swapping in its
+        // fallback; that fallback throws as it renders, which the outer boundary catches. The child sits at the inner boundary's own
         // level, so the patch drops it in the walk that expands both boundaries, and its cleanup runs once that walk is
         // done with them.
         [Component(Compiler = false, IsErrorBoundary = true)]
