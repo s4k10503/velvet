@@ -588,7 +588,7 @@ class RenderTests(unittest.TestCase):
         self.assertIn(f"| {NAME} | `{commit(8)[:8]}` | {ONE} | 10 ms (4 runs) | 15 ms (2 runs) | 1.50x |", body)
 
     def test_Given_ACountRisingFromZero_When_Rendered_Then_ItsTitleSaysSo(self):
-        # Arrange: the row is left a baseline to divide by, so the title is what reads the infinite ratio.
+        # Arrange: the step's ratio is infinite and its row keeps a baseline to divide by.
         found = [step([("", 1, 5, 6, 4)], ratio=float("inf"), unit="")]
 
         # Act
