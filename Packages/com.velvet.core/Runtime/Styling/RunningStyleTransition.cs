@@ -25,8 +25,9 @@ namespace Velvet
         private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
         private static readonly FieldInfo? s_timings = EngineMember.AnimationDataSetTiming.ResolveField();
         private static readonly FieldInfo? s_valuesByProperty = EngineMember.AnimationSystemValues.ResolveField();
-        private static readonly FieldInfo? s_elements = EngineMember.AnimationDataSetElements.ResolveField();
-        private static readonly FieldInfo? s_count = EngineMember.AnimationDataSetCount.ResolveField();
+        private static readonly PropertyInfo? s_nameId = EngineMember.StylePropertyNameId.ResolveProperty();
+        private static readonly MethodInfo? s_updateValues = EngineMember.AnimationValuesUpdateValues.ResolveMethod();
+        private static readonly MethodInfo? s_updateComputedStyleAt = EngineMember.AnimationValuesUpdateComputedStyleAt.ResolveMethod();
         private static readonly FieldInfo? s_styles = EngineMember.AnimationDataSetStyle.ResolveField();
         private static readonly FieldInfo? s_startTime = EngineMember.AnimationTimingStart.ResolveField();
         private static readonly FieldInfo? s_duration = EngineMember.AnimationTimingDuration.ResolveField();
@@ -175,12 +176,17 @@ namespace Velvet
             }
         }
 
-        // Has every transition the panel runs for the element ease along the curve replace gives for the one it runs
-        // on, and leaves one replace gives none for on its own. A member that does not resolve leaves the transitions on
-        // the curve they started with. StyleEaseCurveTransitionTests fails when the swap stops reaching the transition.
-        public static void Retime(VisualElement element, Func<Func<float, float>, Func<float, float>?> replace)
+        // Has the transition the panel runs for the element's property ease along the curve replace gives for the one it
+        // runs on, and leaves it on its own where replace gives none. Its current frame is eased again on the new curve
+        // and written, so the frame on screen is on that curve whether or not the engine eased one before this ran. A
+        // member that does not resolve leaves the transition as it started. StyleEaseCurveTransitionTests fails when the
+        // swap stops reaching the transition, and MotionNamedEaseTransitionTests' first-frame cases when the frame is not
+        // written again.
+        public static void Retime(VisualElement element, StylePropertyName property,
+            Func<Func<float, float>, Func<float, float>?> replace)
         {
-            if (!s_readable || s_valuesByProperty == null || s_elements == null || s_count == null || element.panel == null)
+            if (!s_readable || s_valuesByProperty == null || s_nameId == null || s_updateValues == null
+                || s_updateComputedStyleAt == null || element.panel == null)
             {
                 return;
             }
@@ -188,36 +194,35 @@ namespace Velvet
             {
                 var system = s_system!.GetValue(element.panel);
                 if (system == null || !s_now!.DeclaringType!.IsInstanceOfType(system)
-                    || s_valuesByProperty.GetValue(system) is not System.Collections.IDictionary byProperty)
+                    || s_valuesByProperty.GetValue(system) is not System.Collections.IDictionary byProperty
+                    || s_nameId.GetValue(property) is not { } id || byProperty[id] is not { } values)
                 {
                     return;
                 }
-                var seen = new System.Collections.Generic.HashSet<object>();
-                foreach (var values in byProperty.Values)
+                var running = Read(s_running!, values);
+                (s_args[0], s_args[1], s_args[2]) = (element, id, null);
+                if (Close(s_indexOf!, running.GetType()) is not MethodInfo indexOf || indexOf.Invoke(running, s_args) is not true)
                 {
-                    if (!seen.Add(values))
-                    {
-                        continue;
-                    }
-                    var running = Read(s_running!, values);
-                    var elements = (VisualElement[])Read(s_elements, running);
-                    var timings = (Array)Read(s_timings!, running);
-                    var count = (int)Read(s_count, running);
-                    for (var i = 0; i < count; i++)
-                    {
-                        if (!ReferenceEquals(elements[i], element))
-                        {
-                            continue;
-                        }
-                        var timing = timings.GetValue(i)!;
-                        var field = (FieldInfo)Close(s_curve!, timing.GetType());
-                        if (field.GetValue(timing) is Func<float, float> current && replace(current) is { } curve)
-                        {
-                            field.SetValue(timing, curve);
-                            timings.SetValue(timing, i);
-                        }
-                    }
+                    return;
                 }
+                var index = (int)s_args[2]!;
+                var timings = (Array)Read(s_timings!, running);
+                var timing = timings.GetValue(index)!;
+                var curveField = (FieldInfo)Close(s_curve!, timing.GetType());
+                if (curveField.GetValue(timing) is not Func<float, float> current || replace(current) is not { } curve)
+                {
+                    return;
+                }
+                curveField.SetValue(timing, curve);
+                var elapsedSec = (double)s_now.GetValue(system) - (double)Read(s_startTime!, timing);
+                if (elapsedSec >= 0.0)
+                {
+                    ((FieldInfo)Close(s_eased!, timing.GetType()))
+                        .SetValue(timing, curve((float)elapsedSec / (float)Read(s_duration!, timing)));
+                }
+                timings.SetValue(timing, index);
+                s_updateValues.Invoke(values, null);
+                s_updateComputedStyleAt.Invoke(values, new object[] { index });
             }
             catch (Exception)
             {

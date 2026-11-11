@@ -188,7 +188,7 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             b.DelaySec = delayMs < 0 ? delayMs / 1000f * factor : delayMs / 1000f;
             b.Easing = easing;
-            b.Curve = StyleEaseCurve.CurveFor(element, easing);
+            b.Curve = StyleEaseCurve.CurveFor(element, easing, "filter");
             b.Clock = clock;
             b.StartTime = clock.NowSec;
             // Write the start frame now so there is no one-frame flash of the pre-change value.

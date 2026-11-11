@@ -726,12 +726,16 @@ namespace Velvet
         internal bool IsDefined => DurationSec != null || Easing != null;
 
         // The timing a channel of `kind` runs on, starting delaySec after its driver does and travelling from `from`
-        // to `to`.
-        internal TweenChannelTiming TimingFor(float delaySec, ValueDefault kind, float from, float to)
+        // to `to`; accelerated where Framer hands that value the Web Animations API (DrivenTweenTiming.Accelerated),
+        // which an entry, carrying no repeat of its own, leaves it on.
+        internal TweenChannelTiming TimingFor(float delaySec, ValueDefault kind, float from, float to, bool accelerated)
         {
             if (IsDefined)
             {
-                return new TweenChannelTiming(delaySec, Math.Max(0f, DurationOrDefaultSec), EasingOrDefault);
+                return new TweenChannelTiming(delaySec, Math.Max(0f, DurationOrDefaultSec), EasingOrDefault)
+                {
+                    Accelerated = accelerated,
+                };
             }
             if (kind == ValueDefault.Ease)
             {
@@ -762,7 +766,8 @@ namespace Velvet
                 {
                     if (named.Overlaps(StyleLonghandSet.Of(longhand)))
                     {
-                        durationSec = Math.Max(durationSec, TimingFor(0f, kind, 0f, UnknownTravel).DurationSec);
+                        durationSec = Math.Max(durationSec,
+                            TimingFor(0f, kind, 0f, UnknownTravel, DrivenTweenTiming.Accelerated(StyleLonghandSet.Of(longhand))).DurationSec);
                     }
                 }
                 if (!named.IsEmpty && named.Union(s_springLonghands) != s_springLonghands)

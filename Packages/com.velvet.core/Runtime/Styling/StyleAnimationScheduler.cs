@@ -317,6 +317,7 @@ namespace Velvet
             {
                 DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
                 AllProperties = variantMode, PropertyOverrides = propertyOverrides, OrchestrationSec = play.OrchestrationSec,
+                Repeat = play.Repeat,
             }, out var timing);
             if (variantMode)
             {
@@ -563,6 +564,7 @@ namespace Velvet
                 DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
                 DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
                 PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null, OrchestrationSec = additionalDelaySec - waitSec,
+                Repeat = config.PlayedRepeat,
             }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Exit, Context,
                 realiseInline: !restoreFromOnCancel);
@@ -2078,6 +2080,7 @@ namespace Velvet
             public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
             // The stagger the play waits, from which an entry's own delay counts.
             public float OrchestrationSec { get; init; }
+            public MotionRepeat Repeat { get; init; }
         }
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
@@ -2087,7 +2090,7 @@ namespace Velvet
                 (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
             var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
             timing = MotionTweenTiming.Begin(element);
-            StyleEaseCurve.NoteTween(element);
+            StyleEaseCurve.NoteTween(element, spec.Repeat);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no

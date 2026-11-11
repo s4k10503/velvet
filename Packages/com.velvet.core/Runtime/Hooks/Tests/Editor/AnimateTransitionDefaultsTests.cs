@@ -32,6 +32,15 @@ namespace Velvet.Tests
         private static float FramerBackInOut(float t)
             => t <= 0.5f ? FramerBackIn(2f * t) / 2f : (2f - FramerBackIn(2f * (1f - t))) / 2f;
 
+        // The backIn Framer's supportedWaapiEasing table gives the Web Animations API.
+        private static float WebAnimationsBackIn(float t) => CubicBezierEvaluator.Evaluate(0.31f, 0.01f, 0.66f, -0.59f, t);
+
+        private static float OpacityAfter(AnimateControls controls, VisualElement element, float elapsedSec)
+        {
+            controls.Tick(elapsedSec);
+            return element.style.opacity.value;
+        }
+
         private static float XAfterOneSecondTween(EasingMode easing, float elapsedSec)
         {
             var element = new VisualElement();
@@ -180,6 +189,134 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnOpacityTweenEasingInBack_When_ThreeQuartersOfItsSecondPass_Then_OpacityIsWhereTheWebAnimationsBackInPutsIt()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInBack });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.75f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(WebAnimationsBackIn(0.75f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AnOpacityTweenEasingInBackWithARepeatDelay_When_ThreeQuartersOfItsFirstPassRun_Then_OpacityIsWhereBackTsBackInPutsIt()
+        {
+            // Arrange — a repeat delay keeps Framer's opacity off the Web Animations API.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInBack, Repeat = 1f, RepeatDelaySec = 0.5f });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.75f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(FramerBackIn(0.75f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentOfOpacityEasingInBack_When_ThreeQuartersOfItsSecondPass_Then_OpacityIsWhereTheWebAnimationsBackInPutsIt()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                    new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInBack }),
+            });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.75f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(WebAnimationsBackIn(0.75f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ASequenceSegmentOfOpacityEasingInBackWithARepeatDelay_When_ThreeQuartersOfItsFirstPassRun_Then_OpacityIsWhereTheWebAnimationsBackInPutsIt()
+        {
+            // Arrange — a sequence writes the repeat into its keyframes, which leaves the animation no repeat delay.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(new[]
+            {
+                new AnimateSegment(element, new AnimateValues { Opacity = new[] { 0f, 1f } },
+                    new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInBack, Repeat = 1f, RepeatDelaySec = 0.5f }),
+            });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.75f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(WebAnimationsBackIn(0.75f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesOnAnEaseInCircSecond_When_SevenTenthsOfItPass_Then_OpacityIsWhereCircInOverTheWholeRunPutsIt()
+        {
+            // Arrange — Framer's supportedWaapiEasing gives circIn cubic-bezier(0, 0.65, 0.55, 1), circOut's shape, which
+            // inverts its own circIn, 1 - sin(acos(p)); this keeps circIn's curve over the run the Web Animations path eases.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseInCirc });
+            var along = 2f * (1f - Mathf.Sqrt(1f - 0.7f * 0.7f));
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.7f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(2f - along).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesOnABezierWhoseFirstXPassesOne_When_ThreeTenthsOfItsSecondPass_Then_TheFirstPairIsAlongTheCurve()
+        {
+            // Arrange — the browser refuses a cubic-bezier with an x outside [0, 1], so Framer eases each pair in JavaScript.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 1.2f, BezierY1 = 0f, BezierX2 = 0.8f, BezierY2 = 1f });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.3f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(CubicBezierEvaluator.Evaluate(1.2f, 0f, 0.8f, 1f, 0.6f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesOnABezierWhoseSecondXPassesOne_When_ThreeTenthsOfItsSecondPass_Then_TheFirstPairIsAlongTheCurve()
+        {
+            // Arrange — the browser refuses a cubic-bezier with an x outside [0, 1], so Framer eases each pair in JavaScript.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 1f, BezierX1 = 0.2f, BezierY1 = 0f, BezierX2 = 1.3f, BezierY2 = 1f });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.3f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(CubicBezierEvaluator.Evaluate(0.2f, 0f, 1.3f, 1f, 0.6f)).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ThreeOpacityKeyframesOnATweenCarryingABezierXItIgnores_When_HalfASecondPasses_Then_OpacityIsWhereOneEaseInOverTheWholeRunPutsIt()
+        {
+            // Arrange — a Tween eases by its Easing, so the control points it carries do not reach the browser.
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { Opacity = new[] { 0f, 1f, 0f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = EasingMode.EaseIn, BezierX1 = 1.2f });
+
+            // Act
+            var opacity = OpacityAfter(controls, element, 0.5f);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(2f * FramerEaseIn(0.5f)).Within(1e-4f));
         }
 
         [Test]

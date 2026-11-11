@@ -237,7 +237,8 @@ namespace Velvet
             {
                 if (DrivenTweenTiming.LastNaming(overrides, longhands) is { } entry)
                 {
-                    var timing = entry.TimingFor(entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec, kind, channel.From, channel.To);
+                    var timing = entry.TimingFor(entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec, kind,
+                        channel.From, channel.To, DrivenTweenTiming.Accelerated(longhands));
                     channel.Timing = timing;
                     state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, timing.DelaySec + timing.DurationSec);
                 }
@@ -556,7 +557,7 @@ namespace Velvet
             var restarted = timing is { } given
                 ? (given with { DelaySec = state.ElapsedSec, DurationSec = duration }).OverTravel(channel.To - channel.From)
                 : new TweenChannelTiming(state.ElapsedSec, duration, state.Easing ?? EasingMode.Linear,
-                    curve: !state.Easing.HasValue);
+                    curve: !state.Easing.HasValue) { Accelerated = Accelerated(state, channel) };
             channel.Timing = restarted;
             state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, restarted.DelaySec + restarted.DurationSec);
         }
@@ -753,10 +754,14 @@ namespace Velvet
         private static void Shorten(BezierTweenState state, BezierTweenChannel channel, float eased, EasingMode easing)
         {
             var factor = Mathf.Clamp01(Mathf.Abs(eased));
-            var own = channel.Timing ?? new TweenChannelTiming(state.DelaySec, state.DurationSec, easing);
+            var own = channel.Timing
+                ?? new TweenChannelTiming(state.DelaySec, state.DurationSec, easing) { Accelerated = Accelerated(state, channel) };
             var delaySec = own.DelaySec + state.DelayBaseSec;
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
-            var shortened = new TweenChannelTiming(delaySec < 0f ? delaySec * factor : delaySec, own.DurationSec * factor, own.Easing);
+            var shortened = new TweenChannelTiming(delaySec < 0f ? delaySec * factor : delaySec, own.DurationSec * factor, own.Easing)
+            {
+                Accelerated = own.Accelerated,
+            };
             channel.Timing = shortened;
             state.SlowestTimingEndSec = Mathf.Max(state.SlowestTimingEndSec, shortened.DelaySec + shortened.DurationSec);
         }
@@ -797,7 +802,7 @@ namespace Velvet
         {
             if (channel.Timing is not { } own)
             {
-                return shared;
+                return Accelerated(state, channel) ? TweenFraction(state, state.Easing!.Value, accelerated: true) : shared;
             }
             if (own.Spring != null || own.Bezier != null)
             {
@@ -806,25 +811,30 @@ namespace Velvet
             var progress = Progress(state, state.ElapsedSec - own.DelaySec, own.DurationSec);
             return own.Curve
                 ? CubicBezierEvaluator.Evaluate(state.X1, state.Y1, state.X2, state.Y2, progress)
-                : MotionEasing.Evaluate(own.Easing, progress);
+                : MotionEasing.Evaluate(own.Easing, progress, own.Accelerated);
         }
+
+        // Whether a driven Tween eases the channel as Framer eases a value it hands the Web Animations API: its opacity,
+        // where the play's repeat leaves that value there.
+        private static bool Accelerated(BezierTweenState state, BezierTweenChannel channel)
+            => state.Easing.HasValue && ReferenceEquals(channel, state.Opacity) && state.Repeat.KeepsWebAnimations;
 
         // A zero duration reads as complete once its delay has passed rather than dividing by zero — the scheduler
         // builds one only from a PropertyOverrides entry of no positive duration or a reversal at its very start,
         // but a direct driver caller might.
         private static float SharedEased(BezierTweenState state)
         {
-            return state.Easing is { } mode ? TweenFraction(state, mode) : RepeatedBezierFraction(state);
+            return state.Easing is { } mode ? TweenFraction(state, mode, accelerated: false) : RepeatedBezierFraction(state);
         }
 
         // A driven Tween's curve over every pass Repeat adds, after the delay it waits once. A channel with a timing
         // of its own plays that once (Eased), whatever the play repeats.
-        private static float TweenFraction(BezierTweenState state, EasingMode mode)
+        private static float TweenFraction(BezierTweenState state, EasingMode mode, bool accelerated)
         {
             var activeSec = state.ElapsedSec - state.DelaySec;
             if (state.Repeat.Count == 0f)
             {
-                return MotionEasing.Evaluate(mode, Progress(state, activeSec, state.DurationSec));
+                return MotionEasing.Evaluate(mode, Progress(state, activeSec, state.DurationSec), accelerated);
             }
             if (activeSec <= 0f)
             {
@@ -836,7 +846,7 @@ namespace Velvet
             }
             var progress = (float)(state.Repeat.PassTime(activeSec, state.DurationSec, out var mirrored)
                 / state.DurationSec);
-            var eased = MotionEasing.Evaluate(mode, progress);
+            var eased = MotionEasing.Evaluate(mode, progress, accelerated);
             return mirrored ? 1f - eased : eased;
         }
 

@@ -257,23 +257,25 @@ namespace Velvet
             public EasingMode LayerMode;
             public bool Classed;
             public bool Tweened;
+            // The repeat of the latest tween NoteTween saw.
+            public MotionRepeat TweenRepeat;
             public bool Registered;
             public EaseFunction ShapedFor;
             public Func<float, float>? Shaped;
-            public Func<Func<float, float>, Func<float, float>?>? InPlaceOf;
+            public Func<Func<float, float>, Func<float, float>?>? ToShaped;
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Binding> s_bindings = new();
 
         private static readonly EventCallback<TransitionRunEvent> s_onRun = OnRun;
 
-        // The functions this class has given a transition: a transition running on one keeps it, as a CSS transition keeps
-        // its timing function until another replaces it.
-        private static readonly ConditionalWeakTable<Func<float, float>, object> s_given = new();
+        private static readonly Func<Func<float, float>, Func<float, float>?> s_engineToMotion =
+            static current => MotionEasing.InPlaceOfEngineCurve(current, accelerated: false);
 
-        private static readonly object s_givenForAMotionTween = new();
+        private static readonly Func<Func<float, float>, Func<float, float>?> s_engineToAcceleratedMotion =
+            static current => MotionEasing.InPlaceOfEngineCurve(current, accelerated: true);
 
-        private static readonly Func<Func<float, float>, Func<float, float>?> s_inPlaceOfEngineCurve = InPlaceOfEngineCurve;
+        private static readonly Func<Func<float, float>, Func<float, float>?> s_keep = static _ => null;
 
         // The function the winning ease-[...] layer gives the element, or none; mode is the keyword left on the element
         // beside it.
@@ -329,12 +331,12 @@ namespace Velvet
         }
 
         // The function the element's transitions ease by where they resolve to the given keyword, for a tween Velvet
-        // runs itself.
-        internal static EaseFunction? CurveFor(VisualElement element, EasingMode resolved)
+        // runs itself of the given property.
+        internal static EaseFunction? CurveFor(VisualElement element, EasingMode resolved, string? property = null)
         {
             if (MotionTweenTiming.PlaysCurve(element))
             {
-                return MotionEasing.FunctionOf(resolved);
+                return MotionEasing.FunctionOf(resolved, OnWebAnimations(element, property));
             }
             if (!s_bindings.TryGetValue(element, out var binding))
             {
@@ -349,12 +351,20 @@ namespace Velvet
                 : null;
         }
 
-        // For an element whose transitions a Motion's tween is about to time, which UI Toolkit then runs; listened to
-        // until NoteTweenEnded finds no tween left playing on it.
-        internal static void NoteTween(VisualElement element)
+        // Whether Framer runs the property on the Web Animations API under the tween timing the element: opacity and filter
+        // are among the values accelerated-values.ts names, and the tween's repeat can keep them off it
+        // (MotionRepeat.KeepsWebAnimations).
+        private static bool OnWebAnimations(VisualElement element, string? property)
+            => (property == "opacity" || property == "filter")
+                && (!s_bindings.TryGetValue(element, out var binding) || binding.TweenRepeat.KeepsWebAnimations);
+
+        // For an element whose transitions a Motion's tween on that repeat is about to time, which UI Toolkit then runs;
+        // listened to until NoteTweenEnded finds no tween left playing on it.
+        internal static void NoteTween(VisualElement element, MotionRepeat repeat)
         {
             var binding = s_bindings.GetValue(element, static _ => new Binding());
             binding.Tweened = true;
+            binding.TweenRepeat = repeat;
             Sync(element, binding);
         }
 
@@ -404,42 +414,35 @@ namespace Velvet
             {
                 return;
             }
-            // Each transition by its own keyword: a tween's PropertyOverrides entries can name several, where the
-            // classes and the layer give one function for every transition.
-            if (MotionTweenTiming.PlaysCurve(element))
+            var classes = MotionTweenTiming.PlaysCurve(element) ? null : ToShaped(element, binding);
+            // Only the transitions the event reports, which start now: one already running keeps the curve it started
+            // on, as a CSS transition keeps its timing function. Under a tween each runs by its own keyword, since a
+            // tween's PropertyOverrides entries can name several, where the classes and the layer give one function for
+            // every transition.
+            foreach (var name in evt.stylePropertyNames)
             {
-                RunningStyleTransition.Retime(element, s_inPlaceOfEngineCurve);
-                return;
+                RunningStyleTransition.Retime(element, name,
+                    classes ?? (OnWebAnimations(element, name.ToString()) ? s_engineToAcceleratedMotion : s_engineToMotion));
             }
+        }
+
+        // Replaces a curve with the classes' or the layer's function for the keyword every transition of the element
+        // resolves, and keeps it where they give none.
+        private static Func<Func<float, float>, Func<float, float>?> ToShaped(VisualElement element, Binding binding)
+        {
             if (!TryResolvedMode(element, out var mode) || CurveFor(element, mode) is not { } function)
             {
-                return;
+                return s_keep;
             }
             if (binding.Shaped == null || !binding.ShapedFor.Equals(function))
             {
                 var shaped = function;
                 binding.ShapedFor = function;
                 binding.Shaped = t => shaped.Evaluate(t);
-                s_given.Add(binding.Shaped, binding);
                 var given = binding.Shaped;
-                binding.InPlaceOf = current => s_given.TryGetValue(current, out _) ? null : given;
+                binding.ToShaped = _ => given;
             }
-            RunningStyleTransition.Retime(element, binding.InPlaceOf!);
-        }
-
-        // Marked as given, as this class's own functions are, so a class transition's retime later leaves a tween's
-        // transition on it.
-        private static Func<float, float>? InPlaceOfEngineCurve(Func<float, float> current)
-        {
-            if (MotionEasing.InPlaceOfEngineCurve(current) is not { } curve)
-            {
-                return null;
-            }
-            if (!s_given.TryGetValue(curve, out _))
-            {
-                s_given.Add(curve, s_givenForAMotionTween);
-            }
-            return curve;
+            return binding.ToShaped!;
         }
 
         // The keyword every transition the element resolves eases by, where there is one.

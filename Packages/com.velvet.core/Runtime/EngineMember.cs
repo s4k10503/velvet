@@ -291,12 +291,12 @@ namespace Velvet
             AnimationSystemType + "+AnimationDataSet`2", "IndexOf", "System.Boolean",
             "UnityEngine.UIElements.VisualElement", StylePropertyIdShape, "System.Int32&");
 
-        // RunningStyleTransition.Retime's walk over the transitions a set runs.
-        internal static readonly EngineMember AnimationDataSetElements = Field(UIElements,
-            AnimationSystemType + "+AnimationDataSet`2", "elements", "UnityEngine.UIElements.VisualElement[]");
+        // RunningStyleTransition.Retime's write of a retimed transition's current frame.
+        internal static readonly EngineMember AnimationValuesUpdateValues =
+            Method(UIElements, AnimationSystemType + "+Values", "UpdateValues", "System.Void");
 
-        internal static readonly EngineMember AnimationDataSetCount =
-            Field(UIElements, AnimationSystemType + "+AnimationDataSet`2", "count", "System.Int32");
+        internal static readonly EngineMember AnimationValuesUpdateComputedStyleAt =
+            Method(UIElements, AnimationSystemType + "+Values", "UpdateComputedStyle", "System.Void", "System.Int32");
 
         internal static readonly EngineMember AnimationDataSetTiming =
             Field(UIElements, AnimationSystemType + "+AnimationDataSet`2", "timing", "*");

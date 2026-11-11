@@ -538,7 +538,7 @@ missing or cannot be invoked, the play uses the ordinary inline or resolved star
 ## Cubic-bezier easing
 
 `TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s fixed set of
-curves (UI Toolkit's native transitions take one of its 22 modes; *Named eases* below says which curve each runs on), it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
+curves (UI Toolkit's native transitions take one of its 23 modes; *Named eases* below says which curve each runs on), it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
 algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
 shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
@@ -564,15 +564,22 @@ ease-out a transition naming none takes — run on the curve of the Framer Motio
 | `EaseOut` | `easeOut` | `cubic-bezier(0, 0, 0.58, 1)` |
 | `EaseInOut` | `easeInOut` | `cubic-bezier(0.42, 0, 0.58, 1)` |
 | `EaseOutBack` | `backOut` | `cubic-bezier(0.33, 1.53, 0.69, 0.99)` |
-| `EaseInBack` | `backIn` | `backOut` reversed, `cubic-bezier(0.31, 0.01, 0.67, -0.53)` |
+| `EaseInBack` | `backIn` | `backOut` reversed, `cubic-bezier(0.31, 0.01, 0.67, -0.53)`; on the Web Animations path below, `cubic-bezier(0.31, 0.01, 0.66, -0.59)` |
 | `EaseInOutBack` | `backInOut` | `backIn` mirrored: its first half on `backIn` at twice the speed, its second half the first turned about the middle |
 
+Framer runs opacity and filter on the Web Animations API, unless a `RepeatDelaySec` or a `Mirror` `RepeatType` keeps
+them off it, and gives that API the `backIn` its `supportedWaapiEasing` table names. Velvet eases by that `backIn`
+the opacity of a play, driven or UI Toolkit's own, of a `PropertyOverrides` entry, of a single `UseAnimate` call and
+of a sequence segment, whose repeat Framer writes into its keyframes rather than leaving the animation one, and a
+filter a Motion's tween times.
+
 UI Toolkit's own transition eases those modes by quadratics and by back curves of its own, so where it plays the tween
-Velvet has each transition ease along Framer's curve for its own mode once the engine reports it running, the engine
-keeping the duration, delay and reversal. A driven `Tween` (*Clocks*), a `layoutId` move, a spring or bezier play's
-entry, `UseAnimate` and a timeline's step run the same curve, and so do the transitions Velvet runs in the engine's
-place ([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Every
-other `EasingMode` runs on the curve UI Toolkit eases a USS transition by.
+Velvet has each transition it starts ease along Framer's curve for its own mode from its first frame, the engine
+keeping the duration, delay and reversal; a transition the tween did not start keeps the curve it started on. A
+driven `Tween` (*Clocks*), a `layoutId` move, a spring or bezier play's entry, `UseAnimate` and a timeline's step run
+the same curve, and so do the transitions Velvet runs in the engine's place
+([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Every other
+`EasingMode` runs on the curve UI Toolkit eases a USS transition by.
 
 ## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
 
@@ -1060,7 +1067,8 @@ return V.Div(refCallback: scope.SetElement, children: ...);
   pair over an even share of the duration, as Framer's keyframes generator eases them, but for a single call's
   `Opacity`: that runs its keyframes, evenly spaced, along one easing over the whole duration, as Framer hands opacity
   to the Web Animations API with one easing for the whole animation. A `RepeatDelaySec` or a `Mirror` `RepeatType`,
-  even with no `Repeat`, keeps Framer's opacity on its keyframes generator, and Velvet's on the pair-by-pair easing.
+  even with no `Repeat`, keeps Framer's opacity on its keyframes generator, and so does a `Bezier` with an x outside
+  `[0, 1]`, which the browser refuses; Velvet's opacity then eases pair by pair.
   `DelaySec` delays the segment.
 - **Per-value transitions.** A `PropertyOverrides` entry naming `"opacity"`, `"translate"` (`X` and `Y`),
   `"scale"`, `"rotate"` or `"all"` times that value, the last entry naming it winning. A single call takes the entry

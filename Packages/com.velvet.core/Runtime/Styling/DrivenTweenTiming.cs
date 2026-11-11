@@ -7,7 +7,8 @@ namespace Velvet
     // The timing one channel of a driven Tween runs on where a PropertyOverrides entry names its property, or one a
     // gesture state hands back to a bezier play (BezierTweenDriver.ReturnChannels). The delay counts from the
     // tick's start. Curve: eased on the play's own cubic-bezier rather than Easing. Bezier: eased on that curve
-    // instead. Spring: run on that spring until it rests, DurationSec being where it does.
+    // instead. Spring: run on that spring until it rests, DurationSec being where it does. Accelerated: Easing eased as
+    // for a value Framer hands the Web Animations API (MotionEasing).
     internal readonly struct TweenChannelTiming
     {
         public TweenChannelTiming(float delaySec, float durationSec, EasingMode easing, bool curve = false)
@@ -28,6 +29,7 @@ namespace Velvet
         public BezierCurve? Bezier { get; init; }
         public (float Stiffness, float Damping, float Mass)? Spring { get; init; }
         public float? RestSpeed { get; init; }
+        public bool Accelerated { get; init; }
 
         // The share of the way from the channel's start to its end activeSec after its delay, for a channel that
         // travels `travel` in its own units, which a spring is measured over as Framer measures a value's.
@@ -99,8 +101,13 @@ namespace Velvet
         // from and to: the default an entry naming no timing takes, and the channel's travel a spring is measured on.
         public TweenChannelTiming? For(StyleLonghandSet longhands, ValueDefault kind, float from, float to)
             => LastNaming(_overrides, longhands) is { } entry
-                ? entry.TimingFor(Entry(entry).delaySec - StartDelaySec, kind, from, to)
+                ? entry.TimingFor(Entry(entry).delaySec - StartDelaySec, kind, from, to, Accelerated(longhands))
                 : null;
+
+        // Whether Framer runs the value these longhands make up on the Web Animations API (accelerated-values.ts):
+        // opacity alone among the channels a driven play writes, its transforms going through its TransformAnimation,
+        // which samples the keyframes generator.
+        internal static bool Accelerated(StyleLonghandSet longhands) => longhands.Contains(StyleLonghand.Opacity);
 
         // The last entry naming any of the longhands, which UI Toolkit's transition and Framer both let win.
         internal static StylePropertyTransition? LastNaming(IReadOnlyList<StylePropertyTransition>? overrides,

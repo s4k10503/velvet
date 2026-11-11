@@ -433,9 +433,9 @@ namespace Velvet
         private readonly float _passSec;
         private readonly MotionRepeat _repeat;
         private readonly double _totalSec;
-        // A single call's opacity off a spring eases over the whole run, between keyframes evenly spaced along it, as
-        // Framer's Web Animations path (supportsBrowserAnimation) hands one easing to element.animate(), but where a
-        // RepeatDelaySec or a Mirror repeat keeps Framer on its keyframes generator, which eases each pair.
+        // A single call's opacity on the Web Animations API (OnWebAnimations) off a spring eases over the whole run,
+        // between keyframes evenly spaced along it, as Framer hands one easing to element.animate(); off it, Framer's
+        // keyframes generator eases each pair.
         private readonly bool _easesWholeRun;
         private bool _begun;
         private float _initial;
@@ -446,6 +446,7 @@ namespace Velvet
             (_element, _channel, _keys, _startSec) = (element, channel, keys, startSec);
             _ease = EaseOut;
             var single = kind == ScopedTimeline.Kind.Single;
+            var accelerated = OnWebAnimations(channel, transition, single);
             if (single && (transition == null || !transition.IsDefined))
             {
                 _passSec = DefaultTransition(out _ease, out _spring);
@@ -477,17 +478,30 @@ namespace Velvet
                 else if (transition != null)
                 {
                     var easing = transition.Easing;
-                    _ease = t => MotionEasing.Evaluate(easing, t);
+                    _ease = t => MotionEasing.Evaluate(easing, t, accelerated);
                 }
             }
 
             _repeat = RepeatOf(transition, single, _spring.HasValue);
             _totalSec = _repeat.Count > 0f ? _repeat.TotalSec(_passSec) : _passSec;
-            _easesWholeRun = single && channel == AnimateChannel.Opacity
-                && (transition == null || (transition.RepeatDelaySec == 0f && transition.RepeatType != TransitionRepeatType.Mirror));
+            _easesWholeRun = single && accelerated;
         }
 
         public double EndSec => _startSec + _totalSec;
+
+        // Whether Framer runs the value on the Web Animations API (supportsBrowserAnimation): opacity, the one of the five
+        // in accelerated-values.ts, unless a single call's repeat keeps it off (MotionRepeat.KeepsWebAnimations) or its
+        // cubic-bezier has an x outside [0, 1], which the browser refuses and Framer then runs on its keyframes
+        // generator. A sequence writes its repeats into its keyframes and leaves the animation none.
+        private static bool OnWebAnimations(AnimateChannel channel, StyleTransitionConfig? transition, bool single)
+        {
+            if (channel != AnimateChannel.Opacity) return false;
+            if (transition == null) return true;
+            return (!single || MotionRepeat.Of(transition).KeepsWebAnimations)
+                && (transition.Type != TransitionType.Bezier
+                    || (Mathf.Clamp01(transition.BezierX1) == transition.BezierX1
+                        && Mathf.Clamp01(transition.BezierX2) == transition.BezierX2));
+        }
 
         private static float EaseOut(float t) => MotionEasing.Evaluate(EasingMode.EaseOut, t);
 

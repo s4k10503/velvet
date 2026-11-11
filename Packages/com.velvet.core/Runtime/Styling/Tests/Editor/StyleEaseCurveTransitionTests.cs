@@ -325,6 +325,33 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AJumpStartStepsLayerOnTheElement_When_AWidthTransitionsFirstFrameRuns_Then_ItHasTakenItsFirstStep()
+        {
+            // Arrange — steps(4, jump-start) stands a quarter of the way along at the start of its run.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            host.Root.Add(element);
+            element.style.width = 0f;
+            element.style.transitionProperty = new List<StylePropertyName> { new("width") };
+            element.style.transitionDuration = new List<TimeValue> { new(1f) };
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            StyleEaseCurve.SetLayer(element, EaseFunction.OfSteps(4, StepJump.Start), EasingMode.Linear);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            element.style.width = 100f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Assert
+            Assert.That(element.resolvedStyle.width / 100f, Is.EqualTo(0.25f).Within(0.01f));
+        }
+
+        [Test]
         public void Given_ACurveWhoseKeywordIsNotTheOneTheElementResolves_When_AWidthTransitionRuns_Then_TheResolvedKeywordEasesIt()
         {
             // Arrange
