@@ -12,8 +12,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>In a range a scroll renders, a boundary inside a row that swaps in its fallback as the range patches the
     /// row leaves the rest of that row patched, a Component the patch drops from the row gone, and the rows after it
-    /// built whole. A render after such a range still keeps the tree it had before where a boundary in its walk aborts
-    /// it.</item>
+    /// built whole; so does one whose fallback fails as it is swapped in, caught by a boundary outside it. A render
+    /// after such a range still keeps the tree it had before where a boundary in its walk aborts it.</item>
     /// <item>A row a scroll mounts reads the value its enclosing Provider holds now, under a memoized host that has not
     /// rendered since that value changed; a row a render of the host mounts reads the value that render gave the
     /// Provider, a scroll having rendered a range before it; one inside a Provider of the row's own reads that
@@ -28,6 +28,8 @@ namespace Velvet.Tests
         private static bool s_refHeld;
         private static string s_title;
         private static bool s_badge;
+        private static bool s_nestedBoundaries;
+        private static bool s_childShown;
         private static bool s_fallbackShown;
         private static bool s_rowProvided;
         private static bool s_hostMemoized;
@@ -48,8 +50,8 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             FiberStrictMode.Enabled = false;
-            (s_refHeld, s_title, s_badge, s_fallbackShown, s_rowProvided, s_hostMemoized) =
-                (true, "x", false, false, false, true);
+            (s_refHeld, s_title, s_badge, s_nestedBoundaries, s_childShown) = (true, "x", false, false, true);
+            (s_fallbackShown, s_rowProvided, s_hostMemoized) = (false, false, true);
             (s_hostFiber, s_setFlipped, s_setTheme, s_renderOutside) = (null, default, default, default);
         }
 
@@ -67,8 +69,8 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode Badge() => V.Label(name: "badge", text: "badge");
 
-        // Rows "a" to "d"; "b" holds the badge where s_badge says, the boundary and a label titled s_title; the others
-        // a label named after the row.
+        // Rows "a" to "d"; "b" holds the badge where s_badge says, the boundary and a label titled s_title, or, where
+        // s_nestedBoundaries says, the two boundaries around the child; the others a label named after the row.
         [Component(Compiler = false)]
         private static VNode BoundaryRowsHost()
             => V.Div(children: new VNode[]
@@ -79,7 +81,9 @@ namespace Velvet.Tests
                     itemHeight: 10f,
                     renderer: item => item != "b"
                         ? V.Div(name: item, children: new VNode[] { V.Label(name: item + "-label", text: item) })
-                        : BoundaryRow(),
+                        : s_nestedBoundaries
+                            ? V.Div(name: "b", children: new VNode[] { V.Component(OuterBoundary, key: "outer") })
+                            : BoundaryRow(),
                     overscan: 0,
                     key: "list"),
             });
@@ -91,6 +95,34 @@ namespace Velvet.Tests
                 V.Component(RefBoundary, s_refHeld, key: "boundary"),
                 V.Label(name: "after", text: s_title),
             });
+
+        // The child's layout cleanup throws as a patch drops it, which the inner boundary catches; that boundary's
+        // fallback throws as it renders, which the outer boundary catches. The child sits at the inner boundary's own
+        // level, so the patch drops it in the walk that expands both boundaries, and its cleanup runs once that walk is
+        // done with them.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode OuterBoundary()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "outer-fallback", text: "caught"));
+            return V.Component(InnerBoundary, key: "inner");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InnerBoundary()
+        {
+            Hooks.UseFallback(_ => V.Component(FailingFallback, key: "failing"));
+            return V.Fragment(s_childShown ? V.Component(CleanupFailingChild, key: "child") : null);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CleanupFailingChild()
+        {
+            Hooks.UseLayoutEffect(() => () => throw new InvalidOperationException("cleanup refused"), new object[0]);
+            return V.Label(name: "child", text: "child");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode FailingFallback() => throw new InvalidOperationException("fallback refused");
 
         // The host's own boundary, beside the list, takes the ref away from its label once flipped.
         [Component(Compiler = false)]
@@ -217,6 +249,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<Label>("badge"), Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base swaps a scrolled row's boundary's fallback in as a pass of its own.
+        // The abort a boundary outside it raises as that fallback fails ends with that pass, which bracketing the range
+        // has to keep.
+        [Test]
+        public void Given_ARowWhoseBoundarysFallbackFailsAsAScrollPatchesIt_When_TheScrollBuildsARowAfterIt_Then_ThatRowIsBuiltWhole()
+        {
+            // Arrange — "b" holds the two boundaries around the child, after a first scroll renders "a" to "c".
+            s_nestedBoundaries = true;
+            using var mounted = V.Mount(_root, V.Component(BoundaryRowsHost, key: "host"), CaughtErrors.Unlogged);
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 30f);
+            s_childShown = false;
+
+            // Act — a scroll that patches "b", dropping the child, and builds "d" after it.
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 40f);
+
+            // Assert
+            Assert.That(_root.Q<Label>("d-label"), Is.Not.Null);
         }
 
         // GREEN_ON_BASE(characterization): the base aborts a pass in whose walk a boundary catches a failing ref cleanup.

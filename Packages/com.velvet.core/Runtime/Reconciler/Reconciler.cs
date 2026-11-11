@@ -279,6 +279,10 @@ namespace Velvet
                             profilerScope.Dispose();
                         }
                     }
+                    else
+                    {
+                        TakeAbortAtTheRangeBracket();
+                    }
                 }
                 finally
                 {
@@ -328,8 +332,21 @@ namespace Velvet
         // which: the drain follows a walk that returned, or one that threw and is still unwinding.
         private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
-            LastTopLevelWasAborted = _ctx.IsAborted;
+            TakeAbort();
             FinishPass(reconciledInto, walked);
+        }
+
+        private void TakeAbort()
+        {
+            LastTopLevelWasAborted = _ctx.IsAborted;
+            _ctx.IsAborted = false;
+        }
+
+        // Called once a Reconcile or a resume that is not top-level has put its own depth back, which is then the depth
+        // it was entered at (ReconcilerContext.RangeBracketDepth).
+        private void TakeAbortAtTheRangeBracket()
+        {
+            if (_ctx.SharedReconcileDepth == _ctx.RangeBracketDepth) TakeAbort();
         }
 
         // FinishTopLevelPass less the aborted-pass reading its callers take of the pass they ran: a VirtualList range
@@ -510,7 +527,8 @@ namespace Velvet
                 _ctx.SharedReconcileDepth--;
                 // Mirrors Reconcile's own top-level finally (see FinishTopLevelPass for why IsAborted
                 // must be consumed before the drain it runs). Left unset (false) on a nested resume —
-                // the ancestor's own eventual top-level finally is what consumes it.
+                // the ancestor's own eventual top-level finally is what consumes it — except on one entered at a
+                // VirtualList range's bracket (ReconcilerContext.RangeBracketDepth).
                 try
                 {
                     if (isTopLevel)
@@ -518,6 +536,10 @@ namespace Velvet
                         // A resume keeps no record of the element its pass reconciles into; the tree's own
                         // mount target is above every element the resume can insert outside a Portal.
                         FinishTopLevelPass(_ctx.MainPanelRoot, resumed);
+                    }
+                    else
+                    {
+                        TakeAbortAtTheRangeBracket();
                     }
                 }
                 finally

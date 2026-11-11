@@ -3351,7 +3351,9 @@ namespace Velvet
 
         // The SharedReconcileDepth the bracket of a VirtualList range rendered outside a pass holds while it is open
         // (Reconciler's BeginRangeForController), and 0 while none is. For the abort the bracket is no pass: a boundary
-        // catching at its depth raises none (FiberErrorBoundary.TryCatch).
+        // catching at its depth raises none (FiberErrorBoundary.TryCatch), and a Reconcile or a resume entered at its
+        // depth takes the one raised inside it as a top-level pass does, without that pass's drains (Reconciler's
+        // ReconcileCatching and ContinueReconcile).
         internal int RangeBracketDepth { get; set; }
         public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }
