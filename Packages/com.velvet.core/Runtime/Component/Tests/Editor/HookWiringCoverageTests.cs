@@ -49,6 +49,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): both sides are this repository's own files -- the paths `.claude/settings.json` names,
         // against the scripts on disk. Rename one hook and this reddens; no base run can do that.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHookWiring_When_EachReferencedPathIsResolved_Then_EveryOneNamesAFileThatExists()
         {
@@ -70,6 +71,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): the hook directory against the two files that run it, both the base's own. Add an unwired
         // `refuse/nothing_runs_this.py` and this reddens, which no run of the base can arrange.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHookDirectory_When_EachScriptIsTracedBack_Then_EveryOneIsWiredOrSourced()
         {
@@ -140,6 +142,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): the `HOOK_SCOPE` lines against the settings, both the base's own content. Unregister a
         // guard that declares one and this reddens; a base run performs no such edit.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheSettingsAreRead_Then_EveryOneIsRegisteredThere()
         {
@@ -165,6 +168,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): the same declarations against the agent front matter. Name such a guard in
         // `.claude/agents/velvet-implementer.md` and this reddens, which no base run arranges.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheAgentFrontMatterIsRead_Then_NoneIsNarrowedThere()
         {
@@ -346,6 +350,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): each registered hook's source against the registration, both the base's own. Delete a
         // `HOOK_TOOLS` line and this reddens; no run of the base can delete one.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_ThePreToolUseRegistrations_When_EachHookIsRead_Then_EveryOneDeclaresItsToolSet()
         {
@@ -369,6 +374,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): the settings matcher against each hook's `HOOK_TOOLS`, both the base's own text. Drop a
         // tool from either side and this reddens, which no base run can perform.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_ThePreToolUseRegistrations_When_EachMatcherIsComparedWithTheHooksOwnSet_Then_TheyNameTheSameTools()
         {
@@ -399,6 +405,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): each gate against the set it sits beside, both the base's own. Replace a gate's
         // `HOOK_TOOLS` with a literal and this reddens; no base run rewrites a gate.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHooksDeclaringAToolSet_When_TheirSourceIsRead_Then_EveryOneComparesToolNameAgainstIt()
         {
@@ -505,6 +512,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): the names the scripts spell against the files beside them. Misspell `settle.py` in a
         // refusal message and this reddens, which is an edit no base run makes.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHookScripts_When_EachScriptNameTheyBuildAPathFromIsResolved_Then_EveryOneExists()
         {
@@ -555,6 +563,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): every guard in the directory against payloads this file holds, both the base's own.
         // Break an import in `tracked_writes.py` and this reddens; no base run breaks one.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_EveryRefusingGuard_When_APayloadIsPosed_Then_ItRunsToAVerdict()
         {
@@ -667,6 +676,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): each gate against the tools its own file declares, both the base's own content. Invert a
         // gate's `tool_name` comparison and this reddens, which no base run can arrange.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_TheHooksDeclaringAToolSet_When_EachIsPosedUnderARoutedNameAndAnUnroutedOne_Then_OnlyTheRoutedOneAnswers()
         {
@@ -840,6 +850,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already refuses an edit made in a worktree, and this change adds a shell route
         // beside the editing one rather than altering what an Edit reaches.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_ACheckoutAndAWorktreeOfIt_When_TheClosedVersionGuardIsPosedAnEditInTheWorktree_Then_ItRefuses()
         {
@@ -883,6 +894,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already refuses a duplicated version heading, and nothing in this change reaches
         // the reading that decides it.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AnEditWritingASecondHeadingForAReleasedVersion_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -909,6 +921,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already refuses a substitution in a released section, and this change leaves that
         // comparison untouched.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AnEditSubstitutingTheOnlyEntryOfAReleasedSection_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -936,6 +949,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already refuses an indented entry there, and the published-lines reading is not
         // what this change moves.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AnEntryNestedAboveAReleasedSectionsFirstColumnZeroBullet_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -964,6 +978,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already refuses an entry under a heading the notes do not read, and the heading
         // grammar is untouched here.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AnEntryBelowAHeadingTheReleaseNotesDoNotRead_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -992,6 +1007,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already refuses where the project directory cannot be placed, and the scoping
         // this change adds is on the shell route rather than that one.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AProjectDirectoryGitCannotPlace_When_TheClosedVersionGuardIsPosedAGrowthEdit_Then_ItRefuses()
         {
@@ -1023,6 +1039,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already stands down for a changelog in no repository of ours, and that scoping
         // is unchanged by this branch.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AChangelogInNoRepository_When_TheClosedVersionGuardIsPosedAGrowthEditFromAPlacedProject_Then_ItStandsDown()
         {
@@ -1055,6 +1072,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base already names the deletion rather than a rename, and this change writes no part
         // of that message.
+        // The base also passes with the GatePayloads row this change adds for the stack-merge guard.
         [Test]
         public void Given_AnEditDeletingAReleasedSectionOutright_When_TheClosedVersionGuardRefusesIt_Then_ItDoesNotNameARename()
         {
