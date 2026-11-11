@@ -1,0 +1,7 @@
+/* Variables at the edges of the --text-<size>--line-height shape, which ThemeTokenLineHeightLookupTests reads: a size
+   with no name, a name whose prefix and suffix share a dash, and another namespace's variable ending in the suffix. */
+.theme-token-edge {
+    --text---line-height: 4;
+    --text--line-height: 5;
+    --ease-lg--line-height: 6;
+}

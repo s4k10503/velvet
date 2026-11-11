@@ -43,6 +43,10 @@ namespace Velvet
             // as CSS text: what a reader holding no element falls back to.
             public readonly Dictionary<string, string> Values = new(StringComparer.Ordinal);
 
+            // Derived from Values at the end of Refresh, the only path that writes Values; a write on any other path would
+            // leave this stale.
+            public readonly HashSet<string> LineHeightClasses = new(StringComparer.Ordinal);
+
             // How many declarations the project sheets make of each name in Values.
             public readonly Dictionary<string, int> Counts = new(StringComparer.Ordinal);
             public readonly Dictionary<string, int> RootCounts = new(StringComparer.Ordinal);
@@ -435,6 +439,7 @@ namespace Velvet
                 scope.Classes.Clear();
                 scope.Cleared.Clear();
                 scope.Values.Clear();
+                scope.LineHeightClasses.Clear();
                 scope.Counts.Clear();
                 scope.RootCounts.Clear();
                 for (var element = ctx.ThemeRoot; element != null; element = element.hierarchy.parent)
@@ -442,6 +447,13 @@ namespace Velvet
                     for (var i = 0; i < element.styleSheets.count; i++)
                     {
                         Observe(scope, element.styleSheets[i], false);
+                    }
+                }
+                foreach (var name in scope.Values.Keys)
+                {
+                    if (StyleNamedTextSize.LineHeightClassOf(name) is { } lineHeightClass)
+                    {
+                        scope.LineHeightClasses.Add(lineHeightClass);
                     }
                 }
                 if (!first)
