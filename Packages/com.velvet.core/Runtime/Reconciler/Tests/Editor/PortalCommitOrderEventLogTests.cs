@@ -22,7 +22,7 @@ namespace Velvet.Tests
         private sealed class Slicing
         {
             internal ComponentFiber? Fiber;
-            internal TransitionStarter Start;
+            internal int Version;
         }
 
         private sealed record SlicedProps(VisualElement Target, Slicing Slicing);
@@ -88,19 +88,22 @@ namespace Velvet.Tests
         [Component]
         private static VNode SlicedPortalHost(SlicedProps props)
             => V.Fragment(
-                V.Portal(props.Target, new VNode[] { V.Component(SlicedRows, props.Slicing, key: "rows") }, key: "portal"),
+                V.Portal(props.Target, new VNode[]
+                {
+                    V.Div(children: new VNode[] { V.Component(SlicedRows, props.Slicing, key: "rows") }),
+                }, key: "portal"),
                 V.Component(After, key: "after"));
 
         // Keyed elements with a component one level down, so a time-sliced update of this component parks between
-        // rows.
-        [Component]
+        // rows. Its version is read off the holder and the test schedules the Transition lane itself, so no
+        // UseTransition slot's pending-clear render follows the slices; and with the compiler off, nothing memoizes
+        // the rows against that read.
+        [Component(Compiler = false)]
         private static VNode SlicedRows(Slicing slicing)
         {
             slicing.Fiber = FiberAmbientStack.Current;
             EventLog.UseRender("Rows");
-            var (version, _) = EventLog.UseState("Version", 0);
-            var (_, start) = Hooks.UseTransition();
-            slicing.Start = start;
+            var version = slicing.Version;
             var rows = new VNode[SlicedRowCount];
             for (var i = 0; i < SlicedRowCount; i++)
             {
@@ -198,18 +201,20 @@ namespace Velvet.Tests
         [Test]
         public void Given_APortalChildsRowReachedByAResumedSliceOfItsUpdate_When_ThatRowAndASiblingAfterThePortalUpdateTogether_Then_TheRowsEffectsRunFirst()
         {
-            // Arrange — a transition of the Portal's child parks, and its resumed slices reach the rows it left
+            // Arrange — a transition of a component inside the Portal parks, and its resumed slices reach the rows it
+            // left
             var log = new EventLog();
             var slicing = new Slicing();
             using var mounted = V.Mount(new VisualElement(),
                 log.Provide(V.Component(SlicedPortalHost, new SlicedProps(new VisualElement(), slicing))));
             mounted.DrainForTest();
-            slicing.Start.Invoke(() => log.Setter<int>("Version").Invoke(1));
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
-            slicing.Fiber!.FlushStateWithTinyBudgetForTest();
+            slicing.Version = 1;
+            slicing.Fiber!.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            slicing.Fiber.FlushStateWithTinyBudgetForTest();
             var parked = slicing.Fiber.HasPendingReconcileWorkForTest();
             log.Clear();
             slicing.Fiber.DrainTimeSlicedReconcileForTest();
+            var survivedTheSlices = slicing.Fiber.IsMounted;
             mounted.DrainForTest();
             var renderedAfterTheSlices = log.ToString().Contains("render:Rows");
             log.Clear();
@@ -220,9 +225,13 @@ namespace Velvet.Tests
             log.Setter<int>("After").Invoke(1);
             mounted.DrainForTest();
 
-            // Assert — a pass that never parked reaches every row in its first slice, and a render of the Portal's
-            // child after its slices reaches every row again, so neither says anything here
-            Assert.That(parked && !renderedAfterTheSlices ? log.ToString() : "the rows were not left as the slices reached them", Is.EqualTo(
+            // Assert — a pass that never parked reaches every row in its first slice, and a render of the component
+            // after its slices reaches every row again, so neither says anything here
+            var unmet = !parked ? "the transition's pass never parked"
+                : !survivedTheSlices ? "the component was unmounted while its slices resumed"
+                : renderedAfterTheSlices ? "the component rendered again after its slices"
+                : null;
+            Assert.That(unmet ?? log.ToString(), Is.EqualTo(
                 $"ins-x:{last} ins:{last} lay-x:{last} ins-x:After ins:After lay-x:After lay:{last} lay:After"
                 + $" eff-x:{last} eff-x:After eff:{last} eff:After"));
         }

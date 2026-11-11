@@ -121,11 +121,11 @@ namespace Velvet.Tests
             var refD = EventLog.UseRefCallback("D");
             Hooks.UseFallback(_ => V.Fragment(
                 V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: refD, key: "d")));
-            return V.Component(Breaking, broken, key: "breaking");
+            return V.Component(ThrowsWhenBroken, broken, key: "breaking");
         }
 
         [Component]
-        private static VNode Breaking(int broken)
+        private static VNode ThrowsWhenBroken(int broken)
             => broken == 1 ? throw new InvalidOperationException("thrown by the probe") : V.Div();
 
         [Component]

@@ -14,7 +14,7 @@ namespace Velvet
         private static readonly Stack<RenderedChildrenCache> s_pool = new();
 
         private readonly Dictionary<VisualElement, List<VisualElement>> _of = new();
-        private readonly Dictionary<VisualElement, (int Index, int Slot)> _positionOf = new();
+        private readonly Dictionary<(VisualElement Container, VisualElement Child), (int Index, int Slot)> _positionOf = new();
         private readonly Stack<List<VisualElement>> _spare = new();
 
         internal static RenderedChildrenCache Rent() => s_pool.Count > 0 ? s_pool.Pop() : new RenderedChildrenCache();
@@ -45,30 +45,25 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
-                _positionOf[child] = (i, rendered.Count);
+                _positionOf[(container, child)] = (i, rendered.Count);
                 if (!LogicalChildSlots.IsInvisible(child)) rendered.Add(child);
             }
             _of[container] = rendered;
             return rendered;
         }
 
-        // A child's position is the one recorded by whichever container read for the cache listed it. Every container
-        // that lists a child, one whose contentContainer is the child's hierarchy parent, lists it at one index and
-        // slot.
-
-        // container.IndexOf(child) where the cache's containers list the child, -1 where none does.
+        // container.IndexOf(child): -1 where container does not list the child.
         internal int IndexIn(VisualElement container, VisualElement child)
         {
             Of(container);
-            return _positionOf.TryGetValue(child, out var position) ? position.Index : -1;
+            return _positionOf.TryGetValue((container, child), out var position) ? position.Index : -1;
         }
 
-        // LogicalChildSlots.ToLogical(container, container.IndexOf(child)) where the cache's containers list the
-        // child, 0 where none does.
+        // LogicalChildSlots.ToLogical(container, container.IndexOf(child)): 0 where container does not list the child.
         internal int SlotIn(VisualElement container, VisualElement child)
         {
             Of(container);
-            return _positionOf.TryGetValue(child, out var position) ? position.Slot : 0;
+            return _positionOf.TryGetValue((container, child), out var position) ? position.Slot : 0;
         }
 
         // Where the fiber's output starts: its first row, or the row a fiber holding none sits in front of. Null for
