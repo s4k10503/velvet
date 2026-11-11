@@ -1030,6 +1030,7 @@ namespace Velvet
                 ctx.ZLayerPlaceholders[placeholder] = entry.Real;
                 parent.hierarchy.Add(placeholder);
                 entry.Slot = placeholder;
+                // MUTANT_SURVIVES(equivalent, literal): where SortToDesiredOrder then moves no child, the slots already stand in declared order, so FlowChildren, which each walker reads, gives the sequence the walkers last applied to.
                 changed = true;
             }
             else if (!entry.Relocate && relocated)
@@ -1229,7 +1230,6 @@ namespace Velvet
             s_middle.Sort(s_compareMiddle);
 
             s_desired.Clear();
-            s_placed.Clear();
             PlaceLeadingInternals(parent);
             foreach (var entry in s_back) Place(entry.Real);
             foreach (var item in s_middle) Place(item.Element);

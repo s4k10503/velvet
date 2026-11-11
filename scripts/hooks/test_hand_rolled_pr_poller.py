@@ -30,6 +30,12 @@ HOOK = REPO_ROOT / ".claude/hooks/refuse/hand_rolled_pr_poller.py"
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "pr"))
 from watcher_state import HEARTBEAT, LOCK, READY_STATE, STALE_AFTER, beat  # noqa: E402
 
+# Named rather than imported, so the cases waiting on them load on a tree whose watcher writes none
+# of them.
+ACTIONABLE, REPORTED, HANDED_OFF = (Path(name) for name in (".velvet-pr-watch.actionable",
+                                                             ".velvet-pr-watch.reported",
+                                                             ".velvet-pr-watch.handed-off"))
+
 # A verdict is the exit code paired with the guard being there to give it. python3 exits 2 for a
 # script it cannot open, which is the code a PreToolUse refusal exits, so the code alone reads a
 # deleted guard as a refusing one — and every refusal case below passed against a tree without it.
@@ -254,6 +260,34 @@ class WatcherFileWaitTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, REFUSED, "waiting for the lock to clear is waiting on the watcher")
+
+    def test_Given_ALiveWatcher_When_AWaitPollsTheActionableRecord_Then_ItIsRefused(self):
+        # Arrange — the record a follower reads, which a wait on it duplicates.
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(f"until grep -q READY ~/{ACTIONABLE.name}; do sleep 30; done &")
+
+        # Assert
+        self.assertEqual(verdict, REFUSED)
+
+    def test_Given_ALiveWatcher_When_AWaitPollsACallersReportedRecord_Then_ItIsRefused(self):
+        # Arrange — a record sits one level down, under a name the guard cannot know in advance.
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(f"until grep -q READY ~/{REPORTED.name}/0123abcd; "
+                                  "do sleep 30; done &")
+
+        # Assert
+        self.assertEqual(verdict, REFUSED)
+
+    def test_Given_ALiveWatcher_When_AWaitPollsTheHandOff_Then_ItIsRefused(self):
+        # Arrange
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(f"until [ -s ~/{HANDED_OFF.name} ]; do sleep 30; done &")
+
+        # Assert
+        self.assertEqual(verdict, REFUSED)
 
 
 class SanctionedCommandTests(unittest.TestCase):

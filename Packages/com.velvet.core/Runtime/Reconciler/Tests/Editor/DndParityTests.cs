@@ -526,6 +526,25 @@ namespace Velvet.Tests
             Assert.That(Q("ghost"), Is.Not.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base already drops them at once; turning the `||` before IsOnSource in DndDropAnimator.Begin into `&&` reddens it.
+        [Test]
+        public void Given_ADragOverlayBackOnItsSource_When_TheDropClearsItsChildren_Then_TheyGoAtOnce()
+        {
+            // Arrange — the pointer leaves the press and comes back to it, so the overlay ends where the source is.
+            Mount(OverlayRecipeScene);
+            var item = Q("item");
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            item.SendPointerMoveEvent(new Vector2(110, 60));
+            item.SendPointerMoveEvent(new Vector2(10, 10));
+
+            // Act
+            item.SendPointerUpEvent(new Vector2(10, 10));
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Q("ghost"), Is.Null);
+        }
+
         // OverlayRecipeScene with the drop animation turned off.
         [Component]
         private static VNode OverlayWithoutDropAnimationScene()
@@ -594,6 +613,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(TranslateOf(Q("b")), Is.EqualTo(new[] { 0f, -50f }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes the transition off; deleting `element.style.transitionProperty = saved.TransitionProperty;` from DndSortableSession.Put reddens it.
+        [Test]
+        public void Given_AVerticalSortableListThatShiftedItsMiddleItem_When_TheDragEnds_Then_TheMiddleItemHasNoInlineTransitionProperty()
+        {
+            // Arrange
+            Mount(SortableScene);
+            var first = Q("a");
+            first.SendPointerDownEvent(new Vector2(10, 10));
+            first.SendPointerMoveEvent(new Vector2(20, 10));
+            first.SendPointerMoveEvent(new Vector2(20, 110));
+
+            // Act
+            first.SendPointerUpEvent(new Vector2(20, 110));
+
+            // Assert
+            Assert.That(Q("b").style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         // A draggable at the top of a 100 px ScrollView over 400 px of content.

@@ -121,6 +121,12 @@ namespace Velvet
                 if (s_byElement.TryGetValue(child, out var binding) && InheritsColour(binding.Layers))
                 {
                     child.MarkDirtyRepaint();
+                    // The ring is part of the same box-shadow (DiscardedByInheritance), on bands of its own.
+                    if (RingOverlay.TryGet(child) is { } ring)
+                    {
+                        ring.RingElement.MarkDirtyRepaint();
+                        ring.OffsetElement.MarkDirtyRepaint();
+                    }
                 }
                 RepaintInheritors(child);
             }
@@ -141,20 +147,41 @@ namespace Velvet
         // The colour family takes on element through inherit: the parent's declared colour, the grandparent's where the
         // parent's is itself inherit, and so on up; null where the ancestor reached declares no colour for family.
         private static Color? InheritedColour(VisualElement element, ShadowColourFamily family)
+            => InheritedDeclaration(element, family).Colour;
+
+        private static DeclaredShadowColour InheritedDeclaration(VisualElement element, ShadowColourFamily family)
         {
             for (var parent = element.hierarchy.parent; parent != null; parent = parent.hierarchy.parent)
             {
                 if (!s_declaredColours.TryGetValue(parent, out var declared))
                 {
-                    return null;
+                    return default;
                 }
                 var colour = declared.Of(family);
                 if (!colour.Inherit)
                 {
-                    return colour.Colour;
+                    return colour;
                 }
             }
-            return null;
+            return default;
+        }
+
+        // Whether a layer of element's box-shadow takes, through -inherit, a colour an ancestor leaves invalid: the
+        // whole box-shadow is then invalid where it is computed, and none of it is drawn, rings included.
+        internal static bool DiscardedByInheritance(VisualElement element)
+        {
+            if (!s_byElement.TryGetValue(element, out var binding))
+            {
+                return false;
+            }
+            foreach (var layer in binding.Layers)
+            {
+                if (layer.InheritFrom != ShadowColourFamily.None && InheritedDeclaration(element, layer.InheritFrom).Invalid)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Wires the paint + face-stash callbacks onto the element and returns the binding. The shadow is the
@@ -382,15 +409,15 @@ namespace Velvet
             }
             if (!clips)
             {
-                DrawLayers(mgc, binding, box, inset: false, unscale);
+                DrawLayers(mgc, ve, binding, box, inset: false, unscale);
             }
             if (native && !binding.Face.SuppressionApplied)
             {
-                DrawLayers(mgc, binding, box, inset: true, unscale);
+                DrawLayers(mgc, ve, binding, box, inset: true, unscale);
                 return;
             }
             RepaintUprightFill(mgc, ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: true, unscale);
+            DrawLayers(mgc, ve, binding, box, inset: true, unscale);
             if (!clips)
             {
                 RepaintUprightBorder(mgc, ve, binding, w, h);
@@ -440,7 +467,7 @@ namespace Velvet
             float h)
         {
             var (box, unscale) = LayerBox(ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: false, unscale);
+            DrawLayers(mgc, ve, binding, box, inset: false, unscale);
             var shearing = new SilhouetteFace.Shearing(w, h, 0f, 0f);
             if (binding.Face.SuppressionApplied)
             {
@@ -464,9 +491,13 @@ namespace Velvet
 
         // unscale maps the box the layers are baked against back onto the element's own: Vector2.one but while a
         // layoutId projection draws the element scaled differently on each axis (ProjectedBox).
-        private static void DrawLayers(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowBox box, bool inset,
-            Vector2 unscale)
+        private static void DrawLayers(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding, in ShadowBox box,
+            bool inset, Vector2 unscale)
         {
+            if (DiscardedByInheritance(ve))
+            {
+                return;
+            }
             for (var i = binding.Layers.Length - 1; i >= 0; i--)
             {
                 if (binding.Layers[i].Inset == inset)

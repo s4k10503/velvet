@@ -228,7 +228,7 @@ namespace Velvet
             {
                 return false;
             }
-            var custom = core.Length > 3 && core[1] == '-' && core[2] == '-';
+            var custom = core[1] == '-' && core[2] == '-';
             for (var i = 1; i < colon; i++)
             {
                 var c = core[i];

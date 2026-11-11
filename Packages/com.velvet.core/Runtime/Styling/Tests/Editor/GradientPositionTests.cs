@@ -64,6 +64,17 @@ namespace Velvet.Tests
             Assert.That(sides, Is.EqualTo("90.00 80.00"));
         }
 
+        // GREEN_ON_BASE(characterization): the base places a percentage offset from the far edges inside the box.
+        [Test]
+        public void Given_PercentageOffsetsFromTheFarEdges_When_Extracted_Then_TheCentreIsInsideTheBox()
+        {
+            // Act — 10% inside the right edge is 90% across; 10% outside it would be 110%.
+            var sides = FarthestSides("right_10%_bottom_20%");
+
+            // Assert
+            Assert.That(sides, Is.EqualTo("90.00 80.00"));
+        }
+
         // GREEN_ON_BASE(characterization): the base declines a four-value position whose first edge is center.
         [Test]
         public void Given_AFourValuePositionOpeningOnCenter_When_Extracted_Then_TheGradientIsDeclined()

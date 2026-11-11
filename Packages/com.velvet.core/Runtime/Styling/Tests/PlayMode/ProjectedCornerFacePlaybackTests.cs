@@ -265,11 +265,17 @@ namespace Velvet.Tests
             _texture.SetPixels32(green);
             _texture.Apply();
             yield return MountAndWiden("ImageBeyondCircle", card => card.style.backgroundImage = new StyleBackground(_texture));
+            // The texture turned blue mid-move, so that blue is read only where the image is drawn after the change.
+            var blue = new Color32[16];
+            for (var i = 0; i < blue.Length; i++) blue[i] = new Color32(0, 0, 255, 255);
+            _texture.SetPixels32(blue);
+            _texture.Apply();
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
 
             // Assert — black outside the circle where a square or elliptical corner would show the image, while the image
             // fills the face.
-            var shown = IsGreen(Interior);
-            Assert.That(shown ? Read(new[] { Ellipse }, new[] { Circle }, ("green", IsGreen), ("black", IsBlack)) : "no image",
+            var shown = IsBlue(Interior);
+            Assert.That(shown ? Read(new[] { Ellipse }, new[] { Circle }, ("blue", IsBlue), ("black", IsBlack)) : "no image",
                 Is.EqualTo("black"));
         }
 

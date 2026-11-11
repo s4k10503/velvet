@@ -315,8 +315,9 @@ namespace Velvet
         // holds a run of its own, the run can only be where they meet, so the parts are joined around it.
         private static string JoinPaths(string parentPath, string relativePath)
         {
-            if (parentPath.IndexOf("//", StringComparison.Ordinal) < 0
-                && relativePath.IndexOf("//", StringComparison.Ordinal) < 0)
+            // MUTANT_SURVIVES(equivalent, boundary): the parent path is empty or this method's own result, and neither branch below returns a run of slashes, so it never starts with one.
+            var parentHoldsNoRun = parentPath.IndexOf("//", StringComparison.Ordinal) < 0;
+            if (parentHoldsNoRun && relativePath.IndexOf("//", StringComparison.Ordinal) < 0)
             {
                 var head = parentPath.EndsWith("/", StringComparison.Ordinal) ? parentPath : parentPath + "/";
                 return relativePath.StartsWith("/", StringComparison.Ordinal)
