@@ -603,20 +603,19 @@ namespace Velvet
         void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
             => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
 
-        void IReconcilerBridge.ClearAbortForController() => _ctx.IsAborted = false;
+        bool IReconcilerBridge.IsAbortedForController => _ctx.IsAborted;
+
+        void IReconcilerBridge.RestoreAbortForController(bool aborted) => _ctx.IsAborted = aborted;
 
         // A range rendered inside a pass is that pass's to end. One rendered outside a pass is bracketed by
         // SharedReconcileDepth, as an in-pass range already is: a Component row's mount is then no top-level pass of
         // its own, whose end would drain the mounts the rows ahead of it deferred before the range has placed them,
-        // and the range's end drains them all, in the order they were queued, once the rows are in the list. At the
-        // bracket's own depth no walk is on the stack, so a row mounted there rebuilds its enclosing Providers from
-        // the committed spine as it would at depth 0 (WalklessReconcileDepth). Returns whether this range opened the
-        // bracket, which EndRangeForController closes.
+        // and the range's end drains them all, in the order they were queued, once the rows are in the list. Returns
+        // whether this range opened the bracket, which EndRangeForController closes.
         bool IReconcilerBridge.BeginRangeForController()
         {
             if (_ctx.SharedReconcileDepth > 0) return false;
             _ctx.SharedReconcileDepth++;
-            _ctx.WalklessReconcileDepth = _ctx.SharedReconcileDepth;
             return true;
         }
 
@@ -625,15 +624,22 @@ namespace Velvet
         void IReconcilerBridge.EndRangeForController(VisualElement container, bool opened)
         {
             if (!opened) return;
-            _ctx.WalklessReconcileDepth = 0;
             _ctx.SharedReconcileDepth--;
             // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange is the only catch of what this
             // throws, and it hands either signal to the list's host alike.
             FinishPass(container, walked: true);
         }
 
+        // What a detached item scope hands from Begin to Stamp and End: the host's children before the scope, which tells
+        // the item fibers it adds, and the spine Begin pushed.
+        private sealed class DetachedItemScope
+        {
+            public readonly HashSet<ComponentFiber> Before = new();
+            public FiberContextSpine Spine;
+        }
+
         object? IReconcilerBridge.BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext)
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass)
         {
             var stack = _ctx.ComponentContextStack;
             if (enclosingContext != null)
@@ -644,24 +650,31 @@ namespace Velvet
                 }
             }
             if (host == null) return null;
+            var scope = new DetachedItemScope();
+            // Outside a pass no walk has pushed the Providers that enclose the host, and the snapshot holds the values
+            // they had when the host last created or patched the list, which a memoized host need not have done since
+            // one changed; their committed values go on top. Inside a pass, including a row's walk in a range rendered outside one, the
+            // walk around the list has pushed them, and a spine read there would give the committed values that walk
+            // may be replacing.
+            if (outsidePass) scope.Spine = FiberContextSpine.Push(host);
             // Item fibers created during the scope AppendChild onto FiberStack.Current; making it the host
             // links them under the host (so they share the host's ReconcilerContext / context cursor) and
             // lets the spine's parent-walk reach the host on an isolated re-render.
             _ctx.FiberStack.Push(host);
             // Snapshot the host's current children so End can identify the item fibers added by this scope.
             // A fresh set per call supports nested VirtualLists (an item that itself renders a VirtualList).
-            var before = new HashSet<ComponentFiber>();
             for (var f = host.Child; f != null; f = f.Sibling)
             {
-                before.Add(f);
+                scope.Before.Add(f);
             }
-            return before;
+            return scope;
         }
 
         void IReconcilerBridge.StampDetachedItemFibers(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken)
         {
-            if (host == null || scopeToken is not HashSet<ComponentFiber> seen) return;
+            if (host == null || scopeToken is not DetachedItemScope scope) return;
+            var seen = scope.Before;
             // Stamp each fiber newly added under host since the prior call (set diff via Add). DescendantNodes is
             // THIS item's rendered vnode so the spine can re-push a Provider the renderer placed above the item's
             // consumer; anchor is the host the item fibers parent under (the registry-lookup parent the walk
@@ -683,17 +696,18 @@ namespace Velvet
             if (host != null)
             {
                 _ctx.FiberStack.Pop();
-                if (scopeToken is HashSet<ComponentFiber> before)
+                if (scopeToken is DetachedItemScope scope)
                 {
                     // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers marks the ones it
-                    // handled in `before`): only the enclosing snapshot is replayed, with no item-vnode walk.
+                    // handled in Before): only the enclosing snapshot is replayed, with no item-vnode walk.
                     DetachedMountContext? detached = null;
                     for (var f = host.Child; f != null; f = f.Sibling)
                     {
-                        if (before.Contains(f)) continue;
+                        if (scope.Before.Contains(f)) continue;
                         detached ??= new DetachedMountContext(enclosingContext, descendantNodes: null, anchor: host);
                         f.DetachedMountContext = detached;
                     }
+                    scope.Spine.Unwind();
                 }
             }
             var stack = _ctx.ComponentContextStack;

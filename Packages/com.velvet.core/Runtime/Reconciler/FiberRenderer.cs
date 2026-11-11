@@ -501,9 +501,10 @@ namespace Velvet
             // Spine-rewalk-with-bailout: an isolated re-render (a standalone entry, not a
             // nested expansion render) starts with an empty live context cursor, so reconstruct the
             // enclosing Providers from the committed spine before Render() reads them via UseContext. A
-            // nested expansion render (a walk on the stack, IsWalkless) already has the cursor populated by the
+            // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
-            var reconstructSpine = fiber.Parent != null && IsWalkless(fiber);
+            var reconstructSpine = fiber.Parent != null
+                && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
             var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
             var ownedJournal = OpenPassJournal(fiber);
             try
@@ -675,13 +676,6 @@ namespace Velvet
             return retainedOutput;
         }
 
-        // Whether no walk is on the stack around this render (ReconcilerContext.WalklessReconcileDepth).
-        private static bool IsWalkless(ComponentFiber fiber)
-        {
-            var context = fiber.Reconciler?.Context;
-            return context != null && context.SharedReconcileDepth == context.WalklessReconcileDepth;
-        }
-
         // A suspend from the drain of the Portals this render mounted comes after its walk has placed, patched and
         // removed rows, so the container already holds this render's output. The retry diffs from it, as a pass that
         // completes would, with the Portal that suspended recorded as holding nothing
@@ -815,8 +809,9 @@ namespace Velvet
             // Match the main render's spine reconstruction so the diagnostic reads the same live context.
             // The main render unwound its spine in RenderAndReconcile's finally; without re-pushing it the
             // consumer would read the context default here and report a spurious "impure render" divergence.
-            // A nested diagnostic (a walk on the stack) already has the cursor populated by the enclosing expansion.
-            var reconstructSpine = fiber.Parent != null && IsWalkless(fiber);
+            // A nested diagnostic (depth > 0) already has the cursor populated by the enclosing expansion.
+            var reconstructSpine = fiber.Parent != null
+                && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
             var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
             VNode?[]? diagnosticTree = null;
             try

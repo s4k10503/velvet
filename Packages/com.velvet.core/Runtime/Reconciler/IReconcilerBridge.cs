@@ -45,10 +45,11 @@ namespace Velvet
         // Bracket a range render: Begin before its first row is built, End once the buffers name the rows placed.
         // End can throw the suspend of a Portal child it mounts.
         bool BeginRangeForController();
-
-        // Clears the abort an error boundary raises as it swaps in its fallback (ReconcilerContext.IsAborted).
-        void ClearAbortForController();
         void EndRangeForController(VisualElement container, bool opened);
+
+        // The abort an error boundary raises as it swaps in its fallback (ReconcilerContext.IsAborted).
+        bool IsAbortedForController { get; }
+        void RestoreAbortForController(bool aborted);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
@@ -61,7 +62,9 @@ namespace Velvet
         // test driving the controller directly); then the scope is context-only and no stamping occurs. The
         // returned token must be passed back to End (carries the pre-scope child set for stamping; supports
         // nested VirtualLists).
-        object? BeginDetachedItemScope(ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext);
+        // outsidePass is whether the range opened its bracket (BeginRangeForController).
+        object? BeginDetachedItemScope(
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
         // DescendantNodes is THIS item's rendered vnode — so an isolated re-render can rebuild not just the

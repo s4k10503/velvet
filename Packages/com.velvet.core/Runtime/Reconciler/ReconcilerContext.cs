@@ -3348,11 +3348,6 @@ namespace Velvet
         // OUTERMOST Reconcile pass across the entire fiber tree completes. Using an instance-local depth would
         // treat each fiber-owned Reconciler.Reconcile call as a fresh top-level and run that reset mid-pass.
         internal int SharedReconcileDepth { get; set; }
-
-        // The SharedReconcileDepth at which no walk is on the stack to have pushed the Providers enclosing what renders
-        // there: 0, or 1 while a VirtualList range rendered outside a pass is bracketed
-        // (IReconcilerBridge.BeginRangeForController), whose rows mount from the range rather than from a walk.
-        internal int WalklessReconcileDepth { get; set; }
         public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }
 
