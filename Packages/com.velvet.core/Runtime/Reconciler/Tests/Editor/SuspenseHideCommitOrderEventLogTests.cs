@@ -29,6 +29,7 @@ namespace Velvet.Tests
             TopLevelPortalEmpty,
             PortalInPortalRow,
             PortalToMissingTarget,
+            PortalChildRenderedAlone,
         }
 
         private sealed record Named(string Name, string? ClassName = null);
@@ -86,6 +87,27 @@ namespace Velvet.Tests
                 V.Portal(props.Target, new VNode[] { portalChild }, key: "portal"),
                 V.Div(refCallback: refO2, key: "o2"),
             });
+        }
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedPortalOuter(HostProps props)
+        {
+            var refO = EventLog.UseRefCallback("O");
+            var refO2 = EventLog.UseRefCallback("O2");
+            return V.Div(refCallback: refO, children: new VNode[]
+            {
+                V.Portal(props.Target, new VNode[] { V.Component(SelfUpdating, key: "c1") }, key: "portal"),
+                V.Div(refCallback: refO2, key: "o2"),
+            });
+        }
+
+        [Component]
+        private static VNode SelfUpdating()
+        {
+            EventLog.UseState("C1", 0);
+            EventLog.UseEffects("C1", Array.Empty<object>());
+            var refD = EventLog.UseRefCallback("D");
+            return V.Fragment(V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: refD, key: "d"));
         }
 
         [Component]
@@ -191,6 +213,10 @@ namespace Velvet.Tests
                     },
                     Shape.PortalIntoOwnElement or Shape.PortalIntoOwnElementRelocated or Shape.PortalIntoOwnElementAfterEmpty
                         => new VNode[] { V.Component(PortalIntoOwnOuter, props, key: "outer"), reader },
+                    Shape.PortalChildRenderedAlone => new VNode[]
+                    {
+                        V.Component(MemoizedPortalOuter, props, key: "outer"), reader,
+                    },
                     Shape.PortalToMissingTarget => new VNode[]
                     {
                         V.Div(children: new VNode[]
@@ -435,6 +461,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalChildThatRenderedAloneUnderAComponentThatBails_When_ItSuspendsAgain_Then_ItsChildRenderingNothingIsTakenDownWhereItSits()
+        {
+            // Arrange — the Portal's child re-renders on its own, and the update that suspends passes over the memoized
+            // component holding the Portal
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalChildRenderedAlone);
+            log.Setter<int>("C1").Invoke(1);
+            mounted.DrainForTest();
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ref-x:O lay-x:C1 lay-x:E ref-x:D ref-x:O2 ins:F ref:F lay:F eff:F"));
         }
     }
 }

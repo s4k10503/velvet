@@ -3,16 +3,18 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The rendered children of containers, each container read once while the cache is held: the slot-th child of a
-    // container's list is the one LogicalChildSlots.TryGetPhysical finds at that slot. Held across a pass that does
-    // not change the children it reads, so a pass resolving many slots of one container reads it once rather than
-    // once per slot.
+    // The children of containers, each container read once while the cache is held, so a pass resolving many slots or
+    // positions in one container reads it once rather than once per question. The slot-th entry of a container's list
+    // is the child LogicalChildSlots.TryGetPhysical finds at that slot, and a child's index and slot are what
+    // VisualElement.IndexOf and LogicalChildSlots.ToLogical give for it. Every answer is the container as the cache
+    // first read it: a change made to its children while the cache is held, by a callback the pass runs, is not seen.
     internal sealed class RenderedChildrenCache
     {
         // An instance per holder on the stack, so a pass nested in another takes one of its own.
         private static readonly Stack<RenderedChildrenCache> s_pool = new();
 
         private readonly Dictionary<VisualElement, List<VisualElement>> _of = new();
+        private readonly Dictionary<VisualElement, (int Index, int Slot)> _positionOf = new();
         private readonly Stack<List<VisualElement>> _spare = new();
 
         internal static RenderedChildrenCache Rent() => s_pool.Count > 0 ? s_pool.Pop() : new RenderedChildrenCache();
@@ -31,8 +33,10 @@ namespace Velvet
                 _spare.Push(list);
             }
             _of.Clear();
+            _positionOf.Clear();
         }
 
+        // The children that hold a logical slot, in slot order.
         internal List<VisualElement> Of(VisualElement container)
         {
             if (_of.TryGetValue(container, out var rendered)) return rendered;
@@ -41,10 +45,26 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
+                _positionOf[child] = (i, rendered.Count);
                 if (!LogicalChildSlots.IsInvisible(child)) rendered.Add(child);
             }
             _of[container] = rendered;
             return rendered;
+        }
+
+        // container.IndexOf(child): -1 for an element container does not list.
+        internal int IndexIn(VisualElement container, VisualElement child)
+        {
+            Of(container);
+            return _positionOf.TryGetValue(child, out var position) ? position.Index : -1;
+        }
+
+        // LogicalChildSlots.ToLogical(container, container.IndexOf(child)): the slots ahead of the child, 0 for an
+        // element container does not list.
+        internal int SlotIn(VisualElement container, VisualElement child)
+        {
+            Of(container);
+            return _positionOf.TryGetValue(child, out var position) ? position.Slot : 0;
         }
 
         // Where the fiber's output starts: its first row, or the row a fiber holding none sits in front of. Null for

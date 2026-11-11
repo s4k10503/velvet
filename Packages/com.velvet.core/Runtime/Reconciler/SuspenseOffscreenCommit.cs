@@ -124,23 +124,26 @@ namespace Velvet
 
         private void Place(ComponentFiber fiber)
         {
-            // A child of a Portal holding no row at the end of the Portal's rows is taken down where the walk leaves
-            // them: the target's next row there belongs to something else, if the target holds one.
-            if (fiber.OwningPortalPlaceholder is { } placeholder
-                && _ctx.PortalState.TryGetValue(placeholder, out var portal)
-                && ReferenceEquals(portal.Target, fiber.MountPoint)
-                && fiber.MountSlotStart >= portal.SlotStart + portal.SlotLength)
-            {
-                AddInTreeOrder(_endingInPortal, placeholder, fiber);
-                return;
-            }
             var mount = fiber.MountPoint;
             if (mount == null) return;
+            // Read up the fibers sharing its rows' container, as FiberCommitWork reads it: an isolated render of a
+            // Portal's child erases the stamp of the fibers below it.
+            var owning = FiberCommitWork.OwningPortalOf(fiber, mount);
+            // A child of a Portal holding no row at the end of the Portal's rows is taken down where the walk leaves
+            // them: the target's next row there belongs to something else, if the target holds one.
+            if (owning != null
+                && _ctx.PortalState.TryGetValue(owning, out var portal)
+                && ReferenceEquals(portal.Target, mount)
+                && fiber.MountSlotStart >= portal.SlotStart + portal.SlotLength)
+            {
+                AddInTreeOrder(_endingInPortal, owning, fiber);
+                return;
+            }
             var rendered = _rendered.Of(mount);
             var slot = fiber.MountSlotStart;
             // A fiber holding no row in front of another Portal's row in its container sits behind the container's
             // own children, where the walk ends the container: that row is reached at its Portal.
-            if (slot < 0 || slot >= rendered.Count || (fiber.MountSlotCount == 0 && IsAnotherPortalsRow(fiber, mount, slot)))
+            if (slot < 0 || slot >= rendered.Count || (fiber.MountSlotCount == 0 && IsAnotherPortalsRow(owning, mount, slot)))
             {
                 AddInTreeOrder(_endingIn, mount, fiber);
                 return;
@@ -151,13 +154,13 @@ namespace Velvet
             AddInTreeOrder(_startingAt, _ctx.ZLayerPlaceholders.TryGetValue(start, out var real) ? real : start, fiber);
         }
 
-        private bool IsAnotherPortalsRow(ComponentFiber fiber, VisualElement container, int slot)
+        private bool IsAnotherPortalsRow(VisualElement? owning, VisualElement container, int slot)
         {
             foreach (var (placeholder, portal) in _ctx.PortalState)
             {
                 if (!ReferenceEquals(portal.Target, container)) continue;
                 if (slot < portal.SlotStart || slot >= portal.SlotStart + portal.SlotLength) continue;
-                return !ReferenceEquals(placeholder, fiber.OwningPortalPlaceholder);
+                return !ReferenceEquals(placeholder, owning);
             }
             return false;
         }

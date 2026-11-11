@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -10,14 +11,15 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins what the commit work that orders a hide's cleanups and a Portal's children costs: a walk whose
     /// <c>V.Suspense</c> boundaries hid and revealed nothing allocates nothing applying that, and twice the components
-    /// in one element, hidden or placed after a Portal, read that element no more than twice as often.
+    /// in one element, hidden or placed after a Portal, external to it or rendering into it, read and search that
+    /// element no more than twice as much.
     /// </summary>
     [TestFixture]
     internal sealed class CommitWorkCostTests
     {
         private sealed record ListProps(int Rows, VisualElement? Target);
 
-        // Counts the reads of its children that ask for contentContainer; ReadsToHide and ReadsToMount check the two
+        // Counts the reads of its children that ask for contentContainer; ReadsToHide and ReadsToMount check the ones
         // they rely on.
         private sealed class CountingContainer : VisualElement
         {
@@ -33,8 +35,26 @@ namespace Velvet.Tests
             }
         }
 
+        // Counts the comparisons an equality search makes against it; ReadsToMount checks that a search of a child
+        // list is counted once for each child it passes.
+        private sealed class CountingChild : VisualElement
+        {
+            internal static int Comparisons;
+
+            public override bool Equals(object? other)
+            {
+                Comparisons++;
+                return ReferenceEquals(this, other);
+            }
+
+            public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
+        }
+
         [Component]
         private static VNode Row() => V.Div();
+
+        [Component]
+        private static VNode CountedRow() => V.Custom<CountingChild>();
 
         [Component]
         private static VNode Rows(int count)
@@ -50,47 +70,68 @@ namespace Velvet.Tests
             var nodes = new VNode?[props.Rows + 1];
             nodes[0] = props.Target == null
                 ? null
-                : V.Portal(props.Target, new VNode[] { V.Component(Row, key: "portal-row") }, key: "portal");
-            for (var i = 0; i < props.Rows; i++) nodes[i + 1] = V.Component(Row, key: i.ToString());
+                : V.Portal(props.Target, new VNode[] { V.Component(CountedRow, key: "portal-row") }, key: "portal");
+            for (var i = 0; i < props.Rows; i++) nodes[i + 1] = V.Component(CountedRow, key: i.ToString());
             return V.Fragment(nodes);
         }
 
         // GREEN_ON_BASE(characterization): the base commits a Portal's children without reading their siblings' element.
         // What this pins is that placing them where the Portal sits reads that element a bounded number of times per row.
         [Test]
-        public void Given_APortalAheadOfTwiceTheSiblings_When_Mounted_Then_WhatThePortalAddsToTheReadsOfTheirElementAtMostDoubles()
+        public void Given_APortalAheadOfTwiceTheSiblings_When_Mounted_Then_WhatThePortalAddsToReadingTheirElementAtMostDoubles()
         {
             // Arrange
-            var fewer = ReadsThePortalAdds(500);
+            var fewer = ReadingThePortalAdds(500, intoTheirElement: false);
 
             // Act
-            var more = ReadsThePortalAdds(1000);
+            var more = ReadingThePortalAdds(1000, intoTheirElement: false);
 
-            // Assert — what grows with the siblings cancels here, so what is left is the Portal's own reads; reading
-            // the earlier siblings again for each sibling would leave a remainder growing with the square of their
+            // Assert — a cost linear in the siblings leaves only the negated part that does not grow with them, while
+            // reading the earlier siblings again for each sibling leaves a remainder growing with the square of their
             // count. Where a count could not be taken, the excess is one no bound admits.
             Assert.That(fewer == int.MinValue || more == int.MinValue ? int.MaxValue : more - 2 * fewer, Is.LessThan(500));
         }
 
-        // The reads of the siblings' element a Portal ahead of them adds to their mount, or int.MinValue where the
-        // siblings did not mount in that element, or a read of its child count and of a child goes uncounted.
-        private static int ReadsThePortalAdds(int rows)
+        // GREEN_ON_BASE(characterization): the base commits a Portal's children without searching their siblings' element.
+        // What this pins is that placing them where the Portal sits finds each sibling's position there once.
+        [Test]
+        public void Given_APortalIntoTheElementOfTwiceTheSiblingsAfterIt_When_Mounted_Then_WhatThePortalAddsToReadingThatElementAtMostDoubles()
         {
-            var withPortal = ReadsToMount(rows, new VisualElement());
-            var without = ReadsToMount(rows, null);
+            // Arrange
+            var fewer = ReadingThePortalAdds(500, intoTheirElement: true);
+
+            // Act
+            var more = ReadingThePortalAdds(1000, intoTheirElement: true);
+
+            // Assert — as above, with the Portal's rows in the siblings' own element, whose positions are read there
+            Assert.That(fewer == int.MinValue || more == int.MinValue ? int.MaxValue : more - 2 * fewer, Is.LessThan(500));
+        }
+
+        // The reads of the siblings' element, and the comparisons searches of it make, that a Portal ahead of them adds
+        // to their mount; int.MinValue where a count could not be taken.
+        private static int ReadingThePortalAdds(int rows, bool intoTheirElement)
+        {
+            var withPortal = ReadingToMount(rows, withPortal: true, intoTheirElement);
+            var without = ReadingToMount(rows, withPortal: false, intoTheirElement);
             return withPortal < 0 || without < 0 ? int.MinValue : withPortal - without;
         }
 
-        private static int ReadsToMount(int rows, VisualElement? target)
+        // -1 where the siblings did not mount in the element, or a read of its child count, of a child or of a child's
+        // index goes uncounted, or a search for its last child counts fewer comparisons than half the siblings.
+        private static int ReadingToMount(int rows, bool withPortal, bool intoTheirElement)
         {
             var container = new CountingContainer();
+            var target = !withPortal ? null : intoTheirElement ? container : new VisualElement();
+            CountingChild.Comparisons = 0;
             using var mounted = V.Mount(container, V.Component(PortalAheadOfRows, new ListProps(rows, target)));
             mounted.DrainForTest();
-            var reads = container.Reads;
+            var reading = container.Reads + CountingChild.Comparisons;
             container.Reads = 0;
+            CountingChild.Comparisons = 0;
             var children = container.childCount;
-            _ = container[0];
-            return container.Reads < 2 || children < rows ? -1 : reads;
+            _ = container.IndexOf(container[children - 1]);
+            var counted = container.Reads >= 3 && CountingChild.Comparisons >= rows / 2;
+            return !counted || children < rows ? -1 : reading;
         }
 
         // GREEN_ON_BASE(characterization): the base returns before allocating when a walk hid and revealed nothing.

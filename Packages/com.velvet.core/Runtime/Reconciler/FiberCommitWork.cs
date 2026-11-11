@@ -217,7 +217,7 @@ namespace Velvet
 
         // Read off the nearest fiber of the chain that carries a placeholder, since a fiber below a Portal's
         // own child can have lost its own — ComponentFiber.OwningPortalPlaceholder owns when.
-        private static VisualElement? OwningPortalOf(ComponentFiber fiber, VisualElement? mountPoint)
+        internal static VisualElement? OwningPortalOf(ComponentFiber fiber, VisualElement? mountPoint)
         {
             for (var holder = fiber; IsTenantOf(holder, mountPoint); holder = holder!.Parent)
             {

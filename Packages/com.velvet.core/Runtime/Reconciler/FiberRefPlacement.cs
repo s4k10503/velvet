@@ -46,7 +46,20 @@ namespace Velvet
         internal static List<LayoutStep> Interleave(
             ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered, List<PendingRefAttach> refs)
         {
-            var tree = new LogicalElementTree(ctx);
+            var tree = LogicalElementTree.Rent(ctx);
+            try
+            {
+                return Interleave(ordered, refs, tree);
+            }
+            finally
+            {
+                tree.Return();
+            }
+        }
+
+        private static List<LayoutStep> Interleave(
+            List<(ComponentFiber Fiber, bool IsMount)> ordered, List<PendingRefAttach> refs, LogicalElementTree tree)
+        {
             var placer = new Placer(ordered, tree);
             var gaps = new Dictionary<int, List<PendingRefAttach>>();
             foreach (var entry in refs)
@@ -151,7 +164,8 @@ namespace Velvet
 
     // Reads the order of elements in the tree the components describe rather than the one the panel holds: a
     // Portal's rows are children of its placeholder, and a z-* element is the placeholder left at its slot. The
-    // maps are built once for a commit, and the tree does not change while the commit places setups.
+    // maps are built when the tree is filled, and each container's children read once while it is held
+    // (RenderedChildrenCache), which its holders do over work that changes no element.
     internal sealed class LogicalElementTree
     {
         // An instance per holder on the stack, so a commit nested in another takes one of its own.
@@ -189,6 +203,8 @@ namespace Velvet
                 _spareRanges.Push(ranges);
             }
             _portalsOf.Clear();
+            _chainA.Clear();
+            _chainB.Clear();
             _rendered.Clear();
             s_pool.Push(this);
         }
@@ -276,12 +292,12 @@ namespace Velvet
         // Whether a comes first among the children of its parent, which is b's as well: a and b are the two
         // branches under their lowest common ancestor, and a branch is a physical child of it, or a row of the one
         // Portal target it stands for.
-        private static bool SiblingPrecedes(VisualElement a, VisualElement b)
+        private bool SiblingPrecedes(VisualElement a, VisualElement b)
         {
             var parent = a.hierarchy.parent;
-            // MUTANT_SURVIVES(equivalent, boundary): a and b are distinct branches under their lowest common ancestor,
-            // which the loop in Precedes stops at when the two chains differ, so their indices never tie.
-            return parent.IndexOf(a) < parent.IndexOf(b);
+            // MUTANT_SURVIVES(equivalent, boundary): a and b are two distinct branches under their lowest common
+            // ancestor, where the loop in Precedes stops once the chains differ, so their indices never tie.
+            return _rendered.IndexIn(parent, a) < _rendered.IndexIn(parent, b);
         }
 
         // The element and each parent it has in this tree, up to the root.
@@ -306,7 +322,6 @@ namespace Velvet
             return physical;
         }
 
-        private static int LogicalSlotOf(VisualElement element)
-            => LogicalChildSlots.ToLogical(element.hierarchy.parent, element.hierarchy.parent.IndexOf(element));
+        private int LogicalSlotOf(VisualElement element) => _rendered.SlotIn(element.hierarchy.parent, element);
     }
 }
