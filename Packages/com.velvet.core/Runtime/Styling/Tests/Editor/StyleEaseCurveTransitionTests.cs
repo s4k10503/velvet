@@ -114,6 +114,71 @@ namespace Velvet.Tests
             Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
         }
 
+        [Test]
+        public void Given_ATransitionUtilityWhoseRulesANarrowingWritesInline_When_AWidthTransitionRunsAQuarterSecond_Then_ItIsWhereTailwindsDefaultCurveStandsThere()
+        {
+            // Arrange
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.25f);
+
+            // Act
+            var fraction = QuarterSecondByRule("ease-in-out-test", element =>
+            {
+                StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+                MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
+            });
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base retimes nothing in this shape, so the keyword eases it.
+        // TEMPORARY DIAGNOSTIC, out before merge: the case above with no class noted, so no retime runs; 1.0 here
+        // says the transition ends early whether or not it is retimed.
+        [Test]
+        public void Given_DiagnosticANarrowingWritesTheRulesCurveInlineWithNoClassNoted_When_AWidthTransitionRunsAQuarterSecond_Then_TheKeywordEasesIt()
+        {
+            // Arrange
+            var expected = UssEasing.Evaluate(EasingMode.EaseInOut, 0.25f);
+
+            // Act
+            var fraction = QuarterSecondByRule("ease-in-out-test",
+                element => MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null));
+
+            // Assert
+            Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base retimes nothing in this shape, so the transition runs on.
+        // TEMPORARY DIAGNOSTIC, out before merge: the narrowing case's steps, stopped a quarter second in before the
+        // style pass that reads the width; false here says the transition ended before that pass, true that the pass
+        // ends it.
+        [Test]
+        public void Given_DiagnosticATransitionUtilityWhoseRulesANarrowingWritesInline_When_AQuarterSecondHasRunBeforeAStylePass_Then_TheWidthTransitionStillRuns()
+        {
+            // Arrange
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            host.Root.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Sheet));
+            var element = new VisualElement();
+            host.Root.Add(element);
+            element.style.width = 0f;
+            element.AddToClassList("ease-in-out-test");
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+            MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act
+            element.style.width = 100f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            now += 0.25;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Assert
+            Assert.That(MotionSlotContext.HasRunningNativeTransition(element, StyleLonghand.Width), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): the base's CurveFor reads the inline slot alone, so a list code writes and puts
         // back leaves nothing behind. Calling `Adopt` from MotionTweenTiming.PeekOwn keeps the list as the element's own
         // once it is put back, which reddens this case.
