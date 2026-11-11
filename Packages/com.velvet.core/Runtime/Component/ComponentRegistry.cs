@@ -505,7 +505,7 @@ namespace Velvet
 
         // Returns the inline registration key under which fiber is registered, or false when it is not
         // an inline-mounted fiber (root / wrapper-mounted). Used by FiberContextSpine to recognize a
-        // spine child while structurally walking an ancestor's committed tree, so the Providers that
+        // spine child while structurally walking an ancestor's output, so the Providers that
         // enclose that child can be re-pushed onto the live cursor for an isolated re-render. portalScope
         // is handed back rather than recomputed there: an isolated re-render pushes no Portal scope, so
         // the walk has nothing of its own to derive it from and a guess would look the child up under a
