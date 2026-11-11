@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode: no mutant of the line compiled; the last: CS0019: '-' has no overload for these operands",
+ "file": "9e99dacf7da5b59a20e507ca5a05dcb824c3b0e66c72694e9aff1510f6903134",
+ "killers": [],
+ "measured_by": "42940765590",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 32,
+  "line": 1162,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": [
+   "arithmetic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8938ef90a0e40de86da7e56a92aa1cd55ae481a966bf706518784b608a1968f3",
+ "verdict": "not a mutant (the operator does not apply)"
+}

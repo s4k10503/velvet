@@ -1,20 +1,21 @@
 {
- "detail": "EditMode: 1 failed among the 60 case(s) that ran the site: Given_ADragInsideAScrollView_When_ThePointerMovesIntoItsBottomEdgeZone_Then_ItScrollsDown",
+ "detail": "EditMode: 1 failed among the 62 case(s) that ran the site: Given_ADragInsideAScrollView_When_ThePointerMovesIntoItsBottomEdgeZone_Then_ItScrollsDown",
  "file": "59dbef93eff9c314aa38e7d0091277bf8fd706e6f6c65cd2a4cca3f5d91b80cb",
  "killers": [
   {
    "case": "Velvet.Tests.DndParityTests.Given_ADragInsideAScrollView_When_ThePointerMovesIntoItsBottomEdgeZone_Then_ItScrollsDown",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "bf89a59e0a2725fbf8f77e1c04d2203bd7adfb331c5e7242e5a5870519c00c45",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "f21400fa9d3af65d1e3d59a33d805060b779ff1652f5983c06c349de6ffb17d3",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42940765590",
  "mutant": {
   "after": ";",
   "before": "TrackIntent(delta);",
@@ -28,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "8938ef90a0e40de86da7e56a92aa1cd55ae481a966bf706518784b608a1968f3",
  "verdict": "killed"
 }

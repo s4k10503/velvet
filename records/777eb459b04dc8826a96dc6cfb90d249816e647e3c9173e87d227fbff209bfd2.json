@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 11 case(s) that ran the site: Given_NoRender_When_UseRouteLoaderDataIsCalled_Then_TheErrorNamesIt",
+ "file": "9e99dacf7da5b59a20e507ca5a05dcb824c3b0e66c72694e9aff1510f6903134",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouterMatchHooksTests.Given_NoRender_When_UseRouteLoaderDataIsCalled_Then_TheErrorNamesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouterMatchHooksTests.cs": "49bf73a9853997150db3c02e93b1efe93b0fff23b17044ce7e78fbe0c0fbc882",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "42940765590",
+ "mutant": {
+  "after": ";",
+  "before": "_ = Resolve(\"UseRouteLoaderData\");",
+  "column": 12,
+  "line": 1098,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8938ef90a0e40de86da7e56a92aa1cd55ae481a966bf706518784b608a1968f3",
+ "verdict": "killed"
+}

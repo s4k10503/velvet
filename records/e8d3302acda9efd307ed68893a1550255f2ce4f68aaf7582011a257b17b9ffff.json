@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed: Given_ALocalOneLabelAssignedAndAnotherReadsAfterItIsAssignedAgain_When_TheStateChanges_Then_BothLabelsShowTheNewValue, Given_AnArrayDerivedFromAnArrayAndAStatementBetweenThem_When_AnotherStateChanges_Then_NeitherArrayIsBuiltAgain",
+ "file": "a754b7e68f0c16432f11426487f63023cf7be021139d68e8718c9a2a60266065",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_ALocalOneLabelAssignedAndAnotherReadsAfterItIsAssignedAgain_When_TheStateChanges_Then_BothLabelsShowTheNewValue",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ReactiveScopeValueE2ETests.Given_AnArrayDerivedFromAnArrayAndAStatementBetweenThem_When_AnotherStateChanges_Then_NeitherArrayIsBuiltAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeValueE2ETests.cs": "f3e047446c812d76181077a1bd6d07549e4cc604658e5315da48aafe57e85568",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "42940765590",
+ "mutant": {
+  "after": ";",
+  "before": "_internalLocals = new HashSet<int>();",
+  "column": 12,
+  "line": 219,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/CodeGen/ReactiveScopeRegions.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8938ef90a0e40de86da7e56a92aa1cd55ae481a966bf706518784b608a1968f3",
+ "verdict": "killed"
+}

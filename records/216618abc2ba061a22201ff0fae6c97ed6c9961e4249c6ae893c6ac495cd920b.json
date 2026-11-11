@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_OptionsWithoutANextPageFunction_When_ASuspendingQueryRenders_Then_ItThrowsNamingTheFunction",
+ "file": "9e99dacf7da5b59a20e507ca5a05dcb824c3b0e66c72694e9aff1510f6903134",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseInfiniteQueryTests.Given_OptionsWithoutANextPageFunction_When_ASuspendingQueryRenders_Then_ItThrowsNamingTheFunction",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseInfiniteQueryTests.cs": "2d275a0701e072e5028d35fe3753edd3d1b8e241a253a17ba7125e78a5196570",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "42940765590",
+ "mutant": {
+  "after": ";",
+  "before": "ValidateInfiniteQueryOptions(options);",
+  "column": 12,
+  "line": 3257,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "8938ef90a0e40de86da7e56a92aa1cd55ae481a966bf706518784b608a1968f3",
+ "verdict": "killed"
+}
