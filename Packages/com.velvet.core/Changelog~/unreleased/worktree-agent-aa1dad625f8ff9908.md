@@ -13,12 +13,12 @@
   (`blur(/* x */ 4px)`, `var(--a /* c */)`), a range (`u+1`, `U+12`), and a URL function whose path the importer's
   lexer cannot read (`url(a b)`, `url(a /* c */)`, `url("a" /* c */)`, stored as `url("a"  )`). The importer used to
   leave the whole file empty.
-- A custom property stored as the text it was written with keeps a `/*` inside an unquoted URL path, which CSS reads
-  as part of the path (`url(a/*c*/) 1rem`), where it used to be taken out as a comment. A `/*` or a quote in an
-  unquoted URL path, in any declaration, used to leave the custom properties after it as written up to the next `*/`
-  or quote of its kind, a `rem` among them failing the file (`url(icons/*.svg)` or `url(images/don't-panic.png)`,
-  then `--gap: 1rem`), and with no `*/` after it the custom property holding a `/*` as well
-  (`url(icons/*.svg) 1rem`). Such a path now ends at its first `)` no backslash escapes, as CSS ends it.
+- A custom property stored as the text it was written with keeps a `/*` inside the unquoted path of a `url()`, which
+  CSS reads as part of the path (`url(a/*c*/) 1rem`), where it used to be taken out as a comment. A `/*` or a quote in
+  the unquoted path of a `url()`, in any declaration, used to leave the custom properties after it as written up to
+  the next `*/` or quote of its kind, a `rem` among them failing the file (`url(icons/*.svg)` or
+  `url(images/don't-panic.png)`, then `--gap: 1rem`), and with no `*/` after it the custom property holding a `/*` as
+  well (`url(icons/*.svg) 1rem`). Such a path now ends at its first `)` no backslash escapes, as CSS ends it.
 - A custom property stored as text whose value holds a form feed no longer fails the file. The form feed used to be
   written inside the quotes as it was, which UI Toolkit's importer refuses.
 - `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` run `combine` again once a commit changes only a query's

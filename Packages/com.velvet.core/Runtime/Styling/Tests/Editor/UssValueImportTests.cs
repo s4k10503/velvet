@@ -60,6 +60,25 @@ namespace Velvet.Tests
             return -1;
         }
 
+        // The line the importer recorded for the property, or -1 where it stored no such property.
+        private static int PropertyLine(StyleSheet sheet)
+        {
+            var rules = EngineMember.StyleSheetRules.ResolveProperty()?.GetValue(sheet) as Array;
+            foreach (var rule in rules ?? Array.Empty<object>())
+            {
+                var properties = EngineMember.StyleRuleProperties.ResolveProperty()?.GetValue(rule) as Array;
+                foreach (var property in properties ?? Array.Empty<object>())
+                {
+                    if (EngineMember.StylePropertyName.ResolveProperty()?.GetValue(property) as string == Name
+                        && property.GetType().GetProperty("line")?.GetValue(property) is int line)
+                    {
+                        return line;
+                    }
+                }
+            }
+            return -1;
+        }
+
         private static string? Spelled(StyleSheet sheet)
         {
             var rules = EngineMember.StyleSheetRules.ResolveProperty()?.GetValue(sheet) as Array;
@@ -177,6 +196,7 @@ namespace Velvet.Tests
         [TestCase("url(\"a\nb\")")]
         [TestCase("url(a\\\nb)")]
         [TestCase("url(a\\1234567 b)")]
+        [TestCase("domain(a\")\")")]
         [TestCase("\"a\nb\"")]
         [TestCase("\"a\fb\"")]
         [TestCase("\"a\rb\"")]
@@ -276,6 +296,7 @@ namespace Velvet.Tests
         [TestCase("url(\"a\\31\nb\")")]
         [TestCase("url(\"a\\\r\nb\")")]
         [TestCase("url(a\\31\r\nb)")]
+        [TestCase("domain(icons/*.svg)")]
         [TestCase("up+1")]
         [TestCase("u 1")]
         public void Given_AValueTheImporterHolds_When_TheStockImporterReadsTheRawSheet_Then_ItStoresSomeValue(string value)
@@ -327,6 +348,36 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(stored, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): how the stock importer counts lines is an engine fact the base meets too.
+        // UssCustomPropertyText.LineBreaks counts a CR as a line, and a CR and the LF after it as one, as the lexer does.
+        [TestCase("\r")]
+        [TestCase("\r\n")]
+        public void Given_ACarriageReturnAloneOrBeforeALineFeed_When_TheStockImporterReadsTheRawSheet_Then_ItCountsOneLine(string lineBreak)
+        {
+            // Arrange
+            var uss = ":root {" + lineBreak + "  --a: 4px;" + lineBreak + "  " + Name + ": 4px;" + lineBreak + "}";
+
+            // Act
+            var line = ImportedSheet(uss, PropertyLine);
+
+            // Assert
+            Assert.That(line, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AQuotedValueACarriageReturnBreaks_When_TheRewrittenSheetIsImported_Then_ThePropertyAfterItKeepsItsLine()
+        {
+            // Arrange
+            const string uss = ".a {\r  --m: calc(1rem\r    + 2px);\r  " + Name + ": 4px;\r}";
+            var rewritten = UssCustomPropertyTextTests.RewriteWithin(uss) ?? string.Empty;
+
+            // Act
+            var line = ImportedSheet(rewritten, PropertyLine);
+
+            // Assert
+            Assert.That(line, Is.EqualTo(4));
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.

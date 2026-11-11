@@ -56,7 +56,7 @@ namespace Velvet.Editor
                     atStart &= c != '\\';
                     continue;
                 }
-                if (c == '(' && IsUrl(FunctionName(uss, i)))
+                if (c == '(' && StepsOverPath(uss, i))
                 {
                     var end = PathEnd(uss, i);
                     output.Append(uss, i, end - i);
@@ -183,7 +183,7 @@ namespace Velvet.Editor
             }
             var text = quoted ? Quote(value) : value;
             // The line breaks the value held and the text does not, so an importer message names the line the author
-            // wrote.
+            // wrote; UssValueImportTests holds that the line of a property after it stays.
             var newlines = LineBreaks(written) - LineBreaks(text);
             output.Append(uss, i, valueStart - i).Append(' ').Append(text).Append(important).Append('\n', newlines);
             i = valueEnd;
@@ -213,12 +213,13 @@ namespace Velvet.Editor
             return text.Append('"').ToString();
         }
 
+        // The lines the importer's lexer counts: a CR and the LF after it make one, and a CR alone makes one too.
         private static int LineBreaks(string text)
         {
             var count = 0;
-            foreach (var c in text)
+            for (var k = 0; k < text.Length; k++)
             {
-                count += c == '\n' ? 1 : 0;
+                count += text[k] == '\n' || (text[k] == '\r' && At(text, k + 1) != '\n') ? 1 : 0;
             }
             return count;
         }
@@ -240,7 +241,7 @@ namespace Velvet.Editor
                 if (c == '(')
                 {
                     parens++;
-                    if (IsUrl(FunctionName(text, i)))
+                    if (StepsOverPath(text, i))
                     {
                         i = PathEnd(text, i);
                         continue;
@@ -273,6 +274,8 @@ namespace Velvet.Editor
                 if (value[i] == '(' && IsUrl(FunctionName(value, i)))
                 {
                     badUrl |= UrlEnd(value, i) == -1;
+                    // Kept as written after each function the importer's lexer reads a path in, so HasUnheldToken meets
+                    // after a path it reads what the lexer meets there (`domain(a/*)*/b)`).
                     end = PathEnd(value, i);
                 }
                 if (end == i)
@@ -625,14 +628,90 @@ namespace Velvet.Editor
             => name.Equals("url", StringComparison.OrdinalIgnoreCase) || name.Equals("url-prefix", StringComparison.OrdinalIgnoreCase)
                || name.Equals("domain", StringComparison.OrdinalIgnoreCase);
 
+        // Whether a reading by token steps over the path after the `(` at open: after `url`, the one name CSS reads a path
+        // after, and after the other URL functions where the importer's lexer reads the path, as the importer then holds
+        // it whatever CSS reads there, and fails a sheet holding one it refuses; UssValueImportTests holds both.
+        private static bool StepsOverPath(string text, int open)
+        {
+            var name = FunctionName(text, open);
+            return name.Equals("url", StringComparison.OrdinalIgnoreCase) || (IsUrl(name) && UrlEnd(text, open) != -1);
+        }
+
+        // The name before the `(` at open as the importer's lexer reads it, an escape in it standing for its character, so
+        // `\"url(` names `"url` and `\75rl(` names `url`.
         private static string FunctionName(string text, int open)
         {
-            var start = open;
-            while (start > 0 && IsIdentChar(text[start - 1]))
+            var name = new StringBuilder();
+            for (var k = NameStart(text, open); k < open; k++)
             {
-                start--;
+                if (text[k] != '\\')
+                {
+                    name.Append(text[k]);
+                    continue;
+                }
+                name.Append(Escaped(text, k + 1));
+                k = EscapeLast(text, k + 1);
             }
-            return text.Substring(start, open - start);
+            return name.ToString();
+        }
+
+        // Where the name that ends at end begins, its escapes included: a name character, a backslash escaping the one
+        // after it, a character other than a line break that a backslash escapes, and the whitespace that ends a hex
+        // escape, a CR and the LF after it being one character to the lexer. A backslash right before end escapes the
+        // `(` there, and the name it then ends in names no function.
+        private static int NameStart(string text, int end)
+        {
+            var start = end;
+            while (start > 0)
+            {
+                var c = text[start - 1];
+                if (IsIdentChar(c) || (c == '\\' && !IsEscaped(text, start - 1)))
+                {
+                    start--;
+                }
+                else if (c is not ('\n' or '\r') && IsEscaped(text, start - 1))
+                {
+                    start -= 2;
+                }
+                else if (IsUrlSpace(c) && HexEscapeStart(text, start - 1) is var escape and >= 0)
+                {
+                    start = escape;
+                }
+                else
+                {
+                    return start;
+                }
+            }
+            return 0;
+        }
+
+        // The backslash of the hex escape that the whitespace at space ends, or -1 where none does.
+        private static int HexEscapeStart(string text, int space)
+        {
+            var digitsEnd = text[space] == '\n' && space > 0 && text[space - 1] == '\r' ? space - 1 : space;
+            var digits = digitsEnd;
+            while (digits > 0 && digitsEnd - digits < 6 && IsHex(text[digits - 1]))
+            {
+                digits--;
+            }
+            return digits < digitsEnd && IsEscaped(text, digits) ? digits - 1 : -1;
+        }
+
+        // The character the escape whose first character after the backslash is at k stands for, a hex escape past U+FFFD
+        // reading as U+FFFD, which no name it is compared with holds.
+        private static char Escaped(string text, int k)
+        {
+            var end = k;
+            while (end - k < 6 && IsHex(At(text, end)))
+            {
+                end++;
+            }
+            if (end == k)
+            {
+                return At(text, k);
+            }
+            var code = Convert.ToInt32(text.Substring(k, end - k), 16);
+            return (char)Math.Min(code, 0xFFFD);
         }
 
         // Where a reading by token resumes after the `(` at open of a URL function: past it where the path is quoted, its

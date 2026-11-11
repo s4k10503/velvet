@@ -156,8 +156,8 @@ parentheses other than `none()`, `filter()` and the URL functions it meets in a 
 does not know (a math function, `cubic-bezier()`, `steps()`, …), fails the file on or splits a number it reads
 otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as `3 px`, `1px_a` as `1px _a`), and fails the file on or
 stores as another colour than CSS reads an `rgb()` or `rgba()` holding anything besides three integers separated
-alike and, in `rgba()`, an alpha after a fourth comma where commas separate them or after a `/` where spaces do
-(`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
+alike and, in `rgba()`, a number after them, after a further comma where commas separate them or after a `/` where
+spaces do (`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
 black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
 storing those custom properties as the text they were written with, and writing an `!important` in another case,
 which the importer also fails the file on, in lower case. A colour stored as text is read by Velvet's theme tokens,

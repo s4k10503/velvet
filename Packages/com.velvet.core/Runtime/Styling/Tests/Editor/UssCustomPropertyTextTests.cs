@@ -77,6 +77,12 @@ namespace Velvet.Tests
         [TestCase(":root { --x: url(\"a\\31\nb\"); }")]
         [TestCase(":root { --x: url(\"a\\\r\nb\"); }")]
         [TestCase(":root { --x: url(a\\31\r\nb); }")]
+        [TestCase(":root { --x: \\\"url(a\")\"); --y: 2px; }\n.b { color: red; }")]
+        [TestCase(":root { --x: \\\"url(b/*c); --y: 1rem; }")]
+        [TestCase(":root { --x: \\31 url(b/*c); --y: 1rem; }")]
+        [TestCase(":root { --x: \\31\r\nurl(b/*c); --y: 1rem; }")]
+        [TestCase(":root { --x: a\\url(b/*c); --y: 1rem; }")]
+        [TestCase(":root{--x:\\31 url(b c)}")]
         [TestCase(".a { --x: url(a")]
         [TestCase(".a { --x: url(\"a")]
         [TestCase(":root { --x: up+1; }")]
@@ -156,6 +162,7 @@ namespace Velvet.Tests
         // A line break between a value's tokens is written as a space, and so is a comment after a URL the lexer refuses.
         [TestCase(".a { --x: 1rem", ".a { --x: \"1rem\"")]
         [TestCase(":root { --x: 1rem\n2rem; }", ":root { --x: \"1rem 2rem\"\n; }")]
+        [TestCase(":root { --x: 1rem\r\n2rem; }", ":root { --x: \"1rem  2rem\"\n; }")]
         [TestCase(":root { --x: url(a b) /* c */ 1rem; }", ":root { --x: \"url(a b)   1rem\"; }")]
         [TestCase(".a { /* c */ --x: 1rem; }", ".a { /* c */ --x: \"1rem\"; }")]
         [TestCase(":root { --bg: url(a;b.png) 1rem; }", ":root { --bg: \"url(a;b.png) 1rem\"; }")]
@@ -331,7 +338,8 @@ namespace Velvet.Tests
         [TestCase(":root { --x: url(\"a\nb); }", ":root { --x: \"url(\\\"a\\a b)\"\n; }")]
         [TestCase(":root { --x: url(a\\\nb); }", ":root { --x: \"url(a\\\\\\a b)\"\n; }")]
         [TestCase(":root { --x: url(a\fb); }", ":root { --x: \"url(a\\c b)\"; }")]
-        [TestCase(":root { --x: url(a\rb); }", ":root { --x: \"url(a\\d b)\"; }")]
+        [TestCase(":root { --x: url(a\rb); }", ":root { --x: \"url(a\\d b)\"\n; }")]
+        [TestCase(":root{--x:\nurl(b c)}", ":root{--x: \"url(b c)\"\n}")]
         [TestCase(":root { --x: url(a\\1234567 b); }", ":root { --x: \"url(a\\\\1234567 b)\"; }")]
         [TestCase(":root { --x: url(a\\31(b)); }", ":root { --x: \"url(a\\\\31(b))\"; }")]
         [TestCase(".a { --x: url(", ".a { --x: \"url(\"")]
@@ -371,6 +379,49 @@ namespace Velvet.Tests
         [TestCase(":root { --bg: url(images/bg.png\"); --y: 1rem; }", ":root { --bg: \"url(images/bg.png\\\")\"; --y: \"1rem\"; }")]
         [TestCase(":root { --x: url(a'\\)/*b*/); }", ":root { --x: \"url(a'\\\\)/*b*/)\"; }")]
         public void Given_AnUnquotedUrlPathHoldingACommentOpenerOrAQuote_When_TheSheetIsRewritten_Then_ItEndsAtItsParenthesis(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: \\75rl(b/*c); --y: 1rem; }", ":root { --x: \\75rl(b/*c); --y: \"1rem\"; }")]
+        [TestCase(":root { --x: ur\\l(b/*c); --y: 1rem; }", ":root { --x: ur\\l(b/*c); --y: \"1rem\"; }")]
+        [TestCase(":root { --x: \\31  url(b/*c); --y: 1rem; }", ":root { --x: \\31  url(b/*c); --y: \"1rem\"; }")]
+        [TestCase(":root { --x: \\\nurl(b/*c); --y: 1rem; }", ":root { --x: \\\nurl(b/*c); --y: \"1rem\"; }")]
+        [TestCase(":root { --x: do\\00006Dain(icons/*.svg); --y: 1rem; }", ":root { --x: do\\00006Dain(icons/*.svg); --y: \"1rem\"; }")]
+        public void Given_AnEscapeInAUrlFunctionsName_When_TheSheetIsRewritten_Then_ItsPathIsSteppedOverAsTheLexerReadsIt(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: domain(a\")\"); --y: 2px; }\n.b { color: red; }", ":root { --x: \"domain(a\\\")\\\")\"; --y: 2px; }\n.b { color: red; }")]
+        [TestCase(":root { --x: url-prefix(a\")\"); --y: 2px; }\n.b { color: red; }", ":root { --x: \"url-prefix(a\\\")\\\")\"; --y: 2px; }\n.b { color: red; }")]
+        [TestCase(":root { --x: domain(icons/*.svg); --y: 1rem; }", ":root { --x: domain(icons/*.svg); --y: \"1rem\"; }")]
+        [TestCase(":root { --x: domain(a/*)*/b); --y: 2px; }", ":root { --x: \"domain(a/*)*/b)\"; --y: 2px; }")]
+        public void Given_AUrlPrefixOrDomain_When_TheSheetIsRewritten_Then_ItsPathIsSteppedOverWhereTheLexerReadsIt(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(".a {\r  --m: calc(1rem\r    + 2px);\r  --x: 4px;\r}", ".a {\r  --m: \"calc(1rem     + 2px)\"\n;\r  --x: 4px;\r}")]
+        public void Given_AValueALoneCarriageReturnBreaks_When_ItIsQuoted_Then_ALineFeedFollowsIt(
             string uss, string expected)
         {
             // Arrange
