@@ -11,7 +11,7 @@ namespace Velvet.Tests
     /// from its first frame, each property on the keyword its own entry names and opacity as Framer's Web Animations path
     /// eases it, that a transition the tween did not start keeps its curve, that the element stops being listened to
     /// once no tween plays on it, and that a layoutId carry eases a value as the value's own transition would under the
-    /// tween, and on UI Toolkit's curve where no tween times it.
+    /// tween, and on UI Toolkit's curve where no tween started that transition.
     /// </summary>
     [TestFixture]
     internal sealed class MotionNamedEaseTransitionTests : PanelTestBase
@@ -268,6 +268,34 @@ namespace Velvet.Tests
             });
             element.style.opacity = 1f;
             ForcePanelUpdate(element.panel);
+            var carry = new LayoutIdCarry();
+
+            // Act
+            RunningStyleTransition.TakeOverOpacity(element, carry);
+            var opacity = carry.Advance(0f);
+
+            // Assert — three tenths of the way along UI Toolkit's own curve, which UssEasingTests holds UssEasing to.
+            Assert.That(opacity, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseInCirc, 0.3f)).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hands a carry the curve UI Toolkit runs a transition on.
+        // Dropping the RanAtTween clause from StyleEaseCurve.TakenOver reddens it.
+        [Test]
+        public void Given_AnOpacityTransitionOfTheElementsOwnEasingInCircRunningAsATweenEnterBegins_When_ACarryTakesItOver_Then_ItKeepsUIToolkitsCurve()
+        {
+            // Arrange — a second on EaseInCirc begun three tenths of a second in, then a tween enter turning the element,
+            // which leaves its opacity alone.
+            var element = OnClock("rotate-0", e =>
+            {
+                e.style.opacity = 0f;
+                e.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
+                e.style.transitionDuration = new List<TimeValue> { new(1f) };
+                e.style.transitionDelay = new List<TimeValue> { new(-0.3f) };
+                e.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseInCirc) };
+            });
+            element.style.opacity = 1f;
+            ForcePanelUpdate(element.panel);
+            TweenEnter(element, "rotate-0", "rotate-90", OneSecond(EasingMode.EaseOut, 0f));
             var carry = new LayoutIdCarry();
 
             // Act

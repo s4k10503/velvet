@@ -261,6 +261,9 @@ namespace Velvet
             // The repeat of the latest tween NoteTween saw, and the PropertyOverrides entries it lists.
             public MotionRepeat TweenRepeat;
             public IReadOnlyList<StylePropertyTransition>? TweenOverrides;
+            // The name and start of each transition a carry can take over that ran as that tween began
+            // (RunningStyleTransition.Running).
+            public List<(string Name, double StartSec)>? RunningAtTween;
             public bool Registered;
 
             public bool HasEntryFor(string property)
@@ -364,18 +367,23 @@ namespace Velvet
             => (property == "opacity" || property == "filter")
                 && (!s_bindings.TryGetValue(element, out var binding) || binding.TweenRepeat.KeepsWebAnimations || binding.HasEntryFor(property));
 
-        // The curve a transition UI Toolkit runs for the element eases by once a carry takes it over, which can be before
-        // its run event reaches OnRun
+        // The curve a transition UI Toolkit runs for the element, which started at startSec, eases by once a carry takes it
+        // over, which can be before its run event reaches OnRun
         // (Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn):
-        // under a Motion's tween, the one OnRun retimes it to.
-        internal static Func<float, float> TakenOver(VisualElement element, string property, Func<float, float> curve)
+        // under a Motion's tween, the one OnRun retimes it to. One that was running as the tween began keeps its own, as
+        // OnRun, which sees only transitions that start, leaves it.
+        internal static Func<float, float> TakenOver(VisualElement element, string property, double startSec,
+            Func<float, float> curve)
         {
-            if (!MotionTweenTiming.PlaysCurve(element))
+            if (!MotionTweenTiming.PlaysCurve(element) || RanAtTween(element, property, startSec))
             {
                 return curve;
             }
             return MotionEasing.InPlaceOfEngineCurve(curve, OnWebAnimations(element, property)) ?? curve;
         }
+
+        private static bool RanAtTween(VisualElement element, string property, double startSec)
+            => s_bindings.TryGetValue(element, out var binding) && binding.RunningAtTween?.Contains((property, startSec)) == true;
 
         // For an element whose transitions a Motion's tween on that repeat and those entries is about to time, which UI
         // Toolkit then runs; listened to until NoteTweenEnded finds no tween left playing on it.
@@ -386,6 +394,7 @@ namespace Velvet
             binding.Tweened = true;
             binding.TweenRepeat = repeat;
             binding.TweenOverrides = overrides;
+            binding.RunningAtTween = RunningStyleTransition.Running(element);
             Sync(element, binding);
         }
 

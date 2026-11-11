@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -59,6 +60,38 @@ namespace Velvet
             m => m != null);
 
         private static readonly object?[] s_args = new object?[3];
+
+        // Each value a carry takes over, by the set its transitions are kept in, its id, and its name in a transition list.
+        private static readonly (FieldInfo? Set, object? Id, string Name)[] s_carried =
+        {
+            (s_floats, s_opacityId, "opacity"),
+            (s_rotates, s_rotateId, "rotate"),
+            (s_translates, s_translateId, "translate"),
+            (s_scales, s_scaleId, "scale"),
+            (s_lengths, s_cornerIds[0], "border-radius"),
+            (s_lengths, s_cornerIds[1], "border-radius"),
+            (s_lengths, s_cornerIds[2], "border-radius"),
+            (s_lengths, s_cornerIds[3], "border-radius"),
+        };
+
+        // The name and start of each transition of a value a carry takes over that the panel runs for the element now;
+        // null where it runs none of them.
+        public static List<(string Name, double StartSec)>? Running(VisualElement element)
+        {
+            List<(string Name, double StartSec)>? starts = null;
+            foreach (var (set, id, name) in s_carried)
+            {
+                if (Find(element, set, id) is not { } found) continue;
+                try
+                {
+                    (starts ??= new List<(string Name, double StartSec)>()).Add((name, (double)Read(s_startTime!, found.Timing)));
+                }
+                catch (Exception)
+                {
+                }
+            }
+            return starts;
+        }
 
         // Has the carry run on from the element's running opacity transition, if it has one.
         public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
@@ -168,9 +201,10 @@ namespace Velvet
                 var (system, timing, style) = found;
                 var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
                 if (!AllNumbers(from.Value, to.Value, reversingStart.Value)) return;
-                var elapsedSec = (double)s_now!.GetValue(system) - (double)Read(s_startTime!, timing);
+                var startSec = (double)Read(s_startTime!, timing);
+                var elapsedSec = (double)s_now!.GetValue(system) - startSec;
                 carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec),
-                    StyleEaseCurve.TakenOver(element, name, (Func<float, float>)Read(s_curve!, timing)),
+                    StyleEaseCurve.TakenOver(element, name, startSec, (Func<float, float>)Read(s_curve!, timing)),
                     (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
             }
             catch (Exception)
