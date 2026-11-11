@@ -6,7 +6,7 @@ refused the merge because `Required checks (Unity)` had never reported. Two read
 each covers a case the other cannot:
 
 - a workflow run for the head that has not finished, which catches the jobs no ruleset requires, and
-  a workflow whose `current` run failed, which catches one that failed before reporting a check;
+  a workflow run that failed, which catches one that failed before reporting a check;
 - a context the base's rulesets require that no check on the head carries, which catches a workflow
   whose run does not exist yet, so that no listing of runs can show it unfinished.
 
@@ -19,6 +19,7 @@ that to the two required-checks aggregates, and
 """
 
 import datetime
+import re
 
 RUN_PAGE = 100
 
@@ -105,42 +106,41 @@ def unfinished(runs, jobs, now):
                   for run in runs if conclusion(run, jobs, now) is None)
 
 
-def current(runs, jobs, now):
-    """The run each workflow's verdict on the head is read from, by workflow.
-
-    One `conclusion` does not read as cancelled wherever the workflow has one, and among those the
-    one started last, then the one with the highest run number; `SupersededRunTests` poses why each
-    of those is read. Every other run of the workflow is superseded, since a failure there would
-    otherwise hold the head however often the workflow ran again.
-    """
-    newest = {}
-    for run in runs:
-        order = (conclusion(run, jobs, now) != "cancelled", run.get("run_started_at") or "",
-                 run.get("run_number") or 0)
-        if workflow_of(run) not in newest or order > newest[workflow_of(run)][0]:
-            newest[workflow_of(run)] = (order, run)
-    return {workflow: run for workflow, (_, run) in newest.items()}
-
-
 def superseded(runs, jobs, now):
-    """The runs whose workflow's verdict `current` reads off another of its runs."""
-    chosen = current(runs, jobs, now)
-    return [run for run in runs if chosen[workflow_of(run)] is not run]
+    """The runs `conclusion` reads as cancelled whose workflow has a run on the head it does not.
+
+    Only a cancelled run is left out, and never for being older: a later run of a workflow can
+    measure less than an earlier one on the same head, which `SupersededRunTests` poses. Re-running
+    a run keeps its id, so the runs listing carries it once, at its latest attempt.
+    """
+    ran = {workflow_of(run) for run in runs if conclusion(run, jobs, now) != "cancelled"}
+    return [run for run in runs
+            if conclusion(run, jobs, now) == "cancelled" and workflow_of(run) in ran]
 
 
 def failed(runs, jobs, now):
-    """A reason for each workflow whose `current` run concluded as a failure.
+    """A reason for each run on the head that concluded as a failure, whatever else its workflow
+    ran there, for the reason `superseded` gives.
 
     What it concluded is `conclusion`'s reading, so a run GitHub left open after its jobs failed
     counts.
     """
     return sorted(f"{name_of(run)} ({conclusion(run, jobs, now)}, run {run.get('id')})"
-                  for run in current(runs, jobs, now).values()
-                  if conclusion(run, jobs, now) in FAILED)
+                  for run in runs if conclusion(run, jobs, now) in FAILED)
 
 
 def workflow_of(run):
     return run.get("workflow_id") or run.get("path") or name_of(run)
+
+
+ACTIONS_RUN = re.compile(r"/actions/runs/(\d+)/")
+
+
+def run_of(entry):
+    """The id of the workflow run a `gh pr checks` entry's link names, or None for one naming none,
+    since that list carries no check suite to tell a run's checks by."""
+    found = ACTIONS_RUN.search(str(entry.get("link") or ""))
+    return int(found.group(1)) if found else None
 
 
 def name_of(run):

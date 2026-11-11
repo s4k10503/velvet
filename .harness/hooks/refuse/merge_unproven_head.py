@@ -16,12 +16,11 @@ that head — what a cancelled run followed by a push leaves behind — and read
 running" is how a pull request sat unnoticed for 7h45m.
 
 A list whose every check passed is refused too while the head still has a workflow run to finish,
-carries a workflow whose current run failed, or lacks a context its base requires. All of it is read
+carries a workflow run that failed, or lacks a context its base requires. All of it is read
 off the head's workflow runs and the base's rules inside the same pair of head readings, and
 `scripts/pr/expected_checks.py` owns what each of those is and why. A mutation campaign's runs and
 checks are left out of what it reads, as `settle.py` leaves them out; `campaign.py` says which. So
-are the checks of a run `expected_checks.superseded` names, told by the run each check's link
-names, since a check list carries no suite.
+are the checks of a run `expected_checks.superseded` names, told by `expected_checks.run_of`.
 
 The other merge preconditions have their own hooks: `merge_unchecked_against_base.py` for a base
 whose required workflows last failed on push, a head behind the base's newest release commit, a
@@ -33,7 +32,6 @@ reporting is the convenience; these are what hold when nobody runs it.
 """
 
 import json
-import re
 import sys
 import time
 from pathlib import Path
@@ -106,15 +104,6 @@ def checks_of(cwd, number):
         return None
     return [entry for entry in listed if entry.get("workflow") != campaign.NAME
             and not (entry["name"] == campaign.STATUS_CONTEXT and not entry.get("workflow"))]
-
-
-ACTIONS_RUN = re.compile(r"/actions/runs/(\d+)/")
-
-
-def run_of(entry):
-    """The id of the workflow run `entry`'s link names, or None for an entry naming none."""
-    found = ACTIONS_RUN.search(str(entry.get("link") or ""))
-    return int(found.group(1)) if found else None
 
 
 def campaign_runs(cwd, sha):
@@ -202,7 +191,8 @@ def unproven(asked, cwd):
                                  + "), or ask `settle.py merge`, which reads them all"))
         else:
             left_out = {run.get("id") for run in expected_checks.superseded(others, jobs, now)}
-            listed = [entry for entry in listed if run_of(entry) not in left_out - {None}]
+            listed = [entry for entry in listed
+                      if expected_checks.run_of(entry) not in left_out - {None}]
             waiting = expected_checks.unfinished(others, jobs, now)
             failing = expected_checks.failed(others, jobs, now)
             absent = expected_checks.absent(required, (entry["name"] for entry in listed))

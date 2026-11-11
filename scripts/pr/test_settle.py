@@ -617,11 +617,8 @@ class ExpectedCheckTests(unittest.TestCase):
         self.assertEqual(decided, ["workflow runs failed at 0000000: Test (startup_failure, run "
                                    "36512896182)"])
 
-    # GREEN_ON_BASE(characterization): the base reads no run, so an older failed run holds nothing.
-    # What it pins is that only the newest run of a workflow is read: `if workflow_of(run) not in
-    # newest or order > newest[workflow_of(run)][0]:` spelled `if True:` reddens it.
-    def test_Given_AFailedRunSupersededByANewerOne_When_Decided_Then_NothingBlocks(self):
-        # Arrange — newest first, the order the runs listing answers in.
+    def test_Given_AFailedRunAndANewerOneThatPassed_When_Decided_Then_TheFailedRunIsNamed(self):
+        # Arrange — the checks are stubbed passing, so the failed run is all that could refuse.
         newer = dict(TEST_PENDING, id=2, run_number=71, status="completed", conclusion="success")
         older = dict(TEST_PENDING, id=1, run_number=70, status="completed", conclusion="failure")
         states = {1: fabricate(1, runs=(newer, older))}
@@ -631,7 +628,7 @@ class ExpectedCheckTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert
-        self.assertEqual(decided, [])
+        self.assertEqual(decided, ["workflow runs failed at 0000000: Test (failure, run 1)"])
 
     # GREEN_ON_BASE(characterization): the base merges a head no ruleset asks anything more of.
     # What it pins is that neither reading is a wall: requiring the aggregates whatever the ruleset
@@ -1311,10 +1308,10 @@ class CampaignMergeTests(unittest.TestCase):
 
 
 def head_run(run_id, name, workflow, number, status, conclusion, suite,
-             started="2026-11-11T18:18:34Z", attempt=1):
+             started="2026-11-11T18:18:34Z"):
     """One entry of the Actions runs listing for a head."""
     return {"id": run_id, "name": name, "workflow_id": workflow, "run_number": number,
-            "run_attempt": attempt, "status": status, "conclusion": conclusion,
+            "run_attempt": 1, "status": status, "conclusion": conclusion,
             "check_suite_id": suite, "run_started_at": started}
 
 
@@ -1394,27 +1391,57 @@ class SupersededRunTests(unittest.TestCase):
             "`gh run cancel 43076528457` if it is stuck)",
             "still pending at aaaaaaa: Source generators (dotnet)"])
 
-    def test_Given_ARerunOfTheLowerNumberedRun_When_Decided_Then_TheRerunsChecksAreTheOnesRead(self):
-        # Arrange — in the runs listing a re-run keeps its run's id, run number, check suite and
-        # creation time, so its start time is the field that says it ran after the other did.
-        other = head_run(9071, "Test", 1, 71, "completed", "success", 7,
-                         started="2026-11-11T10:00:00Z")
-        rerun = head_run(9070, "Test", 1, 70, "completed", "failure", 8,
-                         started="2026-11-11T11:00:00Z", attempt=2)
-        checks = [check_run("Required checks (Unity)", "success", 7),
-                  check_run("Required checks (Unity)", "failure", 8)]
+    # GREEN_ON_BASE(characterization): the base leaves out no run's checks but a campaign's.
+    # What it pins is that a later run that passed does not stand in for one that failed: leaving out
+    # every run of a workflow but the one started last reddens it.
+    def test_Given_AFailedRunAndALaterOneWhoseJobWasSkipped_When_Decided_Then_TheFailedRunsChecksAreRead(self):
+        # Arrange — the later run is one a label other than `benchmarks` started, whose job
+        # benchmarks.yml skips, so it passed without benchmarking anything.
+        measured = head_run(9301, "Benchmarks", 3, 301, "completed", "failure", 301,
+                            started="2026-11-11T10:00:00Z")
+        skipped = head_run(9302, "Benchmarks", 3, 302, "completed", "success", 302,
+                           started="2026-11-11T10:05:00Z")
+        checks = [check_run("Benchmarks (PlayMode)", "failure", 301),
+                  check_run("Benchmarks (PlayMode)", "skipped", 302)]
 
         # Act
-        with rest_readings(checks, [other, rerun], labels=()):
+        with rest_readings(checks, [skipped, measured], labels=()):
             results = settle.blocking_reasons(Path("."), 1).results
 
         # Assert
-        self.assertEqual(results, [{"name": "Required checks (Unity)", "bucket": "fail"}])
+        self.assertEqual(results, [{"name": "Benchmarks (PlayMode)", "bucket": "fail"},
+                                   {"name": "Benchmarks (PlayMode)", "bucket": "skipping"}])
 
-    def test_Given_TwoRunsThatStartedInTheSameSecond_When_Decided_Then_TheHigherNumberedRunsChecksAreRead(self):
-        # Arrange — both ran to the end, and they are listed lower number first, so what is read
-        # does not follow the listing's order: one listing of a real head put one pair that way
-        # round and the other the opposite way.
+    # GREEN_ON_BASE(characterization): the base leaves out no run's checks but a campaign's.
+    # What it pins is that a later run that passed does not stand in for one that failed: leaving out
+    # every run of a workflow but the one started last reddens it.
+    def test_Given_AFailedRunAndALaterRunOfItsWorkflowThatPassed_When_Decided_Then_TheFailedRunsChecksAreRead(self):
+        # Arrange — the later run stands for a dispatch on the branch, which skips the steps test.yml
+        # runs only on `pull_request`.
+        pulled = head_run(9101, "Test", 1, 101, "completed", "failure", 101,
+                          started="2026-11-11T10:00:00Z")
+        dispatched = head_run(9102, "Test", 1, 102, "completed", "success", 102,
+                              started="2026-11-11T11:00:00Z")
+        checks = [check_run("Unity tests (EditMode)", "failure", 101),
+                  check_run("Required checks (Unity)", "failure", 101),
+                  check_run("Unity tests (EditMode)", "success", 102),
+                  check_run("Required checks (Unity)", "success", 102)]
+
+        # Act
+        with rest_readings(checks, [dispatched, pulled], labels=()):
+            results = settle.blocking_reasons(Path("."), 1).results
+
+        # Assert
+        self.assertEqual(results, [{"name": "Unity tests (EditMode)", "bucket": "fail"},
+                                   {"name": "Required checks (Unity)", "bucket": "fail"},
+                                   {"name": "Unity tests (EditMode)", "bucket": "pass"},
+                                   {"name": "Required checks (Unity)", "bucket": "pass"}])
+
+    # GREEN_ON_BASE(characterization): the base leaves out no run's checks but a campaign's.
+    # What it pins is that a run's number does not decide which run of a workflow is read: leaving
+    # out every run of a workflow but the highest-numbered reddens it.
+    def test_Given_TwoRunsThatStartedInTheSameSecond_When_Decided_Then_BothRunsChecksAreRead(self):
+        # Arrange — both ran to the end, the lower-numbered one failing.
         passed = dict(TEST_QUEUED, status="completed", conclusion="success")
         lower = head_run(9232, "Benchmarks", 3, 232, "completed", "failure", 17)
         higher = head_run(9233, "Benchmarks", 3, 233, "completed", "success", 18)
@@ -1424,12 +1451,17 @@ class SupersededRunTests(unittest.TestCase):
 
         # Act
         with rest_readings(checks, [passed, lower, higher], labels=()):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
+            results = settle.blocking_reasons(Path("."), 1).results
 
         # Assert
-        self.assertEqual(decided, [])
+        self.assertEqual(results, [{"name": "Required checks (Unity)", "bucket": "pass"},
+                                   {"name": "Benchmarks (PlayMode)", "bucket": "fail"},
+                                   {"name": "Benchmarks (PlayMode)", "bucket": "pass"}])
 
-    def test_Given_AWorkflowWhoseEveryRunWasCancelled_When_Decided_Then_ItsNewestRunStillBlocks(self):
+    # GREEN_ON_BASE(characterization): the base leaves out no run's checks but a campaign's.
+    # What it pins is that a workflow whose every run was cancelled keeps them all: leaving out
+    # every cancelled run reddens it.
+    def test_Given_AWorkflowWhoseEveryRunWasCancelled_When_Decided_Then_ItsRunsStillBlock(self):
         # Arrange — a workflow no base requires, so its checks are all that could refuse.
         passed = dict(TEST_QUEUED, status="completed", conclusion="success")
         older = head_run(9232, "Benchmarks", 3, 232, "completed", "cancelled", 17)
@@ -1443,20 +1475,8 @@ class SupersededRunTests(unittest.TestCase):
             decided = settle.blocking_reasons(Path("."), 1).reasons
 
         # Assert
-        self.assertEqual(decided, ["failing at aaaaaaa: Benchmarks (PlayMode)=cancel"])
-
-    def test_Given_ACancelledRunCarryingTheHigherNumber_When_ItsSiblingFailedWithNoCheck_Then_TheFailureIsNamed(self):
-        # Arrange — a base requiring nothing, so no absent context stands in for the failed run.
-        failed = dict(GENERATORS_QUEUED, status="completed", conclusion="startup_failure")
-        states = {1: fabricate(1, base="4.x", runs=(failed, GENERATORS_CANCELLED))}
-
-        # Act
-        with fabricated_readings(states, required={"4.x": ()}):
-            decided = settle.blocking_reasons(Path("."), 1).reasons
-
-        # Assert
-        self.assertEqual(decided, ["workflow runs failed at 0000000: Source generators "
-                                   "(startup_failure, run 43076528457)"])
+        self.assertEqual(decided, ["failing at aaaaaaa: Benchmarks (PlayMode)=cancel, "
+                                   "Benchmarks (PlayMode)=cancel"])
 
 
 class ForkMergeTests(unittest.TestCase):

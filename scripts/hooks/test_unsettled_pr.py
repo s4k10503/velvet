@@ -225,6 +225,41 @@ class OwedChecks(unittest.TestCase):
         # Assert
         self.assertIn("every check passed and it is unmerged", said or "")
 
+    def test_Given_ACancelledRunsCheckBesideARunOfItsWorkflowThatPassed_When_Judged_Then_ItStillSaysMergeIt(self):
+        # Arrange — the cancelled run's matrix job was never expanded, so no check of the run that
+        # passed carries its name. gh prints only the fields a call names, so this stub prints the
+        # links only to a call naming them.
+        runs = json.dumps({"total_count": 2, "workflow_runs": [
+            {"id": 43076529433, "name": "Test", "workflow_id": 307106660, "run_number": 4516,
+             "status": "completed", "conclusion": "success"},
+            {"id": 43076528473, "name": "Test", "workflow_id": 307106660, "run_number": 4514,
+             "status": "completed", "conclusion": "cancelled"}]})
+        entries = [{"name": "Required checks (Unity)", "bucket": "pass",
+                    "link": "https://github.com/owner/name/actions/runs/43076529433/job/1"},
+                   {"name": "Unity tests (${{ matrix.testMode }})", "bucket": "cancel",
+                    "link": "https://github.com/owner/name/actions/runs/43076528473/job/2"}]
+        unlinked = [{key: value for key, value in entry.items() if key != "link"}
+                    for entry in entries]
+
+        def stub(args):
+            if args[0] == "api" and "/actions/runs?" in args[1]:
+                return runs, "", 0
+            if args[0] == "api" and "/rules/branches/main?" in args[1]:
+                return REQUIRING_UNITY, "", 0
+            if "headRefOid,baseRefName" in args:
+                return json.dumps({"headRefOid": "a" * 40, "baseRefName": "main"}), "", 0
+            if "checks" in args:
+                named = args[args.index("--json") + 1].split(",")
+                return json.dumps(entries if "link" in named else unlinked), "", 0
+            return "CLEAN", "", 0
+
+        # Act
+        with mock.patch.object(unsettled_pr, "gh", stub):
+            said = unsettled_pr.judge("1")
+
+        # Assert
+        self.assertIn("every check passed and it is unmerged", said or "")
+
     def test_Given_ARunsReadingThatFails_When_Judged_Then_ItBlocksNamingTheGuardsBlindness(self):
         # Act
         said = self.judge_with(PASSING, "CLEAN", runs="")

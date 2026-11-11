@@ -408,6 +408,36 @@ class HeadCheckVerdictTests(unittest.TestCase):
         # a stub the replacement missed reads as None.
         self.assertEqual(readings, READINGS)
 
+    # GREEN_ON_BASE(characterization): the base refuses this list for its failing entries.
+    # What it pins is that a later run that passed does not stand in for one that failed: leaving out
+    # every run of a workflow but the one started last reddens it.
+    def test_Given_AFailedRunAndALaterRunOfItsWorkflowThatPassed_When_TheMergeIsAsked_Then_TheFailureIsNamed(self):
+        # Arrange — the later run stands for a dispatch on the branch, with both runs' checks
+        # listed.
+        runs = json.dumps({"total_count": 2, "workflow_runs": [
+            {"id": 9102, "name": "Test", "workflow_id": 1, "run_number": 102,
+             "run_started_at": "2026-11-11T11:00:00Z", "status": "completed", "conclusion": "success"},
+            {"id": 9101, "name": "Test", "workflow_id": 1, "run_number": 101,
+             "run_started_at": "2026-11-11T10:00:00Z", "status": "completed",
+             "conclusion": "failure"}]})
+        checks = json.dumps([
+            {"name": "Unity tests (EditMode)", "bucket": "fail", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9101/job/1"},
+            {"name": "Required checks (Unity)", "bucket": "fail", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9101/job/2"},
+            {"name": "Unity tests (EditMode)", "bucket": "pass", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9102/job/3"},
+            {"name": "Required checks (Unity)", "bucket": "pass", "workflow": "Test",
+             "link": "https://github.com/owner/name/actions/runs/9102/job/4"}])
+
+        # Act
+        result = self.ask(checks=checks, runs=runs)
+        refusal = result.stderr if result.returncode == REFUSED else ""
+
+        # Assert
+        self.assertIn(f"not passing at {HEAD[:7]}: Required checks (Unity), Unity tests (EditMode)",
+                      refusal)
+
     def test_Given_WorkflowRunsThatCameBackPartial_When_TheMergeIsAsked_Then_TheUnreadRunsAreNamed(self):
         # Arrange / Act — the page claims a run it did not carry, which may be the campaign.
         runs = json.dumps({"total_count": 2, "workflow_runs": []})

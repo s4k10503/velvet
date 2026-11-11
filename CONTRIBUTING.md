@@ -1435,13 +1435,13 @@ pull request, and a failed newest run blocks its merge.
 
 ### Merging a pull request
 
-A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
-its head that `settle.py` reads has passed or been skipped, and its docstring owns which checks it
-leaves out; every other pull request is merged by hand after review, with
-`settle.py merge`. The label means *review has settled: merge when every check on the head has passed
-or been skipped*: add it once review has settled, and remove it to hold the pull request. Labelling
-takes triage access or above, so only an account holding that can opt a pull request in. The workflow
-does not create the label; it has to exist in the repository.
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once
+`settle.py merge` finds nothing blocking it, and settle's docstring owns what blocks, which checks it
+leaves out included. Every other pull request is merged by hand after review, with `settle.py merge`.
+The label means *review has settled: merge once `settle.py merge` would*: add it once review has
+settled, and remove it to hold the pull request. Labelling takes triage access or above, so only an
+account holding that can opt a pull request in. The workflow does not create the label; it has to
+exist in the repository.
 
 A pull request in a stack is merged through GitHub's asynchronous merge endpoint, since GitHub refuses
 a stack member on the one `settle.py merge` uses for every other pull request. GitHub documents that

@@ -111,7 +111,7 @@ def checks_of(pr):
     Reading a failure as "there are none" is what let a pull request nobody could see into the
     settled set; reading "there are none" as a failure blocks one whose head has no check yet.
     """
-    out, _, code = gh(["pr", "checks", pr, "--json", "name,bucket"])
+    out, _, code = gh(["pr", "checks", pr, "--json", "name,bucket,link"])
     if code == 0 and out:
         try:
             listed = json.loads(out)
@@ -148,9 +148,12 @@ def unreadable(attempts):
 Owed = collections.namedtuple("Owed", "waiting failing base absent")
 
 
-def owed(pr, checks):
-    """What the head is owed beyond `checks`, with `expected_checks` deciding each part, or None when
-    a reading did not answer."""
+Head = collections.namedtuple("Head", "base runs jobs now")
+
+
+def head_of(pr):
+    """The head's base, its workflow runs and the jobs of its open ones, or None when a reading did
+    not answer."""
     out, _, code = gh(["pr", "view", pr, "--json", "headRefOid,baseRefName"])
     try:
         payload = json.loads(out) if code == 0 else None
@@ -161,15 +164,26 @@ def owed(pr, checks):
     if not (isinstance(sha, str) and sha and isinstance(base, str) and base):
         return None
     runs = expected_checks.listed_runs(api(expected_checks.runs_path("{owner}/{repo}", sha)))
-    required = expected_checks.listed_required(api(expected_checks.rules_path("{owner}/{repo}", base)))
-    if runs is None or required is None:
+    if runs is None:
         return None
     now = time.time()
     jobs = {run.get("id"): expected_checks.listed_jobs(
                 api(expected_checks.jobs_path("{owner}/{repo}", run)))
             for run in expected_checks.open_runs(runs, now)}
-    return Owed(expected_checks.unfinished(runs, jobs, now), expected_checks.failed(runs, jobs, now),
-                base,
+    return Head(base, runs, jobs, now)
+
+
+def owed(pr, checks, head):
+    """What `head` is owed beyond `checks`, with `expected_checks` deciding each part, or None when
+    a reading did not answer."""
+    if head is None:
+        return None
+    required = expected_checks.listed_required(
+        api(expected_checks.rules_path("{owner}/{repo}", head.base)))
+    if required is None:
+        return None
+    return Owed(expected_checks.unfinished(head.runs, head.jobs, head.now),
+                expected_checks.failed(head.runs, head.jobs, head.now), head.base,
                 expected_checks.absent(required, (check.get("name") for check in checks)))
 
 
@@ -217,7 +231,7 @@ def judge(pr):
         # A run still going, or one that failed, is named instead of the sentence below; an unread
         # answer keeps that sentence, which is true of a head with no check either way. The absent
         # contexts are every required one here, which "no check" already says.
-        still = owed(pr, checks)
+        still = owed(pr, checks, head_of(pr))
         if still is not None and (still.waiting or still.failing):
             return owed_reason(pr, still._replace(absent=[]))
         return (f"  PR #{pr} — no check ever ran for its head, and the merge state is "
@@ -225,6 +239,12 @@ def judge(pr):
                 "path filter, so this is a run that\n    did not start rather than one nothing "
                 "matched. Push again, or read\n    'gh run list --branch <b> --json headSha'.")
 
+    head = head_of(pr)
+    if head is not None:
+        left_out = {run.get("id") for run in expected_checks.superseded(head.runs, head.jobs,
+                                                                         head.now)}
+        checks = [check for check in checks
+                  if expected_checks.run_of(check) not in left_out - {None}]
     pending = [check for check in checks if check.get("bucket") == "pending"]
     if not pending:
         # Nothing is running, so a watcher has nothing to observe and its heartbeat vouches for
@@ -240,7 +260,7 @@ def judge(pr):
             return (f"  PR #{pr} — {len(fails)} check(s) failed or were cancelled. Read the run, fix "
                     "or say why it is not yours\n    to fix. A cancelled run does not restart on "
                     "its own.")
-        still = owed(pr, checks)
+        still = owed(pr, checks, head)
         if still is None:
             return unread(pr, "what its head is still owed")
         if still.waiting or still.failing or still.absent:

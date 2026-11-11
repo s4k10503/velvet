@@ -39,10 +39,11 @@ Eleven preconditions:
   whoever reads it decides.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
   Nor is a list complete while the head still has a workflow run to finish, carries a workflow
-  whose current run failed, or lacks a context its base requires; `expected_checks.py` owns what each
+  run that failed, or lacks a context its base requires; `expected_checks.py` owns what each
   of those is and why it is read. A mutation campaign's runs and checks are left out of all of it,
-  since no merge waits on one; `campaign.py` says which those are. So are the checks of a run
-  another run of its workflow supersedes, which `expected_checks.superseded` names.
+  since no merge waits on one; `campaign.py` says which those are. So are the checks of a
+  cancelled run beside a run of its workflow that was not, which `expected_checks.superseded`
+  names.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
