@@ -43,7 +43,7 @@ settle = load_module()
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             held_by_worktree=False, unpublished_release=None, draft=False, merge_state="clean",
             fork=False, failing_runs=(), behind_release=None, long_lived_head=False, runs_unfinished=(),
-            runs_failed=(), required=(), stack_below=(), squash_defaults=None):
+            runs_failed=(), required=(), stack_below=(), stack_settings=None):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base,
@@ -53,7 +53,7 @@ def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main"
                                behind_release=behind_release, long_lived_head=long_lived_head,
                                runs_unfinished=runs_unfinished, runs_failed=runs_failed,
                                required=required, stack_below=stack_below,
-                               squash_defaults=squash_defaults)
+                               stack_settings=stack_settings)
 
 
 def failing(workflow="test.yml", sha=BROKE):
@@ -298,9 +298,9 @@ def holder(state):
 CLEAN = "clean"
 
 
-# What the repository's squash defaults answer in the tables below, unless a case hands
-# `fabricated_readings` another answer.
-SQUASH_DEFAULTS = ("PR_TITLE", "PR_BODY")
+# What the repository's settings a stack member's merge relies on answer in the tables below,
+# unless a case hands `fabricated_readings` another answer.
+STACK_SETTINGS = ("PR_TITLE", "PR_BODY", True)
 
 
 def in_stack(number, base="main"):
@@ -321,7 +321,7 @@ def members(states, stack):
 
 @contextlib.contextmanager
 def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=None,
-                        squash=SQUASH_DEFAULTS):
+                        settings=STACK_SETTINGS):
     """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
@@ -343,7 +343,7 @@ def fabricated_readings(states, red=(RED,), releasing=(RELEASING,), required=Non
                 fork=states[number].fork, labels=states[number].labels, state=states[number].state,
                 stack=states[number].stack)),
             ("stack_members", lambda _project, stack: members(states, stack)),
-            ("squash_defaults", lambda _project: squash),
+            ("stack_settings", lambda _project: settings),
             ("checks", lambda _project, sha, *_, **__: by_sha[sha].results),
             ("campaign_runs", lambda _project, sha: by_sha[sha].runs),
             ("run_jobs", lambda _project, runs, _now: {
@@ -2327,8 +2327,8 @@ class MergeRequestTests(unittest.TestCase):
 class StackDecisionTests(unittest.TestCase):
     """What a pull request in a stack is refused for, besides what any pull request is."""
 
-    def decided(self, states, number, squash=SQUASH_DEFAULTS):
-        with fabricated_readings(states, squash=squash):
+    def decided(self, states, number, settings=STACK_SETTINGS):
+        with fabricated_readings(states, settings=settings):
             return settle.blocking_reasons(Path("."), number).reasons
 
     def test_Given_AStackMemberAboveAnOpenOne_When_Decided_Then_ItIsRefusedNamingTheOneToMergeFirst(self):
@@ -2371,22 +2371,34 @@ class StackDecisionTests(unittest.TestCase):
         states = {1: fabricate(1, stack=in_stack(70))}
 
         # Act
-        decided = self.decided(states, 1, squash=("COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES"))
+        decided = self.decided(states, 1, settings=("COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES", True))
 
         # Assert
         self.assertEqual(decided, [
-            "it is in a stack, whose merge is sent no commit title or message: the repository's "
-            "squash_merge_commit_title and squash_merge_commit_message compose them, and read "
-            "COMMIT_OR_PR_TITLE and COMMIT_MESSAGES rather than PR_TITLE and PR_BODY"])
+            "it is in a stack, whose merge leaves its commit text and its remote branch to the "
+            "repository's settings: squash_merge_commit_title reads COMMIT_OR_PR_TITLE rather than "
+            "PR_TITLE, and squash_merge_commit_message reads COMMIT_MESSAGES rather than PR_BODY"])
 
-    # GREEN_ON_BASE(characterization): the base held no pull request to the squash defaults.
-    # One outside a stack is still held to none, since its merge passes its own title and body.
-    def test_Given_APullRequestOutsideAStackUnderOtherSquashDefaults_When_Decided_Then_NothingBlocksIt(self):
+    def test_Given_AStackMemberWhoseHeadIsNotDeletedOnMerge_When_Decided_Then_ItIsRefusedNamingTheSetting(self):
+        # Arrange — nothing would delete the remote branch, which this merge leaves to GitHub.
+        states = {1: fabricate(1, stack=in_stack(70))}
+
+        # Act
+        decided = self.decided(states, 1, settings=("PR_TITLE", "PR_BODY", False))
+
+        # Assert
+        self.assertEqual(decided, [
+            "it is in a stack, whose merge leaves its commit text and its remote branch to the "
+            "repository's settings: delete_branch_on_merge reads false rather than true"])
+
+    # GREEN_ON_BASE(characterization): the base held no pull request to the repository's settings.
+    # One outside a stack is still held to none, since its merge passes its own text and deletes.
+    def test_Given_APullRequestOutsideAStackUnderOtherSettings_When_Decided_Then_NothingBlocksIt(self):
         # Arrange
         states = {1: fabricate(1)}
 
         # Act
-        decided = self.decided(states, 1, squash=("COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES"))
+        decided = self.decided(states, 1, settings=("COMMIT_OR_PR_TITLE", "COMMIT_MESSAGES", False))
 
         # Assert
         self.assertEqual(decided, [])
@@ -2457,8 +2469,8 @@ ENQUEUED_ANSWER = json.dumps({"status": "enqueued",
                               "details": {"message": "Pull request was added to the merge queue."}})
 
 # What one `settle.merge` of a stack member did: every `gh` call, its exit code, the branches it
-# deleted, and everything it printed.
-StackMergeRun = collections.namedtuple("StackMergeRun", "sent code deleted printed")
+# deleted, the ones of those it deleted on the remote as well, and everything it printed.
+StackMergeRun = collections.namedtuple("StackMergeRun", "sent code deleted remotely printed")
 
 
 def stack_merge_run(*answers):
@@ -2468,7 +2480,7 @@ def stack_merge_run(*answers):
     Time moves only when the merge sleeps, and a merge that never stops waiting fails the case
     rather than hanging it.
     """
-    sent, deleted, printed, now = [], [], io.StringIO(), [0.0]
+    sent, deleted, remotely, printed, now = [], [], [], io.StringIO(), [0.0]
     queue = list(answers)
 
     def gh(*args):
@@ -2493,14 +2505,17 @@ def stack_merge_run(*answers):
                              ("pull_request_text", lambda *_: ("A title", "A body")),
                              ("gh", gh),
                              ("delete_merged_branch",
+                              lambda _project, branch: (deleted.append(branch),
+                                                        remotely.append(branch), [])[2]),
+                             ("delete_local_branch",
                               lambda _project, branch: (deleted.append(branch), [])[1])):
-            stack.enter_context(mock.patch.object(settle, name, answer))
+            stack.enter_context(mock.patch.object(settle, name, answer, create=True))
         stack.enter_context(mock.patch.object(settle.time, "sleep", sleep))
         stack.enter_context(mock.patch.object(settle.time, "monotonic", lambda: now[0]))
         stack.enter_context(contextlib.redirect_stdout(printed))
         stack.enter_context(contextlib.redirect_stderr(printed))
         code = settle.merge(Path("."), 592, "main", dry_run=False)
-    return StackMergeRun(sent, code, deleted, printed.getvalue())
+    return StackMergeRun(sent, code, deleted, remotely, printed.getvalue())
 
 
 def async_request(run):
@@ -2526,7 +2541,8 @@ class StackMergeRequestTests(unittest.TestCase):
                                                   lambda *_: ("A title", "A body")))
             stack.enter_context(mock.patch.object(
                 settle, "gh", lambda *args: (sent.append(args), MERGED_ANSWER)[1]))
-            stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            for name in ("delete_merged_branch", "delete_local_branch"):
+                stack.enter_context(mock.patch.object(settle, name, lambda *_: [], create=True))
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
 
             # Act
@@ -2572,6 +2588,14 @@ class StackMergeRequestTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(run.deleted, ["topic"])
+
+    def test_Given_AStackMergeThatWentThrough_When_ItsBranchIsDeleted_Then_TheRemoteRefIsLeftToGitHub(self):
+        # Arrange — that ref is the base of the member above, and `delete_branch_on_merge`, which a
+        # stack member is held to, is what deletes it.
+        run = stack_merge_run(MERGED_ANSWER)
+
+        # Act / Assert
+        self.assertEqual(run.remotely, [])
 
     def test_Given_AStackMergeThatReadsFailedOnAPoll_When_ItReturns_Then_ItRaisesWhatGitHubSaid(self):
         # Act / Assert

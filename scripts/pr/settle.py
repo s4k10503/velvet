@@ -12,7 +12,8 @@ them that shape is its own change. What this adds is reporting them together: on
 everything wrong rather than costing a round of CI per reason.
 
 **Three have no hook: a draft head**, or one whose merge state is `dirty`, or one no longer open,
-and the two a stack member is held to.
+and the two a stack member is held to. A `gh stack merge` typed by hand is refused whole instead,
+by `refuse/stack_merge_by_hand.py`.
 
 Eleven preconditions:
 
@@ -53,8 +54,10 @@ Eleven preconditions:
   well, and nothing here read their checks. It is judged against the stack's base, which is where it
   lands.
 - **A stack member merges only while the repository's squash defaults are `PR_TITLE` and
-  `PR_BODY`.** `stack_merge` sends no title or message, so those defaults are what take the commit's
-  title and body from the pull request, as the other path does, rather than from the branch's commits.
+  `PR_BODY` and `delete_branch_on_merge` is on.** `stack_merge` sends no title or message, so those
+  defaults are what take the commit's title and body from the pull request, as the other path does,
+  rather than from the branch's commits; and the remote branch is left to that setting, for the
+  reason `delete_local_branch` gives.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -270,15 +273,24 @@ def stack_members(project, number):
     return rest_json(f"repos/{repository(project)}/stacks/{number}").get("pull_requests", [])
 
 
-def squash_defaults(project):
-    """(title, message): what the repository composes a squash commit from when it is sent neither."""
+def stack_settings(project):
+    """The repository's settings a stack member's merge leaves its work to, in `STACK_SETTINGS`'
+    order: what a squash commit's title and message are composed from when it is sent neither, and
+    whether the head is deleted on merge."""
     payload = rest_json(f"repos/{repository(project)}")
-    return payload.get("squash_merge_commit_title"), payload.get("squash_merge_commit_message")
+    return tuple(payload.get(name) for name, _ in STACK_SETTINGS)
 
 
-# The squash defaults that take a commit's title and body from its pull request, as `merge` does on
-# the other path.
-STACK_SQUASH = ("PR_TITLE", "PR_BODY")
+# Each setting a stack member's merge relies on, beside the value it relies on. The squash defaults
+# take a commit's title and body from its pull request, as `merge` does on the other path.
+STACK_SETTINGS = (("squash_merge_commit_title", "PR_TITLE"),
+                  ("squash_merge_commit_message", "PR_BODY"),
+                  ("delete_branch_on_merge", True))
+
+
+def spelled(value):
+    """A setting's value as the API spells it, and `nothing` where the payload carried none."""
+    return "nothing" if value is None else json.dumps(value) if isinstance(value, bool) else value
 
 
 def unmerged_below(members, number):
@@ -509,7 +521,7 @@ def contains_commit(project, branch, sha):
 def reasons_from(before, after, results, branch, base, held_by_worktree,
                  unpublished_release, draft, merge_state, fork, failing_runs, behind_release,
                  long_lived_head, runs_unfinished, runs_failed, required, stack_below,
-                 squash_defaults):
+                 stack_settings):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -520,15 +532,15 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     for the reason `unpublished_release` gives, and neither do `runs_unfinished` and `runs_failed`,
     `expected_checks`' reasons about the head's workflow runs, or `required`, the contexts the base
     requires. Nor do `stack_below`, what `unmerged_below` answers for a stack member and () for any
-    other pull request, and `squash_defaults`, the repository's for a stack member and None for any
-    other.
+    other pull request, and `stack_settings`, what `stack_settings` reads for a stack member and None
+    for any other.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
     reporting the rest would be reporting about two SHAs at once. The publication reason is about the
     base, which the force-push did not touch; draft is a state of the pull request rather than of
     its head, a long-lived head is one by its branch name, and neither a stack's order nor the
-    repository's squash defaults is about the head's commit.
+    repository's settings is about the head's commit.
     """
     reasons = [unpublished_release] if unpublished_release else []
     if draft:
@@ -540,11 +552,12 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
         reasons.append(f"#{lowest} sits below it in its stack and has not merged: merge #{lowest} first"
                        if state == "open" else
                        f"#{lowest} sits below it in its stack and is {state} without having merged")
-    if squash_defaults is not None and tuple(squash_defaults) != STACK_SQUASH:
-        reasons.append("it is in a stack, whose merge is sent no commit title or message: the "
-                       "repository's squash_merge_commit_title and squash_merge_commit_message "
-                       "compose them, and read {} and {} rather than {} and {}".format(
-                           *(value or "nothing" for value in squash_defaults), *STACK_SQUASH))
+    if stack_settings is not None:
+        wrong = [f"{name} reads {spelled(read)} rather than {spelled(needed)}"
+                 for (name, needed), read in zip(STACK_SETTINGS, stack_settings) if read != needed]
+        if wrong:
+            reasons.append("it is in a stack, whose merge leaves its commit text and its remote "
+                           "branch to the repository's settings: " + ", and ".join(wrong))
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
@@ -699,7 +712,7 @@ def blocking_reasons(project, number, base=None, states=None):
                                  required=state.required,
                                  stack_below=unmerged_below(stack_members(project, stack.number),
                                                             number) if stack else (),
-                                 squash_defaults=squash_defaults(project) if stack else None),
+                                 stack_settings=stack_settings(project) if stack else None),
                     after, before.branch, results, target, before.sha, held,
                     # Read at `before`, so a moved head has none, as its reasons have none.
                     runs_failed if before.sha == after else (), stack)
@@ -1193,7 +1206,7 @@ def merge(project, number, base, dry_run):
     # The squash body is the pull request's description, the summary somebody wrote for the whole
     # change, rather than one composed from the branch's commits — which lands a copy of every
     # Co-Authored-By trailer they carry. This path passes it; a stack member's leaves it to the
-    # squash defaults `reasons_from` holds to `STACK_SQUASH`.
+    # squash defaults `reasons_from` holds to `STACK_SETTINGS`.
     if blocking.stack is None:
         title, body = pull_request_text(project, number)
         gh("api", "-X", "PUT", "repos/{}/pulls/{}/merge".format(repository(project), number),
@@ -1205,13 +1218,14 @@ def merge(project, number, base, dry_run):
         if unknown:
             # Not a failure: one would send its reader to merge again while the first may land.
             print(f"PR#{number} merge requested at {blocking.head[:7]}, outcome unknown: {unknown}. "
-                  f"Read the pull request before anything else, and delete {blocking.branch} once "
-                  f"it reads merged.", file=sys.stderr)
+                  f"Read the pull request before anything else, and delete the local "
+                  f"{blocking.branch} once it reads merged.", file=sys.stderr)
             return 0
     # `gh pr merge` printed its own confirmation and the API call prints nothing, so without this a
     # merge and a dry run that decided nothing look identical from the terminal.
     print(f"PR#{number} merged: {blocking.branch} squashed onto {blocking.base}")
-    for failure in delete_merged_branch(project, blocking.branch):
+    deleting = delete_merged_branch if blocking.stack is None else delete_local_branch
+    for failure in deleting(project, blocking.branch):
         print(f"PR#{number} merged, but {failure}", file=sys.stderr)
     return 0
 
@@ -1260,8 +1274,9 @@ def reference_already_gone(stderr):
     """Whether a ref delete failed because the ref was not there, which is not a failure to report.
 
     The repository deletes the head on merge by itself, so this DELETE normally arrives second and
-    finds nothing. It is still sent, because that setting is GitHub state nothing in this repository
-    reads back, and a script that relies on it silently stops deleting when somebody turns it off.
+    finds nothing. It is still sent for a pull request outside a stack, because that setting is
+    GitHub state nothing reads back for one, and a script that relies on it silently stops deleting
+    when somebody turns it off. A stack member's merge reads it back and is refused without it.
     """
     return "Reference does not exist" in stderr
 
@@ -1269,26 +1284,36 @@ def reference_already_gone(stderr):
 def delete_merged_branch(project, branch):
     """Deletes the merged branch locally and on the remote, and returns what survived.
 
-    The local half is the one nothing else does, and the one that cost: ninety-six local branches
-    accumulated before anyone counted them, and the sweep that followed is what
-    `.claude/hooks/refuse/merge_without_branch_deletion.py` records. A branch that was only ever
-    worked on from a detached worktree has no local ref at all, which is not a failure.
-
     Failures come back to be reported rather than raised, because the merge has already happened and
     an exit code saying otherwise sends the reader to merge it again.
     """
-    failures = []
-    present = run_quietly(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
-                           f"refs/heads/{branch}"], GIT_TIMEOUT)
-    if present.returncode == 0:
-        deleted = run_quietly(["git", "-C", str(project), "branch", "-D", branch], GIT_TIMEOUT)
-        if deleted.returncode != 0:
-            failures.append(f"the local branch {branch} survived: {deleted.stderr.strip()}")
-
+    failures = delete_local_branch(project, branch)
     remote = delete_remote_ref(project, branch)
     if remote:
         failures.append(f"the remote branch {branch} survived: {remote}")
     return failures
+
+
+def delete_local_branch(project, branch):
+    """Deletes the merged branch locally, and returns what survived, as `delete_merged_branch` does.
+
+    This half is the one nothing else does, and the one that cost: ninety-six local branches
+    accumulated before anyone counted them, and the sweep that followed is what
+    `.claude/hooks/refuse/merge_without_branch_deletion.py` records. A branch that was only ever
+    worked on from a detached worktree has no local ref at all, which is not a failure.
+
+    A stack member's merge deletes only this half. Its branch is the base of the member directly above
+    it, where there is one, so the remote ref is left to the repository's `delete_branch_on_merge`,
+    which `reasons_from` holds a stack member to.
+    """
+    present = run_quietly(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
+                           f"refs/heads/{branch}"], GIT_TIMEOUT)
+    if present.returncode != 0:
+        return []
+    deleted = run_quietly(["git", "-C", str(project), "branch", "-D", branch], GIT_TIMEOUT)
+    if deleted.returncode != 0:
+        return [f"the local branch {branch} survived: {deleted.stderr.strip()}"]
+    return []
 
 
 def remote_ref_absent(slug, branch):
