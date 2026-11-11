@@ -15,7 +15,8 @@ namespace Velvet
         Both,
     }
 
-    // A CSS <easing-function> Velvet runs: a cubic-bezier() curve, or steps(n, jump).
+    // A CSS <easing-function> Velvet runs: a cubic-bezier() curve, or steps(n, jump); or a curve mirrored as motion-utils'
+    // mirrorEasing mirrors one, which MotionEasing gives backInOut.
     internal readonly struct EaseFunction : IEquatable<EaseFunction>
     {
         public readonly BezierCurve Curve;
@@ -35,6 +36,9 @@ namespace Velvet
 
         public static implicit operator EaseFunction(BezierCurve curve) => new(curve, 0, StepJump.End);
 
+        // Held as a step count of -1, which no steps() has, so Equals and GetHashCode tell it from the curve itself.
+        public static EaseFunction MirrorOf(BezierCurve curve) => new(curve, -1, StepJump.End);
+
         // An ease-[...] layer carries a curve as x1, y1, x2, y2 and steps as the count, the jump and an x2 of -1, which
         // no curve holds (CSS wants x1 and x2 in 0 to 1).
         public static EaseFunction FromLayer(float v1, float v2, float v3, float v4)
@@ -45,9 +49,18 @@ namespace Velvet
 
         public float Evaluate(float t)
         {
+            if (Steps < 0)
+            {
+                // MUTANT_SURVIVES(equivalent, boundary): both halves give 0.5 at 0.5.
+                if (t <= 0.5f)
+                {
+                    return OnCurve(2f * t) / 2f;
+                }
+                return (2f - OnCurve(2f * (1f - t))) / 2f;
+            }
             if (!IsSteps)
             {
-                return CubicBezierEvaluator.Evaluate(Curve.X1, Curve.Y1, Curve.X2, Curve.Y2, t);
+                return OnCurve(t);
             }
             if (t >= 1f)
             {
@@ -66,6 +79,8 @@ namespace Velvet
                     return step / Steps;
             }
         }
+
+        private float OnCurve(float t) => CubicBezierEvaluator.Evaluate(Curve.X1, Curve.Y1, Curve.X2, Curve.Y2, t);
 
         public bool Equals(EaseFunction other)
             => Steps == other.Steps && Jump == other.Jump && Curve.X1 == other.Curve.X1 && Curve.Y1 == other.Curve.Y1
@@ -90,7 +105,7 @@ namespace Velvet
             _inOut = easeInOut;
         }
 
-        public BezierCurve? For(EasingMode mode)
+        public EaseFunction? For(EasingMode mode)
         {
             switch (mode)
             {
@@ -319,7 +334,7 @@ namespace Velvet
         {
             if (MotionTweenTiming.PlaysCurve(element))
             {
-                return OfKeyword(MotionEasing.Curves, resolved);
+                return MotionEasing.FunctionOf(resolved);
             }
             if (!s_bindings.TryGetValue(element, out var binding))
             {
@@ -330,17 +345,8 @@ namespace Velvet
                 return binding.LayerMode == resolved ? layer : null;
             }
             return binding.Classed && MotionTweenTiming.PeekOwn(element).Curve.keyword == StyleKeyword.Null
-                ? OfKeyword(s_tailwind, resolved)
+                ? s_tailwind.For(resolved)
                 : null;
-        }
-
-        private static EaseFunction? OfKeyword(KeywordCurves curves, EasingMode mode)
-        {
-            if (curves.For(mode) is { } curve)
-            {
-                return curve;
-            }
-            return null;
         }
 
         // For an element whose transitions a Motion's tween is about to time, which UI Toolkit then runs; listened to

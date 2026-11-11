@@ -545,8 +545,8 @@ shape of the easing differs. It shares Spring's channel scope (*Driven channels*
 one-curve-per-direction contract: `ExitBezier` gives an exit its own curve (`new BezierCurve(x1, y1, x2, y2)`),
 and `PropertyOverrides` gives the channels it names each entry's timing in place of the curve (*Per-property
 transition overrides*), which that channel plays once whatever the play repeats. Defaults to Tailwind's own
-default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
-with the `ease-in-out` keyword. `BezierX1` / `BezierX2` accept any finite value, as Motion's `cubicBezier` does; when either lies outside
+default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the one the `ease-in-out` of a `transition-*` utility runs on
+([styling-colors.md](styling-colors.md#theme-tokens)). `BezierX1` / `BezierX2` accept any finite value, as Motion's `cubicBezier` does; when either lies outside
 `[0,1]` the curve parameter for a given progress is found by bisection over `[0,1]`. A non-finite coordinate falls
 back to the default curve with a one-shot console warning. The CSS `cubic-bezier()` token of an `animate-` class
 still requires `x1` and `x2` in `[0,1]`, as CSS does.
@@ -555,15 +555,24 @@ target mid-tween.
 
 ## Named eases
 
-`EaseIn`, `EaseOut` and `EaseInOut` — as a `Tween`'s `Easing` or `ExitEasing`, a `PropertyOverrides` entry's
-`Easing`, or the ease-out a transition naming none takes — run on Framer Motion's `easeIn`, `easeOut` and `easeInOut`:
-`cubic-bezier(0.42, 0, 1, 1)`, `cubic-bezier(0, 0, 0.58, 1)` and `cubic-bezier(0.42, 0, 0.58, 1)`. UI Toolkit's own
-transition eases those keywords by quadratics, so where it plays the tween Velvet has each transition ease along
-Framer's curve for its own keyword once the engine reports it running, the engine keeping the duration, delay and
-reversal. A driven `Tween` (*Clocks*), a `layoutId` move, a spring or bezier play's entry, `UseAnimate` and a
-timeline's step run the same curve, and so do the transitions Velvet runs in the engine's place
-([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Every other
-`EasingMode` runs on the curve UI Toolkit eases a USS transition by.
+Six `EasingMode`s — as a `Tween`'s `Easing` or `ExitEasing`, a `PropertyOverrides` entry's `Easing`, or the
+ease-out a transition naming none takes — run on the curve of the Framer Motion easing beside them:
+
+| `EasingMode` | Framer Motion | Curve |
+|---|---|---|
+| `EaseIn` | `easeIn` | `cubic-bezier(0.42, 0, 1, 1)` |
+| `EaseOut` | `easeOut` | `cubic-bezier(0, 0, 0.58, 1)` |
+| `EaseInOut` | `easeInOut` | `cubic-bezier(0.42, 0, 0.58, 1)` |
+| `EaseOutBack` | `backOut` | `cubic-bezier(0.33, 1.53, 0.69, 0.99)` |
+| `EaseInBack` | `backIn` | `backOut` reversed, `cubic-bezier(0.31, 0.01, 0.67, -0.53)` |
+| `EaseInOutBack` | `backInOut` | `backIn` mirrored: its first half on `backIn` at twice the speed, its second half the first turned about the middle |
+
+UI Toolkit's own transition eases those modes by quadratics and by back curves of its own, so where it plays the tween
+Velvet has each transition ease along Framer's curve for its own mode once the engine reports it running, the engine
+keeping the duration, delay and reversal. A driven `Tween` (*Clocks*), a `layoutId` move, a spring or bezier play's
+entry, `UseAnimate` and a timeline's step run the same curve, and so do the transitions Velvet runs in the engine's
+place ([styling-colors.md](styling-colors.md#theme-tokens)) while a Motion's tween holds the element's timing. Every
+other `EasingMode` runs on the curve UI Toolkit eases a USS transition by.
 
 ## Repeating a play (`Repeat` / `RepeatType` / `RepeatDelaySec`)
 

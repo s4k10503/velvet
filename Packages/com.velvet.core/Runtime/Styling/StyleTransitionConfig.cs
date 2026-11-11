@@ -308,8 +308,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Easing mode. Applied as the inline transition-timing-function style; <c>EaseIn</c>, <c>EaseOut</c> and
-        /// <c>EaseInOut</c> run on Framer Motion's curves for those names (<c>Documentation~/motion.md</c>).
+        /// Easing mode. Applied as the inline transition-timing-function style; <c>EaseIn</c>, <c>EaseOut</c>,
+        /// <c>EaseInOut</c> and the three back modes run on Framer Motion's curves (<c>Documentation~/motion.md</c>).
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
         /// A <see cref="TransitionType.Spring"/> play's own curve is its physics; it reads this only for a sequence
         /// segment <see cref="Animator"/> plays over more than two keyframes, which runs as a tween. Ignored when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>: the

@@ -80,6 +80,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ATweenEnterEasingOutBackThreeTenthsOfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersBackOutPutsIt()
+        {
+            // Arrange — Framer Motion's backOut three tenths of the way along, short of its overshoot.
+            var expected = CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 0.3f);
+
+            // Act
+            var opacity = FirstFrameOpacity(-0.3f, EasingMode.EaseOutBack, null);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ATweenEnterEasingInBackSevenTenthsOfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersBackInPutsIt()
+        {
+            // Arrange — Framer Motion's backIn, backOut reversed, seven tenths of the way along, past its dip below 0.
+            var expected = 1f - CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 0.3f);
+
+            // Act
+            var opacity = FirstFrameOpacity(-0.7f, EasingMode.EaseInBack, null);
+
+            // Assert
+            Assert.That(opacity, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        [Test]
         public void Given_ALinearTweenEnterWhoseOpacityEntryEasesInHalfASecondIn_When_TheFirstFrameRuns_Then_OpacityIsWhereFramersEaseInPutsIt()
         {
             // Arrange — the play's own keyword and the entry's differ; Framer Motion's easeIn half way along.

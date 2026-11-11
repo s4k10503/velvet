@@ -24,6 +24,23 @@ namespace Velvet.Tests
 
         private static float FramerEaseOut(float t) => CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, t);
 
+        // Framer Motion's backOut, and backIn and backInOut as back.ts derives them: the reverse and its mirror.
+        private static float FramerBackOut(float t) => CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, t);
+
+        private static float FramerBackIn(float t) => 1f - FramerBackOut(1f - t);
+
+        private static float FramerBackInOut(float t)
+            => t <= 0.5f ? FramerBackIn(2f * t) / 2f : (2f - FramerBackIn(2f * (1f - t))) / 2f;
+
+        private static float XAfterOneSecondTween(EasingMode easing, float elapsedSec)
+        {
+            var element = new VisualElement();
+            var controls = NewAnimator().Animate(element, new AnimateValues { X = new[] { 0f, 100f } },
+                new StyleTransitionConfig { DurationSec = 1f, Easing = easing });
+            controls.Tick(elapsedSec);
+            return TranslateX(element);
+        }
+
         [Test]
         public void Given_AnXAnimationWithNoTransition_When_ATenthOfASecondPasses_Then_ItIsWhereTheTransformSpringPutsIt()
         {
@@ -111,6 +128,58 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(TranslateX(element), Is.EqualTo(100f * FramerEaseOut(0.5f)).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnXTweenEasingInBack_When_SevenTenthsOfItsSecondPass_Then_XIsWhereFramersBackInPutsIt()
+        {
+            // Arrange
+            var expected = 100f * FramerBackIn(0.7f);
+
+            // Act
+            var x = XAfterOneSecondTween(EasingMode.EaseInBack, 0.7f);
+
+            // Assert
+            Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnXTweenEasingOutBack_When_ThreeTenthsOfItsSecondPass_Then_XIsWhereFramersBackOutPutsIt()
+        {
+            // Arrange
+            var expected = 100f * FramerBackOut(0.3f);
+
+            // Act
+            var x = XAfterOneSecondTween(EasingMode.EaseOutBack, 0.3f);
+
+            // Assert
+            Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnXTweenEasingInOutBack_When_AQuarterOfItsSecondPasses_Then_XIsWhereFramersBackInOutPutsItOnItsFirstHalf()
+        {
+            // Arrange
+            var expected = 100f * FramerBackInOut(0.25f);
+
+            // Act
+            var x = XAfterOneSecondTween(EasingMode.EaseInOutBack, 0.25f);
+
+            // Assert
+            Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnXTweenEasingInOutBack_When_ThreeQuartersOfItsSecondPass_Then_XIsWhereFramersBackInOutPutsItOnItsSecondHalf()
+        {
+            // Arrange
+            var expected = 100f * FramerBackInOut(0.75f);
+
+            // Act
+            var x = XAfterOneSecondTween(EasingMode.EaseInOutBack, 0.75f);
+
+            // Assert
+            Assert.That(x, Is.EqualTo(expected).Within(1e-3f));
         }
 
         [Test]
