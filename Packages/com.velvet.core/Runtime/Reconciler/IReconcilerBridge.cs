@@ -45,6 +45,9 @@ namespace Velvet
         // Bracket a range render: Begin before its first row is built, End once the buffers name the rows placed.
         // End can throw the suspend of a Portal child it mounts.
         bool BeginRangeForController();
+
+        // Clears the abort an error boundary raises as it swaps in its fallback (ReconcilerContext.IsAborted).
+        void ClearAbortForController();
         void EndRangeForController(VisualElement container, bool opened);
 
         // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the

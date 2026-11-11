@@ -490,6 +490,15 @@ namespace Velvet
                         newElements[i] = replacement;
                     }
 
+                    // An abort a boundary inside this row raised as it swapped in its fallback stops the rest of the
+                    // row's own walk; the rows after it lie outside that boundary, as FiberRenderer.ReconcileRenderedTree
+                    // keeps the abort of a row that is itself a boundary to that row's reconcile. One a boundary above
+                    // the list raised stands: that boundary's swap disposed the list, which ends the loop.
+                    if (!_isDisposed)
+                    {
+                        _reconciler.ClearAbortForController();
+                    }
+
                     // The prior row leaves its table only once the slot holds an element, the order
                     // GeneralPathReconciler.CommitLeaf keeps for an old leaf it marks taken: a throw from the create
                     // or the patch above leaves it there for DiscardFailedPass to release.

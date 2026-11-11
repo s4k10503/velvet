@@ -603,15 +603,20 @@ namespace Velvet
         void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
             => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
 
+        void IReconcilerBridge.ClearAbortForController() => _ctx.IsAborted = false;
+
         // A range rendered inside a pass is that pass's to end. One rendered outside a pass is bracketed by
         // SharedReconcileDepth, as an in-pass range already is: a Component row's mount is then no top-level pass of
         // its own, whose end would drain the mounts the rows ahead of it deferred before the range has placed them,
-        // and the range's end drains them all, in the order they were queued, once the rows are in the list. Returns
-        // whether this range opened the bracket, which EndRangeForController closes.
+        // and the range's end drains them all, in the order they were queued, once the rows are in the list. At the
+        // bracket's own depth no walk is on the stack, so a row mounted there rebuilds its enclosing Providers from
+        // the committed spine as it would at depth 0 (WalklessReconcileDepth). Returns whether this range opened the
+        // bracket, which EndRangeForController closes.
         bool IReconcilerBridge.BeginRangeForController()
         {
             if (_ctx.SharedReconcileDepth > 0) return false;
             _ctx.SharedReconcileDepth++;
+            _ctx.WalklessReconcileDepth = _ctx.SharedReconcileDepth;
             return true;
         }
 
@@ -620,6 +625,7 @@ namespace Velvet
         void IReconcilerBridge.EndRangeForController(VisualElement container, bool opened)
         {
             if (!opened) return;
+            _ctx.WalklessReconcileDepth = 0;
             _ctx.SharedReconcileDepth--;
             // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange is the only catch of what this
             // throws, and it hands either signal to the list's host alike.

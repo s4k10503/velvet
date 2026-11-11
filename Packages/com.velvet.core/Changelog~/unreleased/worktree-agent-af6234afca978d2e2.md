@@ -7,6 +7,9 @@
   list's item length, which went to the element standing in its slot.
 - A `V.VirtualList` row that is a `V.Portal` now mounts its children in the target before the scroll that brings it
   into view returns, in the order a render mounts them, a Component row beside it in that range included.
+- A `V.VirtualList` row built after a row whose error boundary swapped in its fallback in the same render of the
+  list's host, as one does when a ref cleanup it owns throws while the row is patched, is now built whole. It was
+  created without its children.
 - A `V.Motion` holding a `layoutId` now runs a change of its own translate during its move, and after the move while
   that translate still runs, on the curve the same change runs by on an element holding no id where a class gives
   that one Tailwind's curve, as `ease-out` and `ease-in-out` do. It ran UI Toolkit's own curve for the keyword
