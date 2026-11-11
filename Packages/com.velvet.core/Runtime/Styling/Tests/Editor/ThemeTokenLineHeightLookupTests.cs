@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -15,7 +16,14 @@ namespace Velvet.Tests
     {
         // Declares `--text-sizetest--line-height` and `--text-sm--line-height` among others, and nothing for text-lg.
         private const string TokenSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenSheet.uss";
-        private const string EdgeSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ThemeTokenLineHeightEdgeSheet.uss";
+
+        // Written from this file rather than kept beside it, since base_red_check.py carries a changed test's .cs to
+        // the merge base and leaves a sheet next to it behind. The variables sit at the edges of the
+        // --text-<size>--line-height shape: a size with no name, a name whose prefix and suffix share a dash, and
+        // another namespace's variable ending in the suffix.
+        private const string EdgeSheetPath = "Assets/VelvetThemeTokenLineHeightEdge.uss";
+        private const string EdgeSheetText =
+            ".theme-token-edge {\n    --text---line-height: 4;\n    --text--line-height: 5;\n    --ease-lg--line-height: 6;\n}\n";
 
         private static readonly Action AskWhetherTextLgIsFollowed = () => StyleNamedTextSize.HasThemedLineHeight("text-lg");
 
@@ -26,8 +34,22 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            _mounted?.Dispose();
-            _mounted = null;
+            try
+            {
+                _mounted?.Dispose();
+                _mounted = null;
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(EdgeSheetPath);
+            }
+        }
+
+        private static string ImportEdgeSheet()
+        {
+            File.WriteAllText(EdgeSheetPath, EdgeSheetText);
+            AssetDatabase.ImportAsset(EdgeSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            return EdgeSheetPath;
         }
 
         private ReconcilerContext MountUnder(VisualElement root, string sheetPath)
@@ -129,7 +151,7 @@ namespace Velvet.Tests
         public void Given_ASheetDeclaringALineHeightForASizeWithNoName_When_TheClassNamingNoSizeIsAskedWhetherItIsFollowed_Then_ItIs()
         {
             // Arrange
-            var context = MountUnder(new VisualElement(), EdgeSheet);
+            var context = MountUnder(new VisualElement(), ImportEdgeSheet());
 
             // Act
             var followed = IsFollowedInScope(context, "text-");
@@ -143,7 +165,7 @@ namespace Velvet.Tests
         public void Given_AnotherNamespacesVariableEndingInALineHeightSuffix_When_TheSizeItsNameCarriesIsAskedWhetherItIsFollowed_Then_ItIsNot()
         {
             // Arrange
-            var context = MountUnder(new VisualElement(), EdgeSheet);
+            var context = MountUnder(new VisualElement(), ImportEdgeSheet());
 
             // Act
             var followed = IsFollowedInScope(context, "text-lg");
