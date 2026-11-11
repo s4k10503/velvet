@@ -1396,6 +1396,20 @@ or been skipped*: add it once review has settled, and remove it to hold the pull
 takes triage access or above, so only an account holding that can opt a pull request in. The workflow
 does not create the label; it has to exist in the repository.
 
+A pull request in a stack is merged through GitHub's asynchronous merge endpoint, since GitHub refuses
+a stack member on the one `settle.py merge` uses for every other pull request. GitHub documents that
+endpoint as merging every member below the one asked for as well, so settle merges only the lowest
+member not yet merged, judges it against the stack's base, and refuses one above it, naming the member
+to merge first; `watch` records none above it as ready. The request carries the head the checks were
+read at, as the other does, and no commit title or message, so the squash commit takes its title and
+body from the repository's squash defaults: settle refuses a stack member unless
+`squash_merge_commit_title` is PR_TITLE and `squash_merge_commit_message` is PR_BODY, which take
+them from the pull request rather than from the branch's commits. GitHub merges after the request
+returns, and settle waits up to ten minutes for the answer. An answer that the merge failed stops
+settle with GitHub's message, as a refused merge of any other pull request does. Where no answer comes
+in that time, or it is neither merged nor failed, settle says the merge was requested and its outcome
+is unknown, leaves the branch where it is, and exits 0: read the pull request before asking again.
+
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
 `refuse/merge_unproven_head.py` leave its runs and its checks out of what they read, so one that failed
