@@ -132,5 +132,24 @@ namespace Velvet.Tests
                 "ins-x:Leaf ins:Leaf lay-x:Leaf ins-x:After ins:After lay-x:After lay:Leaf lay:After"
                 + " eff-x:Leaf eff-x:After eff:Leaf eff:After"));
         }
+
+        // GREEN_ON_BASE(characterization): the base never names a Portal for a component's own render to take back.
+        // What this pins is that the render of a Portal's child, which now names its Portal, takes it back.
+        [Test]
+        public void Given_APortalChildThatRendersOnItsOwn_When_ThatRenderCommits_Then_NoPortalIsLeftInFlight()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(),
+                log.Provide(V.Component(PortalThenSibling, new ParentProps(new VisualElement(), false))));
+            mounted.DrainForTest();
+
+            // Act
+            log.Setter<int>("PortalChild").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(mounted.Root.Reconciler!.Context.CurrentPortalPlaceholder, Is.Null);
+        }
     }
 }

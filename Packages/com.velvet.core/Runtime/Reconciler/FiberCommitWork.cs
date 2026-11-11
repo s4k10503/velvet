@@ -320,25 +320,15 @@ namespace Velvet
         internal static void DrainPendingWork(ComponentFiber fiber)
         {
             fiber.ParkedPassSuspended = false;
-            var drainContext = fiber.Reconciler!.Context;
-            var enclosingPortal = drainContext.CurrentPortalPlaceholder;
-            drainContext.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
-            try
+            if (fiber.IsInlineMounted)
             {
-                if (fiber.IsInlineMounted)
-                {
-                    var drain = new RowCountWindow(fiber);
-                    fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
-                    PropagateInlineSlotShift(fiber, drain.UnshiftedChange);
-                }
-                else
-                {
-                    fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
-                }
+                var drain = new RowCountWindow(fiber);
+                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
+                PropagateInlineSlotShift(fiber, drain.UnshiftedChange);
             }
-            finally
+            else
             {
-                drainContext.CurrentPortalPlaceholder = enclosingPortal;
+                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
             }
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
             // Detach the parked baseline BEFORE retiring it: the sweep's own mark treats
@@ -379,17 +369,29 @@ namespace Velvet
             double frameBudgetMs, ComponentFiber? catchingBoundary)
         {
             var reconciler = fiber.Reconciler!;
-            if (!fiber.IsInlineMounted)
+            // The fibers these rows hold are stamped with the Portal the rows sit in, as the Portal's own reconcile
+            // stamped them, and the value goes back once the rows are done.
+            var context = reconciler.Context;
+            var enclosingPortal = context.CurrentPortalPlaceholder;
+            context.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
+            try
             {
-                return reconciler.ReconcileCatching(
-                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catchingBoundary);
+                if (!fiber.IsInlineMounted)
+                {
+                    return reconciler.ReconcileCatching(
+                        fiber.MountPoint, oldTree, newTree, frameBudgetMs, 0, int.MaxValue, catchingBoundary);
+                }
+                var rows = new RowCountWindow(fiber);
+                var slotLimit = NextInlineSiblingSlotStart(fiber);
+                var caught = reconciler.ReconcileCatching(
+                    fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
+                PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
+                return caught;
             }
-            var rows = new RowCountWindow(fiber);
-            var slotLimit = NextInlineSiblingSlotStart(fiber);
-            var caught = reconciler.ReconcileCatching(
-                fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
-            PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
-            return caught;
+            finally
+            {
+                context.CurrentPortalPlaceholder = enclosingPortal;
+            }
         }
 
         // When deferReconcile is true (initial inline mount), the commit is performed by the caller's parent
@@ -403,30 +405,22 @@ namespace Velvet
             // The array this reconcile is expanding, for the children it stamps on the way through.
             var treeContext = fiber.Reconciler?.Context;
             var enclosingFiberTree = treeContext?.CurrentFiberTree;
-            var enclosingPortal = treeContext?.CurrentPortalPlaceholder;
             if (treeContext != null) treeContext.CurrentFiberTree = newTree;
             try
             {
                 if (deferReconcile) return null;
-                if (treeContext != null) treeContext.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
                 if (fiber.CatchesErrors) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
                 ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
                 return null;
             }
             finally
             {
-                if (treeContext != null)
-                {
-                    treeContext.CurrentFiberTree = enclosingFiberTree;
-                    treeContext.CurrentPortalPlaceholder = enclosingPortal;
-                }
+                if (treeContext != null) treeContext.CurrentFiberTree = enclosingFiberTree;
             }
         }
 
-        // The Portal whose children the fiber's rows are among, for a reconcile of the fiber's own rows to stamp
-        // the fibers it reaches with, as the Portal's own reconcile stamped them: the fiber's stamp, or the nearest
-        // one up its chain.
-        internal static VisualElement? EnclosingPortalOf(ComponentFiber fiber)
+        // The Portal whose children the fiber's rows are among: the fiber's stamp, or the nearest one up its chain.
+        private static VisualElement? EnclosingPortalOf(ComponentFiber fiber)
         {
             for (var holder = fiber; holder != null; holder = holder.Parent)
             {

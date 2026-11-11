@@ -2824,9 +2824,9 @@ namespace Velvet
             internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
 
             // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
-            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
-            // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
-            // an entry has no second route to it. Several Portals rendering into one container reach one
+            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: a fiber a
+            // reconcile leaves unstamped is still reached through the parent index, and an entry has no second
+            // route to it. Several Portals rendering into one container reach one
             // entry, so this names the last of them to expand it rather than all of them —
             // AnimatePresenceStateRetirementTests' shared-container case is what goes red if a teardown
             // starts reaching an entry another Portal still holds leaves for.

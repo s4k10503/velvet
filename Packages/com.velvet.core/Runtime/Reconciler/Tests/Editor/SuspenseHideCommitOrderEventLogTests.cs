@@ -30,6 +30,7 @@ namespace Velvet.Tests
             PortalInPortalRow,
             PortalToMissingTarget,
             PortalChildRenderedAlone,
+            PortalChildFellBack,
         }
 
         private sealed record Named(string Name, string? ClassName = null);
@@ -100,6 +101,32 @@ namespace Velvet.Tests
                 V.Div(refCallback: refO2, key: "o2"),
             });
         }
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedBoundaryPortalOuter(HostProps props)
+        {
+            var refO = EventLog.UseRefCallback("O");
+            var refO2 = EventLog.UseRefCallback("O2");
+            return V.Div(refCallback: refO, children: new VNode[]
+            {
+                V.Portal(props.Target, new VNode[] { V.Component(FallingBack, key: "boundary") }, key: "portal"),
+                V.Div(refCallback: refO2, key: "o2"),
+            });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode FallingBack()
+        {
+            var (broken, _) = EventLog.UseState("Broken", 0);
+            var refD = EventLog.UseRefCallback("D");
+            Hooks.UseFallback(_ => V.Fragment(
+                V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: refD, key: "d")));
+            return V.Component(Breaking, broken, key: "breaking");
+        }
+
+        [Component]
+        private static VNode Breaking(int broken)
+            => broken == 1 ? throw new InvalidOperationException("thrown by the probe") : V.Div();
 
         [Component]
         private static VNode SelfUpdating()
@@ -213,6 +240,10 @@ namespace Velvet.Tests
                     },
                     Shape.PortalIntoOwnElement or Shape.PortalIntoOwnElementRelocated or Shape.PortalIntoOwnElementAfterEmpty
                         => new VNode[] { V.Component(PortalIntoOwnOuter, props, key: "outer"), reader },
+                    Shape.PortalChildFellBack => new VNode[]
+                    {
+                        V.Div(children: new VNode[] { V.Component(MemoizedBoundaryPortalOuter, props, key: "outer") }), reader,
+                    },
                     Shape.PortalChildRenderedAlone => new VNode[]
                     {
                         V.Div(children: new VNode[] { V.Component(MemoizedPortalOuter, props, key: "outer") }), reader,
@@ -238,7 +269,8 @@ namespace Velvet.Tests
         private static MountedTree MountShown(EventLog log, Shape shape)
         {
             var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement(), new VisualElement(), new Holder()))));
+                log.Provide(V.Component(SuspenseHost, new HostProps(shape, new VisualElement(), new VisualElement(), new Holder()))),
+                new MountOptions { OnCaughtError = (_, _) => { } });
             mounted.DrainForTest();
             return mounted;
         }
@@ -478,6 +510,23 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "ref-x:O lay-x:C1 lay-x:E ref-x:D ref-x:O2 ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_APortalChildBoundaryShowingItsFallbackUnderAComponentThatBails_When_ItSuspendsAgain_Then_TheFallbacksChildRenderingNothingIsTakenDownWhereItSits()
+        {
+            // Arrange — the boundary inside the Portal swaps its fallback in on its own render, under a memoized
+            // component inside an element
+            var log = new EventLog();
+            using var mounted = MountShown(log, Shape.PortalChildFellBack);
+            log.Setter<int>("Broken").Invoke(1);
+            mounted.DrainForTest();
+
+            // Act
+            Suspend(log, mounted);
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ref-x:O lay-x:E ref-x:D ref-x:O2 ins:F ref:F lay:F eff:F"));
         }
     }
 }

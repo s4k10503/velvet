@@ -212,8 +212,8 @@ namespace Velvet
                 // is written instead.
                 // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the stamp it
                 // was given at creation. A reconcile of a fiber's own rows names the Portal they sit in
-                // (FiberCommitWork.ReconcileIntoSlotRange), so the isolated re-render of a Portal's child keeps the
-                // stamps below it. A fiber left without one is the same fiber DisposeInlineFibersOwnedByPortal
+                // (FiberCommitWork.ReconcileRows), so an isolated re-render or a fallback swap inside a Portal keeps
+                // the stamps below it. A fiber left without one is the same fiber DisposeInlineFibersOwnedByPortal
                 // already reaches through the parent index, and FiberCommitWork reads the nearest stamp up its chain.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (!reusedAsIs)
@@ -751,11 +751,9 @@ namespace Velvet
                 (doomed ??= new List<ComponentFiber>()).Add(fiber);
             }
             if (doomed == null) return;
-            // A fiber mounted by a stamped fiber's ISOLATED re-render carries no stamp: no Portal children
-            // reconcile was in flight to name one. It is reached through the parent index rather than given
-            // a stamp copied from its parent's, so nothing has to keep that copy current as the parent
-            // moves — the registry key pins a fiber to one parent for its whole life, which is what makes
-            // this select exactly the subtree that goes with each already-doomed fiber.
+            // A fiber below them that carries no stamp is reached through the parent index: the registry key pins
+            // a fiber to one parent for its whole life, which is what makes this select exactly the subtree that
+            // goes with each already-doomed fiber.
             var reached = new HashSet<ComponentFiber>(doomed);
             for (var i = 0; i < doomed.Count; i++)
             {
