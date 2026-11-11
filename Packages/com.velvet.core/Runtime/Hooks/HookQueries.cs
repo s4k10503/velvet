@@ -20,8 +20,6 @@ namespace Velvet
         internal abstract void Match(QueryObserver? held, object? computer, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
         internal abstract object Refresh(IQueryResultSource source);
-        // TanStack's #result[i]: the result the hook last recorded or notified of, which a change the query does not
-        // notify of leaves in place.
         internal abstract void RecordNotified();
         internal abstract object Notified(IQueryResultSource source);
         // The query's own result computed afresh from its entry, and what differs from the one before.
@@ -46,7 +44,6 @@ namespace Velvet
         private QueryObserver<TQueryFnData, TQueryFnData> _observer = null!;
         private QueryObserver<TQueryFnData, TData> _computer = null!;
         private QueryEntry<TQueryFnData> _entry = null!;
-        private QuerySnapshot<TData> _notified;
 
         internal QueriesItem(QueryOptionsBase<TQueryFnData, TData> options) => _options = options;
 
@@ -97,9 +94,9 @@ namespace Velvet
             return result;
         }
 
-        internal override void RecordNotified() => _notified = _computer.Current;
+        internal override void RecordNotified() => _computer.RecordNotified();
 
-        internal override object Notified(IQueryResultSource source) => new QueryResult<TData>(_notified, source);
+        internal override object Notified(IQueryResultSource source) => _computer.Notified(source);
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 

@@ -594,6 +594,31 @@ namespace Velvet.Tests
                 "v5's #result keeps the result a query last notified of, and the commit after reads the one it holds");
         }
 
+        // GREEN_ON_BASE(characterization): the base computed every query afresh at another's change, so it saw the
+        // query stale; this pins that the result a commit computes afresh is the one a later change hands combine.
+        [Test]
+        public void Given_AQueryTurningStaleBetweenARenderAndItsCommit_When_AnotherQuerysDataChanges_Then_TheCombineSeesItStale()
+        {
+            // Arrange — the render reads the query fresh, the commit computes it afresh once it is stale, and the
+            // combine's value at that commit is the one it had, so no render follows to read it again.
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            using var mounted = Mount(StaleAfterReader);
+            s_keys = new[] { "b", "a" };
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+            s_now = TimeSpan.FromSeconds(2);
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("b"), 20));
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo("stale"),
+                "v5's setQueries replaces #result with each observer's current result, which #onUpdate hands combine");
+        }
+
         [Test]
         public void Given_TwoQueries_When_TheSecondTurnsToTheFirstsEntry_Then_ItTakesAnObserverOfItsOwn()
         {
@@ -828,6 +853,20 @@ namespace Velvet.Tests
         }
 
         private static readonly Func<QueryResult<int>, QueryResult<int>, int> s_pairSum = (a, b) => a.Data + b.Data;
+
+        // Reads IsStale only once some result holds 20, so a value read before that tracks only the data.
+        private static readonly Func<IReadOnlyList<QueryResult<int>>, string> s_staleWhenTwenty = results =>
+            results.Any(result => result.Data == 20) && results.Any(result => result.Data == 1 && result.IsStale) ? "stale" : "fresh";
+
+        [Component]
+        private static VNode StaleAfterReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var queries = s_keys.Select(key => key == "a" ? Options(key) with { StaleTime = TimeSpan.FromSeconds(1) } : Options(key)).ToArray();
+            s_combined.Add(Hooks.UseQueries(queries, s_staleWhenTwenty, s_client));
+            return V.Label(text: "stale-after");
+        }
 
         [Component]
         private static VNode ErrorListedSumReader()

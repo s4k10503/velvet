@@ -1548,6 +1548,14 @@ namespace Velvet
         // property as read.
         internal QuerySnapshot<TData> Current => _current;
 
+        // UseQueries' record of the result its hook last committed or notified of, TanStack's #result[i], kept here
+        // because the computer outlives the queries a render builds.
+        private QuerySnapshot<TData> _notified;
+
+        internal void RecordNotified() => _notified = _current;
+
+        internal QueryResult<TData> Notified(IQueryResultSource source) => new(_notified, source);
+
         // TanStack's createResult: the entry's state, with the fetch a subscription is about to start, then the
         // selected data, then the placeholder data, then a failure of the select.
         // A function form a render asks throws from the render, as v5's does; one asked by an update outside a
