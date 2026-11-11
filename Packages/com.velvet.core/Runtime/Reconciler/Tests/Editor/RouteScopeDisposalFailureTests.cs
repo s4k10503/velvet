@@ -69,8 +69,11 @@ namespace Velvet.Tests
 
             public bool ThrowOnCreate { get; set; }
 
+            public int CreateCalls { get; private set; }
+
             public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent)
             {
+                CreateCalls++;
                 if (ThrowOnCreate)
                 {
                     throw new InvalidOperationException(CreateFailureMessage);
@@ -154,28 +157,49 @@ namespace Velvet.Tests
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
         }
 
+        // GREEN_ON_BASE(characterization): the base contains the retry as it does here, now with the Outlet at the root.
+        // A compiled parent hands the Outlet back and asks for no retry, which the case below pins.
         [Test]
         public void Given_AnOutletLeftWithoutAScope_When_ItIsPatchedAtTheSameRoute_Then_TheRetryIsContainedToo()
         {
             // Arrange — the first render's own create failed, so no scope is registered and the next render
-            // takes the branch that builds one for a route it is already holding. The arrangement goes through
-            // EscapesFrom as well, because on a tree with no containment it is the mount that throws and
-            // the case would raise out of its own Arrange rather than reach the comparison below.
+            // takes the branch that builds one for a route it is already holding. The Outlet is reconciled from
+            // the walk root, where each pass hands it a new node, so the next pass renders it. The arrangement
+            // goes through EscapesFrom as well, because on a tree with no containment it is the mount that throws
+            // and the case would raise out of its own Arrange rather than reach the comparison below.
             s_throwOnDispose = false;
             _scopeFactory.ThrowOnCreate = true;
             LogAssert.Expect(LogType.Exception,
                              new Regex("InvalidOperationException: " + CreateFailureMessage));
-            VNode[] mounted = null;
-            var escapedTheMount = EscapesFrom(() => mounted = MountRoutedApp());
+            var mounted = new VNode[] { RoutedOutlet() };
+            var escapedTheMount = EscapesFrom(() => _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted));
             LogAssert.Expect(LogType.Exception,
                              new Regex("InvalidOperationException: " + CreateFailureMessage));
 
             // Act
             var escaped = escapedTheMount
-                          || EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+                          || EscapesFrom(() => _reconciler.Reconcile(_root, mounted, new VNode[] { RoutedOutlet() }));
 
             // Assert
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
+        }
+
+        [Test]
+        public void Given_AnOutletLeftWithoutAScopeUnderACachedParent_When_TheParentRendersAtTheSameRoute_Then_NoScopeIsAskedForAgain()
+        {
+            // Arrange — the parent's compiler hands the Outlet back the node it rendered from, so the parent's
+            // render at the same location leaves it unrendered
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+            var mounted = MountRoutedApp();
+
+            // Act
+            ReRenderAppAtCurrentLocation(mounted);
+
+            // Assert
+            Assert.That(_scopeFactory.CreateCalls, Is.EqualTo(1));
         }
 
         [Test]

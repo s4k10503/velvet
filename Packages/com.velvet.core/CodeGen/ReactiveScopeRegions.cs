@@ -514,7 +514,7 @@ namespace Velvet.CodeGen
             switch (code)
             {
                 case Code.Stsfld:
-                    return IsLambdaCache((FieldReference)instruction.Operand) ? null : "it writes a static";
+                    return IsDelegateCache((FieldReference)instruction.Operand) ? null : "it writes a static";
                 case Code.Starg:
                 case Code.Ldarga:
                     return "it writes a parameter or takes its address";
@@ -530,11 +530,10 @@ namespace Velvet.CodeGen
             return CompilerWeaver.IsHookKind(_volatility.KindAt(index)) ? "it calls a hook" : null;
         }
 
-        private static bool IsLambdaCache(FieldReference field)
+        private static bool IsDelegateCache(FieldReference field)
         {
             var definition = ScopeResolution.Field(field);
-            return definition != null
-                && (definition.DeclaringType.Name == "<>c" || definition.Name.StartsWith("<>9__", System.StringComparison.Ordinal));
+            return definition != null && ReactiveScopeVolatility.IsDelegateCache(definition);
         }
 
         private bool FlowsToReturn(int end)

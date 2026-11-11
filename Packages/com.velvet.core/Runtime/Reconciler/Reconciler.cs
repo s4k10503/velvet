@@ -146,12 +146,20 @@ namespace Velvet
             }
         }
 
+        // The fiber whose output this instance reconciles; FiberRenderer writes it when the fiber mounts.
+        internal ComponentFiber? Owner { get; set; }
+
+        private void MarkOwnerParked()
+        {
+            if (Owner != null) FiberPendingWork.MarkAncestors(Owner);
+        }
+
         private void BuildParts()
         {
             var cleaner = new FiberElementCleaner(_ctx);
             var patcher = new FiberNodePatcher(_ctx);
             var factory = new FiberNodeFactory(_ctx, patcher, cleaner);
-            var childReconciler = new ChildReconciler(_ctx, patcher, factory, cleaner);
+            var childReconciler = new ChildReconciler(_ctx, patcher, factory, cleaner) { Parked = MarkOwnerParked };
 
             factory.SetHost(this);
             patcher.SetHost(this);

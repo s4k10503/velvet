@@ -38,7 +38,9 @@ namespace Velvet.Tests
             });
         }
 
-        [Component]
+        // Without the compiler a and b are fresh elements each render, so both children render on the reorder; the
+        // compiler would cache them, and a child handed back its own element bails.
+        [Component(Compiler = false)]
         private static VNode Reorderer()
         {
             var (reversed, _) = EventLog.UseState("Order", false);
@@ -77,7 +79,8 @@ namespace Velvet.Tests
                     V.Component(ThrowerParent, key: "m"),
                 });
 
-        // GREEN_ON_BASE(characterization): the mount commit sequence a render/commit split must keep.
+        // GREEN_ON_BASE(characterization): a mount hands no child its own element back, so the same-element bail
+        // leaves the mount sequence a render/commit split must keep as the base commits it.
         [Test]
         public void Given_AParentWithTwoChildrenEachWithEffectsAndARef_When_Mounted_Then_RendersRunTopDownAndEachEffectPhaseRunsPostOrder()
         {
@@ -93,7 +96,8 @@ namespace Velvet.Tests
                 "render:P render:C1 render:C2 ins:C1 ins:C2 ins:P ref:C1 lay:C1 ref:C2 lay:C2 ref:P lay:P eff:C1 eff:C2 eff:P"));
         }
 
-        // GREEN_ON_BASE(characterization): the update commit sequence a render/commit split must keep.
+        // GREEN_ON_BASE(characterization): each child's props are built from the changed dep, so none is handed its
+        // own element back and the update sequence a render/commit split must keep is the base's.
         [Test]
         public void Given_AMountedParentWithTwoChildren_When_EveryDepChanges_Then_InsertionAndLayoutCleanupsRunPerFiberPostOrderBeforeAnyLayoutSetupAndPassiveCleanupsPrecedePassiveSetups()
         {
@@ -115,7 +119,8 @@ namespace Velvet.Tests
                 + " eff-x:C1 eff-x:C2 eff-x:P eff:C1 eff:C2 eff:P"));
         }
 
-        // GREEN_ON_BASE(characterization): the keyed-reorder sequence a render/commit split must keep.
+        // GREEN_ON_BASE(characterization): built without the compiler, the reordered children are fresh elements, so
+        // neither bails and the keyed-reorder sequence a render/commit split must keep is the base's.
         [Test]
         public void Given_KeyedChildrenWithEffectsAndRefs_When_Reordered_Then_OnlyRendersAreLogged()
         {
@@ -133,7 +138,8 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("render:Order render:B render:A"));
         }
 
-        // GREEN_ON_BASE(characterization): a discarded pass commits none of its effects, which a split must keep.
+        // GREEN_ON_BASE(characterization): a mount hands no child its own element back, so a discarded pass commits
+        // none of its effects as on the base, which a split must keep.
         [Test]
         public void Given_AnErrorBoundaryAroundAThrowingGrandchild_When_Mounted_Then_OnlyTheFallbacksEffectsAndRefAreCommitted()
         {

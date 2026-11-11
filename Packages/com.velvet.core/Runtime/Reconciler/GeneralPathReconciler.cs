@@ -1142,17 +1142,8 @@ namespace Velvet
                 walk.NewFibers.Add(fiber);
                 fiber.SuspenseFallbackOf = _ctx.SuspenseFallbackOwner;
                 var preCount = emittedCount;
-                var enclosingInBailedOutput = _ctx.InBailedOutput;
-                _ctx.InBailedOutput = RendersNothingHere(walk, reusedAsIs);
-                try
-                {
-                    if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
-                    else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
-                }
-                finally
-                {
-                    _ctx.InBailedOutput = enclosingInBailedOutput;
-                }
+                if (fiber.IsErrorBoundary) ExpandBoundaryInline(walk, fiber, component, position, nodeIndex, preCount);
+                else ExpandRenderedOrReusedFiber(walk, fiber, reusedAsIs, component, position, nodeIndex);
                 if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
@@ -1184,7 +1175,9 @@ namespace Velvet
             int nodeIndex)
         {
             var enclosingReusedOwner = walk.ReusedOwner;
-            walk.ReusedOwner = RendersNothingHere(walk, reusedAsIs) && !HoldsDirtyFiberBelow(fiber) ? fiber : null;
+            // A fiber below with work pending is rendered by the patch of the owner's output
+            // (ComponentRegistry.ReconcileExistingFiber), so that patch is kept while one exists.
+            walk.ReusedOwner = RendersNothingHere(walk, reusedAsIs) && !FiberPendingWork.Below(fiber) ? fiber : null;
             try
             {
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -1197,29 +1190,6 @@ namespace Velvet
 
         private static bool RendersNothingHere(InlineWalk walk, bool reusedAsIs)
             => reusedAsIs && walk.ReuseSuspended == 0;
-
-        // A dirty fiber below root, or one owed a render, is rendered by the patch of root's output (ComponentRegistry.ReconcileExistingFiber),
-        // so that patch is kept while one exists. Walks the fiber links without a stack.
-        private static bool HoldsDirtyFiberBelow(ComponentFiber root)
-        {
-            var node = root.Child;
-            while (node != null)
-            {
-                if (node.IsDirty || node.RenderOwed) return true;
-                if (node.Child != null)
-                {
-                    node = node.Child;
-                    continue;
-                }
-                while (node.Sibling == null)
-                {
-                    node = node.Parent;
-                    if (node == null || ReferenceEquals(node, root)) return false;
-                }
-                node = node.Sibling;
-            }
-            return false;
-        }
 
         // A render error below the boundary is caught here, as ExpandSuspenseInline catches a suspend, so the
         // walk goes on to the boundary's siblings. What the failed output committed is taken back, and the
