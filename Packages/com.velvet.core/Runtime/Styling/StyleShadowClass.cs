@@ -604,6 +604,29 @@ namespace Velvet
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
 
+        private static bool IsPreset(ReadOnlySpan<char> suffix, bool inset)
+        {
+            if (inset)
+            {
+                foreach (var preset in s_insetPresets)
+                {
+                    if (suffix.SequenceEqual(preset.AsSpan()))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            foreach (var preset in Presets.Keys)
+            {
+                if (suffix.SequenceEqual(preset.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Offers core, a class without its important modifier, to the slot of root's family it writes, root being
         // "shadow" or "inset-shadow", as Tailwind writes it: a size, none or a bracket it does not type as a colour
         // writes the layer, and a palette name, a keyword or a bracket it types as a colour writes the colour
@@ -617,26 +640,28 @@ namespace Velvet
             }
             var inset = root == "inset-shadow";
             var slash = StyleColorValueParser.ColorModifierSlashIndex(core, 0);
-            // MUTANT_SURVIVES(equivalent, boundary): core starts with root, checked above, so its first character is no slash and the index is never 0.
-            var body = slash < 0 ? core : core.Substring(0, slash);
+            // MUTANT_SURVIVES(equivalent, boundary): core opens with root, checked above, and root holds no slash, so the index is never 0 and either spelling takes the same span.
+            var body = slash < 0 ? core.AsSpan() : core.AsSpan(0, slash);
             if (slash >= 0 && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
             {
                 return false;
             }
             var scaleInvalid = SizeScaleInvalid(core, 0);
-            if (body == root && !inset)
+            // Any slash falls after root, so body opens with root and its length alone says whether anything follows.
+            if (body.Length == root.Length && !inset)
             {
                 layer.Offer(important, false, readsColour: true, scaleInvalid: scaleInvalid);
                 return true;
             }
-            if (!body.StartsWith(root + "-", StringComparison.Ordinal))
+            if (body.Length <= root.Length || body[root.Length] != '-')
             {
                 return false;
             }
-            var suffix = body.Substring(root.Length + 1);
-            if (suffix == "none" || (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix)))
+            var suffix = body.Slice(root.Length + 1);
+            var none = suffix.SequenceEqual("none".AsSpan());
+            if (none || IsPreset(suffix, inset))
             {
-                layer.Offer(important, false, readsColour: suffix != "none", scaleInvalid: scaleInvalid);
+                layer.Offer(important, false, readsColour: !none, scaleInvalid: scaleInvalid);
                 return true;
             }
             if (TryReadBracket(core, root, out var hint, out var value))
@@ -652,9 +677,11 @@ namespace Velvet
                 }
                 return true;
             }
-            if (suffix is "inherit" or "initial" or "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
+            var inheritOrInitial = suffix.SequenceEqual("inherit".AsSpan()) || suffix.SequenceEqual("initial".AsSpan());
+            if (inheritOrInitial || suffix.SequenceEqual("current".AsSpan()) || suffix.SequenceEqual("transparent".AsSpan())
+                || VelvetPalette.TryResolveColorToken(suffix.ToString(), out _))
             {
-                colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: suffix is not ("inherit" or "initial"));
+                colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: !inheritOrInitial);
                 return true;
             }
             return false;
@@ -763,7 +790,9 @@ namespace Velvet
             value = string.Empty;
             var open = root.Length + 2;
             var close = cls.LastIndexOf(']');
-            if (!cls.StartsWith(root + "-[", StringComparison.Ordinal) || close <= open
+            var opening = cls.AsSpan();
+            if (!opening.StartsWith(root.AsSpan(), StringComparison.Ordinal)
+                || !opening.Slice(root.Length).StartsWith("-[".AsSpan(), StringComparison.Ordinal) || close <= open
                 || !StyleArbitraryValueResolver.TrySplitTypeHint(cls.AsSpan(open, close - open), out hint, out var span))
             {
                 return false;
