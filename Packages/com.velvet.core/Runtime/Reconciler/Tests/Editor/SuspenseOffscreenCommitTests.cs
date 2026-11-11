@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// Pins what applying the hides and reveals of a walk's <c>V.Suspense</c> boundaries ends with: an element an
     /// inner boundary reveals while the boundary enclosing it hides it stays hidden, a <c>V.Portal</c>'s element
     /// that a <c>z-*</c> class relocates is hidden with the rest whenever the portal mounts, and a Label that a layout
-    /// cleanup of the hide returns to the pool, through an error boundary's fallback swap, keeps no hide there.
+    /// cleanup of the hide returns to the pool, through an error boundary's fallback swap, keeps no hide there. A Label
+    /// that swap keeps in place and reveals stays displayed with its ref set.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseOffscreenCommitTests
@@ -107,6 +108,48 @@ namespace Velvet.Tests
                 });
         }
 
+        private sealed record SwapProps(Page Page, bool ThrowerFirst);
+
+        private sealed record SwappingBoundaryProps(int Page, bool ThrowerFirst);
+
+        private static VisualElement s_xRef;
+
+        private static readonly Func<VisualElement, Action> s_xRefCallback = element =>
+        {
+            s_xRef = element;
+            return () => s_xRef = null;
+        };
+
+        private static VNode X() => V.Label(key: "x", name: "x", text: "x", refCallback: s_xRefCallback);
+
+        // Its fallback is the same Suspense at the same position, holding the same keyed Label.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode SwappingBoundary(SwappingBoundaryProps props)
+        {
+            Hooks.UseFallback(_ => V.Suspense(fallback: V.Div(name: "loading"), children: new VNode[] { X() }));
+            var thrower = V.Component(ThrowingCleanupItem, key: "thrower");
+            var reader = V.Component(Reader, new ReaderProps(props.Page, 1), key: "reader");
+            return V.Suspense(
+                fallback: V.Div(name: "loading"),
+                children: props.ThrowerFirst ? new VNode[] { thrower, X(), reader } : new VNode[] { X(), thrower, reader });
+        }
+
+        [Component]
+        private static VNode SwapHost(SwapProps props)
+        {
+            var (current, set) = Hooks.UseState(0);
+            props.Page.Set = set;
+            return V.Component(SwappingBoundary, new SwappingBoundaryProps(current, props.ThrowerFirst));
+        }
+
+        private static MountedTree MountSwap(VisualElement root, Page page, bool throwerFirst)
+        {
+            var mounted = V.Mount(root, V.Component(SwapHost, new SwapProps(page, throwerFirst)),
+                new MountOptions { OnCaughtError = (_, _) => { } });
+            mounted.DrainForTest();
+            return mounted;
+        }
+
         private static void GoTo(MountedTree mounted, Page page, int number)
         {
             page.Set.Invoke(number);
@@ -191,6 +234,45 @@ namespace Velvet.Tests
             // Assert — a Label the swap did not return to the pool reads as no display at all
             Assert.That(primaryLabels.Contains(rented) ? rented.style.display.value : (DisplayStyle?)null,
                 Is.EqualTo(DisplayStyle.Flex));
+        }
+
+        // GREEN_ON_BASE(characterization): the base hides each element before the layout cleanups of what it hides.
+        // So the reveal the fallback swap's own commit makes is the last write x takes.
+        [Test]
+        public void Given_ABoundaryWhoseFallbackIsTheSameSuspense_When_ALayoutCleanupOfItsHideSwapsTheFallbackIn_Then_TheLabelItKeepsIsDisplayed()
+        {
+            // Arrange
+            var root = new VisualElement();
+            var page = new Page();
+            using var mounted = MountSwap(root, page, throwerFirst: false);
+            var x = root.Q<Label>("x");
+
+            // Act
+            GoTo(mounted, page, 1);
+
+            // Assert — a Label the swap did not keep in place reads as no display at all
+            var after = root.Q<Label>("x");
+            Assert.That(ReferenceEquals(after, x) ? after.style.display.value : (DisplayStyle?)null,
+                Is.EqualTo(DisplayStyle.Flex));
+        }
+
+        // GREEN_ON_BASE(characterization): the base detaches x's ref at the hide and the swap's reveal attaches it again.
+        // The hide comes before every layout cleanup of what it hides, so the reveal is the last to reach the ref.
+        [Test]
+        public void Given_ABoundaryWhoseFallbackIsTheSameSuspenseAndALayoutCleanupAheadOfALabel_When_TheCleanupSwapsTheFallbackIn_Then_TheLabelKeepsItsRef()
+        {
+            // Arrange
+            s_xRef = null;
+            var root = new VisualElement();
+            var page = new Page();
+            using var mounted = MountSwap(root, page, throwerFirst: true);
+            var x = root.Q<Label>("x");
+
+            // Act
+            GoTo(mounted, page, 1);
+
+            // Assert — a Label the swap did not keep in place reads as no ref at all
+            Assert.That(ReferenceEquals(root.Q<Label>("x"), x) ? s_xRef : null, Is.SameAs(x));
         }
     }
 }

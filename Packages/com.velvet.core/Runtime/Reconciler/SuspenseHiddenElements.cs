@@ -28,6 +28,7 @@ namespace Velvet
 
         internal static void Reveal(VisualElement element)
         {
+            s_heldForHide.Remove(element);
             if (!s_hidden.TryGetValue(element, out var before)) return;
             element.style.display = before.Display;
             s_hidden.Remove(element);
@@ -55,11 +56,14 @@ namespace Velvet
 
         // The elements SuspenseOffscreenCommit hides once the cleanups ahead of its hide have run. Release drops the
         // hold of one returned to the pool meanwhile, which VNodePool resets as it takes it back, so the hide does not
-        // reach the element's next consumer (SuspenseOffscreenCommitTests).
+        // reach the element's next consumer. Reveal drops it too: a commit a cleanup nests, such as an error
+        // boundary's fallback swap, decides later than the one holding the element (SuspenseOffscreenCommitTests).
         private static readonly ConditionalWeakTable<VisualElement, object> s_heldForHide = new();
         private static readonly object s_hold = new();
 
         internal static void HoldForHide(VisualElement element) => s_heldForHide.GetValue(element, _ => s_hold);
+
+        internal static bool IsHeldForHide(VisualElement element) => s_heldForHide.TryGetValue(element, out _);
 
         internal static void HideHeld(VisualElement element)
         {

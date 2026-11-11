@@ -118,7 +118,12 @@ namespace Velvet
         private void Disappear()
         {
             foreach (var fiber in _hiddenFibers) Place(fiber);
-            foreach (var root in _hidden) Visit(root);
+            foreach (var root in _hidden)
+            {
+                // Not a root that a commit nested in a cleanup above revealed, hid or returned to the pool, which drops
+                // its hold: that commit decided later.
+                if (SuspenseHiddenElements.IsHeldForHide(root)) Visit(root);
+            }
             // A fiber taken down above returns at once.
             foreach (var fiber in _hiddenFibers) FiberEffects.HideLayoutEffects(fiber);
         }
