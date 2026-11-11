@@ -1403,21 +1403,23 @@ member not yet merged, judges it against the stack's base, and refuses one above
 to merge first; `watch` records none above it as ready. GitHub also documents a linear history as a
 requirement for merging a stack, lost when the base moves ahead or a lower branch is pushed to, so
 settle refuses a member whose stack does not read linear on its base: the lowest open branch holding
-the base's head, and each one above holding the head of the one below it. The refusal names the way
-back, the pull request's Rebase stack button or `gh stack rebase` and `gh stack push`.
-`settle.py update` refuses a stack member, which takes that rebase instead of a merge of its base,
-and a stack member is not held to its base's newest release commit, which a linear stack holds. The
-request carries what the other one does: the head the checks were read at, and the pull request's
-own title and body. Once a member has merged, settle deletes its local branch and leaves the
-remote one to `delete_branch_on_merge`, and it refuses a stack member unless that setting is on: the
-member above targets that branch until GitHub moves it onto the stack's base. GitHub merges after the
-request returns, and settle waits up to ten minutes for the answer. A request GitHub refuses, and an
-answer that the merge failed, stop settle with GitHub's message, as a refused merge of any other pull
-request does. A request that does not answer, one GitHub says it already holds (HTTP 409), and an
-answer that does not come in that time or is neither merged nor failed, are reported as a merge
-requested with its outcome unknown: settle leaves the branch where it is and exits 0, so read the pull
-request before asking again. `gh stack merge` typed by hand merges every member up to the one it is
-given and is held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
+the base's head, and each one above holding the head of the one below it, each with no merge commit
+since what sits below it. The refusal names the way back: `gh stack rebase`, then `gh stack push`,
+which force-pushes each branch with a lease. The rebase moves the branch of each clean worktree
+holding a member, so every such worktree is left clean, or removed, first. `settle.py update` refuses
+a stack member, since the merge it makes is a merge commit, and a stack member is not held to its
+base's newest release commit, which a linear stack holds. The request carries what the other one
+does: the head the checks were read at, and the pull request's own title and body. Once a member has
+merged, settle deletes its local branch and leaves the remote one to `delete_branch_on_merge`, and
+it refuses a stack member unless that setting is on: the member above targets that branch until
+GitHub moves it onto the stack's base. GitHub merges after the request returns, and settle waits up
+to ten minutes for the answer. A request GitHub refuses, and an answer that the merge failed, stop
+settle with GitHub's message, as a refused merge of any other pull request does. A request that does
+not answer, one GitHub's own answer says it already holds (HTTP 409), and an answer that does not
+come in that time or is neither merged nor failed, are reported as a merge requested with its
+outcome unknown: settle leaves the branch where it is and exits 0, so read the pull request before
+asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
+held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and

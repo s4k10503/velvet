@@ -164,10 +164,20 @@ def run_quietly(command, timeout):
         return subprocess.CompletedProcess(command, 1, "", f"did not answer within {timeout}s")
 
 
+class Refused(RuntimeError):
+    """A gh call that exited non-zero, with what gh wrote to stderr kept apart from the message,
+    which names every argument the call was given and so whatever text a pull request carries."""
+
+    def __init__(self, message, stderr):
+        super().__init__(message)
+        self.stderr = stderr
+
+
 def gh(*args):
     result = run(["gh", *args], GH_TIMEOUT)
     if result.returncode != 0:
-        raise RuntimeError("gh {} failed: {}".format(" ".join(args), result.stderr.strip()))
+        raise Refused("gh {} failed: {}".format(" ".join(args), result.stderr.strip()),
+                      result.stderr)
     return result.stdout
 
 
@@ -288,16 +298,16 @@ def stack_settings(project):
 # Each setting a stack member's merge relies on, beside the value it relies on.
 STACK_SETTINGS = (("delete_branch_on_merge", True),)
 
+REBASE_WAY_OUT = ("Rebase it with `gh stack rebase`, then push it with `gh stack push`, which "
+                  "force-pushes each branch with a lease; the rebase moves the branch of each clean "
+                  "worktree holding a member, so leave every such worktree clean, or remove it, first")
+
 
 def stack_tangles(project, base, members):
-    """(member, what sits below it) for each open member of the listing whose branch on origin does
-    not hold the head of what sits below it: origin/<base> below the lowest, and the branch of the
-    open member below it for each other.
-
-    Holding is the whole test. A merge commit over the branch below is not refused as well:
-    `gh stack rebase`, the remedy the refusal names, describes its work as giving each branch the
-    head of the one below it, which a branch holding that head through a merge already has, so a
-    refusal of one would name a way out that need not change it.
+    """(member, what sits below it, how) for each open member of the listing whose branch on origin
+    does not continue what sits below it in a straight line: origin/<base> below the lowest, and the
+    branch of the open member below it for each other. `lacks` is a branch that does not hold that
+    head, and `merges` one that holds it through a merge commit.
     """
     found, below, named = [], f"origin/{base}", base
     for member in members:
@@ -311,7 +321,9 @@ def stack_tangles(project, base, members):
             raise RuntimeError(f"whether #{number}'s {branch} holds {below} could not be read: "
                                f"{held.stderr.strip()}")
         if held.returncode == 1:
-            found.append((number, named))
+            found.append((number, named, "lacks"))
+        elif gh_git(project, "rev-list", "--merges", "--count", f"{below}..{branch}").strip() != "0":
+            found.append((number, named, "merges"))
         below, named = branch, f"#{number}"
     return tuple(found)
 
@@ -609,10 +621,10 @@ def reasons_from(before, after, results, branch, base, held_by_worktree,
     if runs_failed:
         reasons.append("workflow runs failed at {}: {}".format(after[:7], ", ".join(runs_failed)))
     if stack_tangles:
-        reasons.append("its stack is not linear on {}: {}. Rebase it with the pull request's Rebase "
-                       "stack button, or with `gh stack rebase` and `gh stack push`".format(
-                           base, "; ".join(f"#{member} does not hold the head of {below}"
-                                           for member, below in stack_tangles)))
+        reasons.append("its stack is not linear on {}: {}. {}".format(
+            base, "; ".join(f"#{member} does not hold the head of {below}" if how == "lacks"
+                            else f"#{member} holds a merge commit over {below}"
+                            for member, below, how in stack_tangles), REBASE_WAY_OUT))
 
     unfinished = [entry["name"] for entry in results
                   if entry["bucket"] not in TERMINAL_PASS and entry["bucket"] not in TERMINAL_FAIL]
@@ -1186,13 +1198,13 @@ def update(project, number, base):
     (a long-held branch that re-conflicts on every base move) is exactly the case not to automate.
     """
     payload = "repos/{}/pulls/{}".format(repository(project), number)
-    # Ahead of every other reading, since none of them changes the answer: a merge commit in a stack
-    # member's branch is one of the shapes `stack_tangles` refuses to merge.
+    # Ahead of every other reading, since none of them changes the answer: the merge this makes is
+    # one of the shapes `stack_tangles` refuses to merge.
     stack = rest(payload, ".stack.number // empty")
     if stack:
-        print(f"Refusing to update PR#{number}: it is in stack #{stack}, and merging a base into it "
-              f"leaves the stack unmergeable until it is rebased. Rebase it with the pull request's "
-              f"Rebase stack button, or with `gh stack rebase` and `gh stack push`.", file=sys.stderr)
+        print(f"Refusing to update PR#{number}: it is in stack #{stack}, and a merge of its base into "
+              f"it is a merge commit, which leaves the stack not linear. {REBASE_WAY_OUT}.",
+              file=sys.stderr)
         return 1
     branch = rest(payload, ".head.ref")
     base = base or rest(payload, ".base.ref")
@@ -1296,10 +1308,10 @@ def stack_merge(project, number, fields):
         answer = json.loads(gh("api", "-X", "PUT", path, *fields, "-f", "merge_action=direct_merge"))
     except Unanswered as error:
         return str(error)
-    except RuntimeError as error:
-        if "(HTTP 409)" not in str(error):
+    except Refused as error:
+        if "(HTTP 409)" not in error.stderr:
             raise
-        return f"GitHub already holds a merge request for it: {error}"
+        return f"GitHub already holds a merge request for it: {error.stderr.strip()}"
     uuid = (answer.get("details") or {}).get("uuid")
     deadline = time.monotonic() + STACK_MERGE_BOUND
     failure = None

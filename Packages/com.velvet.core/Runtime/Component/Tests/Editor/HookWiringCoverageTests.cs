@@ -641,6 +641,8 @@ namespace Velvet.Tests
             ("a shell command rewriting a tracked file",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
              + "\"sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md\"}"),
+            ("a stack merged by hand",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"gh stack merge 1558 --yes --squash\"}"),
         };
 
         // A declaration reading as a claim on its own line, and one the reader would take
