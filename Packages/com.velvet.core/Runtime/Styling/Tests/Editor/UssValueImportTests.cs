@@ -25,13 +25,15 @@ namespace Velvet.Tests
         // such property.
         private static string? StoredText(string value) => Imported(value, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
 
-        private static T Imported<T>(string value, Func<StyleSheet, T> read)
+        private static T Imported<T>(string value, Func<StyleSheet, T> read) => ImportedSheet(":root { " + Name + ": " + value + "; }", read);
+
+        private static T ImportedSheet<T>(string uss, Func<StyleSheet, T> read)
         {
             var sheet = ScriptableObject.CreateInstance<StyleSheet>();
             try
             {
                 var impl = Activator.CreateInstance(StockStyleSheetImport.Impl!, true)!;
-                StockStyleSheetImport.Import!.Invoke(impl, new object[] { sheet, ":root { " + Name + ": " + value + "; }" });
+                StockStyleSheetImport.Import!.Invoke(impl, new object[] { sheet, uss });
                 return read(sheet);
             }
             finally
@@ -130,9 +132,11 @@ namespace Velvet.Tests
         // level or among a function's arguments, a bracket no function name opens, a hex colour whose digits number
         // other than three, four, six or eight, an rgb() of other than three number tokens or an rgba() of fewer than
         // four, a range such as `u+1` counting as none, a function with nothing between its parentheses other than
-        // none(), filter() and the URL functions, and a var() whose arguments ValidateVarFunction refuses; a comment
-        // among the arguments of blur(), var() and linear-gradient(), which UssCustomPropertyText.HasCommentInArguments
-        // takes for one; and an `!important` in another case, which UssCustomPropertyText writes in lower case.
+        // none(), filter() and the URL functions, a var() whose arguments ValidateVarFunction refuses, and a range; a
+        // comment among the arguments of blur(), var() and linear-gradient(), which
+        // UssCustomPropertyText.HasCommentInArguments takes for one; a URL path the lexer raises an error on, which
+        // UssCustomPropertyText.UrlEnd takes for one; and an `!important` in another case, which UssCustomPropertyText
+        // writes in lower case.
         [TestCase("16 / 9")]
         [TestCase(".5.p")]
         [TestCase("3.5.p")]
@@ -159,6 +163,19 @@ namespace Velvet.Tests
         [TestCase("blur(/* x */ 4px)")]
         [TestCase("var(--a /* c */)")]
         [TestCase("linear-gradient(red /* a */, blue)")]
+        [TestCase("u+1")]
+        [TestCase("U+12")]
+        [TestCase("var(--a, u+1)")]
+        [TestCase("url(a b)")]
+        [TestCase("url(a /* c */)")]
+        [TestCase("url(\"a\" /* c */)")]
+        [TestCase("url(\"a\" b)")]
+        [TestCase("url(a(b))")]
+        [TestCase("url(a'b')")]
+        [TestCase("url(a\u0001b)")]
+        [TestCase("url(\"a\nb\")")]
+        [TestCase("url(a\\\nb)")]
+        [TestCase("url(a\\1234567 b)")]
         public void Given_ATokenTheImporterRejects_When_TheStockImporterReadsTheRawSheet_Then_ItFailsTheSheet(string value)
         {
             // Arrange
@@ -242,6 +259,15 @@ namespace Velvet.Tests
         [TestCase("var( )")]
         [TestCase("url(a/*c*/)")]
         [TestCase("resource(/* c */ a)")]
+        [TestCase("url(  a  )")]
+        [TestCase("url(\"a\" )")]
+        [TestCase("url(\"a\\\"b\")")]
+        [TestCase("url(a\\ b)")]
+        [TestCase("url(a\\31 b)")]
+        [TestCase("url(a\\(b)")]
+        [TestCase("url(a\u000bb)")]
+        [TestCase("up+1")]
+        [TestCase("u 1")]
         public void Given_AValueTheImporterHolds_When_TheStockImporterReadsTheRawSheet_Then_ItStoresSomeValue(string value)
         {
             // Arrange
@@ -250,6 +276,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(count, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the stock importer's reading of a sheet ending inside a URL is an engine fact.
+        // UssCustomPropertyText.UrlEnd reads where such a URL ends as the lexer does.
+        [TestCase(":root { --x: url(", true)]
+        [TestCase(":root { --x: url(a ", true)]
+        [TestCase(":root { --x: url(a\\", true)]
+        [TestCase(":root { --x: url(\"a\\", true)]
+        [TestCase(":root { --x: url(a", false)]
+        [TestCase(":root { --x: url(\"a", false)]
+        public void Given_ASheetEndingInsideAUrl_When_TheStockImporterReadsIt_Then_ItFailsTheSheetWhereTheLexerRaisesAnError(
+            string uss, bool expected)
+        {
+            // Arrange
+            // Act
+            var failed = ImportedSheet(uss, sheet => sheet.importedWithErrors);
+
+            // Assert
+            Assert.That(failed, Is.EqualTo(expected));
+        }
+
+        [TestCase("url(a b)", "url(a b)")]
+        [TestCase("url(a /* c */)", "url(a /* c */)")]
+        [TestCase("url(\"a\" /* c */)", "url(\"a\"  )")]
+        [TestCase("u+1", "u+1")]
+        public void Given_AValueTheImporterFailsTheSheetOn_When_TheRewrittenSheetIsImported_Then_ItStoresItsText(
+            string value, string expected)
+        {
+            // Arrange
+            var uss = UssCustomPropertyTextTests.RewriteWithin(":root { " + Name + ": " + value + "; }") ?? string.Empty;
+
+            // Act
+            var stored = ImportedSheet(uss, sheet => sheet.importedWithErrors ? null : Spelled(sheet));
+
+            // Assert
+            Assert.That(stored, Is.EqualTo(expected));
         }
 
         // GREEN_ON_BASE(characterization): how the stock importer reads a token is an engine fact the base meets too.

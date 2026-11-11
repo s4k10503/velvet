@@ -8,8 +8,9 @@ namespace Velvet.Editor
     /// <summary>
     /// Rewrites the custom properties of a USS file that UI Toolkit's importer cannot hold: a value with a unit
     /// outside the ones it keeps (<c>rem</c>, <c>em</c>, …), in most values a delimiter (the <c>/</c> of
-    /// <c>16 / 9</c>), or a hex colour it cannot parse fails the whole sheet, one with a function it does not know (a
-    /// CSS math function, <c>cubic-bezier()</c>, <c>steps()</c>) is dropped, and one with a number its lexer reads
+    /// <c>16 / 9</c>), a hex colour it cannot parse, or a URL its lexer cannot read (<c>url(a b)</c>) fails the whole
+    /// sheet, one with a function it does not know (a CSS math function, <c>cubic-bezier()</c>, <c>steps()</c>) is
+    /// dropped, and one with a number its lexer reads
     /// otherwise than CSS does fails the sheet or is stored as other tokens (<c>3.px</c> as <c>3 px</c>), as an
     /// <c>rgb()</c> holding a percentage is stored as another colour (<c>rgb(0 0 0 / 50%)</c> as opaque). Such a value
     /// becomes a quoted string of its own text, which the importer stores as written and the theme readers take back
@@ -153,10 +154,10 @@ namespace Velvet.Editor
             var valueStart = colon + 1;
             var valueEnd = ValueEnd(uss, valueStart);
             var written = uss.Substring(valueStart, valueEnd - valueStart);
-            var value = StripComments(written);
+            var value = StripComments(written, out var badUrl);
             var important = SplitImportant(ref value, out var importantAsWritten);
             value = value.Trim();
-            var quoted = NeedsQuoting(value, written);
+            var quoted = badUrl || NeedsQuoting(value, written);
             if (!quoted && importantAsWritten)
             {
                 return;
@@ -170,6 +171,10 @@ namespace Velvet.Editor
             output.Append(uss, i, valueStart - i).Append(' ').Append(quote);
             foreach (var ch in value)
             {
+                if (quoted && ch is '"' or '\\')
+                {
+                    output.Append('\\');
+                }
                 output.Append(ch is '\r' or '\n' ? ' ' : ch);
             }
             // The line breaks the value held, so an importer message names the line the author wrote.
@@ -208,14 +213,27 @@ namespace Velvet.Editor
             return text.Length;
         }
 
-        // A comment becomes a space, and a string is kept whole, so what reads as a comment inside it stays.
-        private static string StripComments(string value)
+        // A comment becomes a space, and a string and an unquoted URL path are kept whole, so what reads as a comment
+        // inside them stays; CSS reads a quoted path as a string among a function's arguments. badUrl says whether the
+        // importer's lexer raises an error on a URL path, which fails the sheet; the rest of the value after an
+        // unquoted one is then kept as written.
+        private static string StripComments(string value, out bool badUrl)
         {
+            badUrl = false;
             var text = new StringBuilder(value.Length);
             var i = 0;
             while (i < value.Length)
             {
                 var end = TriviaEnd(value, i);
+                if (value[i] == '(' && IsUrl(FunctionName(value, i)))
+                {
+                    var close = UrlEnd(value, i);
+                    badUrl |= close == -1;
+                    if (At(value, UrlSpaceEnd(value, i + 1)) is not ('"' or '\''))
+                    {
+                        end = close == -1 ? value.Length : close;
+                    }
+                }
                 if (end == i)
                 {
                     text.Append(value[i++]);
@@ -263,7 +281,8 @@ namespace Velvet.Editor
 
         // Whether the importer would fail, drop or misread value: a token HasUnheldToken finds, or a comment
         // HasCommentInArguments finds in written, the value before its comments are taken out. A value holding a quote
-        // or a backslash is left as written, so such a token in it still fails the importer.
+        // or a backslash is left as written unless its URL is one UrlEnd refuses, so such a token in it still fails
+        // the importer.
         internal static bool NeedsQuoting(string value, string written)
             => value.IndexOfAny(new[] { '"', '\'', '\\' }) < 0 && (HasUnheldToken(value) || HasCommentInArguments(written));
 
@@ -288,12 +307,7 @@ namespace Velvet.Editor
                 }
                 if (written[k] == '(')
                 {
-                    var start = k;
-                    while (start > 0 && IsIdentChar(written[start - 1]))
-                    {
-                        start--;
-                    }
-                    var name = written.Substring(start, k - start);
+                    var name = FunctionName(written, k);
                     if (IsUrl(name) || name == "resource")
                     {
                         k = CloseOf(written, k);
@@ -316,11 +330,12 @@ namespace Velvet.Editor
         // the sheet on, drops or reads otherwise than CSS: a delimiter, a bracket no function name opens, a colon, a
         // function it does not know (a CSS math function, cubic-bezier(), steps()), one it fails the sheet on with
         // nothing in it or, for var(), with arguments ValidateVarFunction refuses, an rgb() or rgba() in another shape
-        // than ReadsHeldChannels holds, a hex colour it cannot parse or CSS reads further, a number it misreads, or a
-        // full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere. A value of
-        // identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all the same.
-        // What a resource() with something in it encloses is left unread, as the importer takes it as a path whatever
-        // it holds. UssValueImportTests holds each of those. What the URL functions enclose is left unread too.
+        // than ReadsHeldChannels holds, a hex colour it cannot parse or CSS reads further, a range, a number it
+        // misreads, or a full stop no digit follows, which it drops after an integer and fails the sheet on elsewhere.
+        // A value of identifiers and delimiters alone, which the importer keeps as one string instead, is quoted all
+        // the same. What a resource() with something in it encloses is left unread, as the importer takes it as a path
+        // whatever it holds. UssValueImportTests holds each of those. What the URL functions enclose is left to
+        // UrlEnd.
         private static bool HasUnheldToken(string value)
         {
             var functions = 0;
@@ -375,6 +390,12 @@ namespace Velvet.Editor
         {
             var start = i;
             i = NameEnd(value, i + 1);
+            // The lexer reads a lone `u` that `+` and a hex digit or `?` follow as a range, which VisitToken fails the
+            // sheet on; where a letter or `?` follows, the `+` is no number, and ReadsHeldToken quotes it already.
+            if (i - start == 1 && value[start] is 'u' or 'U' && At(value, i) == '+' && IsDigit(At(value, i + 1)))
+            {
+                return false;
+            }
             if (i == value.Length || value[i] != '(')
             {
                 return true;
@@ -561,6 +582,133 @@ namespace Velvet.Editor
             => name.Equals("url", StringComparison.OrdinalIgnoreCase) || name.Equals("url-prefix", StringComparison.OrdinalIgnoreCase)
                || name.Equals("domain", StringComparison.OrdinalIgnoreCase);
 
+        private static string FunctionName(string text, int open)
+        {
+            var start = open;
+            while (start > 0 && IsIdentChar(text[start - 1]))
+            {
+                start--;
+            }
+            return text.Substring(start, open - start);
+        }
+
+        // The `)` that ends the URL function whose `(` is at open as the importer's lexer reads its path, the end of
+        // text where none does, or -1 where the lexer raises an error on the path, which fails the sheet: nothing after
+        // the `(`; in a quoted path, a line break or a backslash the text ends after; anything but whitespace between a
+        // quoted path and the `)`; and in an unquoted one, whitespace before anything but the `)`, a quote, a bracket,
+        // a control character other than a vertical tab, or a backslash a line break or the end of text follows.
+        // UssValueImportTests holds each of those.
+        private static int UrlEnd(string text, int open)
+        {
+            var k = UrlSpaceEnd(text, open + 1);
+            var first = At(text, k);
+            if (first == Eof)
+            {
+                return -1;
+            }
+            return first is '"' or '\'' ? QuotedUrlEnd(text, k) : UnquotedUrlEnd(text, k);
+        }
+
+        // From the quote that opens the path at k.
+        private static int QuotedUrlEnd(string text, int k)
+        {
+            var quote = text[k];
+            while (true)
+            {
+                var c = At(text, ++k);
+                if (c == Eof)
+                {
+                    return k;
+                }
+                if (c == quote)
+                {
+                    return ParenthesisAt(text, UrlSpaceEnd(text, k + 1));
+                }
+                if (c is '\n' or '\r')
+                {
+                    return -1;
+                }
+                if (c == '\\' && At(text, ++k) == Eof)
+                {
+                    return -1;
+                }
+            }
+        }
+
+        // From the first character of the path at k.
+        private static int UnquotedUrlEnd(string text, int k)
+        {
+            for (; ; k++)
+            {
+                var c = At(text, k);
+                if (c is ')' or Eof)
+                {
+                    return k;
+                }
+                if (IsUrlSpace(c))
+                {
+                    return ParenthesisAt(text, UrlSpaceEnd(text, k));
+                }
+                if (BreaksUnquotedUrl(text, k))
+                {
+                    return -1;
+                }
+                if (c == '\\')
+                {
+                    k = EscapeLast(text, k + 1);
+                }
+            }
+        }
+
+        private static bool BreaksUnquotedUrl(string text, int k)
+        {
+            var c = text[k];
+            if (c is '"' or '\'' or '(')
+            {
+                return true;
+            }
+            if (c == '\\')
+            {
+                return At(text, k + 1) is '\n' or '\r' or Eof;
+            }
+            return char.IsControl(c) && c != '\v';
+        }
+
+        private static int ParenthesisAt(string text, int k) => At(text, k) == ')' ? k : -1;
+
+        // The last character ConsumeEscape reads of the escape whose first character after the backslash is at k:
+        // that character, or up to six hex digits and one whitespace character after them.
+        private static int EscapeLast(string text, int k)
+        {
+            var end = k;
+            while (end - k < 6 && IsHex(At(text, end)))
+            {
+                end++;
+            }
+            if (end == k)
+            {
+                return k;
+            }
+            return IsUrlSpace(At(text, end)) ? end : end - 1;
+        }
+
+        private static int UrlSpaceEnd(string text, int k)
+        {
+            while (IsUrlSpace(At(text, k)))
+            {
+                k++;
+            }
+            return k;
+        }
+
+        // The whitespace the importer's lexer skips in a URL function; a vertical tab is not among it.
+        private static bool IsUrlSpace(char c) => c is ' ' or '\t' or '\n' or '\r' or '\f';
+
+        // The character the lexer reads at k, or Eof past the end of text, as the lexer's own end marker.
+        private static char At(string text, int k) => k < text.Length ? text[k] : Eof;
+
+        private const char Eof = '￿';
+
         private static bool StartsIdentifier(string value, int i)
         {
             var c = value[i];
@@ -573,12 +721,14 @@ namespace Velvet.Editor
 
         private static int HexEnd(string value, int i)
         {
-            while (i < value.Length && (IsDigit(value[i]) || value[i] is >= 'a' and <= 'f' or >= 'A' and <= 'F'))
+            while (i < value.Length && IsHex(value[i]))
             {
                 i++;
             }
             return i;
         }
+
+        private static bool IsHex(char c) => IsDigit(c) || c is >= 'a' and <= 'f' or >= 'A' and <= 'F';
 
         private static int NameEnd(string value, int i)
         {

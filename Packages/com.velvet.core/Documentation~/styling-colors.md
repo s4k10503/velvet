@@ -150,13 +150,14 @@ still generate theirs.
 A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--spacing: 0.25rem`,
 `--breakpoint-3xl: 120rem`), and `calc()`, `min()`, `max()` and `clamp()` are evaluated. UI Toolkit's own importer fails
 a whole file on a `rem`, in most values a delimiter (the `/` of `16 / 9`), a hex colour it cannot parse (`#zzz`), a
-`var()` whose arguments it refuses (`var(--a,)`), a comment among the arguments of most functions
-(`blur(/* x */ 4px)`) or a function with nothing between its parentheses other than `none()`, `filter()` and the URL
-functions it meets in a custom property, drops a function it does not know (a math function, `cubic-bezier()`,
-`steps()`, …), fails the file on or splits a number it reads otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as
-`3 px`, `1px_a` as `1px _a`), and fails the file on or stores as another colour than CSS reads an `rgb()` or `rgba()`
-holding anything besides three integers and, in `rgba()`, an alpha after a comma or a `/` (`rgb(100%, 0%, 0%)` fails it,
-`rgb(0 0 0 / 50%)` is stored as opaque black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
+URL its lexer cannot read (`url(a b)`), a range (`u+1`), a `var()` whose arguments it refuses (`var(--a,)`), a
+comment among the arguments of most functions (`blur(/* x */ 4px)`) or a function with nothing between its
+parentheses other than `none()`, `filter()` and the URL functions it meets in a custom property, drops a function it
+does not know (a math function, `cubic-bezier()`, `steps()`, …), fails the file on or splits a number it reads
+otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as `3 px`, `1px_a` as `1px _a`), and fails the file on or
+stores as another colour than CSS reads an `rgb()` or `rgba()` holding anything besides three integers and, in
+`rgba()`, an alpha after a comma or a `/` (`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
+black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
 storing those custom properties as the text they were written with, and writing an `!important` in another case,
 which the importer also fails the file on, in lower case. A colour stored as text is read by Velvet's theme tokens,
 not by a stock USS `color: var(--x)`. A new or edited file is imported first by

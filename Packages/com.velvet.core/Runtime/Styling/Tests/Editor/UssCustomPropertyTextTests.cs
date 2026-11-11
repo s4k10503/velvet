@@ -33,8 +33,8 @@ namespace Velvet.Tests
             Assert.That(rewritten, Is.EqualTo(expected));
         }
 
-        // GREEN_ON_BASE(characterization): the base's rewrite already leaves every one of these as it found it; the
-        // easing keyword and the step-like name are the values the cubic-bezier() and steps() match must not take.
+        // GREEN_ON_BASE(characterization): the base's rewrite already leaves every one of these as it found it.
+        // The easing keyword and the step-like name are the values the cubic-bezier() and steps() match must not take.
         [TestCase(":root { --spacing: 4px; }")]
         [TestCase(":root { --a: 50%; --b: 200ms; --d: 90deg; }")]
         [TestCase(":root { --ease-out: ease-out; --ease-lin: linear; --mysteps: 3px; }")]
@@ -67,6 +67,17 @@ namespace Velvet.Tests
         [TestCase(":root { --x: filter(url(a/*c*/)); }")]
         [TestCase(":root { --x: blur(4px) /* c */; }")]
         [TestCase(":root{--x:blur(4px)}")]
+        [TestCase(":root { --x: url(  a  ); }")]
+        [TestCase(":root { --x: url(\"a\" ); }")]
+        [TestCase(":root { --x: url(\"a\\\"b\"); }")]
+        [TestCase(":root { --x: url(a\\ b); }")]
+        [TestCase(":root { --x: url(a\\31 b); }")]
+        [TestCase(":root { --x: url(a\\(b); }")]
+        [TestCase(":root { --x: url(a\u000bb); }")]
+        [TestCase(".a { --x: url(a")]
+        [TestCase(".a { --x: url(\"a")]
+        [TestCase(":root { --x: up+1; }")]
+        [TestCase(":root { --x: u 1; }")]
         public void Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(string uss)
         {
             // Arrange
@@ -291,6 +302,48 @@ namespace Velvet.Tests
         [TestCase(":root { --x: linear-gradient(red /* a */, blue); }", ":root { --x: \"linear-gradient(red  , blue)\"; }")]
         [TestCase(":root { --x: filter(/* c */ a); }", ":root { --x: \"filter(  a)\"; }")]
         public void Given_ACommentAmongAFunctionsArguments_When_TheSheetIsRewritten_Then_ItsValueIsQuotedWithoutIt(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: url(a b); }", ":root { --x: \"url(a b)\"; }")]
+        [TestCase(":root { --x: url(a /* c */); }", ":root { --x: \"url(a /* c */)\"; }")]
+        [TestCase(":root { --x: url(\"a\" /* c */); }", ":root { --x: \"url(\\\"a\\\"  )\"; }")]
+        [TestCase(":root { --x: url(\"a\" b); }", ":root { --x: \"url(\\\"a\\\" b)\"; }")]
+        [TestCase(":root { --x: url(a(b)); }", ":root { --x: \"url(a(b))\"; }")]
+        [TestCase(":root { --x: url(a'b'); }", ":root { --x: \"url(a'b')\"; }")]
+        [TestCase(":root { --x: url(a\u0001b); }", ":root { --x: \"url(a\u0001b)\"; }")]
+        [TestCase(":root { --x: url(\"a\nb\"); }", ":root { --x: \"url(\\\"a b\\\")\"\n; }")]
+        [TestCase(":root { --x: url(a\\\nb); }", ":root { --x: \"url(a\\\\ b)\"\n; }")]
+        [TestCase(":root { --x: url(a\\1234567 b); }", ":root { --x: \"url(a\\\\1234567 b)\"; }")]
+        [TestCase(":root { --x: url(a\\31(b)); }", ":root { --x: \"url(a\\\\31(b))\"; }")]
+        [TestCase(".a { --x: url(", ".a { --x: \"url(\"")]
+        [TestCase(".a { --x: url(a ", ".a { --x: \"url(a\"")]
+        [TestCase(".a { --x: url(a\\", ".a { --x: \"url(a\\\\\"")]
+        [TestCase(".a { --x: url(\"a\\", ".a { --x: \"url(\\\"a\\\\\"")]
+        [TestCase(":root { --x: u+1; }", ":root { --x: \"u+1\"; }")]
+        [TestCase(":root { --x: U+12; }", ":root { --x: \"U+12\"; }")]
+        [TestCase(":root { --x: 1px u+1; }", ":root { --x: \"1px u+1\"; }")]
+        [TestCase(":root { --x: var(--a, u+1); }", ":root { --x: \"var(--a, u+1)\"; }")]
+        public void Given_AUrlTheLexerRefusesOrARange_When_TheSheetIsRewritten_Then_ItsValueIsQuoted(
+            string uss, string expected)
+        {
+            // Arrange
+            // Act
+            var rewritten = RewriteWithin(uss);
+
+            // Assert
+            Assert.That(rewritten, Is.EqualTo(expected));
+        }
+
+        [TestCase(":root { --x: url(a/*c*/) 1rem; }", ":root { --x: \"url(a/*c*/) 1rem\"; }")]
+        public void Given_AUrlHoldingSlashStarInAQuotedValue_When_TheSheetIsRewritten_Then_ThePathKeepsIt(
             string uss, string expected)
         {
             // Arrange

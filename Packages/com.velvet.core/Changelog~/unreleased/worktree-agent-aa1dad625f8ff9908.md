@@ -9,8 +9,12 @@
   (`rgb(100%, 0%, 0%)`, `rgba(0, 0, 0)`, `rgb(u+1 2 3)`), a function with nothing between its parentheses other than
   `none()`, `filter()` and the URL functions `url()`, `url-prefix()` and `domain()` (`blur()`, `var()`), a `var()`
   whose arguments the importer refuses (`var(--a,)`, which Tailwind v4 writes, `var(--a, 1px, 2px)`, `var(a)`,
-  `var(--a b)`), and a comment among the arguments of a function such as `blur()`, `var()` or `linear-gradient()`
-  (`blur(/* x */ 4px)`, `var(--a /* c */)`). The importer used to leave the whole file empty.
+  `var(--a b)`), a comment among the arguments of a function such as `blur()`, `var()` or `linear-gradient()`
+  (`blur(/* x */ 4px)`, `var(--a /* c */)`), a range (`u+1`, `U+12`), and a URL function whose path the importer's
+  lexer cannot read (`url(a b)`, `url(a /* c */)`, `url("a" /* c */)`, stored as `url("a"  )`). The importer used to
+  leave the whole file empty.
+- A custom property stored as the text it was written with keeps a `/*` inside an unquoted URL path, which CSS reads
+  as part of the path (`url(a/*c*/) 1rem`). It used to be taken out as a comment.
 - `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` run `combine` again once a commit changes only a query's
   `Select`, as TanStack Query v5 does. The value from before the change used to stay until another change ran it
   again.
