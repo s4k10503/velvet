@@ -7,16 +7,18 @@ namespace Velvet
 {
     // The element each old leaf of one container occupies, read from the live child list at the container's
     // entry, beside the element a patch of it reaches through a wrapper. Entry i is old leaf i, at logical slot
-    // slotStart + i; a slot nothing occupied is null. After the entry the diff takes the element it patches or
-    // reuses from here rather than from the live list — ContainerOldInstanceReadTests fails where a slot read comes
-    // back — while removals and inserts stay addressed by slot. Each entry is read once, by the step that takes its
-    // leaf; after the entry it changes only where a z-layer swap names the slot's new element (ReplaceOccupant) or
-    // the list is read again (ResolveAgain). A parked pass owns its instance until the slice that finishes it, or a
-    // fresh pass or Dispose that discards it.
+    // slotStart + i; a slot nothing occupied is null. After the entry the diff takes the element it patches, reuses
+    // or removes from here rather than from the live list — ContainerOldInstanceReadTests fails where a slot read
+    // comes back — while inserts stay addressed by slot. The step that takes a leaf reads its entry, and a removal
+    // reads the entry of a leaf the walk kept no element for; a patch does not write its result back. Once read from
+    // the list, an entry changes only where a z-layer swap names the slot's new element (ReplaceOccupant) or the list
+    // is read again (ResolveAgain). A parked pass owns its instance until the slice that finishes it, or a fresh pass
+    // or Dispose that discards it.
     internal sealed class OldSlotOccupants
     {
         private readonly List<VisualElement?> _occupants = new();
         private readonly List<VisualElement?> _resolved = new();
+        private readonly List<int> _physical = new();
         // What the last Resolve was asked, for ResolveAgain.
         private VisualElement? _parent;
         private int _slotStart;
@@ -31,6 +33,11 @@ namespace Velvet
         // The element a patch of the old leaf is handed (FiberNodePatcher.ResolveWrapped of the occupant).
         internal VisualElement? Resolved(int index)
             => (uint)index < (uint)_resolved.Count ? _resolved[index] : null;
+
+        // The child index the occupant stood at when the list was read, which a removal of it searches from
+        // (HostCommitQueue.Remove); -1 where the slot had none.
+        internal int PhysicalAtEntry(int index)
+            => (uint)index < (uint)_physical.Count ? _physical[index] : -1;
 
         // One walk over the child list, bounded by slotLimit as the indexed diff's slot-missing guard is: where a
         // caller passes a following tenant's start, that tenant's rows are not taken for this container's.
@@ -56,6 +63,7 @@ namespace Velvet
                 {
                     _occupants.Add(child);
                     _resolved.Add(patcher.ResolveWrapped(child));
+                    _physical.Add(physical);
                 }
                 logical++;
             }
@@ -63,6 +71,7 @@ namespace Velvet
             {
                 _occupants.Add(null);
                 _resolved.Add(null);
+                _physical.Add(-1);
             }
         }
 
@@ -91,6 +100,7 @@ namespace Velvet
         {
             _occupants.Clear();
             _resolved.Clear();
+            _physical.Clear();
             _parent = null;
             _slotStart = 0;
             _count = 0;

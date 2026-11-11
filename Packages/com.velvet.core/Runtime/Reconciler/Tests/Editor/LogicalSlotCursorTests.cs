@@ -22,6 +22,16 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class LogicalSlotCursorTests
     {
+        private Reconciler _reconciler = null!;
+
+        [SetUp]
+        public void SetUp() => _reconciler = new Reconciler();
+
+        [TearDown]
+        public void TearDown() => _reconciler.Dispose();
+
+        private HostCommitQueue Host => _reconciler.Context.HostCommit;
+
         private static VisualElement Container(int rendered)
         {
             var container = new VisualElement();
@@ -106,9 +116,9 @@ namespace Velvet.Tests
             var cursor = new LogicalSlotCursor();
 
             // Act
-            cursor.Insert(container, 2, Named("n2"));
-            cursor.Insert(container, 3, Named("n3"));
-            cursor.Insert(container, 4, Named("n4"));
+            cursor.Insert(Host, container, 2, Named("n2"));
+            cursor.Insert(Host, container, 3, Named("n3"));
+            cursor.Insert(Host, container, 4, Named("n4"));
 
             // Assert
             Assert.That(Names(container), Is.EqualTo("r0,r1,n2,n3,n4,spacer"));
@@ -122,8 +132,8 @@ namespace Velvet.Tests
             var cursor = new LogicalSlotCursor();
 
             // Act
-            cursor.Insert(container, 1, Named("n1"));
-            cursor.Insert(container, 2, Named("n2"));
+            cursor.Insert(Host, container, 1, Named("n1"));
+            cursor.Insert(Host, container, 2, Named("n2"));
 
             // Assert
             Assert.That(Names(container), Is.EqualTo("r0,n1,n2,r1,r2,r3"));
@@ -135,11 +145,11 @@ namespace Velvet.Tests
             // Arrange — the band stays ahead of what is appended, as ToPhysical places an append.
             var container = new VisualElement();
             var cursor = new LogicalSlotCursor();
-            cursor.Insert(container, 0, Named("n0"));
+            cursor.Insert(Host, container, 0, Named("n0"));
             container.Add(Marked("band", RingOverlay.InsetMarkerClass));
 
             // Act
-            cursor.Insert(container, 1, Named("n1"));
+            cursor.Insert(Host, container, 1, Named("n1"));
 
             // Assert
             Assert.That(Names(container), Is.EqualTo("n0,band,n1"));
@@ -151,11 +161,11 @@ namespace Velvet.Tests
             // Arrange — the spacer moves the remembered child one place on, so it is not where the cursor left it.
             var container = Container(2);
             var cursor = new LogicalSlotCursor();
-            cursor.Insert(container, 2, Named("n2"));
+            cursor.Insert(Host, container, 2, Named("n2"));
             container.Insert(0, Marked("spacer", SilhouetteBoundsSpacer.MarkerClass));
 
             // Act
-            cursor.Insert(container, 3, Named("n3"));
+            cursor.Insert(Host, container, 3, Named("n3"));
 
             // Assert
             Assert.That(Names(container), Is.EqualTo("spacer,r0,r1,n2,n3"));

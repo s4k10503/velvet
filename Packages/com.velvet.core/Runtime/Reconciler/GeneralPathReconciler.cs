@@ -112,27 +112,6 @@ namespace Velvet
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
 
-        // Runs effect cleanups for fibers present on the old side but absent on the new side
-        // (orphans), before any DOM removal. Scoped to this reconcile call's expansion.
-        internal void RunOrphanEffectCleanups(
-            List<ComponentFiber> oldFibers,
-            HashSet<ComponentFiber> newFibers)
-        {
-            if (oldFibers.Count == 0) return;
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) fiber.MarkBeingDeleted();
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) fiber.RecordTheNearestAncestorOutsideTheDeletion();
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) FiberEffects.RunOrphanFiberEffectCleanups(fiber);
-            }
-        }
-
         // The three tables whose contents are meaningful only within one Reconcile call: they are rented
         // together at its start and returned together at its end, and the orphan diff (old \ new) is valid
         // only over a matched pair. Scoping them as one value is what keeps a sibling fiber's re-render —
@@ -145,19 +124,6 @@ namespace Velvet
             internal ProviderPairTable OldProviders { get; init; }
             internal List<ComponentFiber?> OldOwners { get; init; }
             internal List<ChildKey> OldKeys { get; init; }
-        }
-
-        // Fully disposes orphan fibers (old-side, absent on the new side) and unregisters
-        // them. Effect cleanups already ran via RunOrphanEffectCleanups.
-        internal void SweepOrphans(
-            List<ComponentFiber> oldFibers,
-            HashSet<ComponentFiber> newFibers)
-        {
-            if (oldFibers.Count == 0) return;
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) _ctx.ComponentRegistry.DisposeAndRemove(fiber);
-            }
         }
 
         // Reconcile entry for a container whose new children require inline expansion (NeedsExpansion
@@ -255,7 +221,7 @@ namespace Velvet
                 // Orphan effect cleanups run BEFORE the DOM-removal pass (Finalize → RemoveElement),
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
-                RunOrphanEffectCleanups(oldFibers, newFibers);
+                _ctx.HostCommit.CleanUpOrphans(oldFibers, newFibers);
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
@@ -271,7 +237,7 @@ namespace Velvet
                     // puts their offscreen state back to.
                     RestoreWhatTheSuspensesWrote(commit);
                 }
-                SweepOrphans(oldFibers, newFibers);
+                _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
             finally
@@ -622,13 +588,14 @@ namespace Velvet
             {
                 if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
             }
-            // Removal (reverse so not-yet-visited indices stay valid).
-            var cursor = new DescendingSlotCursor();
+            // Removal, from the last old leaf down. A leaf whose slot was empty when the walk read the old instances
+            // has none to remove.
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
-                if (!patched.Contains(i))
+                var old = commit.OldOccupants.Occupant(i);
+                if (!patched.Contains(i) && old != null)
                 {
-                    _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
+                    _ctx.HostCommit.Remove(parent, old, commit.OldOccupants.PhysicalAtEntry(i));
                 }
             }
 
@@ -646,8 +613,7 @@ namespace Velvet
             if (reordered) _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, commit.Placements);
             foreach (var (fiber, firstRow, rows) in commit.Placements)
             {
-                fiber.MountSlotStart = slotStart + firstRow;
-                fiber.MountSlotCount = rows;
+                _ctx.HostCommit.PlaceRows(fiber, slotStart + firstRow, rows);
             }
         }
 
@@ -1940,20 +1906,8 @@ namespace Velvet
             {
                 foreach (var (_, element, hidden) in commit.DisplayChanges)
                 {
-                    if (hidden)
-                    {
-                        SuspenseHiddenElements.Hide(element);
-                        _ctx.DetachRefsWhileHidden(element);
-                        // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
-                        // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
-                        var focused = element.focusController?.focusedElement as VisualElement;
-                        if (SuspenseHiddenElements.IsAtOrUnderHidden(focused)) focused!.Blur();
-                    }
-                    else
-                    {
-                        SuspenseHiddenElements.Reveal(element);
-                        _ctx.AttachRefsHiddenUnder(element);
-                    }
+                    if (hidden) _ctx.HostCommit.Hide(element, releaseFocus: true);
+                    else _ctx.HostCommit.Unhide(element);
                 }
             }
             if (commit.OffscreenChanges == null) return;
