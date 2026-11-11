@@ -49,7 +49,6 @@
 317ec3ae2644	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
 321a7221d702	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 32270e79cd32	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
-33e0f45e86b7	Runtime/Styling/MotionSlotContext.cs,Runtime/Styling/StyleRingClass.cs
 36360447977b	Runtime/Preview/VelvetPreviewEnvironment.cs,Runtime/Reconciler/FiberElementProps.cs,Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/CornerRadiusFit.cs,Runtime/Styling/MotionSpringClassParser.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/VariantSignalSource.cs
 367209b4982d	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 3688bab418b0	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
@@ -85,7 +84,7 @@
 57edfde1dd5b	Runtime/Component/ComponentFiber.cs,Runtime/Hooks/FocusManager.cs,Runtime/Reconciler/FiberFilterTransitionApplier.cs,Runtime/Styling/StyleGradientClass.cs
 589e61a90167	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDriver.cs
 5a5349e5d244	Runtime/Reconciler/FiberBoxShadowApplier.cs,Runtime/Reconciler/FiberRingApplier.cs
-5bc003a4eacf	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleVariantPayload.cs
+5bc003a4eacf	Runtime/Styling/StyleClipPathClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleVariantPayload.cs
 5cfce2736675	Runtime/Component/DndContextHost.cs,Runtime/Component/SortableHosts.cs
 5faaabbda6bc	Runtime/Reconciler/FiberBoxShadowApplier.cs,Runtime/Reconciler/FiberRingApplier.cs
 5ff06fc3cabb	Runtime/Component/DndContextHost.cs,Runtime/Component/DragOverlayHost.cs,Runtime/Component/SortableHosts.cs,Runtime/Component/VNodeTypes.cs,Runtime/Hooks/AnimateSelector.cs,Runtime/Preview/VelvetPreviewHost.cs,Runtime/Reconciler/ChildElementPlacement.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberFocusNavigator.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/GeneralPathReconciler.cs,Runtime/Reconciler/ReconcileState.cs,Runtime/Reconciler/ReconcilerBufferPool.cs
