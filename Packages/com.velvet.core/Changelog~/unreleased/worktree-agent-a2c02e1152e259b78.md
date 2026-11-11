@@ -6,3 +6,7 @@
   UI Toolkit's own curve for the keyword and the function took over from the second: 0.15 s into a 0.3 s
   `transition-all`, a blur stood half way where Tailwind's curve puts it at about 78%, and a `steps(…, jump-start)`
   had not yet taken its first step.
+- A transition already running on an element keeps the curve it started on when another transition starts there, as
+  a CSS transition keeps its timing function. Velvet moved every transition still running on UI Toolkit's own curve
+  onto the function the element's classes gave by then, mid-run: an opacity change running on `ease-linear` turned
+  onto Tailwind's ease-out part way through when an `ease-out` class arrived with a change of another property.
