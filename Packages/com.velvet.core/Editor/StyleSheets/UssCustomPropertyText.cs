@@ -665,6 +665,7 @@ namespace Velvet.Editor
             while (start > 0)
             {
                 var c = text[start - 1];
+                var escape = IsUrlSpace(c) ? HexEscapeStart(text, start - 1) : -1;
                 if (IsIdentChar(c) || (c == '\\' && !IsEscaped(text, start - 1)))
                 {
                     start--;
@@ -673,7 +674,7 @@ namespace Velvet.Editor
                 {
                     start -= 2;
                 }
-                else if (IsUrlSpace(c) && HexEscapeStart(text, start - 1) is var escape and >= 0)
+                else if (escape >= 0)
                 {
                     start = escape;
                 }
