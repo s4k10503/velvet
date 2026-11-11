@@ -1403,26 +1403,23 @@ order their entries were appended:
   counts are compared across all runs, by the same rule with one model, and must also rise by at least
   two. Byte-valued groups are left out: the one `E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint`
   records reads anything from 0 to 12 KB from one run to the next.
-- Every step in a benchmark's history is reported, not only its first. After a step, a model is judged
-  again only once it has run since, so the slowest of its last five runs includes one measured since.
+- Every step in a benchmark's history is found, not only its first. After a step, a model is judged again
+  only once it has run since, so the slowest of its last five runs includes one measured since.
 - The range a step names starts after the latest run at which its model was judged and measured no higher
   than the slowest of that model's last five runs before it, or before the benchmark's first run where
   there is none, so a run above that and short of the threshold, or one its model was not judged at,
   stays inside the range.
-  Steps whose ranges share a commit share an issue.
-- An issue's markers name each of its steps by benchmark and range. While a marked step still stands, the
-  issue is found again by that step alone, so a later step of the benchmark whose range reaches back over
-  it is another step; once the marked step has gone, by a step of the same benchmark whose range shares a
-  commit with it, so a step whose first slow run moved, earlier or later, keeps its issue. Steps one issue
-  names are written to it together. An issue a person reopened is never written to or closed; of the
-  other open issues one cluster's steps name, the lowest-numbered holds them, naming any reopened one, and
-  each other is given a pointer to it and closed.
-- An issue opens only for a step decided at one of the twelve latest entries, so a step decided further
-  back opens none. An open issue is rewritten while the history holds its steps; a step a closed one
-  names is left out, since closing it is how a step is accepted or answered, while another benchmark's
-  step in the same range, or a later step of the same benchmark, still opens its own. An open issue none
-  of whose steps the history holds any more, one whose runs have left the history's 200 entries for
-  instance, gets a line saying so, once, unless a person reopened it.
+- An issue names each of its steps by a marker holding the benchmark and the first slow commit, and
+  nothing else ties a step to an issue. A step decided at one of the twelve latest entries that no issue
+  names, open or closed, is new; the new steps one run finds whose ranges share a commit go into one new
+  issue, and a new step goes into a new issue even where an open one holds a step in the same range.
+- The job rewrites an issue only while it is open, nobody has reopened it, and the history holds every
+  step it names; it never closes one. Closing an issue is how a step is accepted or answered: its
+  marker keeps naming the step, so the step is not filed again.
+- What this costs: a step whose first slow run moves, as when an entry for a commit among its runs is
+  appended late, no longer matches its marker; decided at one of the twelve latest entries, it is filed
+  again as a new issue, and the old one is left as it was either way. Steps one commit causes that are
+  decided at different runs get an issue each.
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 

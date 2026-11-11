@@ -178,8 +178,8 @@ jobs:
           comment-on-alert: false
           fail-on-alert: false
 
-  # Reads the history trend-main has just appended to and opens, rewrites or closes the issues for the
-  # steps up it holds (scripts/ci/benchmark_steps.py). A job of its own so that its concurrency group serialises the issue
+  # Reads the history trend-main has just appended to, opens an issue for a new step up and rewrites the
+  # open issues it wrote (scripts/ci/benchmark_steps.py). A job of its own so that its concurrency group serialises the issue
   # writes without serialising the appends: two runs that both list the issues before either opens one
   # would open the same step twice. Each run reads the whole history, so one that waits behind another
   # misses nothing.
@@ -200,7 +200,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Open, rewrite or close the step issues
+      - name: Open or rewrite the step issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

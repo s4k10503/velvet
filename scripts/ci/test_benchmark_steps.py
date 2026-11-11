@@ -346,6 +346,15 @@ class FindStepsTests(unittest.TestCase):
         self.assertEqual(issues.issues[0]["opened"], first)
 
 
+def reopened(number, *markers):
+    return {**issue(number, "open", *markers), "state_reason": "reopened"}
+
+
+def created(gh):
+    """The bodies of the issues the sync created."""
+    return [body for call, body in zip(gh.calls, gh.bodies) if call[:2] == ["issue", "create"]]
+
+
 class SyncIssuesTests(unittest.TestCase):
 
     def test_Given_AnyHistory_When_IssuesSync_Then_TheyAreListedThroughTheRestIssuesEndpoint(self):
@@ -370,7 +379,7 @@ class SyncIssuesTests(unittest.TestCase):
         # Assert
         self.assertIn("state_reason", gh.calls[0][-1])
 
-    def test_Given_AFreshStepNoIssueCarries_When_IssuesSync_Then_OneOpensLabelledAndAssigned(self):
+    def test_Given_AFreshStepNoIssueNames_When_IssuesSync_Then_OneOpensLabelledAndAssigned(self):
         # Arrange
         runs = stepped()
         gh = FakeGh([])
@@ -381,22 +390,32 @@ class SyncIssuesTests(unittest.TestCase):
         # Assert
         self.assertEqual(" ".join(gh.calls[1][-6:]), "--assignee s4k10503 --label performance --label bug")
 
-    def test_Given_AnOpenIssueForAnotherBenchmarksStep_When_IssuesSync_Then_ThisStepStillOpensOne(self):
+    def test_Given_TwoNewStepsWhoseRangesShareACommit_When_IssuesSync_Then_OneIssueOpensForBoth(self):
         # Arrange
-        runs = stepped()
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(replace(steps(runs)[0], benchmark="B / Time")))])
+        found = [step(last=29, first=30), step(last=29, first=31, name="B / Time")]
+        gh = FakeGh([])
 
         # Act
-        benchmark_steps.sync_issues(steps(runs), runs, "o/r", gh)
+        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
 
         # Assert
-        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
+        self.assertEqual(len(created(gh)), 1)
 
-    def test_Given_AnOpenIssueWhoseStepHasSinceMovedEarlier_When_IssuesSync_Then_ThatIssueIsRewritten(self):
-        # Arrange: the issue was written when the step's first slow run was c09; it is c08 now.
+    def test_Given_ANewStepInTheRangeOfAnOpenIssuesStep_When_IssuesSync_Then_ItsNewIssueNamesItAlone(self):
+        # Arrange
+        found = [step(last=29, first=30), step(last=29, first=31, name="B / Time")]
+        gh = FakeGh([issue(3, "open", benchmark_steps.marker(found[0]))])
+
+        # Act
+        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(benchmark_steps.MARKER_PATTERN.findall(created(gh)[0]), [("B / Time", commit(31))])
+
+    def test_Given_AnOpenIssueNamingThisStep_When_IssuesSync_Then_ItIsRewritten(self):
+        # Arrange
         runs = stepped()
-        moved = replace(steps(runs)[0], first_slow=runs[9])
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(moved))])
+        gh = FakeGh([issue(3, "open", benchmark_steps.marker(steps(runs)[0]))])
 
         # Act
         benchmark_steps.sync_issues(steps(runs), runs, "o/r", gh)
@@ -404,19 +423,8 @@ class SyncIssuesTests(unittest.TestCase):
         # Assert
         self.assertEqual(gh.calls[1][:3], ["issue", "edit", "3"])
 
-    def test_Given_AnOpenIssueForOneStepOfACluster_When_IssuesSync_Then_ThatIssueIsRewrittenToHoldBoth(self):
+    def test_Given_AnOpenIssueNamingTwoStepsTheHistoryHolds_When_IssuesSync_Then_ItIsRewrittenWithBoth(self):
         # Arrange
-        found = [step(last=7, first=8), step(last=7, first=9, name="B / Time")]
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(found[1]))])
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertIn(benchmark_steps.marker(found[0]), gh.bodies[1])
-
-    def test_Given_TwoClustersOneOpenIssueNames_When_IssuesSync_Then_ThatIssueHoldsBoth(self):
-        # Arrange: the ranges share no commit, and the issue names a step of each.
         found = [step(last=7, first=8), step(last=20, first=21, name="B / Time")]
         gh = FakeGh([issue(3, "open", *map(benchmark_steps.marker, found))])
 
@@ -438,27 +446,72 @@ class SyncIssuesTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(gh.calls), 1)
 
-    def test_Given_AClosedIssueCarryingTheStepsMarker_When_IssuesSync_Then_NothingIsWritten(self):
-        # Arrange
-        runs = stepped()
-        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(steps(runs)[0]))])
+    def test_Given_AnOpenIssueNamingAStepTheHistoryNoLongerHolds_When_IssuesSync_Then_ItIsLeftAsItWas(self):
+        # Arrange: the issue names this step and B's, and B's is no longer in the history.
+        gh = FakeGh([issue(3, "open", benchmark_steps.marker(step()),
+                           benchmark_steps.marker(step(last=20, first=21, name="B / Time")))])
 
         # Act
-        benchmark_steps.sync_issues(steps(runs), runs, "o/r", gh)
+        benchmark_steps.sync_issues([step()], RUNS, "o/r", gh)
 
         # Assert
         self.assertEqual(len(gh.calls), 1)
 
-    def test_Given_AClosedIssueForOneStepOfAClusterAndAFreshOther_When_IssuesSync_Then_TheOtherOpensOne(self):
-        # Arrange: the closed issue names A's step; B stepped in the same range and is among the latest runs.
-        found = [step(last=30, first=33), step(last=30, first=35, name="B / Time")]
-        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(found[0]))])
+    def test_Given_AReopenedIssueNamingAFreshStep_When_IssuesSync_Then_NothingIsWritten(self):
+        # Arrange
+        fresh = step(last=29, first=30)
+        gh = FakeGh([reopened(3, benchmark_steps.marker(fresh))])
 
         # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
+        benchmark_steps.sync_issues([fresh], RUNS, "o/r", gh)
 
         # Assert
-        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
+        self.assertEqual(len(gh.calls), 1)
+
+    def test_Given_AClosedIssueNamingAFreshStep_When_IssuesSync_Then_NothingIsWritten(self):
+        # Arrange
+        fresh = step(last=29, first=30)
+        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(fresh))])
+
+        # Act
+        benchmark_steps.sync_issues([fresh], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(gh.calls), 1)
+
+    def test_Given_AnIssueNamingAnotherBenchmarksStepAtThisCommit_When_IssuesSync_Then_ThisStepOpensOne(self):
+        # Arrange
+        fresh = step(last=29, first=30)
+        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(replace(fresh, benchmark="B / Time")))])
+
+        # Act
+        benchmark_steps.sync_issues([fresh], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_AClosedIssueAndALaterStepOfThatBenchmarkWhoseRangeReachesBack_When_IssuesSync_Then_ItOpensOne(self):
+        # Arrange: the closed issue names a step first slow at c30; the later one is first slow at c37 and
+        # its range reaches back over c30.
+        accepted, later = step(last=29, first=30), step(last=29, first=37)
+        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(accepted))])
+
+        # Act
+        benchmark_steps.sync_issues([accepted, later], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
+
+    def test_Given_AnIssueNamingAStepWhoseFirstSlowRunHasMoved_When_IssuesSync_Then_ANewIssueOpens(self):
+        # Arrange: the issue was written when this step's first slow run was c31; it is c30 now.
+        moved = step(last=29, first=30)
+        gh = FakeGh([issue(3, "open", benchmark_steps.marker(replace(moved, first_slow=RUNS[31])))])
+
+        # Act
+        benchmark_steps.sync_issues([moved], RUNS, "o/r", gh)
+
+        # Assert
+        self.assertEqual(len(created(gh)), 1)
 
     def test_Given_AStepDecidedFurtherBackThanTheLatestRuns_When_IssuesSync_Then_NoneOpens(self):
         # Arrange: twelve runs at the stepped level after the four that make the step.
@@ -471,60 +524,6 @@ class SyncIssuesTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(gh.calls), 1)
 
-    def test_Given_AnOpenIssueForAStepTheHistoryNoLongerHolds_When_IssuesSync_Then_ItIsMarkedSo(self):
-        # Arrange
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(step()))])
-
-        # Act
-        benchmark_steps.sync_issues([], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.bodies[1].partition("\n")[0], benchmark_steps.WITHDRAWN)
-
-    def test_Given_AnOpenIssueAlreadyMarkedNoLongerHeld_When_IssuesSync_Then_NothingIsWritten(self):
-        # Arrange
-        marked = issue(3, "open", benchmark_steps.marker(step()))
-        marked["body"] = benchmark_steps.WITHDRAWN + "\n\n" + marked["body"]
-        gh = FakeGh([marked])
-
-        # Act
-        benchmark_steps.sync_issues([], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(len(gh.calls), 1)
-
-
-def named_by_two_open_issues():
-    """Two steps whose ranges share a commit, and two open issues, #3 and #5, naming the first of them."""
-    found = [step(last=7, first=8), step(last=7, first=9, name="B / Time")]
-    return found, FakeGh([issue(3, "open", benchmark_steps.marker(found[0])),
-                          issue(5, "open", benchmark_steps.marker(found[0]))])
-
-
-class SyncIssueIdentityTests(unittest.TestCase):
-
-    def test_Given_AClosedIssueAndALaterStepOfThatBenchmarkWhoseRangeReachesBack_When_IssuesSync_Then_ItOpensOne(self):
-        # Arrange: the closed issue names a step first slow at c30; the later one is first slow at c37 and
-        # its range reaches back over c30.
-        accepted, later = step(last=29, first=30), step(last=29, first=37)
-        gh = FakeGh([issue(3, "closed", benchmark_steps.marker(accepted))])
-
-        # Act
-        benchmark_steps.sync_issues([accepted, later], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
-
-    def test_Given_AnIssueWhoseRangeOnlyMeetsTheStepsOwn_When_IssuesSync_Then_TheStepOpensItsOwn(self):
-        # Arrange: the issue names (c30, c31]; the step's range is (c29, c30].
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(step(last=30, first=31)))])
-
-        # Act
-        benchmark_steps.sync_issues([step(last=29, first=30)], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
-
     def test_Given_AStepDecidedAmongTheLatestRunsWhoseFirstSlowRunIsOlder_When_IssuesSync_Then_ItOpensOne(self):
         # Arrange: RUNS' twelve latest are c28..c39; the step starts at c21 and is decided at c30.
         gh = FakeGh([])
@@ -533,7 +532,7 @@ class SyncIssueIdentityTests(unittest.TestCase):
         benchmark_steps.sync_issues([step(last=20, first=21, decided=30)], RUNS, "o/r", gh)
 
         # Assert
-        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
+        self.assertEqual(len(created(gh)), 1)
 
     def test_Given_AnOpenIssueThatNamesNoStep_When_IssuesSync_Then_NothingIsWritten(self):
         # Arrange: an issue the performance label shares with this job's, written by hand.
@@ -544,121 +543,6 @@ class SyncIssueIdentityTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(gh.calls), 1)
-
-    def test_Given_OneClustersStepsNamedByTwoOpenIssues_When_IssuesSync_Then_TheLowerNumberedHoldsThem(self):
-        # Arrange
-        found, gh = named_by_two_open_issues()
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.calls[1][:3], ["issue", "edit", "3"])
-
-    def test_Given_OneClustersStepsNamedByTwoOpenIssues_When_IssuesSync_Then_TheOtherIsPointedAtTheFirst(self):
-        # Arrange
-        found, gh = named_by_two_open_issues()
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.bodies[2], benchmark_steps.MERGED.format(3))
-
-    def test_Given_OneClustersStepsNamedByTwoOpenIssues_When_IssuesSync_Then_TheOtherIsClosed(self):
-        # Arrange
-        found, gh = named_by_two_open_issues()
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertIn(["issue", "close", "5", "--repo", "o/r", "--reason", "not planned"], gh.calls)
-
-
-def reopened(number, *markers):
-    return {**issue(number, "open", *markers), "state_reason": "reopened"}
-
-
-def named_by_a_reopened_issue_and_another():
-    """Two steps sharing a commit, named by #3, which a person reopened, and by #5, which this job opened."""
-    found = [step(last=7, first=8), step(last=7, first=9, name="B / Time")]
-    return found, FakeGh([reopened(3, benchmark_steps.marker(found[0])),
-                          issue(5, "open", benchmark_steps.marker(found[0]))])
-
-
-class ReopenedIssueTests(unittest.TestCase):
-
-    def test_Given_AClustersStepsNamedByAReopenedIssueAndAnother_When_IssuesSync_Then_TheOtherHoldsThem(self):
-        # Arrange
-        found, gh = named_by_a_reopened_issue_and_another()
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.calls[1][:3], ["issue", "edit", "5"])
-
-    def test_Given_AClustersStepsNamedByAReopenedIssueAndAnother_When_IssuesSync_Then_TheReopenedOneIsNotWritten(self):
-        # Arrange
-        found, gh = named_by_a_reopened_issue_and_another()
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertNotIn("3", [call[2] for call in gh.calls[1:]])
-
-    def test_Given_AClustersStepsNamedByAReopenedIssueAndAnother_When_IssuesSync_Then_TheHolderSaysSo(self):
-        # Arrange
-        found, gh = named_by_a_reopened_issue_and_another()
-
-        # Act
-        benchmark_steps.sync_issues(found, RUNS, "o/r", gh)
-
-        # Assert
-        self.assertIn(benchmark_steps.KEPT.format(3), gh.bodies[1])
-
-    def test_Given_OnlyAReopenedIssueNamesAFreshStep_When_IssuesSync_Then_NothingIsWritten(self):
-        # Arrange
-        fresh = step(last=29, first=30)
-        gh = FakeGh([reopened(3, benchmark_steps.marker(fresh))])
-
-        # Act
-        benchmark_steps.sync_issues([fresh], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(len(gh.calls), 1)
-
-    def test_Given_AReopenedIssueWhoseStepsTheHistoryNoLongerHolds_When_IssuesSync_Then_ItIsNotNoted(self):
-        # Arrange
-        gh = FakeGh([reopened(3, benchmark_steps.marker(step()))])
-
-        # Act
-        benchmark_steps.sync_issues([], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(len(gh.calls), 1)
-
-    def test_Given_AGoneMarkedStepWhoseRangeEndsWhereThisOneStarts_When_IssuesSync_Then_ThisOpensItsOwn(self):
-        # Arrange: the issue named (c29, c30], a step no longer standing; this one's range is (c30, c31].
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(step(last=29, first=30)))])
-
-        # Act
-        benchmark_steps.sync_issues([step(last=30, first=31)], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.calls[1][:2], ["issue", "create"])
-
-    def test_Given_AnOpenIssueWhoseStepNowStartsLater_When_IssuesSync_Then_ThatIssueIsRewritten(self):
-        # Arrange: the issue named a step first slow at c30, which no longer stands; it now starts at c31.
-        gh = FakeGh([issue(3, "open", benchmark_steps.marker(step(last=29, first=30)))])
-
-        # Act
-        benchmark_steps.sync_issues([step(last=29, first=31)], RUNS, "o/r", gh)
-
-        # Assert
-        self.assertEqual(gh.calls[1][:3], ["issue", "edit", "3"])
 
 
 class RenderTests(unittest.TestCase):

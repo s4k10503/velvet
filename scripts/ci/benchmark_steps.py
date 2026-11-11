@@ -6,7 +6,7 @@ Reads the history `.github/workflows/benchmarks.yml` appends to the `benchmark-d
 
     benchmark_steps.py HISTORY             the steps the history holds now
     benchmark_steps.py HISTORY --replay    every prefix of the history synced in turn, against issues kept in memory
-    benchmark_steps.py HISTORY --issues    open, rewrite or close the issues, through `gh`
+    benchmark_steps.py HISTORY --issues    open or rewrite the issues, through `gh`
 """
 
 import argparse
@@ -27,12 +27,8 @@ PROCESSOR = "processor: "
 
 LABELS = ("performance", "bug")
 ASSIGNEE = "s4k10503"
-MARKER = "<!-- benchmark-step: {series} | {low} | {first} -->"
-MARKER_PATTERN = re.compile(
-    r"^<!-- benchmark-step: (?P<series>.+?) \| (?P<low>~?[0-9a-f]{40}) \| (?P<first>[0-9a-f]{40}) -->$", re.M)
-WITHDRAWN = "> The history this job last read holds none of the steps below."
-MERGED = "Merged into #{}, which holds these steps now.\n"
-KEPT = "#{} was reopened by hand and names steps here too; this job leaves it as it is."
+MARKER = "<!-- benchmark-step: {series} | {first} -->"
+MARKER_PATTERN = re.compile(r"^<!-- benchmark-step: (?P<series>.+?) \| (?P<first>[0-9a-f]{40}) -->$", re.M)
 BODY_LIMIT = 60000
 CUT_NOTE = "\n\n... cut to fit an issue body\n"
 
@@ -210,36 +206,12 @@ def recent(runs, rule=RULE):
     return {run.commit for run in runs[-rule.fresh:]}
 
 
+def key(step):
+    return step.benchmark, step.first_slow.commit
+
+
 def marker(step):
-    low = step.last_fast.commit if step.last_fast else "~" + step.since.commit
-    return MARKER.format(series=step.benchmark, low=low, first=step.first_slow.commit)
-
-
-def marked_span(match, order):
-    low, high = match["low"], order.get(match["first"])
-    low = order.get(low[1:]) - 1 if low.startswith("~") and low[1:] in order else order.get(low)
-    return None if low is None or high is None else (low, high)
-
-
-def covers(matches, step, order, standing=frozenset()):
-    """Whether a marker names `step`: its own first slow run while the marked step still stands, or, once
-    that step has gone, a range of the same benchmark sharing a commit with `step`'s.
-
-    `standing` is every (benchmark, first slow commit) the history holds. A step that starts after a marked
-    one still standing is another step, even where its range reaches back over it; a marked step that has
-    gone is this one, moved."""
-    low, high = span(step, order)
-    for match in matches:
-        if match["series"] != step.benchmark:
-            continue
-        if (match["series"], match["first"]) in standing:
-            if match["first"] == step.first_slow.commit:
-                return True
-            continue
-        marked = marked_span(match, order)
-        if marked and marked[0] < high and low < marked[1]:
-            return True
-    return False
+    return MARKER.format(series=step.benchmark, first=step.first_slow.commit)
 
 
 def short_name(name):
@@ -258,8 +230,8 @@ def quoted(subject):
     return "`" + subject.replace("`", "'") + "`"
 
 
-def render(steps, repository, kept=()):
-    """The title and body of the issue for one cluster of steps, naming the reopened issues in `kept`."""
+def render(steps, repository):
+    """The title and body of the issue for some steps."""
     steps = sorted(steps, key=lambda step: (-step.ratio, step.benchmark, step.first_slow.timestamp))
     first = max((step.first_slow for step in steps), key=lambda run: run.timestamp)
     lasts = [step.last_fast for step in steps]
@@ -275,7 +247,6 @@ def render(steps, repository, kept=()):
          if last else f"By `{first.commit[:8]}` ({quoted(first.subject)}), ")
         + f"{len(steps)} step(s) measured slower than the runs before them: https://github.com/" + repository
         + (f"/compare/{last.commit}...{first.commit}" if last else f"/commit/{first.commit}"),
-        *[KEPT.format(number) for number in kept],
         "",
         "| Benchmark | First slow run | Processor | Before | After | Ratio |",
         "|---|---|---|---:|---:|---:|",
@@ -286,8 +257,8 @@ def render(steps, repository, kept=()):
                          f"| {amount(before, step.unit)} ({before_runs} runs) "
                          f"| {amount(after, step.unit)} ({after_runs} runs) | {ratio_text(times(after, before))} |")
     lines += ["", "Before and After are medians over the runs counted. `.github/workflows/benchmarks.yml` "
-              "opened this and rewrites it while the history holds these steps; CONTRIBUTING.md's benchmarks "
-              "section says what counts as a step."]
+              "opened this and rewrites it while it is open and the history holds these steps; "
+              "CONTRIBUTING.md's benchmarks section says what counts as a step."]
     body = "\n".join(lines) + "\n"
     if len(body) > BODY_LIMIT:
         body = body[:body.rindex("\n", 0, BODY_LIMIT - len(CUT_NOTE))] + CUT_NOTE
@@ -311,69 +282,39 @@ def is_open(issue):
 
 
 def is_reopened(issue):
-    """Whether a person reopened it: this job neither writes to nor closes such an issue."""
     return is_open(issue) and issue.get("state_reason") == "reopened"
 
 
 def sync_issues(steps, runs, repository, run=gh, rule=RULE):
-    """Keeps an issue for each cluster of steps, found by any step its markers name (`covers` says which).
+    """Rewrites the open issues this job wrote, and opens one for the fresh steps no issue names.
 
-    A step a closed issue names is left out: closing it is how a step is accepted or answered. An issue a
-    person reopened is left as it is. Where a cluster's steps name several other open issues, the
-    lowest-numbered holds them and the rest are pointed at it and closed. An open issue none of whose steps
-    the history holds any longer is marked so rather than left reading as current."""
+    An issue names a step by its marker alone: the benchmark and the first slow commit. It is rewritten only
+    while it is open, nobody has reopened it, and the history holds every step it names; nothing here
+    closes an issue. A step decided at one of the latest runs that no issue names, in any state, is new, and
+    new steps whose ranges share a commit go into one new issue."""
     issues = list_issues(repository, run)
-    order = {run_.commit: index for index, run_ in enumerate(landed(runs))}
-    standing = {(step.benchmark, step.first_slow.commit) for step in steps}
-    named = {issue["number"]: list(MARKER_PATTERN.finditer(issue.get("body") or "")) for issue in issues}
-    by_number = {issue["number"]: issue for issue in issues}
-
-    # Clusters an issue names share that issue, so they are merged before anything is written.
-    components = []
-    for members in clusters(steps, runs):
-        numbers = {number for number, matches in named.items()
-                   if any(covers(matches, s, order, standing) for s in members)}
-        joined = [c for c in components if c[1] & numbers]
-        for component in joined:
-            components.remove(component)
-            members = component[0] + members
-            numbers |= component[1]
-        components.append((members, numbers))
-
-    openable, actions, held = recent(runs, rule), [], set()
-    for members, numbers in components:
-        held |= numbers
-        accepted = [match for number in numbers if not is_open(by_number[number]) for match in named[number]]
-        live = [step for step in members if not covers(accepted, step, order, standing)]
-        if not live:
-            continue
-        opened = sorted(number for number in numbers if is_open(by_number[number]))
-        kept = [number for number in opened if is_reopened(by_number[number])]
-        writable = [number for number in opened if number not in kept]
-        title, body = render(live, repository, kept)
-        if writable and by_number[writable[0]].get("body") != body:
-            run(["issue", "edit", str(writable[0]), "--repo", repository, "--title", title, "--body-file", "-"],
-                body)
-            actions.append(f"rewrote #{writable[0]}")
-        for number in writable[1:]:
-            # The pointer carries no marker, so once closed this issue accepts none of the steps.
-            run(["issue", "edit", str(number), "--repo", repository, "--body-file", "-"], MERGED.format(writable[0]))
-            run(["issue", "close", str(number), "--repo", repository, "--reason", "not planned"])
-            actions.append(f"merged #{number} into #{writable[0]}")
-        if not opened and openable & {step.decided.commit for step in live}:
-            create = ["issue", "create", "--repo", repository, "--title", title, "--body-file", "-",
-                      "--assignee", ASSIGNEE]
-            for label in LABELS:
-                create += ["--label", label]
-            run(create, body)
-            actions.append(f"opened an issue for {', '.join(sorted({s.first_slow.commit[:8] for s in live}))}")
+    by_key = {key(step): step for step in steps}
+    named, actions = set(), []
     for issue in issues:
-        body = issue.get("body") or ""
-        if (is_open(issue) and not is_reopened(issue) and named[issue["number"]] and issue["number"] not in held
-                and not body.startswith(WITHDRAWN)):
-            run(["issue", "edit", str(issue["number"]), "--repo", repository, "--body-file", "-"],
-                WITHDRAWN + "\n\n" + body)
-            actions.append(f"marked #{issue['number']} as no longer held")
+        keys = {(match["series"], match["first"]) for match in MARKER_PATTERN.finditer(issue.get("body") or "")}
+        named |= keys
+        if not keys or not is_open(issue) or is_reopened(issue) or not keys <= by_key.keys():
+            continue
+        title, body = render([by_key[k] for k in keys], repository)
+        if issue.get("body") != body:
+            run(["issue", "edit", str(issue["number"]), "--repo", repository, "--title", title, "--body-file", "-"],
+                body)
+            actions.append(f"rewrote #{issue['number']}")
+    openable = recent(runs, rule)
+    new = [step for step in steps if key(step) not in named and step.decided.commit in openable]
+    for members in clusters(new, runs):
+        title, body = render(members, repository)
+        create = ["issue", "create", "--repo", repository, "--title", title, "--body-file", "-",
+                  "--assignee", ASSIGNEE]
+        for label in LABELS:
+            create += ["--label", label]
+        run(create, body)
+        actions.append(f"opened an issue for {', '.join(sorted({s.first_slow.commit[:8] for s in members}))}")
     return actions
 
 
@@ -386,8 +327,7 @@ class MemoryIssues:
     def __call__(self, args, stdin=None):
         if args[0] == "api":
             return "".join(json.dumps({key: issue.get(key) for key in ("number", "state", "state_reason", "body")})
-                           + "\n"
-                           for issue in self.issues)
+                           + "\n" for issue in self.issues)
         if args[:2] == ["issue", "create"]:
             self.issues.append({"number": len(self.issues) + 1, "state": "open", "body": stdin,
                                 "title": args[args.index("--title") + 1], "opened": self.now})
@@ -395,12 +335,8 @@ class MemoryIssues:
         elif args[:2] == ["issue", "edit"]:
             issue = self.issues[int(args[2]) - 1]
             issue["body"] = stdin
-            if "--title" in args:
-                issue["title"] = args[args.index("--title") + 1]
+            issue["title"] = args[args.index("--title") + 1]
             self.log.append((self.now, "rewrote", issue["number"]))
-        elif args[:2] == ["issue", "close"]:
-            self.issues[int(args[2]) - 1]["state"] = "closed"
-            self.log.append((self.now, "closed", int(args[2])))
         return ""
 
 
