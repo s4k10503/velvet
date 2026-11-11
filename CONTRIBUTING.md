@@ -1379,7 +1379,8 @@ benchmark that throws fails the run like any other test. No job fails on a numbe
 - `regressions` runs after `trend-main`, on `main` in this repository alone, reads the whole history back
   from the branch and files the steps up it finds (below) as issues labelled `performance` and `bug` and
   assigned to s4k10503 (`scripts/ci/benchmark_steps.py`, held by `scripts/ci/test_benchmark_steps.py`).
-  Its concurrency group runs one at a time, so two pushes landing together do not both open a step.
+  Its concurrency group runs one at a time, and it lists the issues through the REST issues endpoint,
+  because `gh issue list --label` reads them through search.
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
 
@@ -1392,25 +1393,36 @@ What `regressions` reads as a step up, over the runs in the order their commits 
 order their entries were appended:
 
 - **A time** is compared only with times on the same processor model. It steps up at a run when the
-  first eight runs from it on models that ran at least three times before it — at least four of them,
-  on at least two models — each measured at least 1.2 times the slowest of the last five runs on its own
-  model. The timing canary (`InstrumentCanary_TimingBaseline`) is no substitute for the model: it ranks
-  the models differently from the benchmarks.
+  fewest runs from it that make four on at least two models, counting models that ran at least three
+  times before it, each measured at least 1.2 times the slowest of the last five runs on its own model.
+  The decision is taken on those runs, so a run landing after them cannot withdraw a step once its issue
+  is open; the runs after them, up to eight in all, only add to the medians the issue shows. The timing
+  canary (`InstrumentCanary_TimingBaseline`) is no substitute for the model: it ranks the models
+  differently from the benchmarks.
 - **An allocation count** (a `.GC()` group and the other unit-less ones) does not depend on the model, so
   counts are compared across all runs, by the same rule with one model, and must also rise by at least
   two. Byte-valued groups are left out: the one `E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint`
   records reads anything from 0 to 12 KB from one run to the next.
-- Each benchmark is reported at its earliest step. The range a step names starts after the latest run
-  that measured no higher than the slowest of the last five before it on its model, so a run above that and
-  short of the threshold stays inside the range, and steps whose ranges share a commit share an issue.
+- Every step in a benchmark's history is reported, not only its first. After a step, a model is judged
+  again only once it has run since, so the slowest of its last five runs includes one measured since.
+- The range a step names starts after the latest run that measured no higher than the slowest of the last
+  five before it on its model, or before the benchmark's first run where none did, so a run above that
+  and short of the threshold stays inside the range. Steps whose ranges share a commit share an issue.
+- An issue's markers name each of its steps by benchmark and range, and an issue is found again by any
+  step of the same benchmark whose range shares a commit with one of them, so a step whose first slow run
+  moves keeps its issue. Steps one issue names are written to it together.
 - An issue opens only for a step whose first slow run is among the twelve latest entries, so a step that
-  landed further back opens none. One carrying a step's marker is rewritten while it is open and left
-  alone once closed: closing it is how a step is accepted or answered.
+  landed further back opens none. An open issue is rewritten while the history holds its steps; a step a
+  closed one names is left out, since closing it is how a step is accepted or answered, while another
+  benchmark's step in the same range still opens its own. An open issue none of whose steps the history
+  holds any more, one whose runs have left the history's 200 entries for instance, gets a line saying so,
+  once.
 - Entries written before the processor was recorded carry none, so times are read from the first runs
   that do and counts from the whole history.
 
-Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` prints what each prefix of that history
-would have opened, which is how a change to the rule is measured before it ships.
+Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` syncs every prefix of that history in
+turn against issues it keeps in memory and prints what it opened, which is how a change to the rule is
+measured before it ships.
 
 The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
 runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
