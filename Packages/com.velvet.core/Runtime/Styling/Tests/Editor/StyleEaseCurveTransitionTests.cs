@@ -177,10 +177,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnEaseLayerUnderAMotionTweenNamingItsKeyword_When_AWidthTransitionRunsAQuarterSecond_Then_TheKeywordEasesIt()
+        public void Given_AnEaseLayerUnderAMotionTweenNamingItsKeyword_When_AWidthTransitionRunsAQuarterSecond_Then_FramersCurveForTheKeywordEasesIt()
         {
-            // Arrange
-            var expected = UssEasing.Evaluate(EasingMode.EaseOut, 0.25f);
+            // Arrange — Framer Motion's easeOut.
+            var expected = CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, 0.25f);
 
             // Act
             var fraction = QuarterSecondIn(EasingMode.EaseOut, element =>
@@ -192,6 +192,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(fraction, Is.EqualTo(expected).Within(0.02f));
+        }
+
+        [Test]
+        public void Given_AWidthTransitionAMotionTweenStarted_When_TheTweenEndsAndAHeightTransitionTheLayerRetimesStarts_Then_TheWidthKeepsFramersEaseOut()
+        {
+            // Arrange — Framer Motion's easeOut a quarter of the way along; both transitions start at the same time.
+            var expected = CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, 0.25f);
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            host.Root.Add(element);
+            element.style.width = 0f;
+            element.style.height = 0f;
+            element.style.transitionProperty = new List<StylePropertyName> { new("width"), new("height") };
+            element.style.transitionDuration = new List<TimeValue> { new(1f) };
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.EaseOut) };
+            StyleEaseCurve.SetLayer(element, s_curve, EasingMode.EaseOut);
+            var play = MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseOut) }, null);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            element.style.width = 100f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            MotionTweenTiming.End(element, play);
+            element.style.height = 100f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Act
+            now += 0.25;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Assert
+            Assert.That(element.resolvedStyle.width / 100f, Is.EqualTo(expected).Within(0.02f));
         }
 
         // GREEN_ON_BASE(characterization): the base retimes by the layer whatever wrote the keyword it left.
@@ -286,6 +322,33 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(fraction, Is.EqualTo(0f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AJumpStartStepsLayerOnTheElement_When_AWidthTransitionsFirstFrameRuns_Then_ItHasTakenItsFirstStep()
+        {
+            // Arrange — steps(4, jump-start) stands a quarter of the way along at the start of its run.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            host.Root.Add(element);
+            element.style.width = 0f;
+            element.style.transitionProperty = new List<StylePropertyName> { new("width") };
+            element.style.transitionDuration = new List<TimeValue> { new(1f) };
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Linear) };
+            StyleEaseCurve.SetLayer(element, EaseFunction.OfSteps(4, StepJump.Start), EasingMode.Linear);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            element.style.width = 100f;
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Act
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+
+            // Assert
+            Assert.That(element.resolvedStyle.width / 100f, Is.EqualTo(0.25f).Within(0.01f));
         }
 
         [Test]

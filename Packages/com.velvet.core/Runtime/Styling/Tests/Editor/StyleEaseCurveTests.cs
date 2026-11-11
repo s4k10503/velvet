@@ -252,6 +252,40 @@ namespace Velvet.Tests
                 Is.EqualTo(expected).Within(1e-4f));
         }
 
+        [Test]
+        public void Given_AnElementAMotionTweenWritesItsCurveListOn_When_ItsCurveIsAskedFor_Then_ItIsFramersCurveForTheKeyword()
+        {
+            // Arrange — Framer Motion's easeOut.
+            var element = new VisualElement();
+            MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseOut) }, null);
+            var expected = CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, 0.5f);
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseOut);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.5f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AnElementAMotionTweenWritesAnEaseInOutBackListOn_When_ItsCurveIsAskedForOnItsSecondHalf_Then_ItIsFramersBackInOut()
+        {
+            // Arrange — Framer Motion's backInOut at 0.75: backIn mirrored, backIn being backOut reversed.
+            var element = new VisualElement();
+            MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseInOutBack) }, null);
+            var expected = (2f - (1f - CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 0.5f))) / 2f;
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseInOutBack);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.75f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
         // GREEN_ON_BASE(characterization): the probe already counts a list's allocation.
         // The zero below would read the same from a probe stuck at zero.
         [Test]

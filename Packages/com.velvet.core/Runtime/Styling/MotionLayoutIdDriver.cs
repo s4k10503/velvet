@@ -1434,7 +1434,7 @@ namespace Velvet
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
-            : UssEasing.Evaluate(_config.Easing, t);
+            : MotionEasing.Evaluate(_config.Easing, t);
     }
 
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.
@@ -1604,7 +1604,7 @@ namespace Velvet
             (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
                 : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                 : (_heldDurationSec, _heldDelaySec, _heldEasing);
-            _function = StyleEaseCurve.CurveFor(element, _easing);
+            _function = StyleEaseCurve.CurveFor(element, _easing, property);
             _durationSec *= _shortening;
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             if (_delaySec < 0f) _delaySec *= _shortening;

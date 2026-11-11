@@ -17,6 +17,9 @@ namespace Velvet.Tests
             return BezierTweenDriver.CreateTween(plan, new DrivenTweenTiming(0f, 1f, easing, null), repeat);
         }
 
+        // Framer Motion's easeIn.
+        private static float FramerEaseIn(float t) => CubicBezierEvaluator.Evaluate(0.42f, 0f, 1f, 1f, t);
+
         private static float OpacityAt(BezierTweenState state, float timeSec)
         {
             var element = new VisualElement();
@@ -47,7 +50,7 @@ namespace Velvet.Tests
             var opacity = OpacityAt(state, 1.25f);
 
             // Assert
-            Assert.That(opacity, Is.EqualTo(1f - UssEasing.Evaluate(EasingMode.EaseIn, 0.25f)).Within(1e-5f));
+            Assert.That(opacity, Is.EqualTo(1f - FramerEaseIn(0.25f)).Within(1e-5f));
         }
 
         [Test]
@@ -60,7 +63,7 @@ namespace Velvet.Tests
             var opacity = OpacityAt(state, 1.25f);
 
             // Assert
-            Assert.That(opacity, Is.EqualTo(UssEasing.Evaluate(EasingMode.EaseIn, 0.75f)).Within(1e-5f));
+            Assert.That(opacity, Is.EqualTo(FramerEaseIn(0.75f)).Within(1e-5f));
         }
 
         [Test]
