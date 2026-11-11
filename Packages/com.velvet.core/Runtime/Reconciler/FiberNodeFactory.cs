@@ -145,7 +145,7 @@ namespace Velvet
                 // ComponentNode / ContextProviderNode / FragmentNode so children appear as
                 // direct siblings under <paramref name="childContainer"/>. These node kinds
                 // produce no DOM element of their own. The same path is used
-                // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
+                // on patch (NodePatchWalk) so initial-mount and patch DOM layouts stay
                 // symmetric — both omit the per-Component wrapper VE.
                 ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children, elementNode.ClassNames);
             }
@@ -313,7 +313,7 @@ namespace Velvet
                 _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedClasses, variantClasses);
             }
             // Record the label propagated to children now (regardless of whether this Motion currently
-            // has any) so the FIRST patch on this element has an accurate baseline: PatchMotion diffs
+            // has any) so the FIRST patch on this element has an accurate baseline: PatchMotionPre diffs
             // against this stored value to detect an ACTUAL label change before it (re-)triggers
             // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
             // would see no previous entry and could misfire even when the label held steady across
@@ -369,7 +369,7 @@ namespace Velvet
             // (GeneralPathReconciler.ExpandAnimatePresenceInline). The element above was created carrying the
             // resting variants[animate] classes (appliedClasses), with MotionAppliedClasses already
             // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
-            // purely a transient visual state: a later patch (PatchMotion) always diffs against the
+            // purely a transient visual state: a later patch (PatchMotionPre) always diffs against the
             // resting baseline and never replays this entrance.
             // The presence expansion plays the variant enter of its anchor Motion (PresenceAnchorMotion, set by
             // GeneralPathReconciler around the exact EmitPresenceChild call whose enter/exit it dispatches) where
@@ -424,12 +424,12 @@ namespace Velvet
                 ? _patcher.Appliers.WrapLayoutIdCorrection(element)
                 : motionOuter;
             // Shared-element layout animation (layoutId) on a freshly-created element, which never
-            // routes through PatchMotion's own registration.
+            // routes through PatchMotionPost's own registration.
             if (motionNode.LayoutId != null)
             {
                 MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId, LayoutIdTiming.From(motionNode.LayoutTransition), _ctx);
             }
-            // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlot reads back.
+            // Classified from the applied classes, the set FiberNodePatcher.PatchMotionSlotPost reads back.
             var stackingClasses = _patcher.ResolveStackingClasses(element, appliedClasses);
             return FiberZLayerCoordinator.OnCreated(_ctx, outer, element, appliedClasses, stackingClasses,
                 motionNode.Props?.Anchored != null);
@@ -582,7 +582,7 @@ namespace Velvet
             // outer reconcile has finished, so Portal subtrees stack as
             // independent ranges (slots [outer..outerEnd) then [outerEnd..innerEnd) ...).
             // PortalState is recorded only at drain time — between enqueue and drain the
-            // placeholder has no entry and PatchPortal/CleanupPortal handle the missing
+            // placeholder has no entry and PatchPortalChildrenPre/CleanupPortal handle the missing
             // case explicitly (LogError + skip / early return).
             return EnqueueDeferredHostMount(portalNode, target);
         }

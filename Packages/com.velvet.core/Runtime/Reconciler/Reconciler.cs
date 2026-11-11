@@ -22,6 +22,7 @@ namespace Velvet
         private ChildReconciler? _childReconciler;
         private FiberNodeFactory? _factory;
         private FiberNodePatcher? _patcher;
+        private NodePatchWalk? _patchWalk;
         private FiberElementCleaner? _cleaner;
 
         private ChildReconciler ChildPass
@@ -48,6 +49,15 @@ namespace Velvet
             {
                 if (_patcher == null) BuildParts();
                 return _patcher!;
+            }
+        }
+
+        private NodePatchWalk PatchWalk
+        {
+            get
+            {
+                if (_patchWalk == null) BuildParts();
+                return _patchWalk!;
             }
         }
 
@@ -159,12 +169,15 @@ namespace Velvet
             var cleaner = new FiberElementCleaner(_ctx);
             var patcher = new FiberNodePatcher(_ctx);
             var factory = new FiberNodeFactory(_ctx, patcher, cleaner);
-            var childReconciler = new ChildReconciler(_ctx, patcher, factory, cleaner) { Parked = MarkOwnerParked };
+            var patchWalk = new NodePatchWalk(_ctx, patcher);
+            var childReconciler = new ChildReconciler(_ctx, patcher, patchWalk, factory, cleaner) { Parked = MarkOwnerParked };
 
             factory.SetHost(this);
             patcher.SetHost(this);
+            patchWalk.SetHost(this);
             _cleaner = cleaner;
             _patcher = patcher;
+            _patchWalk = patchWalk;
             _factory = factory;
             _childReconciler = childReconciler;
         }
@@ -624,7 +637,7 @@ namespace Velvet
             // PatchNode): a shadow-*/clip-path-* row's occupant is its structural WRAPPER, and a relocated one's its
             // placeholder, through which a patch that wraps or unwraps it carries the relocation over.
             var inner = NodePatcher.ResolveWrapped(row);
-            NodePatcher.PatchNode(NodePatcher.ResolveWrapped(SlotOccupantOf(row)), oldNode, newNode);
+            PatchWalk.PatchNode(NodePatcher.ResolveWrapped(SlotOccupantOf(row)), oldNode, newNode);
             // A class change can wrap or unwrap the row during the patch; return its outermost element now.
             return NodePatcher.ResolveOuter(inner);
         }

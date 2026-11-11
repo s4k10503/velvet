@@ -28,6 +28,7 @@ namespace Velvet
 
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
+        private readonly NodePatchWalk _patchWalk;
         private readonly FiberNodeFactory _factory;
         private readonly FiberElementCleaner _cleaner;
         private readonly HostCommitQueue _host;
@@ -98,16 +99,18 @@ namespace Velvet
         // because the park it answers for is this instance's own while the context is shared.
         private readonly List<ReconcilerContext.BoundaryReproductionKey> _boundaryOwedByThisPark = new();
 
-        public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, FiberNodeFactory factory, FiberElementCleaner cleaner)
+        public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, NodePatchWalk patchWalk,
+            FiberNodeFactory factory, FiberElementCleaner cleaner)
         {
             _ctx = ctx;
             _patcher = patcher;
+            _patchWalk = patchWalk;
             _factory = factory;
             _cleaner = cleaner;
             _host = ctx.HostCommit;
             _placement = new ChildElementPlacement(ctx.BufferPool, _host);
             _keying = new ReconcileKeying();
-            _general = new GeneralPathReconciler(ctx, patcher, factory, cleaner, _placement, _keying);
+            _general = new GeneralPathReconciler(ctx, patchWalk, factory, cleaner, _placement, _keying);
         }
 
         // Applies the CanPatch-gated patch-or-replace decision at one DOM slot: patches the existing
@@ -144,7 +147,7 @@ namespace Velvet
             var logicalIndex = slot.SlotStart + slot.Index;
             if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
             {
-                _patcher.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode);
+                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode);
                 return false;
             }
 
@@ -327,7 +330,7 @@ namespace Velvet
         // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
         // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
         // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
-        // finally both reach, so the single-top-level-loop invariant holds across nested PatchPortal recursion.
+        // finally both reach, so the single-top-level-loop invariant holds across nested Portal-patch recursion.
         //
         // A child of a Portal that suspends does not stop the drain, since the entries behind it are the same pass's
         // and would be lost to the clear that follows it. The Portal is recorded with its children pending and the
@@ -431,7 +434,7 @@ namespace Velvet
                 }
                 // A Portal child registers in ComponentRegistry under whatever fiber is current
                 // while it mounts, and a later patch of the same Portal reaches
-                // FiberNodePatcher.PatchPortalChildren from the reconcile of the tree the declaring
+                // NodePatchWalk.ReconcilePortalRange from the reconcile of the tree the declaring
                 // component itself returned — with that component's own fiber current. So the declaring
                 // fiber is the half of the registry key a patch looks the child up by, and the mount has
                 // to agree or the first patch misses its own fiber and builds a second one. This drain
@@ -465,7 +468,7 @@ namespace Velvet
                 // ReconcileKeyedSync — neither can ever set new pending state of its own.
                 var setAside = _parkSetAside;
                 _parkSetAside = true;
-                // Same set-and-restore as FiberNodePatcher.PatchPortalChildren, and for the same reason:
+                // Same set-and-restore as NodePatchWalk.ReconcilePortalRange, and for the same reason:
                 // this is the mount half of the pair that stamps the fibers a Portal's own children
                 // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
                 // with the field already restored, so its own entry sets its own placeholder.
@@ -488,7 +491,7 @@ namespace Velvet
                     PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
                         slotStart: slotStart);
-                    // The mount half of FiberNodePatcher.PatchPortalChildren's structural pass.
+                    // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
                 }
                 catch (FiberSuspendSignal)
@@ -1369,7 +1372,7 @@ namespace Velvet
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
                 if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(newNodes[ni])) continue;
-                _patcher.PatchNode(occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni]);
+                _patchWalk.PatchNode(occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni]);
                 if (_ctx.IsAborted) return;
             }
 
@@ -2014,7 +2017,7 @@ namespace Velvet
                     // element without patching.
                     if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
                     {
-                        existingDomElement = _patcher.PatchNode(occupants.Resolved(old.index)!, old.node, newNode);
+                        existingDomElement = _patchWalk.PatchNode(occupants.Resolved(old.index)!, old.node, newNode);
                         if (_ctx.IsAborted) return true;
                     }
                     newElements.Add((existingDomElement, true));

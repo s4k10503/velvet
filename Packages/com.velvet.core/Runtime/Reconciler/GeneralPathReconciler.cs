@@ -19,6 +19,7 @@ namespace Velvet
     {
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
+        private readonly NodePatchWalk _patchWalk;
         private readonly FiberNodeFactory _factory;
         private readonly FiberElementCleaner _cleaner;
         // Shared with the keyed/indexed fast path: LIS anchor computation + non-anchor re-placement.
@@ -26,12 +27,13 @@ namespace Velvet
         // Shared identity-key resolution (same instance the fast path uses).
         private readonly ReconcileKeying _keying;
 
-        public GeneralPathReconciler(ReconcilerContext ctx, FiberNodePatcher patcher,
+        public GeneralPathReconciler(ReconcilerContext ctx, NodePatchWalk patchWalk,
             FiberNodeFactory factory, FiberElementCleaner cleaner, ChildElementPlacement placement,
             ReconcileKeying keying)
         {
             _ctx = ctx;
-            _patcher = patcher;
+            _patcher = patchWalk.Patcher;
+            _patchWalk = patchWalk;
             _factory = factory;
             _cleaner = cleaner;
             _placement = placement;
@@ -304,7 +306,7 @@ namespace Velvet
 
         // Matches one emitted new leaf against the old leaves and commits it in place under the live
         // context: an existing element of the same identity is patched (its children reconcile via
-        // PatchCommon while ancestor Providers are still pushed), otherwise a fresh element is
+        // NodePatchWalk while ancestor Providers are still pushed), otherwise a fresh element is
         // created (its children reconcile via CreateElement under the same live context). The
         // element is recorded in GeneralCommitState.NewElements in new order; its final
         // placement is decided by FinalizeGeneralCommit. Existing elements stay at their
@@ -351,7 +353,7 @@ namespace Velvet
                 }
                 else if (ReconcileKeying.CanPatch(oldNode, node))
                 {
-                    existingDom = _patcher.PatchNode(commit.OldOccupants.Resolved(oldIndex)!, oldNode, node);
+                    existingDom = _patchWalk.PatchNode(commit.OldOccupants.Resolved(oldIndex)!, oldNode, node);
                     if (_ctx.IsAborted) return;
                     commit.NewElements.Add((existingDom, true));
                 }
@@ -3703,9 +3705,9 @@ namespace Velvet
         // child's own subtree — which sets its own anchor for ITS keyed children — does not leave the outer
         // anchor cleared once its own expansion returns and this child's subtree keeps unwinding.
         // anchorMotionElement: the anchor Motion's own live element, as recorded by CreateElement /
-        // PatchMotion during this very expansion — the target the caller's variant enter/exit classes must
-        // land on (the resting variant classes live there, not on a wrapper anchor). Null when the emission
-        // did not reach the Motion (or there is none); callers fall back to the classic, anchor-targeted
+        // NodePatchWalk.ReconcileUnderMotion during this very expansion — the target the caller's variant enter/exit
+        // classes must land on (the resting variant classes live there, not on a wrapper anchor). Null when the
+        // emission did not reach the Motion (or there is none); callers fall back to the classic, anchor-targeted
         // transition then.
         private VisualElement? EmitPresenceChildAsAnchor(
             in PresenceChildSite site,

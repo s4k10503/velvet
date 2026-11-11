@@ -8,7 +8,7 @@ namespace Velvet
     // box shadow, animate-* motion, ring/outline — each the element's own generateVisualContent / inline
     // style or a reconciler-invisible sibling, no structural element in the element's own slot) and the one
     // structural-WRAPPER layer (clip-path), plus the gesture (whileHover/whileTap/whileFocus) manipulator.
-    // The patcher's PatchElement/PatchMotion and the node factory orchestrate these at patch/create time; the
+    // The patcher's PatchElementPost/PatchMotionPost and the node factory orchestrate these at patch/create time; the
     // shared wrap/unwrap surgery and wrapper<->inner resolution live in WrapperInfrastructure, which both this
     // and the patcher reference. Each subsystem's own logic lives in its own FiberXxxApplier (constructed once
     // here and held for the life of this instance); this class is the stable per-subsystem dispatch surface

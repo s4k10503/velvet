@@ -2,8 +2,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Facade the Patcher and the Factory reach ChildReconciler and FiberElementCleaner through, instead
-    // of referencing them directly. Every member here is called on one of their `_host` fields; a member
+    // Facade the Patcher, the Factory and the patch walk reach ChildReconciler and FiberElementCleaner through,
+    // instead of referencing them directly. Every member here is called on one of their `_host` fields; a member
     // nothing calls is reachable from nowhere else, because this interface is implemented explicitly and
     // by one type.
     internal interface IReconcilerHost
@@ -14,11 +14,11 @@ namespace Velvet
         // Used by Patcher only, to take back the rows a Portal's patch inserted before it unwound.
         void RemoveRows(VisualElement target, int slotStart, int count);
 
-        // Operations provided by ChildReconciler (used by Patcher)
+        // Operations provided by ChildReconciler (used by the patch walk)
         // Refreshes context snapshots and force-renders consumers under FiberStack.Current
         // for the given Provider's ContextProviderNode.ContextKey. Must be invoked while
         // the new value is already pushed on the live ComponentContextStack so the
-        // propagated snapshot reflects it. Used by FiberNodePatcher's
+        // propagated snapshot reflects it. Used by NodePatchWalk's
         // ContextProviderNode case when the keyed Provider entry's value changes
         // between renders (e.g. inside an AnimatePresence subtree, where the Provider stays in the
         // keyed map rather than being inline-expanded by GeneralPathReconciler.ExpandInlineRecursive).

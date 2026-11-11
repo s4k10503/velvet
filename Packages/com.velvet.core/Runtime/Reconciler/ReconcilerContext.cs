@@ -9,7 +9,7 @@ namespace Velvet
 
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
-    // PatchPortal / CleanupPortal can address only that range without disturbing siblings.
+    // a Portal patch / CleanupPortal can address only that range without disturbing siblings.
     // Keyed by the RESOLVED target element (not a registry id): registry portals, layer portals
     // and world-space panels all share this bookkeeping, and only the element identity groups the
     // portals whose ranges shift together — two layer portals on different layers must never
@@ -1217,7 +1217,7 @@ namespace Velvet
         // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
         // so a label change swaps the propagated classes even though the node's base ClassNames are unchanged,
         // and replays that swap as a runtime variant transition when the variant-only classes actually
-        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotion). A pure side-table
+        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotionPost). A pure side-table
         // (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared on element
         // cleanup / reconciler dispose through that mechanism.
         public Dictionary<VisualElement, MotionAppliedClassSet> MotionAppliedClasses { get; } = new();
@@ -1233,7 +1233,7 @@ namespace Velvet
         // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
         // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
         // descendants (for staggerChildren/delayChildren orchestration) while carrying no Variants of its own,
-        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotion compares the
+        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotionPre compares the
         // freshly-resolved child label against this stored one to detect an ACTUAL change (not merely an
         // unrelated re-render that happens to re-propagate the same label) before establishing a fresh
         // MotionOrchestrationFrame — a re-render that keeps the same label must not re-trigger the stagger.
@@ -1483,7 +1483,7 @@ namespace Velvet
         // The Portal placeholder whose children are being reconciled right now, or null outside any such
         // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
         // mount (ChildReconciler.DrainPendingPortalMounts) and every later patch, world-space and heal
-        // included, which all funnel into FiberNodePatcher.PatchPortalChildren. ComponentRegistry stamps it
+        // included, which all funnel into NodePatchWalk.ReconcilePortalRange. ComponentRegistry stamps it
         // onto the inline fibers those reconciles mount, which is what
         // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
         internal VisualElement? CurrentPortalPlaceholder { get; set; }
@@ -1541,7 +1541,7 @@ namespace Velvet
         // queued Portal mounts with a fresh slotStart = target.childCount that sits after
         // all previously-mounted Portals' ranges. PortalState is recorded for each
         // placeholder only at drain time — between enqueue and drain the placeholder has no entry,
-        // matching FiberNodePatcher.PatchPortal's missing-entry path which logs and skips.
+        // matching FiberNodePatcher.PatchPortalChildrenPre's missing-entry path which logs and skips.
         // Target is resolved at ENQUEUE only for registry portals (their not-registered warning
         // stays a mount-time signal); layer portals and world-space nodes carry null and resolve —
         // creating their framework host on first use — at drain time, when the placeholder is
@@ -2874,8 +2874,8 @@ namespace Velvet
         // freshly created MotionNode against this BY REFERENCE (see CreateForMotionNode).
         internal MotionNode? PresenceAnchorMotion;
 
-        // The live element CreateElement / PatchMotion resolved for PresenceAnchorMotion during the
-        // current EmitPresenceChild expansion (same set/restore discipline). Needed because variant
+        // The live element CreateElement / NodePatchWalk.ReconcileUnderMotion recorded for PresenceAnchorMotion during
+        // the current EmitPresenceChild expansion (same set/restore discipline). Needed because variant
         // enter/exit classes must land on the Motion's OWN element — where the resting
         // variants[animate] classes live — not on the keyed child's top-level anchor: for a wrapped
         // Motion (a z-managed Div or a Provider between the presence and the Motion) those are
@@ -3362,8 +3362,8 @@ namespace Velvet
         // Provider-expansion scope in ChildReconciler so a nested expansion cannot leak its flag state out.
         public bool ContextValueChanged { get; internal set; }
 
-        // Generation counter bumped by the outermost PatchContextProvider (one whose value changed).
-        // When multiple PatchContextProvider calls within the same reconcile pass invoke
+        // Generation counter bumped by the outermost Provider patch (one whose value changed).
+        // When multiple Provider patches within the same reconcile pass invoke
         // FiberTreeTraversal.NotifyContextChanged in succession, this is matched against
         // the consumer fiber's ComponentFiber.LastForceRenderGeneration to dedupe
         // duplicate force-renders.

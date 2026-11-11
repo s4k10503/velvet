@@ -198,6 +198,7 @@ d5436c68058a	Runtime/Styling/BezierTweenDriver.cs,Runtime/Styling/MotionSpringDr
 d5d63a3aaadf	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 d8f407e24e34	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 daecfdc25184	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
+dc028f2286a1	Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/PanelSchedulerCallback.cs
 dfd110799bbe	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
 e02e21de4409	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 e275b783405b	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs,Runtime/Styling/StyleGridManipulator.cs

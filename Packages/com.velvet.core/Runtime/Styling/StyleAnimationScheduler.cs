@@ -113,7 +113,7 @@ namespace Velvet
             // A spring or bezier config carries no enter classes: they are settable only inside this assembly, and
             // only the tween presets set them. So the play moves nothing and completes at once, and it leaves a
             // pending enter running, as a zero-duration tween's does: cancelling it would drop the pose swap an
-            // inherited label change starts in the same render (FiberNodePatcher.PatchMotion).
+            // inherited label change starts in the same render (FiberNodePatcher.PatchMotionPost).
             if (config.Type == TransitionType.Spring)
             {
                 ValidateSpringParameters(config.Stiffness, config.Damping, config.Mass);

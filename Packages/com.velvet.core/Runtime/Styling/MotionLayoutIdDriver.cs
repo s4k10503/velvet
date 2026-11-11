@@ -73,7 +73,7 @@ namespace Velvet
         // The panel no member is on, for SyncFollows while the lead is not moving from a box it took from another holder.
         private static readonly VisualElement s_nowhere = new();
 
-        // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
+        // Called from FiberNodePatcher.PatchMotionPost for a MotionNode carrying a LayoutId, once the
         // patch's own class/style/children work is done. element.layout still holds the PRE-patch
         // resolved rect at this point (this frame's Yoga pass has not run yet) — capturing it now is the
         // same "read .layout synchronously before the mutation that invalidates it" pattern
@@ -909,7 +909,7 @@ namespace Velvet
             if (box != null) SetEntry(ctx, layoutId, element, box);
         }
 
-        // Called from FiberNodePatcher.PatchMotion for a Motion patched with no layoutId: one that held an id stops
+        // Called from FiberNodePatcher.PatchMotionPost for a Motion patched with no layoutId: one that held an id stops
         // holding it, shown again, and its tween and its wait end.
         internal static void Forget(VisualElement element, ReconcilerContext ctx)
         {

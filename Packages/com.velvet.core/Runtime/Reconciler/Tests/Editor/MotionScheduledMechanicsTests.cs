@@ -8370,7 +8370,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)),
                 "Precondition: the enter completed and rests at variants[animate]");
 
-            // Act — an UNRELATED state change re-renders the same Motion node through PatchMotion (not
+            // Act — an UNRELATED state change re-renders the same Motion node through its patch (not
             // CreateElement again), which resolves the applied classes from Animate/ambient only.
             s_bump.Invoke(1);
             Tick();
