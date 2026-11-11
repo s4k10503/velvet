@@ -637,8 +637,8 @@ namespace Velvet.Editor
             return name.Equals("url", StringComparison.OrdinalIgnoreCase) || (IsUrl(name) && UrlEnd(text, open) != -1);
         }
 
-        // The name before the `(` at open as the importer's lexer reads it, an escape in it standing for its character, so
-        // `\"url(` names `"url` and `\75rl(` names `url`.
+        // The name before the `(` at open, an escape in it read as Escaped reads it, so `\"url(` names `"url` and `\75rl(`
+        // names `url`.
         private static string FunctionName(string text, int open)
         {
             var name = new StringBuilder();
@@ -658,7 +658,9 @@ namespace Velvet.Editor
         // Where the name that ends at end begins, its escapes included: a name character, a backslash escaping the one
         // after it, a character other than a line break that a backslash escapes, and the whitespace that ends a hex
         // escape, a CR and the LF after it being one character to the lexer. A backslash right before end escapes the
-        // `(` there, and the name it then ends in names no function.
+        // `(` there, and the name it then ends in names no function. It is end itself, an empty name, where an `@` or a
+        // `#` comes right before the name or a U+0000 stands in it: CSS reads an at-keyword, a hash or a name holding
+        // U+FFFD there, which no `(` after it makes a URL function.
         private static int NameStart(string text, int end)
         {
             var start = end;
@@ -680,7 +682,7 @@ namespace Velvet.Editor
                 }
                 else
                 {
-                    return start;
+                    return c is '@' or '#' or '\0' ? end : start;
                 }
             }
             return 0;
@@ -698,8 +700,8 @@ namespace Velvet.Editor
             return digits < digitsEnd && IsEscaped(text, digits) ? digits - 1 : -1;
         }
 
-        // The character the escape whose first character after the backslash is at k stands for, a hex escape past U+FFFD
-        // reading as U+FFFD, which no name it is compared with holds.
+        // The escape whose first character after the backslash is at k as a name's character: that character, or a hex
+        // escape's code point as a `char`, one past U+FFFD as U+FFFD. What it returns is compared with ASCII names alone.
         private static char Escaped(string text, int k)
         {
             var end = k;
