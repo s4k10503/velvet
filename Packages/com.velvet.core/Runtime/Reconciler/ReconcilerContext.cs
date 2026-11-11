@@ -2253,21 +2253,24 @@ namespace Velvet
         private readonly Dictionary<VisualElement, System.Func<VisualElement, System.Action>> _refsDetachedWhileHidden =
             new();
 
-        // Over element and every element below it: a setup still queued is taken back with the installed one. A
-        // render of the Suspense hiding an element patches it like any other, queueing a setup where its callback
-        // changed, and the hide that render ends with takes that setup back here.
         internal void DetachRefsWhileHidden(VisualElement element)
+        {
+            DetachRefWhileHidden(element);
+            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+        }
+
+        // A setup still queued is taken back with the installed one. A render of the Suspense hiding an element
+        // patches it like any other, queueing a setup where its callback changed, and the hide that render ends with
+        // takes that setup back here.
+        internal void DetachRefWhileHidden(VisualElement element)
         {
             var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)
                 ? _pendingRefAttaches[queued].Callback
                 : RefCallbacks.TryGetValue(element, out var installed) ? installed.Callback : null;
-            if (callback != null)
-            {
-                DetachRefCallback(element);
-                DropPendingRefAttach(element);
-                _refsDetachedWhileHidden[element] = callback;
-            }
-            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+            if (callback == null) return;
+            DetachRefCallback(element);
+            DropPendingRefAttach(element);
+            _refsDetachedWhileHidden[element] = callback;
         }
 
         // Over element and every element below it, short of one a nested Suspense still hides, whose refs that
@@ -2845,9 +2848,9 @@ namespace Velvet
             internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
 
             // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
-            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
-            // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
-            // an entry has no second route to it. Several Portals rendering into one container reach one
+            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: a fiber a
+            // reconcile leaves unstamped is still reached through the parent index, and an entry has no second
+            // route to it. Several Portals rendering into one container reach one
             // entry, so this names the last of them to expand it rather than all of them —
             // AnimatePresenceStateRetirementTests' shared-container case is what goes red if a teardown
             // starts reaching an entry another Portal still holds leaves for.

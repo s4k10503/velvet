@@ -695,6 +695,7 @@ namespace Velvet
                 var contextSpine = FiberContextSpine.Push(fiber);
                 try
                 {
+                    using var portal = new FiberCommitWork.PortalScope(resumeContext, fiber);
                     if (fiber.IsInlineMounted)
                     {
                         // Logical (container-blind) count, not raw childCount: this same ContinueReconcile call

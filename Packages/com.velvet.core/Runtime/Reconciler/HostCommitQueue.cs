@@ -186,23 +186,16 @@ namespace Velvet
             return parent.IndexOf(target);
         }
 
-        // A Suspense's hide of one of its outermost host elements, and its reveal. releaseFocus lets go of a focus
-        // inside the element as the hide lands, which UI Toolkit does only at its next layout pass
-        // (SuspenseHiddenFocusPanelTests).
-        internal void Hide(VisualElement element, bool releaseFocus)
+        // A Suspense's hide of one of its outermost host elements.
+        internal void Hide(VisualElement element)
         {
             SuspenseHiddenElements.Hide(element);
             _ctx.DetachRefsWhileHidden(element);
-            if (!releaseFocus) return;
-            var focused = element.focusController?.focusedElement as VisualElement;
-            if (SuspenseHiddenElements.IsAtOrUnderHidden(focused)) focused!.Blur();
         }
 
-        internal void Unhide(VisualElement element)
-        {
-            SuspenseHiddenElements.Reveal(element);
-            _ctx.AttachRefsHiddenUnder(element);
-        }
+        internal void ApplyOffscreenChanges(List<(int Row, VisualElement Element, bool Hidden)>? displayChanges,
+            List<(ComponentFiber Fiber, bool Hidden)>? offscreenChanges)
+            => SuspenseOffscreenCommit.Apply(_ctx, displayChanges, offscreenChanges);
 
         // Where a walk placed a component's rows.
         internal void PlaceRows(ComponentFiber fiber, int slotStart, int count)

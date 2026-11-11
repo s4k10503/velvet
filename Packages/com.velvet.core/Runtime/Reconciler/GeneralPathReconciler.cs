@@ -1696,13 +1696,21 @@ namespace Velvet
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
             var roots = new HashSet<VisualElement>();
-            for (var i = from; i < to; i++)
+            _targetRows = RenderedChildrenCache.Rent();
+            try
             {
-                // CommitLeaf records an element for every leaf it commits.
-                var row = commit.NewElements[i].element!;
-                if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
-                if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
-                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+                for (var i = from; i < to; i++)
+                {
+                    // CommitLeaf records an element for every leaf it commits.
+                    var row = commit.NewElements[i].element!;
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
+                    if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
+                    AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+                }
+            }
+            finally
+            {
+                _targetRows.Return();
             }
             foreach (var (fiber, placeholder) in HeldFibers(roots))
             {
@@ -1731,6 +1739,10 @@ namespace Velvet
             }
         }
 
+        // The rows of the Portal targets a SetPrimaryHidden call reaches, each target read once for the call, which
+        // rents it; AddWithPortalChildren runs only inside that call.
+        private RenderedChildrenCache? _targetRows;
+
         private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
             GeneralCommitState commit, InlineWalk walk, bool hidden)
         {
@@ -1739,12 +1751,15 @@ namespace Velvet
             (commit.DisplayChanges ??= new()).Add((row, element, hidden));
             foreach (var (placeholder, slots) in _ctx.PortalState)
             {
-                // An entry with no target holds no slot, so its loop below runs no step.
-                if (HolderOf(placeholder, roots) != element) continue;
-                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
+                if (slots.Target == null || HolderOf(placeholder, roots) != element) continue;
+                var rows = _targetRows!.Of(slots.Target);
+                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength && slot < rows.Count; slot++)
                 {
-                    if (!LogicalChildSlots.TryGetPhysical(slots.Target!, slot, out var physical)) break;
-                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden);
+                    // A relocated row is hidden or revealed as the element it stands for, as SetPrimaryHidden takes a
+                    // row of the walk's own.
+                    var portalRow = rows[slot];
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(portalRow, out var relocated)) portalRow = relocated;
+                    AddWithPortalChildren(portalRow, roots, row, commit, walk, hidden);
                 }
             }
         }
@@ -1901,22 +1916,7 @@ namespace Velvet
         }
 
         private void ApplyOffscreenChanges(GeneralCommitState commit)
-        {
-            if (commit.DisplayChanges != null)
-            {
-                foreach (var (_, element, hidden) in commit.DisplayChanges)
-                {
-                    if (hidden) _ctx.HostCommit.Hide(element, releaseFocus: true);
-                    else _ctx.HostCommit.Unhide(element);
-                }
-            }
-            if (commit.OffscreenChanges == null) return;
-            foreach (var (fiber, hidden) in commit.OffscreenChanges)
-            {
-                if (hidden) FiberEffects.HideLayoutEffects(fiber);
-                else FiberEffects.ShowLayoutEffects(fiber, _ctx);
-            }
-        }
+            => _ctx.HostCommit.ApplyOffscreenChanges(commit.DisplayChanges, commit.OffscreenChanges);
 
         // Walks what the boundary's record says is in the container — the fallback, behind the primary where that
         // is kept hidden, or else the primary — and says whether the fallback is shown.

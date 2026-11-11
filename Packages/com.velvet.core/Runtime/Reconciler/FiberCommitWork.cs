@@ -320,6 +320,7 @@ namespace Velvet
         internal static void DrainPendingWork(ComponentFiber fiber)
         {
             fiber.ParkedPassSuspended = false;
+            using var portal = new PortalScope(fiber.Reconciler!.Context, fiber);
             if (fiber.IsInlineMounted)
             {
                 var drain = new RowCountWindow(fiber);
@@ -390,6 +391,7 @@ namespace Velvet
             VNode?[] newTree, double frameBudgetMs, ComponentFiber? catchingBoundary)
         {
             var reconciler = fiber.Reconciler!;
+            using var portal = new PortalScope(reconciler.Context, fiber);
             if (!fiber.IsInlineMounted)
             {
                 return reconciler.ReconcileCatching(
@@ -401,6 +403,27 @@ namespace Velvet
                 fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
             reconciler.Context.HostCommit.ShiftRows(fiber, rows.UnshiftedChange);
             return caught;
+        }
+
+        // Names the Portal a fiber's rows sit in while those rows are reconciled, by ReconcileRows or by a resumed
+        // slice of them, so the fibers they hold are stamped with it as the Portal's own reconcile stamped them; the
+        // enclosing value goes back once the rows are done.
+        internal readonly struct PortalScope : IDisposable
+        {
+            private readonly ReconcilerContext _context;
+            private readonly VisualElement? _enclosing;
+
+            internal PortalScope(ReconcilerContext context, ComponentFiber fiber)
+            {
+                _context = context;
+                _enclosing = context.CurrentPortalPlaceholder;
+                context.CurrentPortalPlaceholder = EnclosingPortalOf(fiber);
+            }
+
+            public void Dispose()
+            {
+                _context.CurrentPortalPlaceholder = _enclosing;
+            }
         }
 
         // When deferReconcile is true (initial inline mount), the commit is performed by the caller's parent
@@ -426,6 +449,16 @@ namespace Velvet
             {
                 if (treeContext != null) treeContext.CurrentFiberTree = enclosingFiberTree;
             }
+        }
+
+        // The Portal whose children the fiber's rows are among: the fiber's stamp, or the nearest one up its chain.
+        private static VisualElement? EnclosingPortalOf(ComponentFiber fiber)
+        {
+            for (var holder = fiber; holder != null; holder = holder.Parent)
+            {
+                if (holder.OwningPortalPlaceholder != null) return holder.OwningPortalPlaceholder;
+            }
+            return null;
         }
 
         // Returns the prior committed tree to the VNode pool after the reconcile, or parks / defers it.

@@ -46,7 +46,20 @@ namespace Velvet
         internal static List<LayoutStep> Interleave(
             ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered, List<PendingRefAttach> refs)
         {
-            var tree = new LogicalElementTree(ctx);
+            var tree = LogicalElementTree.Rent(ctx);
+            try
+            {
+                return Interleave(ordered, refs, tree);
+            }
+            finally
+            {
+                tree.Return();
+            }
+        }
+
+        private static List<LayoutStep> Interleave(
+            List<(ComponentFiber Fiber, bool IsMount)> ordered, List<PendingRefAttach> refs, LogicalElementTree tree)
+        {
             var placer = new Placer(ordered, tree);
             var gaps = new Dictionary<int, List<PendingRefAttach>>();
             foreach (var entry in refs)
@@ -151,17 +164,52 @@ namespace Velvet
 
     // Reads the order of elements in the tree the components describe rather than the one the panel holds: a
     // Portal's rows are children of its placeholder, and a z-* element is the placeholder left at its slot. The
-    // maps are built once for a commit, and the tree does not change while the commit places setups.
+    // maps are built when the tree is filled, and each container's children read once while it is held
+    // (RenderedChildrenCache), which its holders do over work that changes no element.
     internal sealed class LogicalElementTree
     {
-        private readonly ReconcilerContext _ctx;
+        // An instance per holder on the stack, so a commit nested in another takes one of its own.
+        private static readonly Stack<LogicalElementTree> s_pool = new();
+
+        private ReconcilerContext _ctx = null!;
         private readonly Dictionary<VisualElement, VisualElement> _standInOf = new();
         private readonly Dictionary<VisualElement, List<(VisualElement Placeholder, int Start, int Length)>> _portalsOf
             = new();
+        private readonly Stack<List<(VisualElement Placeholder, int Start, int Length)>> _spareRanges = new();
         private readonly List<VisualElement> _chainA = new();
         private readonly List<VisualElement> _chainB = new();
+        private readonly RenderedChildrenCache _rendered = new();
 
-        internal LogicalElementTree(ReconcilerContext ctx)
+        internal LogicalElementTree(ReconcilerContext ctx) => Fill(ctx);
+
+        private LogicalElementTree()
+        {
+        }
+
+        internal static LogicalElementTree Rent(ReconcilerContext ctx)
+        {
+            var tree = s_pool.Count > 0 ? s_pool.Pop() : new LogicalElementTree();
+            tree.Fill(ctx);
+            return tree;
+        }
+
+        internal void Return()
+        {
+            _ctx = null!;
+            _standInOf.Clear();
+            foreach (var ranges in _portalsOf.Values)
+            {
+                ranges.Clear();
+                _spareRanges.Push(ranges);
+            }
+            _portalsOf.Clear();
+            _chainA.Clear();
+            _chainB.Clear();
+            _rendered.Clear();
+            s_pool.Push(this);
+        }
+
+        private void Fill(ReconcilerContext ctx)
         {
             _ctx = ctx;
             foreach (var pair in ctx.ZLayerPlaceholders) _standInOf[pair.Value] = pair.Key;
@@ -171,7 +219,9 @@ namespace Velvet
                 if (target == null) continue;
                 if (!_portalsOf.TryGetValue(target, out var ranges))
                 {
-                    ranges = new List<(VisualElement Placeholder, int Start, int Length)>();
+                    ranges = _spareRanges.Count > 0
+                        ? _spareRanges.Pop()
+                        : new List<(VisualElement Placeholder, int Start, int Length)>();
                     _portalsOf[target] = ranges;
                 }
                 ranges.Add((pair.Key, pair.Value.SlotStart, pair.Value.SlotLength));
@@ -202,6 +252,26 @@ namespace Velvet
             return Precedes(parent, element);
         }
 
+        // RenderedChildrenCache.StartOf, each container read once while the tree is held.
+        internal VisualElement? StartOf(ComponentFiber fiber, out VisualElement? endOf) => _rendered.StartOf(fiber, out endOf);
+
+        // Whether element, or with atEnd the place behind its last child, comes after everything inside subtree.
+        internal bool ComesAfter(VisualElement subtree, VisualElement element, bool atEnd)
+        {
+            var chainA = ChainOf(subtree, _chainA);
+            var chainB = ChainOf(element, _chainB);
+            var ia = chainA.Count - 1;
+            var ib = chainB.Count - 1;
+            while (ia > 0 && ib > 0 && ReferenceEquals(chainA[ia - 1], chainB[ib - 1]))
+            {
+                ia--;
+                ib--;
+            }
+            if (ia == 0) return false;
+            if (ib == 0) return atEnd;
+            return SiblingPrecedes(chainA[ia - 1], chainB[ib - 1]);
+        }
+
         // Whether the walk completes a before b: a is inside b, or comes earlier in the tree.
         internal bool Precedes(VisualElement a, VisualElement b)
         {
@@ -222,12 +292,12 @@ namespace Velvet
         // Whether a comes first among the children of its parent, which is b's as well: a and b are the two
         // branches under their lowest common ancestor, and a branch is a physical child of it, or a row of the one
         // Portal target it stands for.
-        private static bool SiblingPrecedes(VisualElement a, VisualElement b)
+        private bool SiblingPrecedes(VisualElement a, VisualElement b)
         {
             var parent = a.hierarchy.parent;
-            // MUTANT_SURVIVES(equivalent, boundary): a and b are distinct branches under their lowest common ancestor,
-            // which the loop in Precedes stops at when the two chains differ, so their indices never tie.
-            return parent.IndexOf(a) < parent.IndexOf(b);
+            // MUTANT_SURVIVES(equivalent, boundary): a and b are two distinct branches under their lowest common
+            // ancestor, where the loop in Precedes stops once the chains differ, so their indices never tie.
+            return _rendered.IndexIn(parent, a) < _rendered.IndexIn(parent, b);
         }
 
         // The element and each parent it has in this tree, up to the root.
@@ -252,7 +322,6 @@ namespace Velvet
             return physical;
         }
 
-        private static int LogicalSlotOf(VisualElement element)
-            => LogicalChildSlots.ToLogical(element.hierarchy.parent, element.hierarchy.parent.IndexOf(element));
+        private int LogicalSlotOf(VisualElement element) => _rendered.SlotIn(element.hierarchy.parent, element);
     }
 }

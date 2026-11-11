@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -423,10 +424,59 @@ namespace Velvet
                 }
             }
 
+            PlacePortalChildrenAtTheirPortals(ctx, deduped);
+
             var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
             OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
             bufferPool.ReturnFiberSet(pushedSet);
             return ordered;
+        }
+
+        // A Portal's children mount once the walk that rendered the Portal has ended
+        // (ChildReconciler.DrainPendingPortalMounts), so the entries they push come after the walk's, where React's
+        // commit reaches them at the Portal. A run of entries carrying one Portal's placeholder moves ahead of the
+        // entries before it whose output comes after that placeholder.
+        private static void PlacePortalChildrenAtTheirPortals(
+            ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> deduped)
+        {
+            if (ctx.PortalState.Count == 0) return;
+            LogicalElementTree? tree = null;
+            try
+            {
+                var i = 0;
+                while (i < deduped.Count)
+                {
+                    var placeholder = deduped[i].Fiber.OwningPortalPlaceholder;
+                    if (placeholder == null || !ctx.PortalState.ContainsKey(placeholder))
+                    {
+                        i++;
+                        continue;
+                    }
+                    var end = i + 1;
+                    while (end < deduped.Count && ReferenceEquals(deduped[end].Fiber.OwningPortalPlaceholder, placeholder)) end++;
+                    var at = i;
+                    while (at > 0 && OutputComesAfter(tree ??= LogicalElementTree.Rent(ctx), placeholder, deduped[at - 1].Fiber)) at--;
+                    if (at < i)
+                    {
+                        // Rotated in place, the run ahead of what it passed.
+                        deduped.Reverse(at, i - at);
+                        deduped.Reverse(i, end - i);
+                        deduped.Reverse(at, end - at);
+                    }
+                    i = end;
+                }
+            }
+            finally
+            {
+                tree?.Return();
+            }
+        }
+
+        private static bool OutputComesAfter(LogicalElementTree tree, VisualElement placeholder, ComponentFiber fiber)
+        {
+            var start = tree.StartOf(fiber, out var endOf);
+            if (start != null) return tree.ComesAfter(placeholder, start, atEnd: false);
+            return endOf != null && tree.ComesAfter(placeholder, endOf, atEnd: true);
         }
 
         // The entry goes ahead of the first fiber it precedes in the tree. Its ancestors and descendants it
@@ -447,7 +497,7 @@ namespace Velvet
 
         // Of two branches under one parent, the one earlier in its child list precedes. A fiber and its ancestor
         // or descendant read false both ways, as do two fibers with no common ancestor.
-        private static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
+        internal static bool PrecedesInTreeOrder(ComponentFiber a, ComponentFiber b)
         {
             for (var branchOfA = a; branchOfA.Parent != null; branchOfA = branchOfA.Parent)
             {
