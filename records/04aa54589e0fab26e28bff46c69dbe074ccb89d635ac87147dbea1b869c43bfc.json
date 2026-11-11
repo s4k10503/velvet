@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 8 failed among the 568 case(s) that ran the site: Given_ACancelledRequest_When_TheGcTimePassesAfterTheReaderLeft_Then_TheEntryIsCollected, Given_AMountedQuery_When_ItsKeyChangesAndTheOldGcTimePasses_Then_TheOldEntryIsCollected, Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadAtNine_Then_ItIsCollected",
+ "detail": "EditMode: 8 failed among the 571 case(s) that ran the site: Given_ACancelledRequest_When_TheGcTimePassesAfterTheReaderLeft_Then_TheEntryIsCollected, Given_AMountedQuery_When_ItsKeyChangesAndTheOldGcTimePasses_Then_TheOldEntryIsCollected, Given_AnEntryUnreadFromZeroWhoseRequestLandsAtFour_When_ReadAtNine_Then_ItIsCollected",
  "file": "88660c3891deb64c798514cd618527ecd5f64471abe418bbbe6a66b52f652eca",
  "killers": [
   {
@@ -7,7 +7,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -15,7 +16,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -23,7 +25,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -31,7 +34,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -39,7 +43,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -47,7 +52,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -55,7 +61,8 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -63,11 +70,12 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueryHookTests.cs": "ff6981733a1e16d29a64a49e4f8dde10e09fdeeee21d6793942337d8c34d4a37",
     "Packages/com.velvet.core/TestUtilities/ContainedFailureLog.cs": "623706a4b6e77e60fac7e83f93a59bf4d7050a549fd238f0de705adb0795fbae",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "entry.RenderHoldPolls = 0;",
@@ -81,6 +89,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

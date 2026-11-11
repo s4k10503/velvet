@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 8 case(s) that ran the site: Given_PercentageOffsetsFromTheFarEdges_When_Extracted_Then_TheCentreIsInsideTheBox",
  "file": "93f02f0d80ab8cdb574e37a671375a392431b58dc2ea693de06b946fb20a6430",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.GradientPositionTests.Given_PercentageOffsetsFromTheFarEdges_When_Extracted_Then_TheCentreIsInsideTheBox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientPositionTests.cs": "a48102fa2235257dfd66ed6e74ed54b751b9bb5703f088c7e4152a4a12d8cd6a"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

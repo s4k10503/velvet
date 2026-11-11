@@ -1,37 +1,18 @@
 {
- "detail": "EditMode: 4 failed among the 15 case(s) that ran the site: Given_ACustomHookComposingOnlyValueHooks_When_Compiled_Then_TheBodyAndBothLabelsAreCached, Given_APropertyReadOffAStructState_When_Compiled_Then_NothingIsLeftUncached, Given_ASwitchWhoseOtherArmThrowsAheadOfTheTail_When_Compiled_Then_TheBodyAndBothLabelsAreCached",
+ "detail": "EditMode: 1 failed among the 83 case(s) that ran the site: Given_ALabelCallingAMethodOnALocalChosenByAConditionalReference_When_Compiled_Then_TheBodyIsWoven",
  "file": "b68169e271dee6192d11d9a0328932d279ad3f5a835d00e5939c507284481681",
  "killers": [
   {
-   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_ACustomHookComposingOnlyValueHooks_When_Compiled_Then_TheBodyAndBothLabelsAreCached",
+   "case": "Velvet.Tests.ReactiveScopeDependencyTests.Given_ALabelCallingAMethodOnALocalChosenByAConditionalReference_When_Compiled_Then_TheBodyIsWoven",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
-   }
-  },
-  {
-   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_APropertyReadOffAStructState_When_Compiled_Then_NothingIsLeftUncached",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
-   }
-  },
-  {
-   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_ASwitchWhoseOtherArmThrowsAheadOfTheTail_When_Compiled_Then_TheBodyAndBothLabelsAreCached",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
-   }
-  },
-  {
-   "case": "Velvet.Tests.ReactiveScopeSelectionTests.Given_ATryAheadOfTheTail_When_Compiled_Then_TheBodyAndBothLabelsAreCached",
-   "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeSelectionTests.cs": "8d6a68f4bdfbf18ca1e869d1b0aa3b45615467f3b6a2ad055bd7a5583ac156e8",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeDependencyTests.cs": "565f2f5b5ed02dfeb4cb8072524e056d933c280d4e2c4c2e878ac6108d4802aa",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/ReactiveScopeTestSupport.cs": "1a6cfc790d411eead2a0ac87d846f948e098bb0b651e6bec15a43a489dbd2137",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "40242988482",
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "BodyGate = bodyGate;",
@@ -45,6 +26,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "0512b43a5fa251938348f834e65769389f66a57fb578db5ff2713e35c4061839",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

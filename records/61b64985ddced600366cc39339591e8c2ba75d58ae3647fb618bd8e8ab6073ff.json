@@ -1,5 +1,5 @@
 {
- "detail": "EditMode: 1 failed among the 313 case(s) that ran the site: Given_ClipPathItems_When_OverlappingRangeRepatchesThem_Then_ItemsAreNotDoubleWrapped",
+ "detail": "EditMode: 1 failed among the 319 case(s) that ran the site: Given_ClipPathItems_When_OverlappingRangeRepatchesThem_Then_ItemsAreNotDoubleWrapped",
  "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
  "killers": [
   {
@@ -8,13 +8,14 @@
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/PublicApiSurfaceTests.cs": "047f093054d47bed7fe15f75060d6c41bed15da284c22b5ea31fd014c737fb54",
     "Packages/com.velvet.core/Runtime/Component/Tests/Editor/VirtualListTests.cs": "aacf6a5871e0712f3eaaed47cd8c069ed4fa22abb3c567b79a8bde956f6510fb",
     "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c",
     "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1"
    }
   }
  ],
- "measured_by": "42609496466",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -28,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

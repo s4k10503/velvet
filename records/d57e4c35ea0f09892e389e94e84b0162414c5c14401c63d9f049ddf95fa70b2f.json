@@ -1,25 +1,27 @@
 {
- "detail": "EditMode: 2 failed among the 315 case(s) that ran the site: Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox, Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
+ "detail": "EditMode: 2 failed among the 327 case(s) that ran the site: Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox, Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
  "file": "e1547c05cb7139d54aea11bee58866124ad95a481b4634af42629217fca1521c",
  "killers": [
   {
    "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "d403f74ee4e62a1f551afff7dabd0a0e854e3fdc19bfebd51ecb03089121e24f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e37a1a559c54ef339d58fb3bc1c37903d1bf7144ac8de1ea145aba5c2a9c2b6e",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
    "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "d403f74ee4e62a1f551afff7dabd0a0e854e3fdc19bfebd51ecb03089121e24f",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e37a1a559c54ef339d58fb3bc1c37903d1bf7144ac8de1ea145aba5c2a9c2b6e",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "SetEntry(ctx, layoutId, null, box);",
@@ -33,6 +35,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

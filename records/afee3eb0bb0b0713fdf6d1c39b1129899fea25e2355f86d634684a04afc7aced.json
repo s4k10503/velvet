@@ -5,12 +5,13 @@
   {
    "case": "Velvet.Tests.QueryCacheTests.Given_TwoEntriesSharingAnOpaquePart_When_BothAreRemovedAndAnEntryTakesThePartAgain_Then_ItIsGivenANewNumber",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "2e695ba4926c7e57a5757f17461f761926d20f590572ec4cdb58292623c18857",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -24,6 +25,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

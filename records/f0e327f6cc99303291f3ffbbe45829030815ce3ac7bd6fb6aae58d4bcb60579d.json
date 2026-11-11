@@ -7,8 +7,9 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -16,8 +17,9 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   },
   {
@@ -25,12 +27,13 @@
    "files": {
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb"
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -44,6 +47,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

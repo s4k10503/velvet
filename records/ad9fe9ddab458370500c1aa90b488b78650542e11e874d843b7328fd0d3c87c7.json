@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ARoundedLayoutIdMotionWithAVectorBackgroundImage_When_ItIsDrawnScaledDifferentlyOnEachAxis_Then_ItsRadiusSlotsHoldARadius",
+ "file": "841ff16898e1c19acbfc5eb2d3b4e98ba4038e99afe41e61aeba552622022860",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ProjectedCornerFaceLifecycleTests.Given_ARoundedLayoutIdMotionWithAVectorBackgroundImage_When_ItIsDrawnScaledDifferentlyOnEachAxis_Then_ItsRadiusSlotsHoldARadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ProjectedCornerFaceLifecycleTests.cs": "4db735d1b94034e3e1bb8150fcbbca5226958d7660e848210a0734943a6f60d7",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 124,
+  "line": 170,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs",
+  "shadowed": [
+   "guard removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

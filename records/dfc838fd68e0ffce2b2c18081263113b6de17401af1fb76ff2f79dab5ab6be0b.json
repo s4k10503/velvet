@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 29 case(s) that ran the site: Given_ASequenceSegmentWithNoTransition_When_HalfOfThreeTenthsOfASecondPasses_Then_ItIsHalfwayAlongTheEaseOut",
  "file": "fe9b28a9bb2e0507bda18a8954533ed8970f2e647b5d4b0ca3f436ee5c9e81f3",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentWithNoTransition_When_HalfOfThreeTenthsOfASecondPasses_Then_ItIsHalfwayAlongTheEaseOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "1cb58c3cab3cf7a52c20974ae1d661cb2d1f9ab1c06c345abff6b559a71c578f"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "_ease = EaseOut;",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

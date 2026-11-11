@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.ColourReferenceWatchTests.Given_ADividedEdgeOfAFacedRow_When_TheDividersColourChanges_Then_AnInheritorFollowsTheDivider",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "191420bad426b6a5036464df80605c36b9aa8f54e05d41a26ea14b54cac3d460",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "f0c456ff8b29b859a79c101b58ae2f31db0a6f9002e67dbb7c8565a4dc6eb33a",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
     "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
@@ -15,7 +15,7 @@
    }
   }
  ],
- "measured_by": "42609496466",
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "ColorReferenceWatch.NotifyWritten(child);",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

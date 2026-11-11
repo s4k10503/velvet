@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 47 case(s) that ran the site: Given_AShadowedElementOffThePanel_When_APatchAddsRoundedLg_Then_TheShadowCornerTakesItsRadius",
+ "file": "6083cdbc0e9edfd59fbc66b9373dfea767c27fe87e4c53376a5042ee24e27f2a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowBindingSyncTests.Given_AShadowedElementOffThePanel_When_APatchAddsRoundedLg_Then_TheShadowCornerTakesItsRadius",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowBindingSyncTests.cs": "cfd0ff1f1eb0e81df4f45a9850215b914190a48f5ba3a2700764adc51ddb727f"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": ";",
+  "before": "binding.ClassNames = request.ClassNames;",
+  "column": 12,
+  "line": 313,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

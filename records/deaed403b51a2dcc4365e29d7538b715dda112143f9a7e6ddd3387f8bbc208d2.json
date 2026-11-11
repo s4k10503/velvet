@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.BorderStyleOverlaySettleTests.Given_AClippingDashedElementDetachedWithASettleQueued_When_TheSettleRuns_Then_NoOverlayIsPutBack",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderStyleOverlaySettleTests.cs": "f11054b14282940bc750e9dda0da7d6dc03ae6a803aacc34d18019b72542c570",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderStyleOverlaySettleTests.cs": "4ee022396f5ea3c222cd72a2c1042b9d384aa0563ef3e2d58669c4b66ba8f7d6",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
@@ -13,7 +13,7 @@
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

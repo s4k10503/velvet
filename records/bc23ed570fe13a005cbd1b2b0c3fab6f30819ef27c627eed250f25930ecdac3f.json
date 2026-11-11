@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_AnElementWhoseOnlyClassReadsAVariable_When_TheClassLeaves_Then_TheElementIsNoLongerWatched",
  "file": "db7ac017d203386a81a59b99c0b195042e8ee7c23fbd284ab7f8097aefe76f6c",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.CustomPropertyConsumerWatchTests.Given_AnElementWhoseOnlyClassReadsAVariable_When_TheClassLeaves_Then_TheElementIsNoLongerWatched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/CustomPropertyConsumerWatchTests.cs": "10c1c516d27dcf482902777622408a1b2682bab24fdec4c6dac3b32bde662080"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": "==",
   "before": "!=",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

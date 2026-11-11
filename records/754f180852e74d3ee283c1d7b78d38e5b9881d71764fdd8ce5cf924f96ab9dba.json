@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 16 case(s) that ran the site: Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(\"shadow-lg/150 shadow-red-500\",\"shadow-lg shadow-inherit\"), Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(\"inset-shadow-sm/150 inset-shadow-red-500\",\"inset-shadow-sm inset-shadow-inherit\")",
+ "file": "1eab359527cf77407e1abb0edd6dbc00f9a66912592d19042c1e267b8d71ce72",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(\"inset-shadow-sm/150 inset-shadow-red-500\",\"inset-shadow-sm inset-shadow-inherit\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "7777a29fdfaaf97c49aacd205a88600f25295de56bd642174f42257847bc9ffd",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.BoxShadowDiscardTests.Given_AParentWhoseSizeModifierPast100MixesItsShadowColour_When_AChildInheritsIt_Then_TheChildDrawsNoBoxShadow(\"shadow-lg/150 shadow-red-500\",\"shadow-lg shadow-inherit\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BoxShadowDiscardTests.cs": "7777a29fdfaaf97c49aacd205a88600f25295de56bd642174f42257847bc9ffd",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 43,
+  "line": 363,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

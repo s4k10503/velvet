@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 27 case(s) that ran the site: Given_AnInchShadowOffset_When_Extracted_Then_ItIsNinetySixPixels",
+ "file": "1eab359527cf77407e1abb0edd6dbc00f9a66912592d19042c1e267b8d71ce72",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AbsoluteLengthUnitTests.Given_AnInchShadowOffset_When_Extracted_Then_ItIsNinetySixPixels",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/AbsoluteLengthUnitTests.cs": "ca77145832417e8e578a09f2c496249cb369d731362a48460188a13cf2f96c6e"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 31,
+  "line": 723,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

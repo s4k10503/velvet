@@ -1,0 +1,26 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "841ff16898e1c19acbfc5eb2d3b4e98ba4038e99afe41e61aeba552622022860",
+ "killers": [],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 19,
+  "line": 666,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Styling/ProjectedCornerFace.cs",
+  "shadowed": [
+   "boundary",
+   "clause removed",
+   "guard removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "survived"
+}

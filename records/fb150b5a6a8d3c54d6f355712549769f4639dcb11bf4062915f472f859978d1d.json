@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 303 case(s) that ran the site: Given_AnIndexRouteDeclaredAfterAnEmptyPathSibling_When_MatchingTheParentPath_Then_TheIndexRouteEndsTheChain",
+ "file": "63fa6ecd4172709f37b655bb7b42bba9c2a611631b6fee4f8b5362b64ffc3e98",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RouteIndexTests.Given_AnIndexRouteDeclaredAfterAnEmptyPathSibling_When_MatchingTheParentPath_Then_TheIndexRouteEndsTheChain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteIndexTests.cs": "4b46f846f13461b2d7cbdc5b467094f49171916d72f7654abc903a9677381acd",
+    "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
+    "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 30,
+  "line": 38,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

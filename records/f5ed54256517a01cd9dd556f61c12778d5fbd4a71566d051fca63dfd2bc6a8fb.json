@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 4 case(s) that ran the site: Given_APlayUnderAnImportantLayerThatArrivedAfterIt_When_ThePlayReverses_Then_ThePlaysValueIsShown",
  "file": "84fc2b87cc56de2853d74b85b3a7d02034395a98f466e37eeab4d9e763d2fa4a",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ArbitraryStyleLayerTests.Given_APlayUnderAnImportantLayerThatArrivedAfterIt_When_ThePlayReverses_Then_ThePlaysValueIsShown",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryStyleLayerTests.cs": "a36d25b3014ff0199ef6fc6e604f90f4d32a25ecfc1edf07f00fa78b412b15c8"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "WriteDriven(element, map, write);",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

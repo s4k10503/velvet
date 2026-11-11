@@ -1,8 +1,20 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_ATransformOriginAndAFilterTransitionRunning_When_AFilterChangeLandsAtOnce_Then_TheCancelCarriesTheTimeTheFilterRan",
  "file": "8e65f7682be0c59a04aa156aec0ba409192d6b38c71b52447d075e395d18ab33",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FilterTransitionPanelTests.Given_ATransformOriginAndAFilterTransitionRunning_When_AFilterChangeLandsAtOnce_Then_TheCancelCarriesTheTimeTheFilterRan",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FilterTransitionPanelTests.cs": "3c708f0c883281ee3b51db31106673a1eedb21b3f1d67b9a24382478165f42e8",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": ";",
   "before": "style.filter = new List<FilterFunction> { Unpaired(shown[0].type, list[0].type) };",
@@ -13,9 +25,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

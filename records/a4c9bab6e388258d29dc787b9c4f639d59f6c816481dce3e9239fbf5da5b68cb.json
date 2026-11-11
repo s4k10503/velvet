@@ -8,8 +8,9 @@
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
    }
@@ -20,8 +21,9 @@
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
    }
@@ -32,8 +34,9 @@
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
    }
@@ -44,14 +47,15 @@
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequenceMotionTestsBase.cs": "8f54880dede5e36babdcee611a543d9f181805455eee6d4f4fb39634f9092fa5",
     "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimationSequencePauseReachTests.cs": "af7eb9d978c4139b398d4ce934e756834e86344e366a003bcfdb173856031e70",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
     "Packages/com.velvet.core/TestUtilities/UseFrameFakeClockHost.cs": "832e6d1a29eac04e37d6f7a12601c3572a72772621452748e332bb8c2d3d1194"
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "||",
   "before": "&&",
@@ -65,6 +69,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

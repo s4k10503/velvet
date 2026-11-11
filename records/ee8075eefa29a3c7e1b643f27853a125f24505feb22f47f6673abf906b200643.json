@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ANegatedBackdropFunctionOtherThanHueRotate_When_Extracted_Then_NothingIsDeclared",
  "file": "0811ca377b58ca499c22e02c872eeaecd5738c673a3b3cb2b885ddb9b1095ba6",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BackdropClassExtractTests.Given_ANegatedBackdropFunctionOtherThanHueRotate_When_Extracted_Then_NothingIsDeclared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BackdropClassExtractTests.cs": "95f7cf2cbe822128640fb2a9978ce4e41851d0a4d38190d354e395678570a282"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -13,9 +20,9 @@
   "shadowed": []
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

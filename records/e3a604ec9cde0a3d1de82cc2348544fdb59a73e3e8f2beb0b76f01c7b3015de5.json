@@ -1,8 +1,18 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed among the 856 case(s) that ran the site: Given_AChildThatHoverMakesAbsolute_When_HoverStarts_Then_ItPaintsOverItsSibling",
  "file": "dce543cd216a1fadb2c0a6bf6107b5ce4ec8a1c51f11fc9d94f1b14319826135",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.PositionVariantRestackTests.Given_AChildThatHoverMakesAbsolute_When_HoverStarts_Then_ItPaintsOverItsSibling",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/PositionVariantRestackTests.cs": "329354a8ca6aeb2b5f2854e7ca88fa5e7764291aaedc35544045bfbd82dc7a48",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c",
+    "Packages/com.velvet.core/TestUtilities/ZBandProbe.cs": "89b5305bd9e43f72156f5a3d8c6f121f5ebcbee121486fdbb8e4b04b315feaaa"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": "!=",
   "before": "==",
@@ -17,9 +27,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

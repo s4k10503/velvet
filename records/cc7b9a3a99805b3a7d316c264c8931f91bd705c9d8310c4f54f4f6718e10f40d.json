@@ -1,11 +1,11 @@
 {
- "detail": "EditMode: 1 failed among the 180 case(s) that ran the site: Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_TheColourIsShownAgain_Then_NoColourIsLost",
+ "detail": "EditMode: 1 failed among the 181 case(s) that ran the site: Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_TheColourIsShownAgain_Then_NoColourIsLost",
  "file": "a468d14aa70b3798c6e01984291bdb51effb876bdb9e146bebd733ae3f502217",
  "killers": [
   {
    "case": "Velvet.Tests.BorderPreflightTests.Given_ABorderedLabelWhoseInlineBorderColourCodeClears_When_TheColourIsShownAgain_Then_NoColourIsLost",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightTests.cs": "231df235bfac2691b12032b20dd95aae3433f21706f97bd5e58aa55956322727",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BorderPreflightTests.cs": "3691b35298c2c75f8aa4332a556c26ef134292dd76600aabff39afff4fca47e6",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
@@ -15,7 +15,7 @@
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "",
   "before": " && (Uncovered(element, side) || !Holds(element, side, _colors[side]))",
@@ -33,6 +33,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

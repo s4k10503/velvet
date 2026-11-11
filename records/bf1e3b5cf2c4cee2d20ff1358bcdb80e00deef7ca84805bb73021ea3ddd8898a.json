@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: 1\")",
+ "file": "1eab359527cf77407e1abb0edd6dbc00f9a66912592d19042c1e267b8d71ce72",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ShadowClassParityTests.Given_ATailwindPreset_When_Extracted_Then_ItsLayersAreTheV4Theme(\"shadow\",\"0 1 3 0 0.1, 0 1 2 -1 0.1\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ShadowClassParityTests.cs": "e6608306a38fc266760f60699310b8c1624ab121bf718fba9eb02e2f5945441e"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 23,
+  "line": 507,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

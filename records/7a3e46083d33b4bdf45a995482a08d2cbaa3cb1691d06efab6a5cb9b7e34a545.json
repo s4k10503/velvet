@@ -1,8 +1,15 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode: 1 failed: Given_AResetLineBox_When_ItIsAskedWhetherItsTextSpansLines_Then_ItDoesNot; 1 other editor(s) were up",
  "file": "65df063b882f2b7c6cc315db90fffb2ee010e63912a80a90fdd16e04ee2177a5",
- "killers": [],
- "measured_by": "42757427640",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextLineBoxResetTests.Given_AResetLineBox_When_ItIsAskedWhetherItsTextSpansLines_Then_ItDoesNot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextLineBoxResetTests.cs": "3b403111db8078576d67b0649e3ddbfd763550c706bc0a7851e5ae352cadd7e2"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -15,9 +22,9 @@
   ]
  },
  "mutator": 10,
- "platform": "PlayMode",
+ "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
- "verdict": "survived"
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
 }

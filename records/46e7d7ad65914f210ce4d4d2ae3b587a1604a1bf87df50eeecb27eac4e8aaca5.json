@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 5 case(s) that ran the site: Given_AShadowBesideAValueTheBrowserRejects_When_Extracted_Then_TheShadowIsDiscarded(\"shadow-md inset-shadow-[inset_0_2px_4px_red]\")",
+ "file": "1eab359527cf77407e1abb0edd6dbc00f9a66912592d19042c1e267b8d71ce72",
+ "killers": [
+  {
+   "case": "Velvet.Tests.RejectedValueTests.Given_AShadowBesideAValueTheBrowserRejects_When_Extracted_Then_TheShadowIsDiscarded(\"shadow-md inset-shadow-[inset_0_2px_4px_red]\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/RejectedValueTests.cs": "38b3d176fc2d6f22a360ac340a8b3d714d275a1d3a8466b7fc658c2707d186a3"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": ";",
+  "before": "insets++;",
+  "column": 20,
+  "line": 745,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

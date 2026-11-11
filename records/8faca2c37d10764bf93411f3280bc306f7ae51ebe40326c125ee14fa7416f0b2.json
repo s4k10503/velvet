@@ -9,7 +9,8 @@
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RoutingHooksTests.cs": "1d77a85e147f15455a61196aafd0ca54d2a2c5eef17698740fbac2b0f9b82578",
     "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
    }
   },
@@ -20,7 +21,8 @@
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RoutingHooksTests.cs": "1d77a85e147f15455a61196aafd0ca54d2a2c5eef17698740fbac2b0f9b82578",
     "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
    }
   },
@@ -31,7 +33,8 @@
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RoutingHooksTests.cs": "1d77a85e147f15455a61196aafd0ca54d2a2c5eef17698740fbac2b0f9b82578",
     "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
    }
   },
@@ -42,7 +45,8 @@
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RoutingHooksTests.cs": "1d77a85e147f15455a61196aafd0ca54d2a2c5eef17698740fbac2b0f9b82578",
     "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
    }
   },
@@ -53,12 +57,13 @@
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RouteTestStubs.cs": "e6362642a4a6570b2b683eaa7ec1727a3cd53cd6de1d54a6164cd2248d03b3c2",
     "Packages/com.velvet.core/Runtime/Routing/Tests/Editor/RoutingHooksTests.cs": "1d77a85e147f15455a61196aafd0ca54d2a2c5eef17698740fbac2b0f9b82578",
     "Packages/com.velvet.core/TestUtilities/CancellationTokenStateProbe.cs": "1344802a4cabd68e13bb57149f007230f5fcb7785eb33f0af4f1445f53b92657",
-    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "76fa3013d12f161e87ace59cb66f8f6343c74231eeec622e143ced7853d221fb",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
     "Packages/com.velvet.core/TestUtilities/NullableAnnotationProbe.cs": "6f277d399cd33f1aabb4032f6fed2da4549d84671aacf822d7473dfde74f390c"
    }
   }
  ],
- "measured_by": "42606036406",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "<=",
   "before": "<",
@@ -72,6 +77,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

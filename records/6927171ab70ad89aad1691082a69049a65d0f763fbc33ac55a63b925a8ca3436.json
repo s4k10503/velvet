@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 33 case(s) that ran the site: Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt, Given_ARenderedCombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersOnce_Then_ItsCommitRendersWhatTheCombineMakesOfIt",
+ "file": "48607f7944aa0bc616939b88171166265284ac6cd58da9f7d478dbd153f2046e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "4d829adafeffaabf47c313765935c457d34b4ce74c005943818b6f7e6441255d",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UseQueriesTests.Given_ARenderedCombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersOnce_Then_ItsCommitRendersWhatTheCombineMakesOfIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseQueriesTests.cs": "4d829adafeffaabf47c313765935c457d34b4ce74c005943818b6f7e6441255d",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "42872060540",
+ "mutant": {
+  "after": ";",
+  "before": "_observer.Read(_entry, _shared, source);",
+  "column": 12,
+  "line": 85,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQueries.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "verdict": "killed"
+}

@@ -1,21 +1,21 @@
 {
- "detail": "EditMode: 2 failed among the 18 case(s) that ran the site: Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted, Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
+ "detail": "EditMode: 2 failed among the 20 case(s) that ran the site: Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted, Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
  "file": "fe9b28a9bb2e0507bda18a8954533ed8970f2e647b5d4b0ca3f436ee5c9e81f3",
  "killers": [
   {
    "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_ThePreviousEndsAndTheOffsetHasNotPassed_Then_ItHasNotStarted",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "7132facde6a4f279c7e5b245e3e8473ca5306d1f022d54a9b706770074a7e5b2"
    }
   },
   {
    "case": "Velvet.Tests.UseAnimateTests.Given_ASegmentOffsetPastThePreviousEnd_When_TheWholeTimelineHasPassed_Then_TheControlsAreFinished",
    "files": {
-    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "6fd3adddb815d129f5c525914b5dbe497763a62d8bd84f8d13e4be892a4597fa"
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/UseAnimateTests.cs": "7132facde6a4f279c7e5b245e3e8473ca5306d1f022d54a9b706770074a7e5b2"
    }
   }
  ],
- "measured_by": "42609496466",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "+",
   "before": "-",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "a5395f0cc726ce2565be694bced9679a56713246cc9946aac3608d804f919707",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }

@@ -1,15 +1,15 @@
 {
- "detail": "EditMode: 1 failed among the 90 case(s) that ran the site: Given_ABindingPollingItsRelativeLengths_When_ItIsDetached_Then_ItKeepsNoPoll",
+ "detail": "EditMode: 1 failed in Velvet.Tests.Styling.Editor: Given_ABindingPollingItsRelativeLengths_When_ItIsDetached_Then_ItKeepsNoPoll",
  "file": "2fb9cc9b8f89896fd0b266e90a7df942b3fce67ef0309ef190c32c10e84fcb1d",
  "killers": [
   {
    "case": "Velvet.Tests.GradientBackgroundLifecycleTests.Given_ABindingPollingItsRelativeLengths_When_ItIsDetached_Then_ItKeepsNoPoll",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientBackgroundLifecycleTests.cs": "4ee8edc93d94dbfd85f722b8150e3cabeb4ed455ff849c7e5bb1fa0964ee00e0"
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/GradientBackgroundLifecycleTests.cs": "3e8098d481c9d7f43d16e926c44cea864e7d6b3f33459046089faef5aa22fc87"
    }
   }
  ],
- "measured_by": "42757427640",
+ "measured_by": "42872060540",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -25,6 +25,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "8a9811c549025ab3a12ef037e18d7d1f4039ab6fc28065e0213bacb67ea11cc8",
+ "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
  "verdict": "killed"
 }
