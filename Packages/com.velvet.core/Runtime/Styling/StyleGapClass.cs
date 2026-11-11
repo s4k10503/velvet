@@ -79,8 +79,13 @@ namespace Velvet
             measured = null;
             gap = 0f;
             axis = GapAxis.Auto;
-            if (string.IsNullOrEmpty(cls) || !OpensGapOrSpace(cls)
-                || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            if (string.IsNullOrEmpty(cls) || !OpensGapOrSpace(cls))
+            {
+                return false;
+            }
+
+            var hintDropped = StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls);
+            if (!hintDropped)
             {
                 return false;
             }

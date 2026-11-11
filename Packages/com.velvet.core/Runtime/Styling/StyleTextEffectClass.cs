@@ -513,8 +513,12 @@ namespace Velvet
             const string prefix = "leading-[";
             // Tested before the type hint is dropped (TryDropTypeHint): Parse reaches this for the classes of a list on
             // each patch (ClassReadAllocationTests).
-            if (!cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']'
-                || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            if (!cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']')
+            {
+                return false;
+            }
+
+            if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }
