@@ -448,6 +448,36 @@ namespace Velvet.Tests
             Assert.That(waited ? resumed.Status : (VelvetTaskStatus?)null, Is.EqualTo(VelvetTaskStatus.Succeeded));
         }
 
+        [Test]
+        public void Given_TwoCallsOfAScopePausedOffline_When_TheClientResumesThemOnline_Then_TheResumeTaskWaitsForTheSecondCallsFunction()
+        {
+            // Arrange — the first call's function returns at once, and the second's waits on its gate.
+            var online = false;
+            NetworkSignals.IsOnline = () => online;
+            s_options = new MutationOptions<int, int, string>(MutationFn: (v, _) =>
+            {
+                if (v == 1) return VelvetTask.FromResult(v);
+                var gate = new VelvetTaskCompletionSource<int>();
+                s_gates[v] = gate;
+                return gate.Task;
+            })
+            {
+                Scope = new MutationScope("todos"),
+            };
+            using var mounted = Mount();
+            s_captured!.Mutate(1);
+            s_captured.Mutate(2);
+            online = true;
+            var resumed = s_client.ResumePausedMutations();
+            var waited = resumed.Status == VelvetTaskStatus.Pending;
+
+            // Act
+            s_gates[2].TrySetResult(2);
+
+            // Assert — read only over a task that was still waiting while the second function ran.
+            Assert.That(waited ? resumed.Status : (VelvetTaskStatus?)null, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
         // GREEN_ON_BASE(refactor): the base hands back a completed task once the woken call's run has ended.
         [Test]
         public void Given_ACallPausedOfflineThatItsCallerCancelled_When_TheCacheResumesIt_Then_TheResumeTaskHasCompleted()

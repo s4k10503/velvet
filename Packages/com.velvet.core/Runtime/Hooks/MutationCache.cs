@@ -424,10 +424,18 @@ namespace Velvet
         /// settled.</returns>
         public VelvetTask ResumePausedMutations()
         {
-            var runs = new List<VelvetTask>();
+            // The paused set is taken before any of it is continued, as v5 filters it first: a woken call whose run
+            // ends inside its Continue continues the next paused call of its scope, which is then no longer paused
+            // and is still one to wait for.
+            var paused = new List<Mutation>();
             foreach (var mutation in GetAll())
             {
-                if (mutation.State.IsPaused) runs.Add(mutation.Continue());
+                if (mutation.State.IsPaused) paused.Add(mutation);
+            }
+            var runs = new List<VelvetTask>(paused.Count);
+            foreach (var mutation in paused)
+            {
+                runs.Add(mutation.Continue());
             }
             return SettleAll(runs);
         }
