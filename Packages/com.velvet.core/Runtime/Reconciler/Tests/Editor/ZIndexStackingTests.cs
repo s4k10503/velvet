@@ -372,6 +372,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APinnedGhostThatIsNotZManaged_When_ItIsRemoved_Then_ItIsNoLongerPinned()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var rows = new VNode[] { V.Label(text: "ghost") };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), rows);
+            var ghost = scope.Root[0];
+            var ctx = scope.Reconciler.Context;
+            FiberZLayerCoordinator.PinGhost(ctx, ghost);
+            var pinned = ctx.PinnedGhosts.TryGetValue(ghost, out _);
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, rows, Array.Empty<VNode>());
+
+            // Assert — null where the pin never took, which False cannot match
+            bool? stillPinned = pinned ? ctx.PinnedGhosts.TryGetValue(ghost, out _) : null;
+            Assert.That(stillPinned, Is.False);
+        }
+
+        [Test]
         public void Given_AHoverFlexParent_When_HoverStartsAndEnds_Then_ItsChildrenTakeAndLoseTheirFlexOrder()
         {
             // Arrange

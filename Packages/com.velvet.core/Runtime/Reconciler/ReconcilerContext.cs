@@ -1582,7 +1582,7 @@ namespace Velvet
         // The exiting children a PopLayout presence pinned out of flow, keyed by the ghost element, which paint as
         // positioned children for as long as they exit (FiberZLayerCoordinator.PinnedGhostZ). An entry is taken when
         // the exit is cancelled or the ghost is removed.
-        internal System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, object> PinnedGhosts { get; } = new();
+        internal PinnedGhostTable PinnedGhosts { get; } = new();
 
         // Real element -> its relocation bookkeeping. A pure side-table, enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();

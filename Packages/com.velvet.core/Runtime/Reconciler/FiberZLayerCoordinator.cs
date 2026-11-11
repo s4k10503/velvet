@@ -864,6 +864,11 @@ namespace Velvet
 
         private static bool HoldsTrackedChild(ReconcilerContext ctx, VisualElement parent)
         {
+            // Skipping the walk while nothing is tracked is what ZLayerArrangeCostTests pins.
+            if (ctx.StackingFacts.Count == 0 && ctx.PinnedGhosts.Count == 0)
+            {
+                return false;
+            }
             for (var i = 0; i < parent.hierarchy.childCount; i++)
             {
                 var child = parent.hierarchy[i];
@@ -1355,5 +1360,33 @@ namespace Velvet
             if (ctx.GridManipulators.TryGetValue(parent, out var grid)) grid.Apply();
             if (ctx.DivideManipulators.TryGetValue(parent, out var divide)) divide.Reapply();
         }
+    }
+
+    // ReconcilerContext.PinnedGhosts: a weak table that also counts its pins, which lets FiberZLayerCoordinator tell that
+    // no parent holds a pinned ghost without asking for each child. Count moves only on an Add and on a Remove that
+    // took a pin, so it never reads lower than the number of ghosts the table holds.
+    internal sealed class PinnedGhostTable
+    {
+        private readonly ConditionalWeakTable<VisualElement, object> _ghosts = new();
+
+        internal int Count { get; private set; }
+
+        internal void Add(VisualElement ghost, object value)
+        {
+            _ghosts.Add(ghost, value);
+            Count++;
+        }
+
+        internal bool Remove(VisualElement ghost)
+        {
+            var removed = _ghosts.Remove(ghost);
+            if (removed)
+            {
+                Count--;
+            }
+            return removed;
+        }
+
+        internal bool TryGetValue(VisualElement ghost, out object? value) => _ghosts.TryGetValue(ghost, out value);
     }
 }
