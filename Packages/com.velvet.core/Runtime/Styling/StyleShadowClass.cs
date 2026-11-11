@@ -629,6 +629,29 @@ namespace Velvet
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
 
+        private static bool IsPreset(ReadOnlySpan<char> suffix, bool inset)
+        {
+            if (inset)
+            {
+                foreach (var preset in s_insetPresets)
+                {
+                    if (suffix.SequenceEqual(preset.AsSpan()))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            foreach (var preset in Presets.Keys)
+            {
+                if (suffix.SequenceEqual(preset.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Offers core, a class of root's family without its important modifier, to the slots it writes, root being
         // "shadow" or "inset-shadow", as Tailwind writes it: a size, none or a bracket it does not type as a colour
         // writes the layer, and a size's /N the alpha variable as well, and a palette name, a keyword or a bracket it
@@ -640,23 +663,25 @@ namespace Velvet
             var inset = root == "inset-shadow";
             var slash = StyleColorValueParser.ColorModifierSlashIndex(core, 0);
             var modified = slash != -1;
-            var body = modified ? core.Substring(0, slash) : core;
+            var body = modified ? core.AsSpan(0, slash) : core.AsSpan();
             if (modified && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
             {
                 return;
             }
-            if (body == root && !inset)
+            // Each caller hands a core opening with root, and root holds no slash, so body opens with root and its
+            // length alone says whether anything follows.
+            if (body.Length == root.Length && !inset)
             {
                 layer.Offer(important, false, readsColour: true);
                 OfferSizeAlpha(core, modified, important, ref alpha);
                 return;
             }
-            if (!body.StartsWith(root + "-", StringComparison.Ordinal))
+            if (body.Length <= root.Length || body[root.Length] != '-')
             {
                 return;
             }
-            var suffix = body.Substring(root.Length + 1);
-            if (suffix == "none")
+            var suffix = body.Slice(root.Length + 1);
+            if (suffix.SequenceEqual("none".AsSpan()))
             {
                 // -none takes no modifier, as TryReadSize declines it.
                 if (!modified)
@@ -665,7 +690,7 @@ namespace Velvet
                 }
                 return;
             }
-            if (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix))
+            if (IsPreset(suffix, inset))
             {
                 layer.Offer(important, false, readsColour: true);
                 OfferSizeAlpha(core, modified, important, ref alpha);
@@ -690,10 +715,14 @@ namespace Velvet
 
         // A colour the class names rather than brackets: a palette name, current or transparent, or inherit or initial,
         // which take no modifier, as TryRead declines them.
-        private static void OfferNamedColour(string core, string suffix, bool modified, bool important, ref BoxShadowSlot colour)
+        private static void OfferNamedColour(string core, ReadOnlySpan<char> suffix, bool modified, bool important,
+            ref BoxShadowSlot colour)
         {
-            var keyword = suffix is "inherit" or "initial";
-            if (keyword ? !modified : suffix is "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
+            var keyword = suffix.SequenceEqual("inherit".AsSpan()) || suffix.SequenceEqual("initial".AsSpan());
+            if (keyword
+                    ? !modified
+                    : suffix.SequenceEqual("current".AsSpan()) || suffix.SequenceEqual("transparent".AsSpan())
+                        || VelvetPalette.TryResolveColorToken(suffix.ToString(), out _))
             {
                 colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: !keyword);
             }
@@ -879,15 +908,16 @@ namespace Velvet
             return lengths < 2 || lengths > 4 || colours > 1 || insets > 1;
         }
 
-        // The bracket of a root-[…] class with its type hint split off, whatever /modifier follows it.
-        private static bool TryReadBracket(string cls, string root, out string? hint, out string value)
+        // The bracket of body, a root-[…] class with its modifier cut, with its type hint split off.
+        private static bool TryReadBracket(ReadOnlySpan<char> body, string root, out string? hint, out string value)
         {
             hint = null;
             value = string.Empty;
             var open = root.Length + 2;
-            var close = cls.LastIndexOf(']');
-            if (!cls.StartsWith(root + "-[", StringComparison.Ordinal) || close <= open
-                || !StyleArbitraryValueResolver.TrySplitTypeHint(cls.AsSpan(open, close - open), out hint, out var span))
+            var close = body.LastIndexOf(']');
+            if (!body.StartsWith(root.AsSpan(), StringComparison.Ordinal)
+                || !body.Slice(root.Length).StartsWith("-[".AsSpan(), StringComparison.Ordinal) || close <= open
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(body.Slice(open, close - open), out hint, out var span))
             {
                 return false;
             }

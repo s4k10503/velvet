@@ -50,9 +50,9 @@ namespace Velvet
         // Commits an inline-mount fiber's child-count change: its own count and the counts of the fibers
         // whose rows hold its rows, then the recorded starts the change moves — each fiber on the same
         // MountPoint whose rows come after this fiber's, and, where this fiber's rows are a Portal's, that
-        // Portal's range and the ranges after it. Called from ReconcileRows, from each ContinueReconcile
-        // resume slice and from the force-drain, since a delta can be committed incrementally across slices.
-        // No-op when actualDelta is zero.
+        // Portal's range and the ranges after it. Reached through HostCommitQueue.ShiftRows from ReconcileRows,
+        // from each ContinueReconcile resume slice and from the force-drain, since a delta can be committed
+        // incrementally across slices. No-op when actualDelta is zero.
         //
         // The fibers moved are read off the registry's index of the MountPoint rather than off the sibling
         // chain: a fiber's rows come after this one's whether it is a sibling, a sibling's own inline child,
@@ -323,14 +323,19 @@ namespace Velvet
             if (fiber.IsInlineMounted)
             {
                 var drain = new RowCountWindow(fiber);
-                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
-                PropagateInlineSlotShift(fiber, drain.UnshiftedChange);
+                var host = fiber.Reconciler!.Context.HostCommit;
+                fiber.Reconciler.ContinueReconcile(frameBudgetMs: 0);
+                host.ShiftRows(fiber, drain.UnshiftedChange);
             }
             else
             {
                 fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
             }
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
+            if (fiber.Reconciler != null)
+            {
+                foreach (var open in fiber.Reconciler.Context.OpenOldInstances) open.ResolveAgain();
+            }
             // Detach the parked baseline BEFORE retiring it: the sweep's own mark treats
             // owner.PendingOldTree as live (other fibers' retirements must spare a parked diff's
             // baseline), and a still-attached reference would spare this very sweep's target.
@@ -368,6 +373,22 @@ namespace Velvet
         private static BoundaryCaughtSignal? ReconcileRows(ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree,
             double frameBudgetMs, ComponentFiber? catchingBoundary)
         {
+            fiber.ReconcilingTree = newTree;
+            try
+            {
+                return ReconcileAndPropagateRows(fiber, oldTree, newTree, frameBudgetMs, catchingBoundary);
+            }
+            finally
+            {
+                // Cleared rather than put back: a fallback swapped in during the fiber's own render supersedes the
+                // output that render was reconciling.
+                fiber.ReconcilingTree = null;
+            }
+        }
+
+        private static BoundaryCaughtSignal? ReconcileAndPropagateRows(ComponentFiber fiber, VNode?[] oldTree,
+            VNode?[] newTree, double frameBudgetMs, ComponentFiber? catchingBoundary)
+        {
             var reconciler = fiber.Reconciler!;
             if (!fiber.IsInlineMounted)
             {
@@ -378,7 +399,7 @@ namespace Velvet
             var slotLimit = NextInlineSiblingSlotStart(fiber);
             var caught = reconciler.ReconcileCatching(
                 fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit, catchingBoundary);
-            PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
+            reconciler.Context.HostCommit.ShiftRows(fiber, rows.UnshiftedChange);
             return caught;
         }
 

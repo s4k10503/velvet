@@ -31,11 +31,12 @@ namespace Velvet
     /// container with no invisible child still pays it: the walk is proportional to the slot index, not to
     /// the whole list, so a loop calling these once per child is quadratic in the child count. The general
     /// path's leaf commit holds a <see cref="LogicalSlotCursor"/> instead, which walks on from the last slot
-    /// it resolved, and the removal loops, which visit slots from the last downward, hold a
-    /// <see cref="DescendingSlotCursor"/>. The loops in <c>ChildReconciler</c> that add rows at ascending
-    /// slots insert through <see cref="LogicalSlotCursor.Insert"/>. The keyed pass's lookup of each matched row
-    /// (<c>ProcessKeyedNode</c>) and <c>PatchOrReplaceAtSlot</c> still walk from slot zero per child; the fix
-    /// for them is a cursor too, not a cached count, which every insert and remove would have to invalidate.
+    /// it resolved, and the loops in <c>ChildReconciler</c> that add rows at ascending slots insert through
+    /// <see cref="LogicalSlotCursor.Insert"/>. A diff reads its old rows once, at the
+    /// container's entry (<see cref="OldSlotOccupants"/>), and removes them by element, which
+    /// <c>HostCommitQueue</c> searches for from where the entry found it; the insert of <c>PatchOrReplaceAtSlot</c>
+    /// still walks from slot zero per child, and the fix for it is a cursor too, not a cached count, which
+    /// every insert and remove would have to invalidate.
     /// </para>
     /// </remarks>
     internal static class LogicalChildSlots
@@ -213,17 +214,17 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Inserts <paramref name="element"/>, a rendered child, where <see cref="LogicalChildSlots.ToPhysical"/> puts
-        /// a child at <paramref name="logical"/>, and remembers it as the slot's occupant. A caller inserting at
-        /// ascending slots pays the distance from the slot it last inserted at rather than the slot's index; an
-        /// append, past the last rendered child, is the common case.
+        /// Inserts <paramref name="element"/>, a rendered child, through <paramref name="host"/> where
+        /// <see cref="LogicalChildSlots.ToPhysical"/> puts a child at <paramref name="logical"/>, and remembers it as
+        /// the slot's occupant. A caller inserting at ascending slots pays the distance from the slot it last inserted
+        /// at rather than the slot's index; an append, past the last rendered child, is the common case.
         /// </summary>
-        internal void Insert(VisualElement container, int logical, VisualElement element)
+        internal void Insert(HostCommitQueue host, VisualElement container, int logical, VisualElement element)
         {
             var physical = IsCurrentFor(container) && logical > _logical
                 ? InsertIndexFrom(container, logical)
                 : LogicalChildSlots.ToPhysical(container, logical);
-            container.Insert(physical, element);
+            host.Insert(container, physical, element);
             // An insert into a container on a panel can put a sibling ahead of the element before this returns (a
             // layer hosted before its element), which moves it past where it was put; the slot is remembered only
             // while the element still stands there, and the next call walks from the start otherwise.
@@ -296,95 +297,6 @@ namespace Velvet
             _occupant = container[physical];
             _logical = logical;
             _physical = physical;
-        }
-    }
-    /// <summary>
-    /// <see cref="LogicalChildSlots.ToPhysical"/> for one container, resolved from the last slot this cursor
-    /// found occupied rather than from the start of the child list, for a caller that asks for slots in
-    /// descending order — a removal loop, where each removal leaves the slots below it where they were. It
-    /// pays the distance between consecutive slots rather than each slot's index.
-    /// </summary>
-    /// <remarks>
-    /// The remembered slot is trusted only while the child that preceded it still precedes its physical index;
-    /// otherwise the call resolves from the start. A slot at or above the remembered one is resolved from the
-    /// start as well. A removal at or after the remembered index leaves the check satisfied, which is what the
-    /// loops using this rely on; hold a cursor only across a loop in which nothing is inserted or removed
-    /// ahead of the slots still to be asked.
-    /// </remarks>
-    internal struct DescendingSlotCursor
-    {
-        private VisualElement? _container;
-        private VisualElement? _before;
-        private int _logical;
-        private int _physical;
-
-        /// <summary>
-        /// Same answer as <see cref="LogicalChildSlots.ToPhysical"/>.
-        /// </summary>
-        internal int ToPhysical(VisualElement container, int logical)
-        {
-            if (logical >= 0 && IsCurrentFor(container) && logical < _logical)
-            {
-                if (WalkBack(container, logical, out var walked))
-                {
-                    return walked;
-                }
-            }
-            var physical = LogicalChildSlots.ToPhysical(container, logical);
-            // MUTANT_SURVIVES(equivalent): a slot remembered at logical 0 is never read, since the walk back above
-            // takes only a logical below the remembered one and not below 0.
-            if (logical >= 0 && physical < container.childCount && !LogicalChildSlots.IsInvisible(container[physical]))
-            {
-                Remember(container, logical, physical);
-            }
-            else
-            {
-                _container = null;
-            }
-            return physical;
-        }
-
-        /// <summary>
-        /// Same answer as <see cref="LogicalChildSlots.TryGetPhysical"/>, including its append position on the
-        /// false branch.
-        /// </summary>
-        internal bool TryGetPhysical(VisualElement container, int logical, out int physical)
-        {
-            physical = ToPhysical(container, logical);
-            return logical >= 0 && physical < container.childCount
-                && !LogicalChildSlots.IsInvisible(container[physical]);
-        }
-
-        private bool IsCurrentFor(VisualElement container)
-            => ReferenceEquals(_container, container)
-                && _physical > 0
-                && _physical - 1 < container.childCount
-                && ReferenceEquals(container[_physical - 1], _before);
-
-        private bool WalkBack(VisualElement container, int logical, out int physical)
-        {
-            var remaining = _logical - logical;
-            for (physical = _physical - 1; physical >= 0; physical--)
-            {
-                if (LogicalChildSlots.IsInvisible(container[physical]))
-                {
-                    continue;
-                }
-                if (--remaining == 0)
-                {
-                    Remember(container, logical, physical);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private void Remember(VisualElement container, int logical, int physical)
-        {
-            _container = container;
-            _logical = logical;
-            _physical = physical;
-            _before = physical > 0 ? container[physical - 1] : null;
         }
     }
 }

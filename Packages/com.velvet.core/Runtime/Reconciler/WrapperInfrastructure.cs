@@ -7,8 +7,8 @@ namespace Velvet
     // Shared plumbing for the structural wrapper layers — the className-driven clip-path-* wrapper and the
     // user wrapElement opt-in. Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
     // wrapper element appliers (the wrap/unwrap surgery) depend on these, which is why they live here rather
-    // than on either; the slot-preserving unwrap surgery is what ChildReconciler's keyed-move re-fetch
-    // depends on.
+    // than on either; the slot-preserving unwrap surgery is what FiberNodePatcher.PatchNode's contract with the
+    // reconciler depends on.
     internal sealed class WrapperInfrastructure
     {
         private readonly ReconcilerContext _ctx;
@@ -53,8 +53,8 @@ namespace Velvet
 
         // Removes wrapper from the tree and restores element (its inner) at the wrapper's
         // slot. Binding-specific resource disposal and dictionary removal are the caller's job,
-        // done BEFORE this. Keeping the element at the SAME index is what the child reconciler's
-        // post-patch re-fetch tolerates (see ChildReconciler's keyed-move re-fetch).
+        // done BEFORE this. Keeping the element at the SAME index is what FiberNodePatcher.PatchNode's
+        // contract asks.
         internal static void RemoveWrapperRestoreInner(VisualElement element, VisualElement wrapper)
         {
             var parent = wrapper.parent;

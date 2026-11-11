@@ -16,6 +16,17 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ChildElementPlacementReorderTests
     {
+        private Reconciler _reconciler = null!;
+
+        [SetUp]
+        public void SetUp() => _reconciler = new Reconciler();
+
+        [TearDown]
+        public void TearDown() => _reconciler.Dispose();
+
+        private ChildElementPlacement Placement()
+            => new(new ReconcilerBufferPool(), _reconciler.Context.HostCommit);
+
         private sealed class HashedChild : VisualElement
         {
             public int Hashes;
@@ -42,10 +53,10 @@ namespace Velvet.Tests
             return (parent, children, newElements);
         }
 
-        private static int HashesOfAReorderWith(int[] newOrder, HashSet<int> anchors)
+        private int HashesOfAReorderWith(int[] newOrder, HashSet<int> anchors)
         {
             var (parent, children, newElements) = Arranged(5, newOrder);
-            var placement = new ChildElementPlacement(new ReconcilerBufferPool());
+            var placement = Placement();
             placement.ReorderToNewElementOrder(parent, newElements, anchors, slotStart: 0);
             var hashes = 0;
             foreach (var child in children) hashes += child.Hashes;
@@ -79,7 +90,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var (parent, _, newElements) = Arranged(3, new[] { 2, 0, 1 });
-            var placement = new ChildElementPlacement(new ReconcilerBufferPool());
+            var placement = Placement();
 
             // Act
             var outOfCreationOrder = placement.ReorderToNewElementOrder(parent, newElements, new HashSet<int> { 1, 2 }, slotStart: 0);

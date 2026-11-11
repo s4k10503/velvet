@@ -847,6 +847,11 @@ namespace Velvet
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
+        // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
+        // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
+        // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.
+        internal VNode?[]? ReconcilingTree { get; set; }
+
         /// <summary>
         /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
         /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
@@ -854,7 +859,7 @@ namespace Velvet
         /// fixed the ancestor's <see cref="PreviousTree"/>, because a render whose output is discarded has
         /// already written its nodes onto the children it reached. <see cref="SourceTree"/> is what pairs the
         /// two, and <see cref="FiberContextSpine"/> compares nodes only where they pair and only while
-        /// descending a committed tree; its <c>SpineWalk</c> owns the second of those conditions.
+        /// descending the ancestor's own output; its <c>SpineWalk</c> owns the second of those conditions.
         /// </summary>
         internal ComponentNode? SourceNode { get; set; }
 
@@ -867,7 +872,8 @@ namespace Velvet
         /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
         /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
         /// that render's output was committed AND reached this fiber, which is what
-        /// <see cref="FiberContextSpine"/> tests before comparing nodes: a render whose output was discarded
+        /// <see cref="FiberContextSpine"/> tests before comparing nodes, against <see cref="ReconcilingTree"/>
+        /// instead where the fiber above has one: a render whose output was discarded
         /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
         /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
         /// </summary>

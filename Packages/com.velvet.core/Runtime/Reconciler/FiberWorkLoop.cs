@@ -654,6 +654,15 @@ namespace Velvet
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
             if (fiber.ParkedPassSuspended) return;
+            if (fiber.IsOffscreen)
+            {
+                // Held as FlushFiber holds a flush, and left dirty for the same reveal to render: its walk renders a
+                // dirty inline fiber it reaches, GeneralPathReconciler.SetPrimaryHidden asks for the render of a dirty
+                // one hidden inside an element it reveals, and that render drains the parked pass before it reconciles
+                // its own output.
+                fiber.IsDirty = true;
+                return;
+            }
 
             var owed = OpenOwedSettleWindow(out var enclosingOwed);
             var pushedOnto = FiberRenderer.PushFiber(fiber);
@@ -680,6 +689,10 @@ namespace Velvet
                 var enclosingFiberTree = resumeContext.CurrentFiberTree;
                 resumeContext.CurrentFiberTree = fiber.PreviousTree;
                 resumeContext.SuspendDeclinedByRevealedBoundary = false;
+                // A resume has no walk of this fiber's ancestors on the stack to have pushed the Providers above
+                // it, so they go back on the cursor for the rows this slice renders, as RenderAndReconcile puts
+                // them there for the slice that parked.
+                var contextSpine = FiberContextSpine.Push(fiber);
                 try
                 {
                     if (fiber.IsInlineMounted)
@@ -692,7 +705,7 @@ namespace Velvet
                         // LogicalMountPointChildCount.
                         var slice = new FiberCommitWork.RowCountWindow(fiber);
                         fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
-                        FiberCommitWork.PropagateInlineSlotShift(fiber, slice.UnshiftedChange);
+                        resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);
                     }
                     else
                     {
@@ -701,13 +714,17 @@ namespace Velvet
                 }
                 finally
                 {
+                    contextSpine.Unwind();
                     resumeContext.CurrentFiberTree = enclosingFiberTree;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
                     TransitionDrainFiber = wasTransitionDrainFiber;
                     RenderLane = wasRenderLane;
                 }
 
-                if (fiber.Reconciler.HasPendingWork)
+                // Null once the slice has disposed this fiber, which a boundary above does when it swaps in its
+                // fallback for an error a row of the slice threw. That ends the pass, as FlushFiber's own check
+                // reads it.
+                if (fiber.Reconciler?.HasPendingWork == true)
                 {
                     mountPoint.schedule.Execute(() => PanelSchedulerCallback.Run(mountPoint, fiber, ContinueReconcile));
                 }
