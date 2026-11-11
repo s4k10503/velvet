@@ -54,15 +54,12 @@ namespace Velvet
 
         // True when cls is a skew utility this layer owns (recognized or not-yet-valid).
         public static bool IsSkewClass(string? cls)
-        {
-            var core = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _);
-            if (core.Length == 0)
-            {
-                return false;
-            }
-            var body = core[0] == '-' ? core.Substring(1) : core;
-            return body.StartsWith(BothPrefix, StringComparison.Ordinal);
-        }
+            => OpensSkew(StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out _));
+
+        // Whether core, a class without its important modifier, opens with skew- after an optional sign.
+        private static bool OpensSkew(string core)
+            => core.Length != 0
+                && core.AsSpan(core[0] == '-' ? 1 : 0).StartsWith(BothPrefix.AsSpan(), StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class is a skew utility.
         public static bool HasSkewClass(string[]? classNames)
@@ -199,7 +196,9 @@ namespace Velvet
             axis = SkewAxis.Both;
             deg = 0f;
             cls = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out important);
-            if (cls.Length == 0 || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            // Tested before the type hint is dropped (TryDropTypeHint) and the sign cut off, either of which can
+            // allocate: each patch hands every class of a list to this through Resolve (ClassReadAllocationTests).
+            if (!OpensSkew(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }

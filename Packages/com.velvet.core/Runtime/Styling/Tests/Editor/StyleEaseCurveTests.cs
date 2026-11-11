@@ -201,6 +201,22 @@ namespace Velvet.Tests
             Assert.That(element.style.transitionTimingFunction.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(refactor): the base notes both classes; the test that now passes over a class before its peel keeps them.
+        [TestCase("ease-in")]
+        [TestCase("transition-colors")]
+        public void Given_AnUnprefixedTimingClass_When_ItsCurveIsAskedFor_Then_ItHasOne(string className)
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { className });
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseIn);
+
+            // Assert
+            Assert.That(curve, Is.Not.Null);
+        }
+
         // GREEN_ON_BASE(characterization): the base forgets an ease curve once its class is removed.
         [Test]
         public void Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone()

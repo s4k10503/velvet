@@ -85,24 +85,42 @@ namespace Velvet
             return list.ToArray();
         }
 
-        private static readonly HashSet<string> s_heads = BuildHeads();
-
         // The first segment of every family prefix, so a class like `flex` or `hidden` is turned away without a lookup.
-        private static HashSet<string> BuildHeads()
+        // An array rather than a set: IsHead compares a span of the class against each, where a set would need the
+        // segment cut out as a string first.
+        private static readonly string[] s_heads = BuildHeads();
+
+        private static string[] BuildHeads()
         {
             var heads = new HashSet<string>(StringComparer.Ordinal);
             foreach (var family in s_families)
             {
                 heads.Add(family.Prefix.Substring(0, family.Prefix.IndexOf('-')));
             }
-            return heads;
+            var distinct = new string[heads.Count];
+            heads.CopyTo(distinct);
+            return distinct;
         }
 
-        // Whether core has the shape of a class a theme variable could make (a family prefix and a name), declared or not.
-        internal static bool IsFamilyShaped(string core)
+        private static bool IsHead(ReadOnlySpan<char> segment)
         {
-            var dash = core.IndexOf('-', core[0] == '-' ? 1 : 0);
-            return dash > 0 && s_heads.Contains(core.Substring(core[0] == '-' ? 1 : 0, dash - (core[0] == '-' ? 1 : 0)));
+            foreach (var head in s_heads)
+            {
+                if (segment.SequenceEqual(head.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether core, read from start, has the shape of a class a theme variable could make (a family prefix and a
+        // name), declared or not.
+        private static bool IsFamilyShaped(string core, int start)
+        {
+            var head = start < core.Length && core[start] == '-' ? start + 1 : start;
+            var dash = core.IndexOf('-', head);
+            return dash != -1 && IsHead(core.AsSpan(head, dash - head));
         }
 
         // Whether a class with none of the special characters is one a theme variable makes or a namespace's initial
@@ -110,11 +128,19 @@ namespace Velvet
         internal static bool OwnsPlainToken(string core) => Normalize(core) != null || IsClearedBundled(core);
 
         // Whether the class is one a theme variable makes, or one with the shape of such a class that nothing else
-        // gives a meaning to (so a sheet declaring its variable later would make it one).
+        // gives a meaning to (so a sheet declaring its variable later would make it one). The utility after the last
+        // variant is cut out only once its shape qualifies, so a class no family opens allocates nothing
+        // (ClassReadAllocationTests).
         internal static bool MayBecomeThemeClass(string core)
-            => core.IndexOf('[') < 0 && IsFamilyShaped(core.Substring(core.LastIndexOf(':') + 1))
-                && (Normalize(core.Substring(core.LastIndexOf(':') + 1)) != null
-                    || !StyleUtilityProperties.TryGet(core.Substring(core.LastIndexOf(':') + 1), out _));
+        {
+            var start = core.LastIndexOf(':') + 1;
+            if (core.IndexOf('[') >= 0 || !IsFamilyShaped(core, start))
+            {
+                return false;
+            }
+            var utility = start == 0 ? core : core.Substring(start);
+            return Normalize(utility) != null || !StyleUtilityProperties.TryGet(utility, out _);
+        }
 
         // The scale names Tailwind and the bundled sheets give a namespace by default, which its `initial` removes.
         internal static bool IsBuiltInName(string ns, string name)
