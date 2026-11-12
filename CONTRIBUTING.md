@@ -1542,8 +1542,9 @@ drain question a major is held to passes over the breaks it exists to catch.
 
 The CHANGELOG holds two open sections, and which one an entry goes in is settled when the entry is
 written rather than when the version closes. `## [Unreleased]` is what a minor or a patch may ship.
-`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
-behaviour a working application would notice changing.
+`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around. A
+change that leaves the API as it was is a fix and goes in `## [Unreleased]`, even where a working
+application would notice the behaviour change.
 
 A change does not write either section in the file. It adds one fragment, a markdown file under
 `Packages/com.velvet.core/Changelog~/unreleased/` for `## [Unreleased]` or under
