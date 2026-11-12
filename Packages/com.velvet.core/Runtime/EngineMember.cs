@@ -753,7 +753,8 @@ namespace Velvet
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
         // Null rather than a throw when the member is missing or has changed shape, so a later engine leaves the
-        // feature that reads it undone instead of failing the code around it.
+        // feature that reads it undone instead of failing the code around it. VelvetPreviewPanel.Render, called for
+        // nothing but the frame its members draw, throws on that null instead.
         internal MemberInfo? Resolve()
         {
             var type = Assembly.GetType(TypeName);

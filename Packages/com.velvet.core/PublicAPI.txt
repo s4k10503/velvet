@@ -438,6 +438,7 @@
 [Velvet] field Velvet.VelvetFontWeightEntry.upright: UnityEngine.TextCore.Text.FontAsset?
 [Velvet] field Velvet.VelvetFontWeightEntry.uprightAddress: System.String?
 [Velvet] field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetPreviewPanel.SettlePasses: System.Int32
 [Velvet] field Velvet.VelvetResponsive.ContainerClass: System.String
 [Velvet] field Velvet.VelvetResponsive.ViewportClass: System.String
 [Velvet] field Velvet.VelvetStyleUtilities.DarkThemeClass: System.String

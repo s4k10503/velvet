@@ -51,6 +51,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStoryWhoseMountEffectSetsState_When_RenderedOnce_Then_TheTextureHoldsTheStateTheEffectSet()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render and a ReadPixels readback");
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            Fill(panel.Texture, Color.blue);
+            using var mounted = V.Mount(panel.Root, V.Component(RedOnceItsEffectRan));
+
+            // Act
+            panel.Render();
+            var readyDrawn = StoryRedBesideAnUnpaintedControl(panel.Texture);
+
+            // Assert
+            Assert.That(readyDrawn, Is.True);
+        }
+
+        [Test]
+        public void Given_ACallbackTheFrameRunsThrows_When_Rendered_Then_TheCallerCatchesItsOwnException()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render");
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            panel.Root.schedule.Execute(() => throw new InvalidOperationException("scheduled boom"));
+
+            // Act + Assert
+            Assert.That(() => panel.Render(), Throws.TypeOf<InvalidOperationException>());
+        }
+
+        [Test]
         public void Given_TwoPreviewPanelsWithAStoryEach_When_OneIsRendered_Then_TheOthersTextureIsNotDrawnInto()
         {
             // Arrange
@@ -117,6 +146,18 @@ namespace Velvet.Tests
         }
 
         private static VNode LeftHalfRed() => V.Div("w-[32px] h-[64px] bg-[#ff0000]");
+
+        [Component]
+        private static VNode RedOnceItsEffectRan()
+        {
+            var (ready, setReady) = Hooks.UseState(false);
+            Hooks.UseEffect(() =>
+            {
+                setReady.Invoke(true);
+                return (Action)null;
+            }, Array.Empty<object>());
+            return ready ? LeftHalfRed() : V.Div("w-[32px] h-[64px] bg-[#0000ff]");
+        }
 
         // A known non-red start, so a red pixel can only be one a render drew.
         private static void Fill(RenderTexture texture, Color color)

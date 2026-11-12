@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -24,6 +25,10 @@ namespace Velvet
     public sealed class VelvetPreviewPanel : IDisposable
     {
         private const int TextureDepth = 24;
+
+        /// <summary>How many times <see cref="Render"/> updates the panels drawing into <see cref="Texture"/> before it
+        /// draws them.</summary>
+        public const int SettlePasses = 100;
 
         // Below any sorting order a layer host takes, which sits a few hundred from its declaring panel's.
         private const float ClearSortingOrder = -1e6f;
@@ -119,8 +124,11 @@ namespace Velvet
 
         /// <summary>
         /// Draws one frame into <see cref="Texture"/> before it returns, so a capture reads the texture back without
-        /// waiting for an editor frame. Every runtime panel drawing into the texture is updated, then repainted, then
-        /// rendered, each pass in the order the panels sort in.
+        /// waiting for an editor frame. Every runtime panel drawing into the texture is first updated
+        /// <see cref="SettlePasses"/> times, so a state update a story's mount effect makes is drawn, and a story still
+        /// scheduling work after those updates is drawn without waiting for it. The panels are then repainted and
+        /// rendered, each pass in the order the panels sort in. An exception the frame does not catch reaches the
+        /// caller as it was thrown.
         /// </summary>
         /// <exception cref="ObjectDisposedException">The panel is disposed.</exception>
         /// <exception cref="NotSupportedException">This editor lacks an engine member the frame calls, which the message
@@ -132,10 +140,20 @@ namespace Velvet
                 $"{nameof(VelvetPreviewPanel)}.{nameof(Render)} cannot draw a frame in this editor, which has no "
                 + FrameMembers.Missing);
 
-            foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Update.Invoke(panel, null);
-            foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Repaint.Invoke(null, new[] { panel });
-            frame.RepaintEnd.Invoke(null, null);
-            foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Render.Invoke(panel, null);
+            try
+            {
+                for (var pass = 0; pass != SettlePasses; pass++)
+                {
+                    foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Update.Invoke(panel, null);
+                }
+                foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Repaint.Invoke(null, new[] { panel });
+                frame.RepaintEnd.Invoke(null, null);
+                foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Render.Invoke(panel, null);
+            }
+            catch (TargetInvocationException exception) when (exception.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+            }
         }
 
         // A scale the preview window resolved for a screen other than this texture, held at that value
