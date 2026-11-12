@@ -164,10 +164,17 @@ added and leaves a table you configured as it was. A list that starts with `addr
 
 ## Swapping fonts at runtime (e.g. per-locale)
 
-Velvet is React-style, so the idiomatic switch is to change state and re-render: register the new
-locale's families and bump the state that drives your tree. `VelvetFonts.FontsChanged` fires on
-every registry mutation if you want to hook it to a store/`UseState` setter to force that
-re-render. On re-render every element re-resolves its font intent against the new registry.
+Register the new locale's families, and set `DefaultFamily` if it changes. `VelvetFonts.FontsChanged` fires
+when a family is registered or unregistered, when `DefaultFamily` changes and when `Clear` empties the
+registry, and the family written on the roots ([What `DefaultFamily` reaches](#what-defaultfamily-reaches))
+follows it at once, with no render: a label that takes its font from there shows the new family straight away.
+
+An element with a font class keeps the asset it was resolved to, since nothing on the element answers to the
+registry changing. A render resolves it again where the render changes the element's classes or the
+`font-<name>` class of the ancestor it takes its family from, or where a variant (`hover:`, `dark:`, …) is
+changing which classes apply to it; re-rendering with the same classes is not, by itself, what brings it onto
+the new registry. A new `key` creates the elements under it afresh, and they resolve against the registry as it
+now is.
 
 ## Tailwind text-utility parity vs. UI Toolkit
 
