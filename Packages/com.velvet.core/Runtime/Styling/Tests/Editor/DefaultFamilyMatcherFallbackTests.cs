@@ -8,9 +8,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what <see cref="VelvetFonts.DefaultFamily"/> does where the engine's matcher cannot be built: the rules
-    /// that match an element are not read, so the family is written on the element a tree is mounted on as though no
-    /// author's rule gave it a font. GWT, one assert per case.
+    /// Specifies what <see cref="VelvetFonts.DefaultFamily"/> does where the engine's matcher cannot be built: the
+    /// rules that match an element are not read, so the family is written on the element a tree is mounted on as
+    /// though no author's rule gave it a font. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class DefaultFamilyMatcherFallbackTests

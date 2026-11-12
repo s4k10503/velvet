@@ -11,7 +11,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that <see cref="VelvetFonts.DefaultFamily"/> reaches a label with no font class mounted on a
-    /// document's root under the runtime theme this project ships, which gives such a label a font of its own.
+    /// document's root under the runtime theme this project ships, whose font the label otherwise inherits from the
+    /// panel's root.
     /// </summary>
     internal sealed class DefaultFamilyThemePlaybackTests
     {

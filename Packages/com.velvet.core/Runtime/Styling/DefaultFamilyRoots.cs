@@ -9,14 +9,16 @@ namespace Velvet
 {
     // VelvetFonts.DefaultFamily written inline on the elements Velvet renders into, for what is under them to inherit,
     // as what is in a page inherits the font-family Tailwind's preflight gives html: the element a tree is mounted on,
-    // a portal's container, and a layer or world-space panel's root. One of them inside another is left to inherit, so
-    // a family an element between the two names reaches what is under it.
+    // a layer or world-space panel's root, and each row a same-panel portal puts in its target, whose other children
+    // are not Velvet's to restyle. One of them inside another is left to inherit, so a family an element between the
+    // two names reaches what is under it.
     //
     // The preflight's rule loses to an author's, so nothing is written on one of them that a rule of a stylesheet other
     // than a default one, or an inline font, gives a font, on itself or on an element above it: that font is inherited
     // instead. The rules are asked of the engine's matcher through BorderPreflight.AuthorRuleSets, and where the
     // matcher cannot be built only inline fonts are read. An inline font somebody else wrote on one of them is theirs
-    // and stays; the value written here is taken back only while it is still the one written here.
+    // and stays, as does StyleFontResolver's on a portal row (Overwritten); the value written here is taken back only
+    // while it is still the one written here.
     //
     // What decides all of this is read again at each hold, each release and each change to the registry, and, while a
     // default family resolves, at each update of the element's panel after the stamp of its chain moves.
@@ -46,7 +48,7 @@ namespace Velvet
 
                     if (ChainStamp(held) != Stamp)
                     {
-                        Decide(held, this, VelvetFonts.Resolve(null, VelvetFontWeight.Normal, italic: false).Asset);
+                        Decide(held, this, DefaultAsset());
                     }
                 };
             }
@@ -59,6 +61,16 @@ namespace Velvet
         private static readonly string[] s_fontProperties = { "-unity-font-definition", "-unity-font" };
 
         static DefaultFamilyRoots() => VelvetFonts.FontsChanged += Apply;
+
+        // StyleFontResolver wrote element's inline font from its classes, or cleared it: what is there is not this
+        // class's to take back, and where it was cleared the default family may be written again.
+        internal static void Overwritten(VisualElement element)
+        {
+            if (!s_roots.TryGetValue(element, out var root)) return;
+
+            root.Written = null;
+            Decide(element, root, DefaultAsset());
+        }
 
         internal static IDisposable Hold(VisualElement element)
         {
@@ -74,8 +86,9 @@ namespace Velvet
             return new Release(element, root);
         }
 
-        // No guard against a second Dispose: a MountedTree disposes this on its first Dispose alone, and a portal's
-        // bridge and a panel host's record each release theirs once and drop it.
+        // No guard against a second Dispose: a MountedTree disposes this on its first Dispose alone, ReconcilerContext
+        // drops a portal row's from its table as it releases it, and a panel host's record releases its own once and
+        // drops it.
         private sealed class Release : IDisposable
         {
             private readonly VisualElement _element;
@@ -100,9 +113,12 @@ namespace Velvet
             }
         }
 
+        private static FontAsset? DefaultAsset()
+            => VelvetFonts.Resolve(null, VelvetFontWeight.Normal, italic: false).Asset;
+
         private static void Apply()
         {
-            var asset = VelvetFonts.Resolve(null, VelvetFontWeight.Normal, italic: false).Asset;
+            var asset = DefaultAsset();
             // MUTANT_SURVIVES(equivalent, line removed): the loop below skips a collected element's entry whether or
             // not it is taken out here; taking it out keeps entries of trees nobody disposed from piling up.
             s_held.RemoveAll(s_collected);
@@ -120,11 +136,7 @@ namespace Velvet
             Write(element, root, asset == null || InsideAnother(element) || AuthorFont(element) ? null : asset);
             if (asset == null)
             {
-                if (root.Follow != null)
-                {
-                    if (root.Follow.TryGetTarget(out var item)) item.Pause();
-                    root.Follow = null;
-                }
+                root.Follow = Unfollow(root.Follow);
                 return;
             }
 
@@ -133,6 +145,15 @@ namespace Velvet
             root.Stamp = ChainStamp(element);
             root.Follow ??=
                 new WeakReference<IVisualElementScheduledItem>(element.schedule.Execute(root.Tick).Every(0));
+        }
+
+        private static WeakReference<IVisualElementScheduledItem>? Unfollow(
+            WeakReference<IVisualElementScheduledItem>? follow)
+        {
+            if (follow == null) return null;
+
+            if (follow.TryGetTarget(out var item)) item.Pause();
+            return null;
         }
 
         private static void Write(VisualElement element, Root root, FontAsset? asset)
@@ -174,9 +195,10 @@ namespace Velvet
             => element.style.unityFontDefinition.keyword != StyleKeyword.Null
                || element.style.unityFont.keyword != StyleKeyword.Null;
 
-        // What the decision reads off the chain from element up: each element, its name, classes and stylesheets, and
-        // its inline font. Read on every update of the panel, so nothing here allocates once each element of the chain
-        // and each of its stylesheets has been read before.
+        // What the decision reads off the chain from element up: each element, its name, classes, stylesheets and
+        // matched rules, which a pseudo-state moves, and its inline font. Read on every update of the panel, so nothing
+        // here allocates once each element of the chain and each of its stylesheets has been read before, where
+        // StyleCascade.RulesHash reads through its compiled accessor.
         private static int ChainStamp(VisualElement element)
         {
             var stamp = 0;
@@ -186,6 +208,7 @@ namespace Velvet
                 var definition = style.unityFontDefinition;
                 stamp = HashCode.Combine(stamp, link, link.name, (int)definition.keyword, definition.value.fontAsset,
                     definition.value.font, (int)style.unityFont.keyword, style.unityFont.value);
+                stamp = HashCode.Combine(stamp, StyleCascade.RulesHash(link));
                 stamp = VelvetStyleUtilities.ClassStamp(stamp, link);
                 for (var i = 0; i < link.styleSheets.count; i++)
                 {

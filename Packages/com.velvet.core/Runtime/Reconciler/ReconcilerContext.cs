@@ -1719,14 +1719,62 @@ namespace Velvet
             var anchor = ContentOwnerOf(target) ?? target;
             var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(anchor, this);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
-            var defaultFamily = DefaultFamilyRoots.Hold(target);
             SamePanelPortalBridges[target] = new SamePanelBridge(() =>
             {
                 detachBridge();
                 sheetWatch.Dispose();
-                defaultFamily.Dispose();
                 releaseNavigatorHold?.Invoke();
             });
+        }
+
+        // The rows a same-panel portal has in its target, each held for the default family (DefaultFamilyRoots) in
+        // place of the target, which other code owns along with its other children, as createPortal leaves body's
+        // alone.
+        private readonly Dictionary<VisualElement, System.IDisposable> _portalRowFamilies = new();
+        private readonly HashSet<VisualElement> _portalRows = new();
+        private readonly List<VisualElement> _portalRowsLeft = new();
+
+        // Brings the held rows in line with the rows the portals hold now. Called where a pass has placed every row.
+        internal void SyncPortalRowFamilies()
+        {
+            if (PortalState.Count == 0 && _portalRowFamilies.Count == 0) return;
+
+            _portalRows.Clear();
+            foreach (var info in PortalState.Values)
+            {
+                var target = info.Target;
+                if (target == null || !SamePanelPortalBridges.ContainsKey(target)) continue;
+
+                for (var slot = info.SlotStart; slot < info.SlotStart + info.SlotLength; slot++)
+                {
+                    if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
+                    {
+                        _portalRows.Add(target[physical]);
+                    }
+                }
+            }
+
+            _portalRowsLeft.Clear();
+            foreach (var row in _portalRowFamilies.Keys)
+            {
+                if (!_portalRows.Contains(row)) _portalRowsLeft.Add(row);
+            }
+            foreach (var row in _portalRowsLeft)
+            {
+                _portalRowFamilies[row].Dispose();
+                _portalRowFamilies.Remove(row);
+            }
+            foreach (var row in _portalRows)
+            {
+                if (!_portalRowFamilies.ContainsKey(row)) _portalRowFamilies[row] = DefaultFamilyRoots.Hold(row);
+            }
+        }
+
+        // Every row's hold, given back when the reconciler is disposed.
+        internal void ReleasePortalRowFamilies()
+        {
+            foreach (var hold in _portalRowFamilies.Values) hold.Dispose();
+            _portalRowFamilies.Clear();
         }
 
         // The Portal whose range on parent holds row, or null for a row of parent's own — the logical parent both

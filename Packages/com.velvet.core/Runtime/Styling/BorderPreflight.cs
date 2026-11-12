@@ -982,6 +982,8 @@ namespace Velvet
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent, line removed): every walk clears the matcher before it asks, so one left
+                // holding records is cleared by the next; clearing it here only lets go of them sooner.
                 s_clear.Invoke(s_extractor, null);
             }
         }

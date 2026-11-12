@@ -1,2 +1,4 @@
 /* A rule DefaultFamilyScopePanelTests reads as an author's: it sets the font of the element carrying the class. */
 .author-font { -unity-font-definition: initial; }
+
+.author-hover:hover { -unity-font-definition: initial; }

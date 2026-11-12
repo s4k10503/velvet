@@ -452,6 +452,7 @@ namespace Velvet
                 BackdropFilterLayer.DrainPendingPlacements(_ctx);
                 // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
                 _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+                _ctx.SyncPortalRowFamilies();
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
                 // this pass owed has already run — the portal drain above included, which reconciles a
                 // Portal's children through ChildReconciler directly and so reaches no boundary of its
@@ -621,6 +622,7 @@ namespace Velvet
         {
             var held = _ctx.HeldRowLayoutEffects.Pop();
             _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+            _ctx.SyncPortalRowFamilies();
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
 
@@ -1143,6 +1145,7 @@ namespace Velvet
                 bridge.Release();
             }
             _ctx.SamePanelPortalBridges.Clear();
+            _ctx.ReleasePortalRowFamilies();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created
             // panel assets: destroy them so a disposed tree leaves no hidden panels behind. The
             // unmount reconcile already removed their children; a still-live layer host with zero

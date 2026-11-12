@@ -108,23 +108,24 @@ With the `Bold` entry registered, `font-bold` renders a **true** bold asset rath
 ### What `DefaultFamily` reaches
 
 `DefaultFamily` is the family the elements Velvet renders start from, as the `font-family` Tailwind's preflight
-gives `html` is. Velvet writes it inline on the element a tree is mounted on, and what is under that element
-inherits it, a label with no font class included, down to an element given a font of its own. Content a portal
-renders attaches under its container rather than under that element ([portals.md](portals.md)), so Velvet writes
-the family on the container as well, unless the container sits inside another element it writes the family on,
-and on the root of each layer or world-space panel it creates. The asset written is the one a normal-weight,
-upright request of the family resolves to, and the write follows a change to the registry at once, with no render.
+gives `html` is. Velvet writes it inline on the element a tree is mounted on, on each element
+`V.Portal(container, …)` or `V.Portal(id, …)` renders into its container ([portals.md](portals.md)) rather than on
+the container, whose other children keep their font, and on the root of each layer or world-space panel it creates.
+What is under them inherits it, a label with no font class included, down to an element given a font of its own;
+one of them inside another is given nothing of its own and inherits too. The asset written is the one a
+normal-weight, upright request of the family resolves to, and the write follows a change to the registry at once,
+with no render.
 
 An element whose font classes resolve to an asset has that asset written inline
 ([How resolution works](#how-resolution-works)), and what is under it inherits that one instead; a font a
-stylesheet sets on an element below the root decides there in the same way. Where an author's stylesheet rule or
-inline font gives the root, or an element above it, a font, Velvet writes nothing on the root and that font is
-inherited; a rule of a panel's theme does not count, a theme being a default stylesheet. Velvet reads this again
-at each update of the root's panel after the classes, name, stylesheets or inline font of the root or of an
-element above it change. The value Velvet wrote is taken off when the tree is disposed or the last portal leaves
-the container. `DefaultFamilyScopePanelTests` pins where the family is written, left out and taken off, on a panel
-with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font class on the runtime theme
-this project ships.
+stylesheet sets on an element below them decides there in the same way. Where an author's stylesheet rule or inline
+font gives one of them, or an element above it, a font, Velvet writes nothing on it and that font is inherited; a
+rule of a panel's theme does not count, a theme being a default stylesheet. While a default family is set, Velvet
+reads this again at each update of the element's panel after the element or one above it moves, or changes its
+classes, name, stylesheets, matched rules or inline font. The value Velvet wrote is taken off when the tree is
+disposed or the element leaves the portal. `DefaultFamilyScopePanelTests` pins where the family is written, left
+out and taken off, on a panel with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font
+class on the runtime theme this project ships.
 
 A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
@@ -170,13 +171,8 @@ Register the new locale's families, and set `DefaultFamily` if it changes. `Velv
 when a family is registered or unregistered, when `DefaultFamily` changes and when `Clear` empties the
 registry, and the family written on the roots ([What `DefaultFamily` reaches](#what-defaultfamily-reaches))
 follows it at once, with no render: a label that takes its font from there shows the new family straight away.
-
-An element with a font class keeps the asset it was resolved to, since nothing on the element answers to the
-registry changing. A render resolves it again where the render changes the element's classes or the
-`font-<name>` class of the ancestor it takes its family from, or where a variant (`hover:`, `dark:`, …) is
-changing which classes apply to it; re-rendering with the same classes is not, by itself, what brings it onto
-the new registry. A new `key` creates the elements under it afresh, and they resolve against the registry as it
-now is.
+An element created after the change, such as one a new `key` mounts afresh, resolves its font classes against the
+registry as it then is.
 
 ## Tailwind text-utility parity vs. UI Toolkit
 
