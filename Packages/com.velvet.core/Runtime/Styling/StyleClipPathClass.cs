@@ -214,7 +214,8 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
+                // Same pass-over as StyleEaseCurve.NoteClasses: the leaf tested below is part of its class.
+                if (string.IsNullOrEmpty(cls) || cls.IndexOf(ArbitraryPrefix, StringComparison.Ordinal) == -1)
                 {
                     continue;
                 }

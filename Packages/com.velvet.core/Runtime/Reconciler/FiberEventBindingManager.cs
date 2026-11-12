@@ -419,7 +419,7 @@ namespace Velvet
                 case PointerEnterBinding b: BindBubbleCallback(actions, element, b.Handler); break;
                 case PointerLeaveBinding b: BindBubbleCallback(actions, element, b.Handler); break;
                 case WheelBinding b: BindCallback(actions, element, b.Handler, b.Capture); break;
-                case GeometryChangedBinding b: BindBubbleCallback(actions, element, b.Handler); break;
+                case GeometryChangedBinding b: BindBubbleCallback(actions, element, FitAfter(element, b.Handler)); break;
             }
         }
 
@@ -694,6 +694,18 @@ namespace Velvet
             element.RegisterCallback(wrapped);
             actions.Add(() => element.UnregisterCallback(wrapped));
         }
+
+        // A watched radius-fit host has the fit run ahead of every callback (IRadiusFitHost), so the size change is handed
+        // to it again once the element's own handler has run, and a radius the handler writes is fitted on that change
+        // (CornerRadiusFitPanelTests). On any other element the factory watches, the fit's callback follows the bindings
+        // the element was created with.
+        private static EventCallback<GeometryChangedEvent> FitAfter(VisualElement element,
+            EventCallback<GeometryChangedEvent>? handler)
+            => evt =>
+            {
+                handler?.Invoke(evt);
+                CornerRadiusFit.AfterHostHandler(element, evt);
+            };
 
         // clicked carries no event, so whether a click reaches the Button is decided where it starts. A browser
         // raises a click on the common ancestor of the press and the release, and React walks the fiber tree

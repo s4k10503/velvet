@@ -7,9 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what the readers a patch hands each class of a list allocate for the classes named below: nothing
-    /// where no part of the class has to be cut out as a string, one string where a theme lookup has to be handed the
-    /// utility after a variant by name, and, where no sheet declares the theme variable a reader looks up, nothing
-    /// more inside a mount's theme scope than outside it. GWT, one assert per case.
+    /// where no part of the class has to be cut out as a string, one string where the utility after a variant has to
+    /// be handed on by name, to a theme lookup or as a variant parse's payload, and, where no sheet declares the theme
+    /// variable a reader looks up, nothing more inside a mount's theme scope than outside it. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     [Category("Performance")]
@@ -17,6 +17,10 @@ namespace Velvet.Tests
     {
         // A variant whose bracket opens with the shape of a type hint, as has-[:checked]: and has-[:focus]: do.
         private const string BracketedVariant = "has-[:checked]:bg-red-500";
+
+        // State, responsive, theme and relational variants over utilities of none of the families the readers below
+        // look for.
+        private static readonly string[] VariantClasses = { "hover:bg-red-500", "sm:p-2", "dark:bg-red-500", "group-hover:opacity-50" };
 
         private MountedTree _mounted;
 
@@ -126,6 +130,107 @@ namespace Velvet.Tests
 
             // Act
             var blocks = WarmBlocks(() => StyleEaseCurve.NoteClasses(element, classNames));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AStateVariantClass_When_AskedWhetherItIsAVariant_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleVariantClass.IsVariant("hover:bg-red-500"));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AStateVariantClass_When_ParsedAsAVariant_Then_ItsPayloadIsTheOneBlockAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleVariantClass.TryParse("hover:bg-red-500", out _, out _));
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(1));
+        }
+
+        [TestCase("first:p-2")]
+        [TestCase("max-3xl:p-2")]
+        public void Given_NoThemeScope_When_AClassBehindAPrefixNoVariantNamesIsAskedWhetherItIsAVariant_Then_NothingIsAllocated(
+            string cls)
+        {
+            // Act
+            var blocks = WarmBlocksOutsideScope(() => StyleVariantClass.IsVariant(cls));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoFilterTransition_When_ReadForOne_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var read = (Func<string[], bool>)Delegate.CreateDelegate(typeof(Func<string[], bool>),
+                typeof(FiberFilterTransitionApplier).GetMethod("HasFilterTransitionClass",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+
+            // Act
+            var blocks = WarmBlocks(() => read(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoClipPath_When_AskedWhetherTheyWantAClipWrapper_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleClipPathClass.WantsClipWrapper(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoFilter_When_AskedWhetherTheyHoldAFilter_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleFilterValueParser.HasFilterClass(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        // Measured against the filter read it opens with, so this answers for its own animate-hue read alone.
+        [Test]
+        public void Given_VariantClassesNamingNoFilter_When_AskedWhetherTheyCarryOne_Then_ItAllocatesWhatTheFilterReadDoes()
+        {
+            // Arrange
+            var filterRead = WarmBlocks(() => StyleFilterValueParser.HasFilterClass(VariantClasses));
+
+            // Act
+            var blocks = WarmBlocks(() => WrapperInfrastructure.CarriesFilter(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(filterRead));
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoBorder_When_TheirBorderInsetIsRead_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => SilhouetteBoundsSpacer.BorderInset(VariantClasses, out _, out _));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_ABracketedValueWithNoTypeHint_When_ReadAsAColour_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleColorValueParser.TryParseColorPrefix("w-", "120px".AsSpan(), false, null, out _));
 
             // Assert
             Assert.That(blocks, Is.Zero);
