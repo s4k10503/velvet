@@ -9,8 +9,8 @@ namespace Velvet.Tests
     /// Pins the commit sequence of a revealed <c>V.Suspense</c> that suspends again as one <see cref="EventLog"/>
     /// string: React 19's <c>disappearLayoutEffects</c> walks the hidden tree in pre-order, running a component's
     /// layout cleanups as it reaches the component and detaching an element's ref as it reaches the element. A
-    /// Suspense removed while it hides that tree runs none of the tree's insertion cleanups, as react-reconciler
-    /// 19.1's deletion of a hidden subtree runs none.
+    /// Suspense removed while it hides that tree runs the tree's insertion cleanups, ahead of its fallback's, as
+    /// React's deletion walk (<c>commitDeletionEffectsOnFiber</c>) runs a hidden subtree's.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseHideCommitOrderEventLogTests
@@ -556,8 +556,10 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo("ref-x:O lay-x:E ref-x:D ref-x:O2 ins:F ref:F lay:F eff:F"));
         }
 
+        // GREEN_ON_BASE(characterization): the base runs a hidden component's insertion cleanup when it is removed.
+        // Skip it for a fiber a Suspense hides (FiberEffects.CleanUpDeleted) and this reads the fallback's alone.
         [Test]
-        public void Given_ASuspenseHidingAComponentWithAnInsertionEffect_When_TheSuspenseIsRemoved_Then_OnlyItsFallbacksInsertionCleanupRuns()
+        public void Given_ASuspenseHidingAComponentWithAnInsertionEffect_When_TheSuspenseIsRemoved_Then_ItsInsertionCleanupRunsAheadOfTheFallbacks()
         {
             // Arrange
             var log = new EventLog();
@@ -572,7 +574,7 @@ namespace Velvet.Tests
             mounted.DrainForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ins-x:F"));
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:H ins-x:F"));
         }
     }
 }

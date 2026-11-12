@@ -12,7 +12,9 @@ namespace Velvet.Tests
     /// the sequence react-reconciler 19.1's deletion walk (<c>commitDeletionEffectsOnFiber</c>) produces for the
     /// same tree: a component's insertion and layout destroys run, and an element's ref detaches, where its
     /// pre-order walk reaches them. The probes register no passive effect: a deleted component's <c>UseEffect</c>
-    /// cleanup runs in that walk here, and after the commit in React.
+    /// cleanup runs in that walk here, and after the commit in React. The case of Portals into a registered id's rows
+    /// reads components React keeps: the children of Portals declared elsewhere into elements a deletion removes, which
+    /// the walk reaches no place for and takes down after it, in the order it collected them.
     /// </summary>
     [TestFixture]
     internal sealed class DeletionCommitOrderEventLogTests
@@ -324,8 +326,26 @@ namespace Velvet.Tests
             return V.Component(Probed, new Named(props.Name + "i"), key: "i");
         }
 
-        // Keyed elements, each holding a component that renders another with no element between them, so both start
-        // at the inner one's element.
+        [Component]
+        private static VNode WrappingTwice(Named props)
+        {
+            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            return V.Component(Wrapping, new Named(props.Name + "i"), key: "i");
+        }
+
+        // A component holding no row ahead of one that renders another with no element between them, so all three
+        // start at the innermost one's element.
+        [Component]
+        private static VNode RowlessAheadOfAWrapper()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                shown ? V.Component(Rowless, new Named("X"), key: "x") : null,
+                shown ? V.Component(Wrapping, new Named("O"), key: "o") : null);
+        }
+
+        // Keyed elements, each holding three components nested with no element between them, so all three start at
+        // the innermost one's element.
         [Component]
         private static VNode KeyedWrappedRows()
         {
@@ -337,7 +357,7 @@ namespace Velvet.Tests
             {
                 rows[i] = V.Div(key: keys[i], refCallback: keys[i] == "A" ? refA : refB, children: new VNode[]
                 {
-                    V.Component(Wrapping, new Named("W" + keys[i]), key: "w"),
+                    V.Component(WrappingTwice, new Named("W" + keys[i]), key: "w"),
                 });
             }
             return V.Div(children: rows);
@@ -402,6 +422,48 @@ namespace Velvet.Tests
                     V.Div(refCallback: holderRef, children: new VNode[] { V.Component(Probed, new Named("C"), key: "c") }),
                 }),
             });
+        }
+
+        private sealed class RowTargets
+        {
+            internal VisualElement First;
+            internal VisualElement Second;
+        }
+
+        // A Portal into a registered id whose two rows each hold an element another Portal renders into.
+        [Component]
+        private static VNode RetargetedRows(RowTargets targets)
+        {
+            var keepFirst = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
+            {
+                targets.First = element;
+                return null;
+            }, Array.Empty<object>());
+            var keepSecond = Hooks.UseCallback<Func<VisualElement, Action>>(element =>
+            {
+                targets.Second = element;
+                return null;
+            }, Array.Empty<object>());
+            return V.Portal(RegisteredId, new VNode[]
+            {
+                V.Div(key: "r1", children: new VNode[] { V.Div(refCallback: keepFirst) }),
+                V.Div(key: "r2", children: new VNode[] { V.Div(refCallback: keepSecond) }),
+            });
+        }
+
+        // Beside those rows, once aimed, a Portal into each row's element, of a component holding no row.
+        [Component]
+        private static VNode PortalsIntoRetargetedRows(RowTargets targets)
+        {
+            var (aimed, _) = EventLog.UseState("Aimed", false);
+            return V.Fragment(
+                V.Component(RetargetedRows, targets, key: "rows"),
+                aimed
+                    ? V.Portal(targets.First, new VNode[] { V.Component(Rowless, new Named("Q1"), key: "q1") }, key: "q1")
+                    : null,
+                aimed
+                    ? V.Portal(targets.Second, new VNode[] { V.Component(Rowless, new Named("Q2"), key: "q2") }, key: "q2")
+                    : null);
         }
 
         private static MountedTree Mount(EventLog log, VNode root)
@@ -650,7 +712,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AKeyedElementHoldingAComponentThatRendersAnother_When_ItLeavesAListOfElements_Then_TheOuterIsTakenDownFirst()
+        public void Given_AKeyedElementHoldingNestedComponentsWithNoElementBetween_When_ItLeavesAListOfElements_Then_TheOutermostIsTakenDownFirst()
         {
             // Arrange
             var log = new EventLog();
@@ -661,7 +723,8 @@ namespace Velvet.Tests
             mounted.DrainForTest();
 
             // Assert
-            Assert.That(log.ToString(), Is.EqualTo("ref-x:A ins-x:WA lay-x:WA ins-x:WAi lay-x:WAi ref-x:WAi"));
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ref-x:A ins-x:WA lay-x:WA ins-x:WAi lay-x:WAi ins-x:WAii lay-x:WAii ref-x:WAii"));
         }
 
         [Test]
@@ -677,6 +740,41 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins-x:DA lay-x:DA ins-x:CA lay-x:CA"));
+        }
+
+        [Test]
+        public void Given_AComponentHoldingNoRowAheadOfNestedComponents_When_TheirParentStopsRenderingThem_Then_TheyAreTakenDownInTreeOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RowlessAheadOfAWrapper));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:X lay-x:X ins-x:O lay-x:O ins-x:Oi lay-x:Oi ref-x:Oi"));
+        }
+
+        [Test]
+        public void Given_PortalsIntoTheRowsOfAPortalIntoARegisteredId_When_TheIdIsRegisteredToAnotherElement_Then_TheirChildrenAreTakenDownInTheRowsOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+            using var mounted = Mount(log, V.Component(PortalsIntoRetargetedRows, new RowTargets()));
+            log.Setter<bool>("Aimed").Invoke(true);
+            mounted.DrainForTest();
+            log.Clear();
+            LogAssert.Expect(LogType.Warning, $"[FiberPortalRegistry] Id \"{RegisteredId}\" is already registered. Overwriting.");
+
+            // Act
+            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:Q1 lay-x:Q1 ins-x:Q2 lay-x:Q2"));
         }
     }
 }

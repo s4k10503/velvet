@@ -108,10 +108,6 @@ namespace Velvet
                 ComponentFiber.BeginDeletion(commit._fibers);
                 foreach (var fiber in commit._fibers) commit.Place(fiber);
                 commit.VisitRow(element);
-                // MUTANT_SURVIVES(equivalent): no EventLog reading tells a fiber this walk misses taken down here from
-                // it taken down later in the same teardown (FiberElementCleaner.CleanupElement), which reaches it by
-                // the list returned below or by the Portal it belongs to. Before that the teardown runs no other
-                // cleanup and detaches no ref: the walk took down every other fiber and ref the element holds.
                 commit.TakeDownTheRest();
                 return mounted;
             }

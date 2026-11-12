@@ -11,11 +11,11 @@ namespace Velvet
     internal abstract class PreOrderTeardown
     {
         protected ReconcilerContext Ctx = null!;
-        // Each place the walk takes fibers down at maps to the first of them, chained through _placed, so a walk
-        // placing one fiber at each of many rows takes no list per row.
-        private readonly Dictionary<VisualElement, int> _startingAt = new();
-        private readonly Dictionary<VisualElement, int> _endingIn = new();
-        private readonly Dictionary<VisualElement, int> _endingInPortal = new();
+        // Each place the walk takes fibers down at maps to the first and last of them, chained through _placed, so a
+        // walk placing one fiber at each of many rows takes no list per row.
+        private readonly Dictionary<VisualElement, (int Head, int Tail)> _startingAt = new();
+        private readonly Dictionary<VisualElement, (int Head, int Tail)> _endingIn = new();
+        private readonly Dictionary<VisualElement, (int Head, int Tail)> _endingInPortal = new();
         private readonly List<Placed> _placed = new();
         private readonly RenderedChildrenCache _rendered = new();
         private readonly HashSet<VisualElement> _visited = new();
@@ -85,20 +85,34 @@ namespace Velvet
         }
 
         // The fibers taken down at one place, enclosing ones ahead of those inside them and siblings in their order:
-        // each goes behind the last one already there that it does not precede.
-        private bool AddInTreeOrder(Dictionary<VisualElement, int> chains, VisualElement at, ComponentFiber fiber)
+        // each goes behind the last one already there that it does not precede. The tail is asked first, so a walk
+        // placing many siblings at one place compares each with one fiber rather than with every one before it.
+        private bool AddInTreeOrder(Dictionary<VisualElement, (int Head, int Tail)> chains, VisualElement at,
+            ComponentFiber fiber)
         {
             var index = _placed.Count;
-            var first = !chains.TryGetValue(at, out var head);
+            var first = !chains.TryGetValue(at, out var chain);
+            // MUTANT_SURVIVES(equivalent, clause removed): the scan below puts a fiber that does not precede the tail
+            // behind it too, after comparing it with every fiber already there.
+            if (first || !PrecedesInPreOrder(fiber, _placed[chain.Tail].Fiber))
+            {
+                _placed.Add(new Placed { Fiber = fiber, Next = -1 });
+                if (first) chain.Head = index;
+                else SetNext(chain.Tail, index);
+                chains[at] = (chain.Head, index);
+                return first;
+            }
             var after = -1;
-            for (var i = first ? -1 : head; i >= 0; i = _placed[i].Next)
+            for (var i = chain.Head; i >= 0; i = _placed[i].Next)
             {
                 if (!PrecedesInPreOrder(fiber, _placed[i].Fiber)) after = i;
             }
-            _placed.Add(new Placed { Fiber = fiber, Next = after >= 0 ? _placed[after].Next : first ? -1 : head });
+            _placed.Add(new Placed { Fiber = fiber, Next = after >= 0 ? _placed[after].Next : chain.Head });
             if (after >= 0) SetNext(after, index);
-            else chains[at] = index;
-            return first;
+            else chains[at] = (index, chain.Tail);
+            // MUTANT_SURVIVES(equivalent, literal): a second entry for a place already listed takes nothing down there.
+            // DeletionCommit.PlaceDeleted alone reads it, and the place's fibers were all taken down at the first.
+            return false;
         }
 
         private void SetNext(int at, int next)
@@ -183,10 +197,10 @@ namespace Velvet
 
         protected void TakeDownEndingIn(VisualElement container) => TakeDownFrom(_endingIn, container);
 
-        private void TakeDownFrom(Dictionary<VisualElement, int> chains, VisualElement at)
+        private void TakeDownFrom(Dictionary<VisualElement, (int Head, int Tail)> chains, VisualElement at)
         {
-            if (!chains.TryGetValue(at, out var head)) return;
-            for (var i = head; i >= 0; i = _placed[i].Next) TakeDown(_placed[i].Fiber);
+            if (!chains.TryGetValue(at, out var chain)) return;
+            for (var i = chain.Head; i >= 0; i = _placed[i].Next) TakeDown(_placed[i].Fiber);
         }
 
         protected virtual void Clear()
