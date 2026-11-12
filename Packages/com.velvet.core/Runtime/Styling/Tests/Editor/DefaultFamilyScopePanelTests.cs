@@ -276,23 +276,74 @@ namespace Velvet.Tests
             Assert.That(ResolvedFont(target, "own"), Is.Not.SameAs(_sans));
         }
 
+        // The rows ReconcilerContext holds for the default family; -1 where the table is missing, which no count of
+        // rows can equal.
+        private int HeldPortalRows()
+        {
+            var table = typeof(ReconcilerContext).GetField("_portalRowFamilies",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var held = table?.GetValue(_mounted.Root.Reconciler.Context) as System.Collections.ICollection;
+            return held?.Count ?? -1;
+        }
+
         [Test]
-        public void Given_APortalRenderingARow_When_RendersTakeThePortalOut_Then_NoRowIsHeldForTheDefaultFamily()
+        public void Given_APortalRenderingARow_When_ARenderTakesThePortalOut_Then_NoRowIsHeldForTheDefaultFamily()
         {
             // Arrange
             VelvetFonts.DefaultFamily = "sans";
             var target = NewRootElement();
             _mounted = V.Mount(NewRootElement(), PortalInto(target, Plain("ported")));
 
-            // Act — twice, so the pass after the one that let the row go reads what that one left.
-            _mounted.Render(V.Div());
+            // Act
             _mounted.Render(V.Div());
 
-            // Assert — read as -1 where the table is missing, which no count of rows can equal.
-            var table = typeof(ReconcilerContext).GetField("_portalRowFamilies",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            var held = table?.GetValue(_mounted.Root.Reconciler.Context) as System.Collections.ICollection;
-            Assert.That(held?.Count ?? -1, Is.EqualTo(0));
+            // Assert
+            Assert.That(HeldPortalRows(), Is.EqualTo(0));
+        }
+
+        private static VNode TwoPortals(VisualElement first, VisualElement second, bool withFirst)
+            => V.Div(children: new VNode[]
+            {
+                withFirst ? V.Portal(first, new[] { Plain("first") }, key: "first") : null,
+                V.Portal(second, new[] { Plain("second") }, key: "second"),
+            });
+
+        [Test]
+        public void Given_TwoPortalsRenderingARowEach_When_RendersTakeOneOut_Then_TheOtherRowAloneIsHeldForTheDefaultFamily()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var first = NewRootElement();
+            var second = NewRootElement();
+            _mounted = V.Mount(NewRootElement(), TwoPortals(first, second, withFirst: true));
+
+            // Act — twice, so the pass after the one that let the row go reads what that one left.
+            _mounted.Render(TwoPortals(first, second, withFirst: false));
+            _mounted.Render(TwoPortals(first, second, withFirst: false));
+
+            // Assert
+            Assert.That(HeldPortalRows(), Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): a portal row StyleFontResolver writes the default face on keeps that face.
+        // The base writes that face from the row's class alone; this pins that the change, once an author's rule comes
+        // to give the target a font, does not take back a write that is the row's own although it equals its own.
+        [Test]
+        public void Given_APortalRowGivenTheDefaultFaceByItsClass_When_AnAuthorsFontRuleComesToMatchItsTarget_Then_TheRowKeepsThatFace()
+        {
+            // Arrange — written by DefaultFamilyRoots first, then by the row's own weight class with the same asset.
+            VelvetFonts.DefaultFamily = "sans";
+            var target = NewRootUnderAuthorSheet("unruled");
+            _mounted = V.Mount(NewRootElement(), PortalInto(target, V.Label(text: "row", name: "row")));
+            _mounted.Render(PortalInto(target, V.Label(className: "font-normal", text: "row", name: "row")));
+
+            // Act — the restyle first, then the update of the panel that reads the row again.
+            target.AddToClassList("author-font");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(ResolvedFont(target, "row"), Is.SameAs(_sans));
         }
 
         [Test]
