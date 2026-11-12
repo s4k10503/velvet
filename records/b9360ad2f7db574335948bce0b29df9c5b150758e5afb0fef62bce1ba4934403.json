@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 6 case(s) that ran the site: Given_TheFirstChildSearchedForFromTheLast_When_Removed_Then_ItIsTheOneThatLeaves",
+ "file": "c182bb80d739112ab251be76f5510b29e5572cfa92fbd7ff74b5cb02ad168d8b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HostCommitQueueRemovalTests.Given_TheFirstChildSearchedForFromTheLast_When_Removed_Then_ItIsTheOneThatLeaves",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/HostCommitQueueRemovalTests.cs": "2080f7627c58257a4e199f515a2fa864c10b211b713b6a6322efb36c66128d62"
+   }
+  }
+ ],
+ "measured_by": "43149574925",
+ "mutant": {
+  "after": ">",
+  "before": ">=",
+  "column": 58,
+  "line": 44,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/HostCommitQueue.cs",
+  "shadowed": [
+   "arithmetic",
+   "boundary",
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
+ "verdict": "killed"
+}

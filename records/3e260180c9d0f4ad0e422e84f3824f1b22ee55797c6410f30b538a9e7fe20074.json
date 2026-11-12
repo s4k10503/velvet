@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "38224b4a5bf0f18aa0cf27b2ccee6086a83c798fc3dd875337817a8e5192c7a5",
+ "killers": [],
+ "measured_by": "43149574925",
+ "mutant": {
+  "after": ";",
+  "before": "ctx.PinnedGhosts.Remove(real);",
+  "column": 12,
+  "line": 609,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
+ "verdict": "survived"
+}

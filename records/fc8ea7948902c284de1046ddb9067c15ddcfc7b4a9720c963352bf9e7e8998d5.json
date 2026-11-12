@@ -1,8 +1,19 @@
 {
- "detail": "EditMode survived; PlayMode: -",
+ "detail": "EditMode survived; PlayMode: 1 failed: Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt",
  "file": "f9ab82e03f919ae443bb5fbc7ddc3124a8c224df601116df83e13c4ceab29a16",
- "killers": [],
- "measured_by": "43007694835",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParticlesPlaybackTests.Given_AVisualEffectWithAQuadUnderItAndASceneQuadInFront_When_FramesAdvance_Then_OnlyItsQuadRendersWithTheElementShowingAroundIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/PlayMode/ParticlesPlaybackTests.cs": "adb1fa1183edfeac5be94a6075b58576bb96abb01386a6182bcf1ab44361cc34",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VfxGraphCapability.cs": "353c23f8bf3d1fbc979339f5dc01b5526db06b11edc028e180dcc6eef2ae251a"
+   }
+  }
+ ],
+ "measured_by": "43149574925",
  "mutant": {
   "after": ";",
   "before": "_pass.Mode = BackdropShader.ShadowAlpha;",
@@ -16,6 +27,6 @@
  "platform": "PlayMode",
  "schema": 3,
  "stood": null,
- "tests": "033208b61e0f5eab71ced9897c0bbea430c3612b5d2680e479b38bc567e57a18",
- "verdict": "survived"
+ "tests": "98b533eb2508d98e7e434af28fbbcb8fd1a08380c2ace242c045247e786a592f",
+ "verdict": "killed"
 }
