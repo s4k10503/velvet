@@ -300,7 +300,7 @@ namespace Velvet
                     payload = next ?? string.Empty;
                 }
                 // With no variant layer only the reader test below can pass.
-                if (!variant && !StyleCustomPropertyClass.MayBeConsumerAsWritten(payload))
+                if (!variant && !StyleCustomPropertyClass.MayBeCustomPropertyClassAsWritten(payload))
                 {
                     continue;
                 }

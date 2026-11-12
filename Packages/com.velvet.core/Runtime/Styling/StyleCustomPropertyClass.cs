@@ -75,10 +75,11 @@ namespace Velvet
             return true;
         }
 
-        // Whether Consumer could answer for the core StripImportant hands on for className, asked of className as written.
-        // The bracket, parenthesis or underscore Consumer looks for survives the bang's removal; without one it reads a
-        // theme class, whose shape MayBeFamilyShapedAsWritten answers for a class with no ':' (it reads past the last).
-        internal static bool MayBeConsumerAsWritten(string className)
+        // Whether Consumer or IsCustomPropertyToken could answer for the core StripImportant hands on for className, asked
+        // of className as written. The bracket, parenthesis or underscore both look for survives the bang's removal;
+        // without one they read a theme class or a cleared bundled one, whose shape MayBeFamilyShapedAsWritten answers for
+        // a class with no ':' (it reads past the last).
+        internal static bool MayBeCustomPropertyClassAsWritten(string className)
             => className.IndexOfAny(s_readerChars) >= 0 || StyleThemeClass.MayBeFamilyShapedAsWritten(className);
 
         private static readonly char[] s_readerChars = { '[', '(', '_', ':' };

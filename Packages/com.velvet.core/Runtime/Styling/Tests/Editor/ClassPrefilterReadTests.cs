@@ -89,6 +89,18 @@ namespace Velvet.Tests
                 Is.EqualTo("0000001A, 0000001A"));
         }
 
+        // GREEN_ON_BASE(characterization): the base draws every layer in the element's text colour for shadow-[currentcolor].
+        [Test]
+        public void Given_AShadowColourOfCurrentColorInABracket_When_Extracted_Then_EveryLayerTakesTheTextColour()
+        {
+            // Act
+            var found = StyleShadowClass.TryExtract(new[] { "shadow-md", "shadow-[currentcolor]" }, out var spec);
+
+            // Assert
+            Assert.That(found ? string.Join(", ", spec.Select(layer => float.IsNaN(layer.Color.r) ? "current" : "other")) : "none",
+                Is.EqualTo("current, current"));
+        }
+
         // GREEN_ON_BASE(characterization): the base finds no palette colour in a shadow suffix of any of these lengths.
         [Test]
         public void Given_ShadowClassesNamingUnknownColoursOfEveryLength_When_Extracted_Then_NoneDrawsALayer()
@@ -189,6 +201,20 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", payloads), Is.EqualTo("bg-red-500 p-4"));
         }
 
+        // GREEN_ON_BASE(characterization): the base cuts the payload after the prefix of each of these variant forms.
+        [TestCase("@md:p-2")]
+        [TestCase("max-md:p-2")]
+        [TestCase("max-[600px]:p-2")]
+        [TestCase("group-hover/sidebar:p-2")]
+        public void Given_AVariantOfAFormNoKeywordSpellsAlone_When_Parsed_Then_ItsPayloadIsWhatFollowsThePrefix(string cls)
+        {
+            // Act
+            var parsed = StyleVariantClass.TryParse(cls, out _, out _, out var payload);
+
+            // Assert
+            Assert.That(parsed ? payload : "not a variant", Is.EqualTo("p-2"));
+        }
+
         // GREEN_ON_BASE(characterization): the base builds one binding for a container query beside a hover class.
         [Test]
         public void Given_AContainerQueryBesideAHoverClass_When_TheContainerBindingsAreBuilt_Then_OneIsBuilt()
@@ -203,18 +229,19 @@ namespace Velvet.Tests
             Assert.That(bindings.Length, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the base builds one config for a group-hover class beside a hover class.
+        // GREEN_ON_BASE(characterization): the base builds one config for a group-hover class beside a hover class, holding its payload.
         [Test]
-        public void Given_AGroupHoverBesideAHoverClass_When_TheRelationalConfigsAreBuilt_Then_OneIsBuilt()
+        public void Given_AGroupHoverBesideAHoverClass_When_TheRelationalConfigsAreBuilt_Then_OneHoldsTheGroupHoverPayload()
         {
             // Arrange
             var build = Patcher<Func<string[], List<RelationalBindingConfig>>>("BuildRelationalConfigs");
 
             // Act
-            var configs = build(new[] { "group-hover:bg-red-500", "hover:bg-red-500" });
+            var configs = build(new[] { "group-hover:bg-red-500", "hover:p-2" });
 
             // Assert
-            Assert.That(configs?.Count ?? 0, Is.EqualTo(1));
+            Assert.That(configs == null ? "none" : string.Join(" | ", configs.Select(c => string.Join(" ", c.Payloads.Hover))),
+                Is.EqualTo("bg-red-500"));
         }
     }
 }

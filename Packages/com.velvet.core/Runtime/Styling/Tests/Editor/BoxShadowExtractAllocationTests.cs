@@ -7,8 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that the shadow pass's two reads of a shadowed element's classes on each patch, the layers it draws and
-    /// the colours a child's -inherit takes, allocate nothing but an inset ring's band for a single family's classes,
-    /// beside utilities of other families and an important one among them. GWT, one assert per case.
+    /// the colours a child's -inherit takes, allocate nothing but an inset ring's band for the single family's classes
+    /// below, beside utilities of other families and an important one among them. The presets below are named shorter
+    /// than any palette colour; shadow-inner, as long as white, is cut out. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     [Category("Performance")]

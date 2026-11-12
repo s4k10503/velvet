@@ -412,6 +412,25 @@ namespace Velvet.Tests
             Assert.That(blocks, Is.Zero);
         }
 
+        [Test]
+        public void Given_AnImportantClassOfNoThemeFamily_When_ItsCustomPropertyTokensAreConfigured_Then_NothingIsAllocated()
+        {
+            // Arrange
+            _mounted = V.Mount(new VisualElement(), V.Div());
+            var configure = (Action<VisualElement, string[]>)Delegate.CreateDelegate(typeof(Action<VisualElement, string[]>),
+                new FiberNodePatcher(_mounted.Root.Reconciler.Context),
+                typeof(FiberNodePatcher).GetMethod("ApplyCustomPropertyConfig",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
+            var element = new VisualElement();
+            var classNames = new[] { "!flex" };
+
+            // Act
+            var blocks = WarmBlocks(() => configure(element, classNames));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
         // Measured against the same class without its bang, so this answers for the important class alone.
         [Test]
         public void Given_AnImportantClassOfNoThemeFamily_When_TheElementIsTrackedForThemeClasses_Then_ItAllocatesWhatThePlainClassDoes()
