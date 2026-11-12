@@ -171,6 +171,7 @@ namespace Velvet
 
             element.style.unityFontDefinition = StyleKeyword.Null;
             element.style.unityFontStyleAndWeight = StyleKeyword.Null;
+            DefaultFamilyRoots.Overwritten(element);
         }
 
         internal static void ApplyIntent(VisualElement element, in FontIntent intent, FiberFontScope? scope,
@@ -236,6 +237,8 @@ namespace Velvet
             {
                 element.style.unityFontStyleAndWeight = StyleKeyword.Null;
             }
+
+            DefaultFamilyRoots.Overwritten(element);
         }
 
         /// <summary>

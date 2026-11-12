@@ -1727,6 +1727,62 @@ namespace Velvet
             });
         }
 
+        // The rows a same-panel portal has in its target, each held for the default family (DefaultFamilyRoots) in
+        // place of the target, which other code owns along with its other children, as createPortal leaves body's
+        // alone.
+        private readonly Dictionary<VisualElement, System.IDisposable> _portalRowFamilies = new();
+        private readonly HashSet<VisualElement> _portalRows = new();
+        private readonly List<VisualElement> _portalRowsLeft = new();
+
+        // Brings the held rows in line with the rows the portals hold now. Called where a pass has placed every row.
+        internal void SyncPortalRowFamilies()
+        {
+            if (PortalState.Count == 0 && _portalRowFamilies.Count == 0) return;
+
+            _portalRows.Clear();
+            foreach (var info in PortalState.Values)
+            {
+                var target = info.Target;
+                if (target == null || !SamePanelPortalBridges.ContainsKey(target)) continue;
+
+                for (var slot = info.SlotStart; slot < info.SlotStart + info.SlotLength; slot++)
+                {
+                    if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
+                    {
+                        // A row FiberZLayerCoordinator relocates keeps only a placeholder in its slot.
+                        var occupant = target[physical];
+                        _portalRows.Add(ZLayerPlaceholders.TryGetValue(occupant, out var real) ? real : occupant);
+                    }
+                }
+            }
+
+            _portalRowsLeft.Clear();
+            foreach (var row in _portalRowFamilies.Keys)
+            {
+                if (!_portalRows.Contains(row)) _portalRowsLeft.Add(row);
+            }
+            foreach (var row in _portalRowsLeft)
+            {
+                _portalRowFamilies[row].Dispose();
+                _portalRowFamilies.Remove(row);
+            }
+            foreach (var row in _portalRows)
+            {
+                if (!_portalRowFamilies.ContainsKey(row)) _portalRowFamilies[row] = DefaultFamilyRoots.Hold(row);
+            }
+        }
+
+        // Every row's hold, given back when the reconciler is disposed.
+        internal void ReleasePortalRowFamilies()
+        {
+            // MUTANT_SURVIVES(unreachable, line removed): no case leaves a row in the table by now, since the unmount
+            // reconcile ahead of Dispose ends in a pass whose sync releases each row its cleanup took out of
+            // PortalState; this is for a pass parked at Dispose, a shape no fixture builds.
+            foreach (var hold in _portalRowFamilies.Values) hold.Dispose();
+            // MUTANT_SURVIVES(equivalent, line removed): a disposed context runs no pass that reads the table.
+            _portalRowFamilies.Clear();
+        }
+
         // The Portal whose range on parent holds row, or null for a row of parent's own — the logical parent both
         // the synthetic-bubbling walk and the focus navigator read. Where ranges nest, the one starting last is
         // the innermost.

@@ -201,6 +201,14 @@ namespace Velvet
         private static readonly MethodInfo? s_settingsOf = EngineMember.TextSettingsOfElement.ResolveMethod();
         private static readonly MethodInfo? s_cachedFontAsset = EngineMember.TextSettingsCachedFontAsset.ResolveMethod();
 
+        // The font definition the rules and the parent give element beneath its inline one; null where the cached style
+        // cannot be read.
+        public static FontDefinition? RulesFontDefinition(VisualElement element)
+        {
+            var style = s_fontDefinition != null ? Of(element) : null;
+            return style == null ? null : (FontDefinition)s_fontDefinition!.GetValue(style);
+        }
+
         // The font asset the rules and the parent give element beneath its inline font definition, read as UI Toolkit
         // reads an element's own, with inlineFont, a legacy Font written inline, in place of the rules' one; null where
         // the cached style cannot be read.
