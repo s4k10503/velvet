@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794452144044,
+  "lastUpdate": 1794455084604,
   "repoUrl": "https://github.com/s4k10503/velvet",
   "entries": {
     "Velvet benchmarks": [
@@ -94292,6 +94292,756 @@ window.BENCHMARK_DATA = {
             "value": 0.19994999999994434,
             "unit": "ms",
             "extra": "processor: AMD EPYC 9V45 96-Core Processor"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "50241623+s4k10503@users.noreply.github.com",
+            "name": "0y0",
+            "username": "s4k10503"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2ff2f7bcabdf843e860a1c66d782adad7694d17d",
+          "message": "fix(velvet)!: mount an error boundary's fallback afresh where it catches outside a walk (#1602)\n\nCloses #1596\n\n**An error boundary that catches outside a walk mounts its fallback afresh (breaking).** React has two paths here, and both end in `forceUnmountCurrentAndReconcile`, which deletes the current children before mounting the fallback against none of them:\n- a capture during the render (`finishClassComponent` with `didCaptureError`);\n- a commit-phase error (`captureCommitPhaseError` → a `CaptureUpdate` → `DidCapture` on the next render).\n\nVelvet's `FiberErrorBoundary.ShowFallbackTree` diffed the fallback against the failed output instead, so a fallback child with the type and key of a shown one kept its state and element.\n\n`ShowFallbackTree` covers both of its callers:\n- `TryShowFallback`: an effect, cleanup or ref callback, or a child's own update;\n- `ShowCaughtFallback`: the boundary's own update.\n\nIt now does three things:\n- It unmounts what the boundary showed. `UnmountShownRows` reconciles those rows to empty and empties `PreviousTree`.\n- It drops the boundary's records through `ReconcilerContext.ForgetRecordsOf`: its Suspense records, AnimatePresence states and the Suspense primaries marked shown. An enclosing pass would otherwise only retire them after the fallback had read them.\n- It then mounts the fallback against nothing.\n\n`SuspenseOffscreenCommit.Visit` stops walking a root once a commit nested in the cleanup it just ran has taken that root's hold. The element pool can hand the fallback's new element the very instance the hide was visiting, and visiting it further would drop that element's pending ref.\n\nLeft out: a catch in the parent's walk, and a second capture during the swap, are filed as #1601. Velvet's walk mutates as it goes, so it can't leave the current tree untouched when a remount there is given up. Attempts on this branch were reverted after review found leaks and stale rows. #1601 records what those reviews found.\n\nTests:\n- `ErrorBoundaryFallbackRemountTests`:\n  - a stateful child and a keyed row, under a layout-effect throw and a render throw;\n  - a fallback repeating its Suspense or AnimatePresence, where a hide cleanup throws;\n  - an enclosing Suspense's hide.\n  - All are red on the base, except a pooled-node characterization.\n- `SuspenseOffscreenCommitTests`: two #1554 cases rewritten, since they relied on the kept element.\n\nCHANGELOG under `breaking/`. No `Documentation~` change.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+          "timestamp": "2026-11-12T12:28:14+09:00",
+          "tree_id": "0c8599249f6ff2c1353b68f60ef3ccf0c658f8f8",
+          "url": "https://github.com/s4k10503/velvet/commit/2ff2f7bcabdf843e860a1c66d782adad7694d17d"
+        },
+        "date": 1794455082478,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time.GC()",
+            "value": 0,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.RentReturnProps_Cycle / Time",
+            "value": 0.012949999999591455,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VButton_Allocation / Time",
+            "value": 0.022450000000162618,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VDiv_Allocation / Time",
+            "value": 0.015349999999671127,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VNodePoolBenchmarks.VLabel_Allocation / Time",
+            "value": 0.021749999999883585,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time.GC()",
+            "value": 55,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseMutationPlayModeBenchmarks.UseMutation_OneMutateRoundTrip / Time",
+            "value": 0.43029999999998836,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time.GC()",
+            "value": 4506,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.UseStateRerenderAllocBenchmarks.UseState_RerenderClosureAlloc / Time",
+            "value": 17.81600000000003,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 136.04825,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 1271808,
+            "unit": "b",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 136.0414,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_1000Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.004,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 12.096150000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 12.09265,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.00355,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Time",
+            "value": 1.3233000000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.GC",
+            "value": 0,
+            "unit": "b",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.Reconcile",
+            "value": 1.3199,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.E2EBenchmarks.E2E_Mount_10Elements_WithLayoutAndPaint / E2E.MarkDirty",
+            "value": 0.0034000000000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.Time",
+            "value": 1.2707000000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.FiberAsyncResourcePlayModeBenchmarks.HooksUse_SuspendResumeRoundTrip / HooksUse.SuspendResume.GC",
+            "value": 80,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_A_NewLabelAlone / Time",
+            "value": 6.492849999999862,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time.GC()",
+            "value": 11007,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_B_NewLabelWithText / Time",
+            "value": 6.572349999999915,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time.GC()",
+            "value": 8001,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_C_NewLabelAndSetText / Time",
+            "value": 6.167299999999955,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time.GC()",
+            "value": 9013,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_D_NewLabelAndAddToRoot / Time",
+            "value": 6.848000000000184,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time.GC()",
+            "value": 8012,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_E_FullPipelineParity / Time",
+            "value": 7.2905000000000655,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time.GC()",
+            "value": 26376,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_F_VelvetReconcile / Time",
+            "value": 64.90609999999992,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time.GC()",
+            "value": 24019,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InitialMountAllocBreakdown.Bench_G_VelvetReconcileLongLived / Time",
+            "value": 33.8617499999998,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time.GC()",
+            "value": 1,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_AllocationBlocks / Time",
+            "value": 0.006699999999909778,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.InstrumentCanariesPlayModeBenchmarks.InstrumentCanary_TimingBaseline / Time",
+            "value": 0.10899999999999999,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.Time",
+            "value": 322.28100000000006,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Append_1000RowsTo1000 / Op.GC",
+            "value": 181107,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.Time",
+            "value": 42.83970000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Clear_1000Rows / Op.GC",
+            "value": 13055,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.Time",
+            "value": 3114.8409,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_10000Rows / Op.GC",
+            "value": 1744399,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.Time",
+            "value": 286.0816,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Create_1000Rows / Op.GC",
+            "value": 177122,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.Time",
+            "value": 46.24445,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.PartialUpdate_EveryTenthOf1000Rows / Op.GC",
+            "value": 10171,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.Time",
+            "value": 12.987100000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Remove_OneOf1000Rows / Op.GC",
+            "value": 5085,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.Time",
+            "value": 551.2406000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Replace_AllOf1000Rows / Op.GC",
+            "value": 190076,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.Time",
+            "value": 12.46025,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Select_OneOf1000Rows / Op.GC",
+            "value": 5167,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.Time",
+            "value": 15.717600000000001,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.JsFrameworkKeyedBenchmarks.Swap_Rows2And999Of1000 / Op.GC",
+            "value": 5159,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time.GC()",
+            "value": 2006,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100LiteralPaintRows / Time",
+            "value": 26.45654999999988,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time.GC()",
+            "value": 3806,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PaintPassReconcileBenchmarks.Reconcile_UnchangedClassList_100VariantGatedPaintRows / Time",
+            "value": 31.41639999999984,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Clear_1000PooledButtonRows / Time",
+            "value": 65.47275000000002,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.PooledButtonRowBenchmarks.Create_1000PooledButtonRows / Time",
+            "value": 48.02719999999999,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time.GC()",
+            "value": 24019,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_1000Elements / Time",
+            "value": 34.46315000000004,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time.GC()",
+            "value": 2534,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_100Elements / Time",
+            "value": 3.579650000000129,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time.GC()",
+            "value": 222,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.InitialMount_10Elements / Time",
+            "value": 0.6080500000001052,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time.GC()",
+            "value": 166,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.PooledWidgetRecycle_LabelsAndButtons_10Elements / Time",
+            "value": 9.385649999999714,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_AllChange_100Elements / Time",
+            "value": 2.1826999999998407,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_AllChange_200Elements / Time",
+            "value": 45.11279999999988,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time.GC()",
+            "value": 2062,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedIndexed_GrowShrink_100To200Elements / Time",
+            "value": 70.42565000000013,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time.GC()",
+            "value": 8,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_BudgetedKeyed_AllChange_200Elements / Time",
+            "value": 17.499599999999873,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time.GC()",
+            "value": 6610,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_AllChange_100Nodes / Time",
+            "value": 35.31704999999988,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time.GC()",
+            "value": 216,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Expansion_NoChange_100Nodes / Time",
+            "value": 1.3360500000001139,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_AllChange_100Elements / Time",
+            "value": 4.861100000000079,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_NoChange_100Elements / Time",
+            "value": 0.2636999999995169,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time.GC()",
+            "value": 34,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_Keyed_Reverse_100Elements / Time",
+            "value": 2.1723000000001775,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time.GC()",
+            "value": 3,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.ReconcilerBenchmarks.Reconcile_NoChange_100Elements / Time",
+            "value": 0.08939999999984138,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time.GC()",
+            "value": 96897,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Mount_100StyledRows / Time",
+            "value": 253.28974999999946,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time.GC()",
+            "value": 58706,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_ChangedClassList_100StyledRows / Time",
+            "value": 130.51505000000043,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time.GC()",
+            "value": 98887,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_StripAndRestoreClassList_100StyledRows / Time",
+            "value": 314.7717499999999,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time.GC()",
+            "value": 7006,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.StyleManipulatorReconcileBenchmarks.Reconcile_UnchangedClassList_100StyledRows / Time",
+            "value": 51.73700000000008,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderAnInertContainer / Time",
+            "value": 9.74409999999989,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time.GC()",
+            "value": 806,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsUnderATextSizeContainer / Time",
+            "value": 15.214950000000044,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time.GC()",
+            "value": 6,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithAnInertClass / Time",
+            "value": 15.407450000000154,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time.GC()",
+            "value": 406,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.TextSizeEffectReconcileBenchmarks.Reconcile_RetextLabels_200LabelsWithATextSize / Time",
+            "value": 22.78545000000031,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time.GC()",
+            "value": 6008,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200Rows / Time",
+            "value": 138.10294999999996,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time.GC()",
+            "value": 13208,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.VisibleToggleProjectionBenchmarks.Reconcile_ToggleVisible_200RowsWithASuppressedClass / Time",
+            "value": 149.64799999999968,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time.GC()",
+            "value": 14,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_AwaitSyncCompleted / Time",
+            "value": 0.04574999999977081,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.Time",
+            "value": 0.32315000000000005,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouteLoaderRunnerPlayModeBenchmarks.RunLoadersSync_SuspendDeferredCompletion / RouteLoaderRunner.SuspendDeferred.GC",
+            "value": 11,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time.GC()",
+            "value": 112,
+            "unit": "",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
+          },
+          {
+            "name": "Velvet.Tests.Performance.RouterNavigationPlayModeBenchmarks.NavigateAsync_LoaderAndBlocker / Time",
+            "value": 0.20624999999972715,
+            "unit": "ms",
+            "extra": "processor: AMD EPYC 9V74 80-Core Processor"
           }
         ]
       }
