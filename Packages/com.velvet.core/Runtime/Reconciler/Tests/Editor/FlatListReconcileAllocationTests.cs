@@ -7,7 +7,7 @@ namespace Velvet.Tests.Performance
 {
     /// <summary>
     /// Specifies that an unchanged flat list reconciles without allocating once the reconciler's pools are warm,
-    /// so a re-render reaching it pays nothing for the old instances its container resolves at entry.
+    /// so a re-render reaching it pays nothing for its container's old instances.
     /// </summary>
     [TestFixture]
     [Category("Performance")]

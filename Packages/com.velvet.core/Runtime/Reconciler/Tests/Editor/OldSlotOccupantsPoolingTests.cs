@@ -10,10 +10,10 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that the old instances a container resolves at its entry (<see cref="OldSlotOccupants"/>) go
+    /// Specifies that the old instances a container rents at its entry (<see cref="OldSlotOccupants"/>) go
     /// back to <see cref="ReconcilerBufferPool"/> when the pass that rented them ends or a park holding them is
-    /// discarded, come back holding no element, and leave <see cref="ReconcilerContext.OpenOldInstances"/> with the
-    /// walk that opened them.
+    /// discarded, come back holding no element, name none where nothing was read into them, and leave
+    /// <see cref="ReconcilerContext.OpenOldInstances"/> with the walk that opened them.
     /// </summary>
     [TestFixture]
     internal sealed class OldSlotOccupantsPoolingTests
@@ -146,6 +146,22 @@ namespace Velvet.Tests
             Assert.That(
                 parked ? ReferenceEquals(_reconciler.Context.BufferPool.RentOldSlotOccupants(), borrowed) : (bool?)null,
                 Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base names no element from occupants nothing was read into.
+        // The general walk over a null parent reads nothing into its instance, and its removals still ask it for each
+        // old leaf's.
+        [Test]
+        public void Given_OccupantsNothingWasReadInto_When_TheFirstEntryIsAsked_Then_ItNamesNoElement()
+        {
+            // Arrange
+            var occupants = _reconciler.Context.BufferPool.RentOldSlotOccupants();
+
+            // Act
+            var first = occupants.Occupant(0);
+
+            // Assert
+            Assert.That(first, Is.Null);
         }
 
         [Test]

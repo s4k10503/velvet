@@ -36,7 +36,7 @@ namespace Velvet
     // The other two are not reported. They run only between walks — at the end of a top-level pass, or outside any
     // pass — where the diffs holding old instances are the parked ones: Arrange converts nothing for their parents,
     // and a queued placeholder is younger than their instances, since the queue empties at each top-level boundary and
-    // a diff reads its old instances when it starts.
+    // a diff's old instances name what stood at its slots when it started (OldSlotOccupants).
     // Everything else this moves is invisible to the reconciler's slot arithmetic (LogicalChildSlots.IsInvisible).
     internal static class FiberZLayerCoordinator
     {
