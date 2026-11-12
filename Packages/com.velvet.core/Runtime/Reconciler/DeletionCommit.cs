@@ -71,6 +71,10 @@ namespace Velvet
             {
                 for (; next < _orphanRows.Count && _orphanRows[next].Index <= index; next++)
                 {
+                    // MUTANT_SURVIVES(equivalent, boundary): an orphan starting at a removed row goes first either way.
+                    // The row's visit takes down what starts at the row ahead of the row's ref, a z-layer placeholder
+                    // visited ahead of it holds no ref (FiberZLayerCoordinator.CreatePlaceholder), and an orphan reads
+                    // no row anchor.
                     if (_orphanRows[next].Index < index) TakeDownStartingAt(_orphanRows[next].Start);
                 }
                 _rowAnchor = AnchorOfRow(owner);

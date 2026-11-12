@@ -570,6 +570,8 @@ namespace Velvet
                 foreach (var slot in fiber.Effects)
                 {
                     var cleanup = slot.Cleanup;
+                    // MUTANT_SURVIVES(equivalent): Effects drops the slot below, and its hook finds it there alone.
+                    // PendingEffects drops it too, so nothing reads the cleanup it still holds.
                     slot.Cleanup = null;
                     if (cleanup != null) (cleanups ??= new List<Action>()).Add(cleanup);
                 }
@@ -880,6 +882,8 @@ namespace Velvet
             held.RemoveRange(kept, held.Count - kept);
             // A destroy a parked pass queued is due once the pass has committed (TakeDeletedPassiveCleanups), which
             // this commit can be, after a drain that found it held.
+            // MUTANT_SURVIVES(equivalent, boundary): a drain armed with nothing queued returns at HasPassiveWork.
+            // ArmPassiveDrain is the latch's only reader, and the drain already scheduled serves the next staging.
             if (ctx.PendingDeletedPassiveCleanups.Count > 0) ArmPassiveDrain(ctx);
         }
 

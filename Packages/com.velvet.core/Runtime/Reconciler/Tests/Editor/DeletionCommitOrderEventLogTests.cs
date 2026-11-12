@@ -483,6 +483,70 @@ namespace Velvet.Tests
                 shown ? V.Component(Probed, new Named("B"), key: "b") : null);
         }
 
+        [Component]
+        private static VNode Rowless(Named props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Fragment(new VNode[] { null });
+        }
+
+        // A deleted component holding no row ahead of a sibling's row that stays, and a deletion after that row.
+        [Component]
+        private static VNode RowlessAheadOfAKeptRow()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                shown ? V.Component(Rowless, new Named("A"), key: "a") : null,
+                V.Component(Probed, new Named("S"), key: "s"),
+                shown ? V.Component(Probed, new Named("B"), key: "b") : null);
+        }
+
+        private sealed record InnerTarget(string Name, VisualElement Target, bool Shown);
+
+        // A Portal child whose element holds a second Portal, of a list, ahead of a component.
+        [Component]
+        private static VNode HoldsAListPortal(InnerTarget props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback(props.Name), children: new VNode[]
+            {
+                props.Shown
+                    ? V.Portal(props.Target, new VNode[]
+                    {
+                        V.VirtualList(
+                            items: new[] { "R" },
+                            keySelector: item => item,
+                            itemHeight: 50f,
+                            renderer: item => V.Component(ListRow, new Named(item), key: item),
+                            overscan: 0),
+                    }, key: "inner")
+                    : null,
+                V.Component(Probed, new Named("Z"), key: "z"),
+            });
+        }
+
+        private sealed record PortalTargets(VisualElement Spare, VisualElement Outer, VisualElement Inner);
+
+        // Phase 1 takes a spare Portal away and gives the outer Portal's child its own Portal, recorded after the
+        // spare's went; phase 2 removes the element around the outer Portal.
+        [Component]
+        private static VNode PortalOfAListPortalInARemovedElement(PortalTargets targets)
+        {
+            var (phase, _) = EventLog.UseState("Phase", 0);
+            var holderRef = EventLog.UseRefCallback("O");
+            return V.Fragment(
+                phase == 0 ? V.Portal(targets.Spare, new VNode[] { V.Div() }, key: "spare") : null,
+                phase < 2
+                    ? V.Div(refCallback: holderRef, children: new VNode[]
+                    {
+                        V.Portal(targets.Outer, new VNode[]
+                        {
+                            V.Component(HoldsAListPortal, new InnerTarget("P", targets.Inner, phase >= 1), key: "p"),
+                        }, key: "outer"),
+                    })
+                    : null);
+        }
+
         private static MountedTree Mount(EventLog log, VNode root)
         {
             var mounted = V.Mount(new VisualElement(), log.Provide(root));
@@ -932,6 +996,46 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "ins-x:A lay-x:A ref-x:A ins-x:B lay-x:B ref-x:B eff-x:A eff-x:B"));
+        }
+
+        [Test]
+        public void Given_AComponentHoldingNoRowAheadOfARowThatStays_When_ItAndARowAfterAreDeleted_Then_ItIsTakenDownFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(RowlessAheadOfAKeptRow));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:A lay-x:A ins-x:B lay-x:B ref-x:B eff-x:A eff-x:B"));
+        }
+
+        [Test]
+        public void Given_APortalChildHoldingAPortalOfAList_When_TheElementAroundTheOuterPortalIsRemoved_Then_TheListsRowIsTakenDownWhereItsPortalSits()
+        {
+            // Arrange — the list holds its row once a range update has placed it
+            var log = new EventLog();
+            var inner = new VisualElement();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(PortalOfAListPortalInARemovedElement,
+                new PortalTargets(new VisualElement(), new VisualElement(), inner))));
+            mounted.DrainForTest();
+            log.Setter<int>("Phase").Invoke(1);
+            mounted.DrainForTest();
+            mounted.Root.Reconciler!.Context.VirtualListControllers[inner.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("Phase").Invoke(2);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ref-x:O ins-x:P lay-x:P ref-x:P ins-x:R lay-x:R ins-x:Z lay-x:Z ref-x:Z eff-x:P eff-x:R eff-x:Z"));
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -10,8 +11,9 @@ namespace Velvet.Tests
     /// Pins what a deletion leaves for the passive phase after its commit, where a removed component's
     /// <c>UseEffect</c> cleanup runs: an element the deletion removed stays out of the pool until that cleanup has
     /// run, and goes back to it then; the deletion arms a drain for the cleanup, and one a parked transition made
-    /// arms another once the transition commits; and where no drain can run it, the cleanup runs at once.
-    /// <see cref="DeletionCommitStateTests"/> owns what the deletion itself keeps once it has ended.
+    /// arms another once the transition commits; and where no drain can run it, the cleanup runs at once. A later
+    /// deletion, in another tree, removes only the rows its own render drops. <c>DeletionCommitStateTests</c> owns
+    /// what the deletion itself keeps once it has ended.
     /// </summary>
     [TestFixture]
     internal sealed class DeletionLeftoverTests
@@ -20,6 +22,7 @@ namespace Velvet.Tests
 
         private static Button s_capturedButton;
         private static StateUpdater<bool> s_setShown;
+        private static StateUpdater<bool> s_setLeadingShown;
         private static ComponentFiber s_slicedList;
         private static int s_generation;
 
@@ -135,6 +138,33 @@ namespace Velvet.Tests
                 itemHeight: 50f,
                 renderer: item => V.Component(Counted, key: item),
                 overscan: 0);
+
+        [Component(Compiler = false)]
+        private static VNode NamedRow(string name) => V.Div(name: name);
+
+        // Two rows ahead of one that stays, which a render removes.
+        [Component(Compiler = false)]
+        private static VNode LeadingRowsRemoved()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setLeadingShown = setShown;
+            return V.Fragment(
+                shown ? V.Component(NamedRow, "x", key: "x") : null,
+                shown ? V.Component(NamedRow, "y", key: "y") : null,
+                V.Component(NamedRow, "z", key: "z"));
+        }
+
+        // A row after two that stay, which a render removes.
+        [Component(Compiler = false)]
+        private static VNode TrailingRowRemoved()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setShown = setShown;
+            return V.Fragment(
+                V.Component(NamedRow, "p", key: "p"),
+                V.Component(NamedRow, "q", key: "q"),
+                shown ? V.Component(NamedRow, "r", key: "r") : null);
+        }
 
         private static int ButtonsPooled()
         {
@@ -367,6 +397,28 @@ namespace Velvet.Tests
 
             // Assert — a cleanup that ran before the disposal reads the same, so that reading is a sentinel.
             Assert.That(heldWhileParked ? s_cleanups : -1, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base removes only the rows each render drops.
+        [Test]
+        public void Given_ATreeThatRemovedTwoLeadingRows_When_AnotherTreeRemovesItsLastRow_Then_ThatTreeKeepsItsOtherRows()
+        {
+            // Arrange
+            using var first = V.Mount(new VisualElement(), V.Component(LeadingRowsRemoved));
+            first.DrainForTest();
+            s_setLeadingShown.Invoke(false);
+            first.DrainForTest();
+            var root = new VisualElement();
+            using var second = V.Mount(root, V.Component(TrailingRowRemoved));
+            second.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            second.DrainForTest();
+
+            // Assert
+            Assert.That(string.Join(",", new[] { "p", "q", "r" }.Where(name => root.Q(name) != null)),
+                Is.EqualTo("p,q"));
         }
     }
 }
