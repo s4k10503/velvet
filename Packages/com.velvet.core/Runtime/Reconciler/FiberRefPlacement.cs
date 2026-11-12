@@ -153,11 +153,9 @@ namespace Velvet
             {
                 var mount = child.MountPoint;
                 if (mount == null) return false;
-                var portal = _tree.PortalOf(child);
-                if (portal != null) return _tree.Precedes(portal, element);
                 if (!child.IsInlineMounted) return _tree.Precedes(mount, element);
                 if (child.MountSlotCount < 0) return false;
-                return _tree.RowsBefore(mount, child.MountSlotStart + child.MountSlotCount, element);
+                return _tree.RowsBefore(_tree.RowParentOf(child), child.MountSlotStart + child.MountSlotCount, element);
             }
         }
     }
@@ -232,13 +230,15 @@ namespace Velvet
         // arrival SortByTreeOrder places.
         internal bool HasPortalRows => _portalsOf.Count != 0;
 
-        // The Portal placeholder whose rows the fiber is the top level of, or null for a fiber that is not.
-        internal VisualElement? PortalOf(ComponentFiber fiber)
+        // The element an inline fiber's rows are children of in this tree: the Portal placeholder whose range on the
+        // target holds them, a fiber nested in a Portal child included, and otherwise its mount point. The rows'
+        // slots are the target's either way, which is what RowsBefore reads under a placeholder.
+        internal VisualElement RowParentOf(ComponentFiber fiber)
         {
+            var mount = fiber.MountPoint!;
             var placeholder = fiber.OwningPortalPlaceholder;
-            if (placeholder == null) return null;
-            if (!_ctx.PortalState.TryGetValue(placeholder, out var info)) return null;
-            return ReferenceEquals(info.Target, fiber.MountPoint) ? placeholder : null;
+            if (placeholder == null || !_ctx.PortalState.TryGetValue(placeholder, out var info)) return mount;
+            return ReferenceEquals(info.Target, mount) ? placeholder : mount;
         }
 
         // Whether the rows of parent that end at the logical slot end all lie before element: the element is parent

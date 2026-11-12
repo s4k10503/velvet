@@ -2079,6 +2079,10 @@ namespace Velvet
         public List<ComponentFiber> PendingPassiveEffectFibers { get; } = new();
         public HashSet<ComponentFiber> PendingPassiveEffectFiberSet { get; } = new();
 
+        // The rows a container's deletion has taken down and whose removal has not reached FiberElementCleaner yet, each
+        // with the fibers mounted under it (DeletionCommit.Run, ended by DeletionCommit.End).
+        internal readonly Dictionary<VisualElement, List<ComponentFiber>?> RemovalsTakenDown = new();
+
         // True once a DrainPassiveEffects callback has been registered on the host scheduler for
         // the current batch of PendingPassiveEffectFibers. Prevents scheduling more than
         // one drain per paint-tick even when many fibers stage passive effects in one reconcile pass.

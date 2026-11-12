@@ -819,7 +819,7 @@ namespace Velvet
         internal bool IsInlineMounted { get; set; }
 
         /// <summary>
-        /// The Portal placeholder whose children reconcile last reached this inline fiber, or null for one
+        /// The Portal placeholder whose children reconcile last reached this fiber, or null for one
         /// reached outside any Portal. A Portal's top-level Component child mounts inline with the portal
         /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
         /// removes rather than a descendant of any of them; this is what tells the teardown which of the
@@ -979,9 +979,9 @@ namespace Velvet
 
         internal ComponentFiber? NearestAncestorOutsideTheDeletion { get; private set; }
 
-        internal void MarkBeingDeleted() => IsBeingDeleted = true;
+        private void MarkBeingDeleted() => IsBeingDeleted = true;
 
-        internal void RecordTheNearestAncestorOutsideTheDeletion()
+        private void RecordTheNearestAncestorOutsideTheDeletion()
         {
             var ancestor = Parent;
             while (ancestor is { IsMountRoot: false } && (ancestor.IsBeingDeleted || ancestor.IsDisposed))

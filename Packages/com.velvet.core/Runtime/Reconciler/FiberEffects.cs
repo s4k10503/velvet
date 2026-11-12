@@ -552,15 +552,11 @@ namespace Velvet
         internal static void CleanupAllLayoutEffects(ComponentFiber fiber)
             => HookEffectExecutor.CleanupAll(fiber, fiber.LayoutEffects, fiber.PendingLayoutEffects);
 
-        // Runs the orphan fiber's effect cleanups WITHOUT touching DOM or finalizing dispose.
-        // When a fiber is deleted, its layout effect cleanups must run BEFORE the deleted fiber's child host elements have
-        // their refs detached and DOM removed. ChildReconciler invokes this on each orphan fiber
-        // before its DOM-removal pass so cleanup closures observe still-valid refs.
-        // Idempotent: subsequent CleanupAll passes (e.g. from Unmount) iterate empty
-        // lists since CleanupAll clears the lists after running.
-        internal static void RunOrphanFiberEffectCleanups(ComponentFiber fiber)
+        // The deletion walk calls this where it reaches the fiber (DeletionCommit), and the fiber's unmount calls it too
+        // (FiberRenderer.Unmount). Each CleanupAll empties the lists it runs, so whichever call comes second finds
+        // nothing left.
+        internal static void CleanUpDeleted(ComponentFiber fiber)
         {
-            if (fiber == null || !fiber.IsMounted || fiber.IsDisposed) return;
             CleanupAllInsertionEffects(fiber);
             CleanupAllLayoutEffects(fiber);
             CleanupAllEffects(fiber);

@@ -297,7 +297,6 @@ namespace Velvet
                     // retains the time-sliced Indexed/Keyed diff state machine unchanged. The keyed
                     // path is selected if either side carries a key (unifying keyed/unkeyed transitions),
                     // or an old leaf's slot is not its flat index.
-                    _host.CleanUpOrphans(oldFibers, newFibers);
                     var newNodes = newChildren ?? Array.Empty<VNode>();
                     // Null where the old side needed no expansion; OldKey says what that stands for.
                     var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;

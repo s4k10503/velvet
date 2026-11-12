@@ -294,11 +294,12 @@ namespace Velvet
             // those protections; outside a pass the queue is simply empty.
             ReclaimDeferredInlineEntries(fiber);
 
-            // Commit-phase deletion is post-order DFS — the deepest descendant's cleanups
-            // must complete before the parent's. Reorder: child VE removal + child fiber dispose
-            // run first (their effect cleanups fire via FiberEffects.RunOrphanFiberEffectCleanups
-            // while DI scopes / subscriptions / CTS held by this fiber are still alive), then this
-            // fiber's own cleanup. While a time-sliced reconcile is pending, PreviousTree diverges
+            // React's deletion reaches a component ahead of what it rendered: this fiber's cleanups run before its
+            // rows are reconciled away below, whose components are taken down the same way. The rest of what this
+            // fiber holds — DI scopes, subscriptions, CTS — is released after them.
+            FiberEffects.CleanUpDeleted(fiber);
+
+            // While a time-sliced reconcile is pending, PreviousTree diverges
             // from the actual DOM contents; FiberElementCleaner.RemoveElement silently skips
             // out-of-range indices so only existing elements are removed. Any pending
             // PendingIndexedState is cleared at the top of this Reconcile call.
@@ -347,9 +348,6 @@ namespace Velvet
             // committed tree's pooled parts back to the pool.
             retiredTree = fiber.PreviousTree;
 
-            FiberEffects.CleanupAllInsertionEffects(fiber);
-            FiberEffects.CleanupAllLayoutEffects(fiber);
-            FiberEffects.CleanupAllEffects(fiber);
             FiberOutletScope.Release(fiber);
             fiber.DisposeBlockerSlots();
             fiber.DisposeStoreSlots();
