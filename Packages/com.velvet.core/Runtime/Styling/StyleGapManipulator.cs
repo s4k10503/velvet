@@ -159,6 +159,11 @@ namespace Velvet
         // it measures without moving the container.
         private int ChildReading() => _spec.Space.IsMeasured ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
 
+        // Static lambdas, so a call starting no poll builds nothing (RelativeLengthPollAllocationTests).
+        private void SyncPoll(bool wanted)
+            => StyleRelativeLengths.SyncPoll(ref _poll, target, wanted, this, static self => self.Reapply(),
+                static self => self.ChildReading());
+
         public StyleGapManipulator(ReconcilerContext ctx, GapSpec spec)
         {
             _ctx = ctx;
@@ -169,7 +174,7 @@ namespace Velvet
         public void UpdateGap(GapSpec spec)
         {
             _spec = spec;
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply, ChildReading);
+            SyncPoll(_spec.IsMeasured);
             // Force a re-apply: the spec changed even when the child set did not, so invalidate the cache.
             Reapply();
         }
@@ -187,13 +192,13 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply, ChildReading);
+            SyncPoll(_spec.IsMeasured);
             Apply();
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
-            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
+            SyncPoll(false);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);

@@ -170,8 +170,13 @@ namespace Velvet
 
         // Keeps a poll on element while wanted, calling onMoved whenever what a measured length reads has moved.
         // A manipulator not yet on its element (a null element) keeps none.
-        public static void SyncPoll(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted, Action onMoved,
-            Func<int>? extraReading = null)
+        public static void SyncPoll(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted, Action onMoved)
+            => SyncPoll(ref poll, element, wanted, onMoved, static moved => moved());
+
+        // As above, with onMoved and extraReading handed state, so that a caller passing static lambdas builds no delegate
+        // on a call that starts no poll.
+        public static void SyncPoll<TState>(ref RelativeLengthPoll? poll, VisualElement? element, bool wanted,
+            TState state, Action<TState> onMoved, Func<TState, int>? extraReading = null)
         {
             if (!wanted || element == null)
             {
@@ -183,15 +188,23 @@ namespace Velvet
             {
                 return;
             }
+            poll = StartPoll(element, state, onMoved, extraReading);
+        }
+
+        // Kept out of SyncPoll: inlined there, its closure is built on every call rather than on one that starts a poll
+        // (RelativeLengthPollAllocationTests).
+        private static RelativeLengthPoll StartPoll<TState>(VisualElement element, TState state, Action<TState> onMoved,
+            Func<TState, int>? extraReading)
+        {
             RelativeLengthPoll? created = null;
             created = new RelativeLengthPoll(element, _ =>
             {
                 if (created!.Moved())
                 {
-                    onMoved();
+                    onMoved(state);
                 }
-            }, extraReading);
-            poll = created;
+            }, extraReading == null ? null : () => extraReading(state));
+            return created;
         }
 
         // The font-relative units on element, at its computed font size and line height.

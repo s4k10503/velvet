@@ -664,14 +664,17 @@ namespace Velvet
         // initialPosition: the stop's registered initial position, which a position the browser rejects falls back to.
         private static void ReadStop(string cls, int prefixLength, float initialPosition, ref UtilityStop stop)
         {
-            if (!s_stopTokens.TryGet(cls, out var token) || (token.Measured && s_basis != null))
+            // A palette colour reads as none under a scope whose sheets clear the colour namespace (VelvetPalette.TryGet),
+            // so a reading taken there is neither kept nor handed out: what the memo holds, every other scope reads alike.
+            var cleared = StyleThemeTokens.Current?.ClearsNamespace("color-") == true;
+            if (!s_stopTokens.TryGet(cls, out var token) || cleared || (token.Measured && s_basis != null))
             {
                 var before = s_measuredRead;
                 s_measuredRead = false;
                 token = ParseStopToken(cls.Substring(prefixLength));
                 token.Measured = s_measuredRead;
                 s_measuredRead |= before;
-                if (!token.Measured || s_basis == null)
+                if (!cleared && (!token.Measured || s_basis == null))
                 {
                     s_stopTokens.Add(cls, token);
                 }

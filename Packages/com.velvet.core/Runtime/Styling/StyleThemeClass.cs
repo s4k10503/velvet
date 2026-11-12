@@ -124,6 +124,18 @@ namespace Velvet
             return dash != -1 && IsHead(core.AsSpan(head, dash - head));
         }
 
+        // IsFamilyShaped asked of a class as written, its utility read past the last ':' and a bang that opens it. It fails
+        // only where it fails on the class StripImportant hands on too, so a caller asks it ahead of that copy.
+        internal static bool MayBeFamilyShapedAsWritten(string className)
+        {
+            var start = className.LastIndexOf(':') + 1;
+            if (className.IndexOf('!', start) == start)
+            {
+                start++;
+            }
+            return IsFamilyShaped(className, start);
+        }
+
         // Whether a class with none of the special characters is one a theme variable makes or a namespace's initial
         // removes, which the custom-property pass owns rather than the class list.
         internal static bool OwnsPlainToken(string core) => Normalize(core) != null || IsClearedBundled(core);

@@ -2628,6 +2628,12 @@ namespace Velvet
         {
             foreach (var className in classNames ?? Array.Empty<string>())
             {
+                // The outer layer ends at a ':' and the inner holds one of its own, so a class with fewer than two is
+                // passed over before either parse cuts out a payload.
+                if (className == null || className.IndexOf(':') == className.LastIndexOf(':'))
+                {
+                    continue;
+                }
                 string? rest = null;
                 if (!StyleVariantClass.TryParse(className, out _, out rest)
                     && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
@@ -2658,7 +2664,7 @@ namespace Velvet
             List<int>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (StyleVariantClass.TryParse(classNames[i], out var k, out var payload) && k == kind)
+                if (StyleVariantClass.TryParseFor(classNames[i], kind, out var k, out _, out var payload) && k == kind)
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
                     (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
@@ -2754,13 +2760,14 @@ namespace Velvet
             spelling = string.Empty;
             query = default;
             payload = string.Empty;
-            if (!StyleVariantClass.TryParse(token, out var kind, out var name, out var rest))
+            if (!StyleVariantClass.TryParseFor(token, StyleVariantKind.Container, out var kind, out var name, out var rest)
+                || kind != StyleVariantKind.Container)
             {
                 return false;
             }
             spelling = name ?? string.Empty;
             payload = rest ?? string.Empty;
-            return kind == StyleVariantKind.Container && StyleContainerQuery.TryParse(spelling, out query);
+            return StyleContainerQuery.TryParse(spelling, out query);
         }
 
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
@@ -2791,7 +2798,7 @@ namespace Velvet
             Dictionary<(bool IsPeer, string Name), List<int>[]>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (!StyleVariantClass.TryParse(classNames[i], out var kind, out var name, out var payload)
+                if (!StyleVariantClass.TryParseForRelational(classNames[i], out var kind, out var name, out var payload)
                     || StyleVariantClass.RelationalOf(kind) is not { } relational)
                 {
                     continue;
@@ -2852,8 +2859,8 @@ namespace Velvet
         {
             foreach (var className in classNames ?? Array.Empty<string>())
             {
-                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBecomeThemeClass(
-                    StyleArbitraryValueResolver.StripImportant(className, out _)))
+                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                    && StyleThemeClass.MayBecomeThemeClass(StyleArbitraryValueResolver.StripImportant(className, out _)))
                 {
                     StyleThemeTokens.Track(_ctx, element, classNames!);
                     return;
@@ -2903,7 +2910,8 @@ namespace Velvet
             foreach (var className in classNames)
             {
                 if (className != null && (className.IndexOfAny(s_variantStateChars) >= 0
-                    || StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null))
+                    || (StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                        && StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null)))
                 {
                     return true;
                 }
@@ -2927,6 +2935,10 @@ namespace Velvet
                 || _ctx.SupportsVariants.ContainsKey(element)
                 || _ctx.CustomPropertyClasses.ContainsKey(element);
 
+        // A class of the element's own, no variant, that may be a custom-property token once StripImportant has copied it.
+        private static bool MayBeOwnCustomPropertyToken(string cls)
+            => !IsEmptyOrVariantToken(cls) && StyleCustomPropertyClass.MayBeCustomPropertyClassAsWritten(cls);
+
         // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
         // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
         // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
@@ -2938,7 +2950,7 @@ namespace Velvet
                 for (var i = 0; i < classNames.Length; i++)
                 {
                     var cls = classNames[i];
-                    if (IsEmptyOrVariantToken(cls))
+                    if (!MayBeOwnCustomPropertyToken(cls))
                     {
                         continue;
                     }
