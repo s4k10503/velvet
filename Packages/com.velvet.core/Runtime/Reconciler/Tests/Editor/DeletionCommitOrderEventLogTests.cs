@@ -138,6 +138,20 @@ namespace Velvet.Tests
                 V.Div(children: new VNode[] { dep == 0 ? V.Component(Probed, new Named("D"), key: "d") : null }));
         }
 
+        // As above with an element holding the deleted child, so the deletion is the element's.
+        [Component]
+        private static VNode ElementDeletedAfterASibling()
+        {
+            var (dep, _) = EventLog.UseState("P", 0);
+            EventLog.UseEffects("P", new object[] { dep });
+            return V.Fragment(
+                V.Component(Dependent, new Dep("S", dep), key: "s"),
+                V.Div(children: new VNode[]
+                {
+                    dep == 0 ? V.Div(children: new VNode[] { V.Component(Probed, new Named("D"), key: "d") }) : null,
+                }));
+        }
+
         [Component]
         private static VNode Stateful()
         {
@@ -264,6 +278,23 @@ namespace Velvet.Tests
             // Arrange
             var log = new EventLog();
             using var mounted = Mount(log, V.Component(SiblingBeforeTheElement));
+            log.Setter<int>("P").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:S eff-x:D eff-x:P eff:S eff:P"));
+        }
+
+        [Test]
+        public void Given_AnElementHoldingAChildDeletedAfterASiblingThatUpdates_When_ThePassivePhaseRuns_Then_TheSiblingsCleanupRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(ElementDeletedAfterASibling));
             log.Setter<int>("P").Invoke(1);
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             log.Clear();

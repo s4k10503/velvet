@@ -64,8 +64,6 @@ namespace Velvet
                 if (removed) VisitRow(row);
                 else TakeDownStartingAt(Ctx.ZLayerPlaceholders.TryGetValue(row, out var real) ? real : row);
             }
-            _rowAnchor = DeletionAnchor.For(_container, Ctx.FiberStack.Current);
-            if (_container != null) TakeDownEndingIn(_container);
             TakeDownTheRest();
             foreach (var root in _roots) Ctx.RemovalsTakenDown.Add(root);
             _registeredRoots = true;
@@ -167,11 +165,18 @@ namespace Velvet
             return ve != null;
         }
 
-        // A fiber the walk reached no element for: one held by a Portal whose placeholder is no root's, and one
-        // holding no row behind them. Taken down in the order collected; a fiber taken down already runs nothing.
+        // A fiber the walk reached no element for, an orphan holding no row behind the container's last one among them,
+        // taken down after the walk with any of the deletion's fibers above it ahead of it. A fiber taken down already
+        // runs nothing.
         private void TakeDownTheRest()
         {
-            foreach (var fiber in _fibers) TakeDown(fiber);
+            foreach (var fiber in _fibers) TakeDownAncestorsFirst(fiber);
+        }
+
+        private void TakeDownAncestorsFirst(ComponentFiber fiber)
+        {
+            if (fiber.Parent != null && _collected.Contains(fiber.Parent)) TakeDownAncestorsFirst(fiber.Parent);
+            TakeDown(fiber);
         }
 
         // The deleted row's place in React's tree: the outermost orphan holding it is the deletion's root, and an
