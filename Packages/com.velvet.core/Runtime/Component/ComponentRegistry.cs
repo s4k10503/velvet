@@ -139,6 +139,8 @@ namespace Velvet
             var existingFiber = site.IsInline
                 ? LookupInline((ComponentFiber)site.Anchor!, site.PortalScope, site.MountPoint, site.PositionKey, identity)
                 : LookupWrapper((VisualElement)site.Anchor!, identity);
+            // Mounted again rather than handed back: the boundary whose output it is mounts that output afresh.
+            if (existingFiber != null && _ctx.FibersBeingReplaced?.Contains(existingFiber) == true) existingFiber = null;
 
             if (existingFiber != null)
             {
@@ -419,7 +421,11 @@ namespace Velvet
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
             {
                 _inlineFiberToKey.Remove(fiber);
-                _inlineInstances.Remove(key);
+                // A fiber mounted in its place where a boundary mounts its output afresh holds the key by now.
+                if (_inlineInstances.TryGetValue(key, out var holder) && ReferenceEquals(holder, fiber))
+                {
+                    _inlineInstances.Remove(key);
+                }
                 ReleaseExplicitPositionKey(key.positionKey);
                 if (key.container != null && _tenancies.TryGetValue(key.container, out var tenancy))
                 {
@@ -483,6 +489,10 @@ namespace Velvet
             // Snapshotted first: DisposeFiberInternal removes each from the set this walk reads.
             DisposeTogether(doomed);
         }
+
+        // What parent's output has mounted inline, copied, as the fibers it mounts from here on join the set it copies.
+        internal HashSet<ComponentFiber>? InlineChildrenOf(ComponentFiber parent)
+            => _parentToInlineFibers.TryGetValue(parent, out var children) ? new HashSet<ComponentFiber>(children) : null;
 
         internal void DisposeAndRemove(ComponentFiber fiber)
         {

@@ -1184,7 +1184,14 @@ namespace Velvet
                 boundary.CatchesInTheWalk = true;
                 try
                 {
-                    ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex);
+                    if (boundary.TakeMountsOutputAfresh())
+                    {
+                        ExpandAfresh(walk, boundary, boundary.PreviousTree, component, position, nodeIndex);
+                    }
+                    else
+                    {
+                        ExpandFiberPreviousTree(walk, boundary, component, position, nodeIndex);
+                    }
                 }
                 catch (BoundaryCaughtSignal signal) when (ReferenceEquals(signal.Boundary, boundary))
                 {
@@ -1203,16 +1210,11 @@ namespace Velvet
                 // A boundary above that caught an error out of the disposal has replaced this one with its fallback.
                 if (boundary.IsDisposed) return;
                 walk.RestoreComponentKeyClaims(claimsBefore);
-                ForgetOldRowsOf(commit, boundary);
-                // What the failed output recorded against the boundary itself, for an AnimatePresence or a
-                // Suspense it rendered directly; its descendants' records go with the fibers dropped above.
-                _ctx.PrunePresenceBoundaryState(boundary);
-                _ctx.PruneSuspenseBoundaryState(boundary);
                 boundary.IsShowingFallback = true;
                 boundary.FallbackContentFailed = false;
                 try
                 {
-                    ExpandFiberTree(walk, boundary, caught.FallbackTree, component, position, nodeIndex);
+                    ExpandAfresh(walk, boundary, caught.FallbackTree, component, position, nodeIndex);
                 }
                 finally
                 {
@@ -1258,6 +1260,33 @@ namespace Velvet
             finally
             {
                 boundary.IsShowingFallback = false;
+            }
+        }
+
+        // A boundary's output mounted afresh in the walk, as React's forceUnmountCurrentAndReconcile mounts it after a
+        // capture and FiberCommitWork.UnmountOwnRows outside a walk: no row and no component the walk's old side holds
+        // for the boundary is taken by tree. The rows go in the removal pass, the components are left to the orphan
+        // cleanups rather than handed back by their registration, and what the old output recorded against the boundary
+        // goes before tree reads it.
+        private void ExpandAfresh(
+            InlineWalk walk,
+            ComponentFiber boundary,
+            VNode?[]? tree,
+            ComponentNode component,
+            WalkPosition position,
+            int nodeIndex)
+        {
+            ForgetOldRowsOf(walk.Commit!, boundary);
+            _ctx.ForgetRecordsOf(boundary);
+            var enclosing = _ctx.FibersBeingReplaced;
+            _ctx.FibersBeingReplaced = _ctx.ComponentRegistry.InlineChildrenOf(boundary);
+            try
+            {
+                ExpandFiberTree(walk, boundary, tree, component, position, nodeIndex);
+            }
+            finally
+            {
+                _ctx.FibersBeingReplaced = enclosing;
             }
         }
 

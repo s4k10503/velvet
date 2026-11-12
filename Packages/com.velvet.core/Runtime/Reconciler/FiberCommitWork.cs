@@ -349,6 +349,23 @@ namespace Velvet
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs)
             => ReconcileRows(fiber, oldTree, newTree, frameBudgetMs, catchingBoundary: null);
 
+        // The first half of a boundary's output mounted afresh, which returns the tree its rows then hold for the second
+        // half to reconcile from. React's forceUnmountCurrentAndReconcile deletes every current child before it mounts
+        // the next ones against none of them, so no row and no component of what the boundary showed is kept where the
+        // next output repeats its type and key. PreviousTree is emptied with the rows, so that it describes what the
+        // boundary holds while the next output mounts; the caller retires what the boundary showed. What the shown rows
+        // recorded against the boundary itself, for a Suspense or an AnimatePresence it rendered directly, and the
+        // primaries the reconcile here reproduced for a new side to read, go too: inside an enclosing pass, the
+        // retirement at that pass's end (ReconcilerContext.RetireBoundaryStatesNotReRendered) would come after the
+        // next output had read them.
+        internal static VNode?[] UnmountOwnRows(ComponentFiber boundary, VNode?[] shown)
+        {
+            ReconcileOwnRows(boundary, shown, Array.Empty<VNode>(), frameBudgetMs: 0);
+            boundary.PreviousTree = Array.Empty<VNode>();
+            boundary.Reconciler!.Context.ForgetRecordsOf(boundary);
+            return Array.Empty<VNode>();
+        }
+
         // An error boundary's own render: a render error below it comes back caught (Reconciler.ReconcileCatching)
         // after the rows the failed render left are propagated like any others, and the records kept against the
         // boundary go through ReconcilerContext.RestoreRecordsOf before the fallback renders. The fallback's own
@@ -441,6 +458,7 @@ namespace Velvet
             try
             {
                 if (deferReconcile) return null;
+                if (fiber.TakeMountsOutputAfresh()) oldTree = UnmountOwnRows(fiber, oldTree);
                 if (fiber.CatchesErrors) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
                 ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
                 return null;
