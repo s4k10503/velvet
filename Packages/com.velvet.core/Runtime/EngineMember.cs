@@ -291,12 +291,12 @@ namespace Velvet
             AnimationSystemType + "+AnimationDataSet`2", "IndexOf", "System.Boolean",
             "UnityEngine.UIElements.VisualElement", StylePropertyIdShape, "System.Int32&");
 
-        // RunningStyleTransition.Retime's walk over the transitions a set runs.
-        internal static readonly EngineMember AnimationDataSetElements = Field(UIElements,
-            AnimationSystemType + "+AnimationDataSet`2", "elements", "UnityEngine.UIElements.VisualElement[]");
+        // RunningStyleTransition.Retime's write of a retimed transition's current frame.
+        internal static readonly EngineMember AnimationValuesUpdateValues =
+            Method(UIElements, AnimationSystemType + "+Values", "UpdateValues", "System.Void");
 
-        internal static readonly EngineMember AnimationDataSetCount =
-            Field(UIElements, AnimationSystemType + "+AnimationDataSet`2", "count", "System.Int32");
+        internal static readonly EngineMember AnimationValuesUpdateComputedStyleAt =
+            Method(UIElements, AnimationSystemType + "+Values", "UpdateComputedStyle", "System.Void", "System.Int32");
 
         internal static readonly EngineMember AnimationDataSetTiming =
             Field(UIElements, AnimationSystemType + "+AnimationDataSet`2", "timing", "*");
@@ -397,6 +397,9 @@ namespace Velvet
 
         internal static readonly EngineMember LayoutNodeHasNewLayout =
             ReadProperty(UIElements, LayoutNodeType, "HasNewLayout", "System.Boolean");
+
+        internal static readonly EngineMember LayoutNodeCopyStyle =
+            Method(UIElements, LayoutNodeType, "CopyStyle", "System.Void", LayoutNodeType);
 
         // ChildLayoutOrder's rebuild of a parent's layout children in an order other than its paint order.
         internal static readonly EngineMember LayoutNodeClear = Method(UIElements, LayoutNodeType, "Clear", "System.Void");
@@ -659,6 +662,34 @@ namespace Velvet
         internal static readonly EngineMember BackgroundImagePropertyId =
             Field(UIElements, StylePropertyIdType, "BackgroundImage", StylePropertyIdShape);
 
+        // VelvetPreviewPanel.Render's frame: the screen-space runtime panels in sorting order, and the update, repaint
+        // and render it calls on those drawing into its texture, with the end of the repaint pass.
+        private const string RuntimeUtilityType = "UnityEngine.UIElements.UIElementsRuntimeUtility";
+        private const string RuntimePanelType = "UnityEngine.UIElements.BaseRuntimePanel";
+
+        internal static readonly EngineMember SortedScreenOverlayPanels = Method(UIElements, RuntimeUtilityType,
+            "GetSortedScreenOverlayPlayerPanels", "System.Collections.Generic.List`1[" + RuntimePanelType + "]");
+
+        internal static readonly EngineMember RuntimePanelUpdate = Method(UIElements, RuntimePanelType, "Update", "System.Void");
+
+        internal static readonly EngineMember RepaintRuntimePanel =
+            Method(UIElements, RuntimeUtilityType, "RepaintPanel", "System.Void", RuntimePanelType);
+
+        internal static readonly EngineMember RuntimePanelRender = Method(UIElements, RuntimePanelType, "Render", "System.Void");
+
+        internal static readonly EngineMember TextGenerationRepaintEnd =
+            Method(TextCore, "UnityEngine.TextCore.Text.TextGenerationInfo", "OnRepaintEnd", "System.Void");
+
+        // The clock Render moves on by a frame per pass: the function a panel reads its time through, and the time it
+        // reads without one.
+        private const string BasePanelType = "UnityEngine.UIElements.BaseVisualElementPanel";
+
+        internal static readonly EngineMember PanelTimeFunction = WrittenProperty(UIElements, BasePanelType,
+            "TimeSinceStartupFunc", "UnityEngine.UIElements.TimeFunction");
+
+        internal static readonly EngineMember PanelDefaultTime =
+            Method(UIElements, BasePanelType, "DefaultTimeSinceStartup", "System.Double");
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
@@ -735,7 +766,8 @@ namespace Velvet
         public override string ToString() => $"{TypeName}.{Name} ({Kind}: {Shape}{(Writable ? ", writable" : "")})";
 
         // Null rather than a throw when the member is missing or has changed shape, so a later engine leaves the
-        // feature that reads it undone instead of failing the code around it.
+        // feature that reads it undone instead of failing the code around it. VelvetPreviewPanel.Render, called for
+        // nothing but the frame its members draw, throws on that null instead.
         internal MemberInfo? Resolve()
         {
             var type = Assembly.GetType(TypeName);

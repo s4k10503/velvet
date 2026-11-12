@@ -14,7 +14,7 @@ namespace Velvet
 
         private readonly TextField _field;
         private readonly TextElement _text;
-        private readonly MiddleAlignment _alignment = new();
+        private MiddleAlignment _alignment;
         private readonly LineBoxFontOwner _font = new();
         private float? _ownedHeight;
 

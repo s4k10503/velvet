@@ -9,7 +9,7 @@ namespace Velvet
 
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
-    // PatchPortal / CleanupPortal can address only that range without disturbing siblings.
+    // a Portal patch / CleanupPortal can address only that range without disturbing siblings.
     // Keyed by the RESOLVED target element (not a registry id): registry portals, layer portals
     // and world-space panels all share this bookkeeping, and only the element identity groups the
     // portals whose ranges shift together — two layer portals on different layers must never
@@ -1217,7 +1217,7 @@ namespace Velvet
         // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
         // so a label change swaps the propagated classes even though the node's base ClassNames are unchanged,
         // and replays that swap as a runtime variant transition when the variant-only classes actually
-        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotion). A pure side-table
+        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotionPost). A pure side-table
         // (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared on element
         // cleanup / reconciler dispose through that mechanism.
         public Dictionary<VisualElement, MotionAppliedClassSet> MotionAppliedClasses { get; } = new();
@@ -1233,7 +1233,7 @@ namespace Velvet
         // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
         // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
         // descendants (for staggerChildren/delayChildren orchestration) while carrying no Variants of its own,
-        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotion compares the
+        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotionPre compares the
         // freshly-resolved child label against this stored one to detect an ACTUAL change (not merely an
         // unrelated re-render that happens to re-propagate the same label) before establishing a fresh
         // MotionOrchestrationFrame — a re-render that keeps the same label must not re-trigger the stagger.
@@ -1483,7 +1483,7 @@ namespace Velvet
         // The Portal placeholder whose children are being reconciled right now, or null outside any such
         // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
         // mount (ChildReconciler.DrainPendingPortalMounts) and every later patch, world-space and heal
-        // included, which all funnel into FiberNodePatcher.PatchPortalChildren. ComponentRegistry stamps it
+        // included, which all funnel into NodePatchWalk.ReconcilePortalRange. ComponentRegistry stamps it
         // onto the inline fibers those reconciles mount, which is what
         // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
         internal VisualElement? CurrentPortalPlaceholder { get; set; }
@@ -1541,7 +1541,7 @@ namespace Velvet
         // queued Portal mounts with a fresh slotStart = target.childCount that sits after
         // all previously-mounted Portals' ranges. PortalState is recorded for each
         // placeholder only at drain time — between enqueue and drain the placeholder has no entry,
-        // matching FiberNodePatcher.PatchPortal's missing-entry path which logs and skips.
+        // matching FiberNodePatcher.PatchPortalChildrenPre's missing-entry path which logs and skips.
         // Target is resolved at ENQUEUE only for registry portals (their not-registered warning
         // stays a mount-time signal); layer portals and world-space nodes carry null and resolve —
         // creating their framework host on first use — at drain time, when the placeholder is
@@ -1630,8 +1630,10 @@ namespace Velvet
         // FiberZLayerCoordinator.ResortLayers' working copy of PendingZLayerResorts, kept so a drain allocates nothing.
         internal List<VisualElement> ZLayerArrangeQueue { get; } = new();
 
-        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it. A parent a diff is
-        // parked over keeps its slot occupants until the diff finishes (FiberZLayerCoordinator.Arrange).
+        // The parent each time-sliced diff parked over, by the ChildReconciler that parked it, kept while a Portal
+        // drain sets the park aside (ChildReconciler.DrainPendingPortalMounts). Arrange leaves the slot occupants of
+        // such a parent until the diff finishes; a settle outside a pass does not wait, and NoteSlotOccupantChanged
+        // carries what it swaps to the parked diff.
         internal Dictionary<object, VisualElement> ParkedDiffParents { get; } = new();
 
         internal bool IsParkedParent(VisualElement parent)
@@ -2077,6 +2079,10 @@ namespace Velvet
         public List<ComponentFiber> PendingPassiveEffectFibers { get; } = new();
         public HashSet<ComponentFiber> PendingPassiveEffectFiberSet { get; } = new();
 
+        // The rows a container's deletion has taken down and whose removal has not reached FiberElementCleaner yet, each
+        // with the fibers mounted under it (DeletionCommit.Run, ended by DeletionCommit.End).
+        internal readonly Dictionary<VisualElement, List<ComponentFiber>?> RemovalsTakenDown = new();
+
         // True once a DrainPassiveEffects callback has been registered on the host scheduler for
         // the current batch of PendingPassiveEffectFibers. Prevents scheduling more than
         // one drain per paint-tick even when many fibers stage passive effects in one reconcile pass.
@@ -2122,6 +2128,24 @@ namespace Velvet
         // (memo hits legitimately share instances across fibers' trees). Maintained by the park /
         // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
         internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
+
+        // The old instances of each general walk in progress, innermost last; OldSlotOccupants.ResolveAgain says
+        // who resolves them again and why.
+        internal List<OldSlotOccupants> OpenOldInstances { get; } = new();
+
+        // FiberZLayerCoordinator put `to` in the logical slot `from` held. Each diff holding old instances names that
+        // slot's element by `to` from here on, since the swap can come from outside the diff: an out-of-pass restack
+        // between two slices of a parked pass is one. A parked keyed Pass 2 also holds the old rows it already took,
+        // which its reorder places later, so those are rewritten too. Neither compares a parent. For the old instances
+        // OldSlotOccupants.ReplaceOccupant gives why; a taken row stays a child of its own container until the reorder
+        // places it, so a row naming `from` is one of the container the swap is in.
+        internal void NoteSlotOccupantChanged(VisualElement from, VisualElement to)
+        {
+            foreach (var occupants in BufferPool.RentedOldSlotOccupants) occupants.ReplaceOccupant(from, to);
+            foreach (var parked in ParkedDiffParents.Keys) (parked as ChildReconciler)?.ReplaceParkedRow(from, to);
+        }
+
+        internal HostCommitQueue HostCommit { get; }
 
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a
@@ -2233,21 +2257,24 @@ namespace Velvet
         private readonly Dictionary<VisualElement, System.Func<VisualElement, System.Action>> _refsDetachedWhileHidden =
             new();
 
-        // Over element and every element below it: a setup still queued is taken back with the installed one. A
-        // render of the Suspense hiding an element patches it like any other, queueing a setup where its callback
-        // changed, and the hide that render ends with takes that setup back here.
         internal void DetachRefsWhileHidden(VisualElement element)
+        {
+            DetachRefWhileHidden(element);
+            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+        }
+
+        // A setup still queued is taken back with the installed one. A render of the Suspense hiding an element
+        // patches it like any other, queueing a setup where its callback changed, and the hide that render ends with
+        // takes that setup back here.
+        internal void DetachRefWhileHidden(VisualElement element)
         {
             var callback = _pendingRefAttachIndex.TryGetValue(element, out var queued)
                 ? _pendingRefAttaches[queued].Callback
                 : RefCallbacks.TryGetValue(element, out var installed) ? installed.Callback : null;
-            if (callback != null)
-            {
-                DetachRefCallback(element);
-                DropPendingRefAttach(element);
-                _refsDetachedWhileHidden[element] = callback;
-            }
-            foreach (var child in element.hierarchy.Children()) DetachRefsWhileHidden(child);
+            if (callback == null) return;
+            DetachRefCallback(element);
+            DropPendingRefAttach(element);
+            _refsDetachedWhileHidden[element] = callback;
         }
 
         // Over element and every element below it, short of one a nested Suspense still hides, whose refs that
@@ -2825,9 +2852,9 @@ namespace Velvet
             internal bool IsLeaving(string key) => Exiting.Contains(key) || ExitComplete.Contains(key);
 
             // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
-            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
-            // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
-            // an entry has no second route to it. Several Portals rendering into one container reach one
+            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: a fiber a
+            // reconcile leaves unstamped is still reached through the parent index, and an entry has no second
+            // route to it. Several Portals rendering into one container reach one
             // entry, so this names the last of them to expand it rather than all of them —
             // AnimatePresenceStateRetirementTests' shared-container case is what goes red if a teardown
             // starts reaching an entry another Portal still holds leaves for.
@@ -2851,8 +2878,8 @@ namespace Velvet
         // freshly created MotionNode against this BY REFERENCE (see CreateForMotionNode).
         internal MotionNode? PresenceAnchorMotion;
 
-        // The live element CreateElement / PatchMotion resolved for PresenceAnchorMotion during the
-        // current EmitPresenceChild expansion (same set/restore discipline). Needed because variant
+        // The live element CreateElement / NodePatchWalk.ReconcileUnderMotion recorded for PresenceAnchorMotion during
+        // the current EmitPresenceChild expansion (same set/restore discipline). Needed because variant
         // enter/exit classes must land on the Motion's OWN element — where the resting
         // variants[animate] classes live — not on the keyed child's top-level anchor: for a wrapped
         // Motion (a z-managed Div or a Provider between the presence and the Motion) those are
@@ -3184,6 +3211,15 @@ namespace Velvet
             VisualElement? portalScope, long position)
             => _suspensePrimariesReproduced.Remove(new(boundary, parent, portalScope, position, true));
 
+        // The records RecordsOf takes, and the primaries an old side of the boundary's rows reproduced for a new side
+        // to read. FiberErrorBoundary.UnmountShownRows owns why they go before the fallback mounts.
+        internal void ForgetRecordsOf(ComponentFiber boundary)
+        {
+            PruneSuspenseBoundaryState(boundary);
+            PrunePresenceBoundaryState(boundary);
+            _suspensePrimariesReproduced.RemoveWhere(key => ReferenceEquals(key.Boundary, boundary));
+        }
+
         // Opens the span of reproductions one container's reconcile takes, closed by
         // EndBoundaryReproductionScope. Nested containers reconcile inside that span and close their own
         // first, so the tail this returns is exactly the enclosing container's own.
@@ -3339,8 +3375,8 @@ namespace Velvet
         // Provider-expansion scope in ChildReconciler so a nested expansion cannot leak its flag state out.
         public bool ContextValueChanged { get; internal set; }
 
-        // Generation counter bumped by the outermost PatchContextProvider (one whose value changed).
-        // When multiple PatchContextProvider calls within the same reconcile pass invoke
+        // Generation counter bumped by the outermost Provider patch (one whose value changed).
+        // When multiple Provider patches within the same reconcile pass invoke
         // FiberTreeTraversal.NotifyContextChanged in succession, this is matched against
         // the consumer fiber's ComponentFiber.LastForceRenderGeneration to dedupe
         // duplicate force-renders.
@@ -3418,6 +3454,7 @@ namespace Velvet
             ComponentContextStack = new ComponentContextStack();
             FiberStack = new FiberStack();
             BufferPool = new ReconcilerBufferPool();
+            HostCommit = new HostCommitQueue(this);
             _pureElementSideTables = new System.Collections.IDictionary[]
             {
                 StructuralVariants,

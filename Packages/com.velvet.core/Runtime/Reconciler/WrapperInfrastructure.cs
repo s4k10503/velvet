@@ -7,10 +7,12 @@ namespace Velvet
     // Shared plumbing for the structural wrapper layers — the className-driven clip-path-* wrapper and the
     // user wrapElement opt-in. Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
     // wrapper element appliers (the wrap/unwrap surgery) depend on these, which is why they live here rather
-    // than on either; the slot-preserving unwrap surgery is what ChildReconciler's keyed-move re-fetch
-    // depends on.
+    // than on either; the slot-preserving unwrap surgery is what NodePatchWalk.PatchNode's contract with the
+    // reconciler depends on.
     internal sealed class WrapperInfrastructure
     {
+        private const string AnimateHuePrefix = "animate-hue";
+
         private readonly ReconcilerContext _ctx;
 
         public WrapperInfrastructure(ReconcilerContext ctx)
@@ -53,8 +55,8 @@ namespace Velvet
 
         // Removes wrapper from the tree and restores element (its inner) at the wrapper's
         // slot. Binding-specific resource disposal and dictionary removal are the caller's job,
-        // done BEFORE this. Keeping the element at the SAME index is what the child reconciler's
-        // post-patch re-fetch tolerates (see ChildReconciler's keyed-move re-fetch).
+        // done BEFORE this. Keeping the element at the SAME index is what NodePatchWalk.PatchNode's
+        // contract asks.
         internal static void RemoveWrapperRestoreInner(VisualElement element, VisualElement wrapper)
         {
             var parent = wrapper.parent;
@@ -90,12 +92,9 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                var leaf = cls;
-                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
-                {
-                    leaf = payload;
-                }
-                if (leaf != null && leaf.StartsWith("animate-hue", StringComparison.Ordinal))
+                // Same pass-over as StyleEaseCurve.NoteClasses: a peel leaves a suffix of its class.
+                if (cls != null && cls.IndexOf(AnimateHuePrefix, StringComparison.Ordinal) != -1
+                    && StyleVariantClass.LeafOf(cls).StartsWith(AnimateHuePrefix, StringComparison.Ordinal))
                 {
                     return true;
                 }

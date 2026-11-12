@@ -31,6 +31,12 @@ namespace Velvet
         public bool IsEndless => float.IsPositiveInfinity(Count);
 
         /// <summary>
+        /// Whether Framer's <c>supportsBrowserAnimation</c> leaves an accelerated value on the Web Animations API
+        /// under this repeat: it refuses a <c>repeatDelay</c> and a mirror repeat, whatever the count.
+        /// </summary>
+        public bool KeepsWebAnimations => DelaySec == 0f && Type != TransitionRepeatType.Mirror;
+
+        /// <summary>
         /// Framer's <c>getFinalKeyframe</c>: an odd number of <see cref="TransitionRepeatType.Reverse"/> or
         /// <see cref="TransitionRepeatType.Mirror"/> repeats ends on the from-values.
         /// </summary>

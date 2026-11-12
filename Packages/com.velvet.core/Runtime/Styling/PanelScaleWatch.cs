@@ -40,18 +40,24 @@ namespace Velvet
         {
             if (!s_entries.TryGetValue(element, out var entry))
             {
-                entry = new Entry(element);
-                var tracked = entry;
-                entry.OnAttach = _ =>
-                {
-                    Join(element, tracked);
-                    Run(element, tracked);
-                };
-                s_entries.Add(element, entry);
-                element.RegisterCallback(entry.OnAttach);
+                entry = Enter(element);
             }
             entry.Resnaps[owner] = resnap;
             Join(element, entry);
+        }
+
+        // Kept out of Track for the reason StyleRelativeLengths.StartPoll is kept out of SyncPoll.
+        private static Entry Enter(VisualElement element)
+        {
+            var entry = new Entry(element);
+            entry.OnAttach = _ =>
+            {
+                Join(element, entry);
+                Run(element, entry);
+            };
+            s_entries.Add(element, entry);
+            element.RegisterCallback(entry.OnAttach);
+            return entry;
         }
 
         // Stops calling owner's resnap for element, as when its layers are released to the pool.
@@ -91,12 +97,18 @@ namespace Velvet
             entry.Watched = panel;
             if (!s_watches.TryGetValue(panel, out var watch))
             {
-                watch = new Watch { Scale = panel.scaledPixelsPerPoint };
-                var created = watch;
-                created.Item = panel.visualTree.schedule.Execute(() => Tick(panel, created)).Every(TickMs);
-                s_watches.Add(panel, watch);
+                watch = StartWatch(panel);
             }
             watch.Elements.Add(entry.Reference);
+        }
+
+        // Kept out of Join for the same reason as Enter.
+        private static Watch StartWatch(IPanel panel)
+        {
+            var watch = new Watch { Scale = panel.scaledPixelsPerPoint };
+            watch.Item = panel.visualTree.schedule.Execute(() => Tick(panel, watch)).Every(TickMs);
+            s_watches.Add(panel, watch);
+            return watch;
         }
 
         private static void Tick(IPanel panel, Watch watch)

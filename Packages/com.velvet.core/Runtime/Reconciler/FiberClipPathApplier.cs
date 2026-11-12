@@ -43,9 +43,9 @@ namespace Velvet
         // Patch-time reconciliation of an element's clip state against its new class list. Same four
         // cases as the other effect layers: update the existing clip's spec, wrap a newly-clipped element
         // in place, unwrap one whose clip class was removed, or do nothing. Runs BEFORE the shadow patch
-        // (see PatchElement): clip-path clips the box-shadow (CSS), so the shadow patch reads this result
+        // (see PatchElementPost): clip-path clips the box-shadow (CSS), so the shadow patch reads this result
         // and suppresses its paint while a clip is active.
-        // Returns whether a clip WRAPPER owns this element after the patch (PatchElement forwards it so the
+        // Returns whether a clip WRAPPER owns this element after the patch (PatchElementPost forwards it so the
         // shadow and ring layers self-suppress). KNOWN LIMITATION: this is "a clip can apply" (base or any
         // variant), not "a clip is applied right now" — both suppressions key off this one gate, so a clip
         // VARIANT on an element that also has a base shadow-* /
@@ -270,7 +270,8 @@ namespace Velvet
 
             // A shape with lengths the element measures is baked as measured, and again once they move.
             var spec = binding.Spec;
-            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, spec.HasMeasured, () => SyncMask(element, binding));
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, spec.HasMeasured, (Element: element, Binding: binding),
+                static moved => SyncMask(moved.Element, moved.Binding));
             if (spec.HasMeasured)
             {
                 if (!StyleRelativeLengths.TryBasisOf(element, out var basis))

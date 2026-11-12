@@ -110,7 +110,7 @@ namespace Velvet
     public static class StyleVariantClass
     {
         /// <summary>Returns true if <paramref name="token"/> is a recognized state-variant token.</summary>
-        public static bool IsVariant(string? token) => TryParse(token, out _, out _, out _);
+        public static bool IsVariant(string? token) => Parse(token, new PayloadCut(Cut.Nothing), out _, out _, out _);
 
         /// <summary>
         /// Splits <paramref name="token"/> into its variant kind and payload. Returns false for a null/empty
@@ -168,6 +168,112 @@ namespace Velvet
         /// the name through this overload.
         /// </summary>
         internal static bool TryParse(string? token, out StyleVariantKind kind, out string? name, out string? payload)
+            => Parse(token, new PayloadCut(Cut.Every), out kind, out name, out payload);
+
+        internal static string LeafOf(string cls) => TryParse(cls, out _, out var payload) ? LeafOf(payload!) : cls;
+
+        // TryParse for a reader after one kind: the payload is cut out, and is non-null, only where token is of that kind.
+        internal static bool TryParseFor(string? token, StyleVariantKind reading, out StyleVariantKind kind,
+            out string? name, out string? payload)
+            => Parse(token, new PayloadCut(Cut.OfKind, reading), out kind, out name, out payload);
+
+        // TryParseFor where the reader is after every relational kind.
+        internal static bool TryParseForRelational(string? token, out StyleVariantKind kind, out string? name,
+            out string? payload)
+            => Parse(token, new PayloadCut(Cut.Relational), out kind, out name, out payload);
+
+        private enum Cut : byte
+        {
+            Nothing,
+            Every,
+            OfKind,
+            Relational,
+        }
+
+        // Which of a parse's variants it cuts the payload out of; reading is the kind Cut.OfKind names.
+        private readonly struct PayloadCut
+        {
+            private readonly Cut _cut;
+            private readonly StyleVariantKind _reading;
+
+            public PayloadCut(Cut cut, StyleVariantKind reading = default)
+            {
+                _cut = cut;
+                _reading = reading;
+            }
+
+            public bool Of(StyleVariantKind kind)
+                => _cut == Cut.Every || (_cut == Cut.OfKind && kind == _reading) || (_cut == Cut.Relational && IsRelational(kind));
+        }
+
+        // The keywords of s_kinds as an array, which a match walks without the string a dictionary lookup needs.
+        private static readonly KeyValuePair<string, StyleVariantKind>[] s_keywords =
+            new List<KeyValuePair<string, StyleVariantKind>>(s_kinds).ToArray();
+
+        // The keyword token[0..length) spells, matched in place so that a parse cuts out no prefix
+        // (ClassReadAllocationTests). No keyword holds a '/', so a prefix carrying a relational name matches none.
+        private static bool TryMatchKeyword(string token, int length, out string keyword, out StyleVariantKind kind)
+        {
+            foreach (var entry in s_keywords)
+            {
+                if (entry.Key.Length == length && string.CompareOrdinal(token, 0, entry.Key, 0, length) == 0)
+                {
+                    keyword = entry.Key;
+                    kind = entry.Value;
+                    return true;
+                }
+            }
+            keyword = string.Empty;
+            kind = default;
+            return false;
+        }
+
+        // Whether token[0..length) is max-<bp> or min-<bp> for a default breakpoint: outside a theme scope, the only
+        // prefixes s_kinds lacks that TryBreakpointQuery accepts, since a breakpoint a sheet declares is read through
+        // the scope (StyleContainerQuery.TryBreakpointPx).
+        private static bool BoundsDefaultBreakpoint(string token, int length)
+        {
+            if (string.CompareOrdinal(token, 0, "max-", 0, 4) != 0 && string.CompareOrdinal(token, 0, "min-", 0, 4) != 0)
+            {
+                return false;
+            }
+            foreach (var name in s_themeNames.Values)
+            {
+                if (name.Length == length - 4 && string.CompareOrdinal(token, 4, name, 0, name.Length) == 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether token[0..length), an unnamed prefix no keyword spells, may be one TryBreakpointQuery accepts, answered in
+        // place: outside a theme scope only max- or min- and a default breakpoint can be, inside one also a breakpoint its
+        // sheets declare, bare or behind either.
+        private static bool MayNameBreakpoint(string token, int length)
+        {
+            if (StyleThemeTokens.Current is not { } scope)
+            {
+                return BoundsDefaultBreakpoint(token, length);
+            }
+            var bound = string.CompareOrdinal(token, 0, "max-", 0, 4) == 0 || string.CompareOrdinal(token, 0, "min-", 0, 4) == 0
+                ? 4
+                : 0;
+            var name = token.AsSpan(bound, length - bound);
+            foreach (var known in s_themeNames.Values)
+            {
+                if (name.SequenceEqual(known.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return scope.DeclaresValue("--breakpoint-", name);
+        }
+
+        // Every path cuts the payload out only where cut says so; the name a container query is validated by is cut either
+        // way.
+        private static bool Parse(string? token, PayloadCut cut, out StyleVariantKind kind, out string? name,
+            out string? payload)
         {
             kind = default;
             name = null;
@@ -179,10 +285,12 @@ namespace Velvet
 
             if (token[0] == '@')
             {
-                return TryParseContainer(token, out kind, out name, out payload);
+                return TryParseContainer(token, cut.Of(StyleVariantKind.Container), out kind, out name,
+                    out payload);
             }
 
-            if (TryParseArbitraryBreakpoint(token, out kind, out name, out payload))
+            if (TryParseArbitraryBreakpoint(token, cut.Of(StyleVariantKind.Container), out kind, out name,
+                    out payload))
             {
                 return true;
             }
@@ -197,6 +305,31 @@ namespace Velvet
             // not a variant separator.
             var bracket = token.IndexOf('[');
             if (bracket >= 0 && bracket < colon)
+            {
+                return false;
+            }
+
+            if (TryMatchKeyword(token, colon, out var keyword, out kind))
+            {
+                if (!Accepts(keyword, kind, ref name))
+                {
+                    return false;
+                }
+                payload = cut.Of(kind) ? token.Substring(colon + 1) : null;
+                return true;
+            }
+            return ParseOtherPrefix(token, colon, cut, out kind, out name, out payload);
+        }
+
+        // A prefix that is no keyword alone: a keyword with a relational name, a breakpoint query, or no variant at all.
+        private static bool ParseOtherPrefix(string token, int colon, PayloadCut cut, out StyleVariantKind kind,
+            out string? name, out string? payload)
+        {
+            kind = default;
+            name = null;
+            payload = null;
+            var unnamed = token.IndexOf('/', 0, colon) == -1;
+            if (unnamed && !MayNameBreakpoint(token, colon))
             {
                 return false;
             }
@@ -225,13 +358,22 @@ namespace Velvet
                 {
                     kind = StyleVariantKind.Container;
                     name = spelling;
-                    payload = token.Substring(colon + 1);
-                    return payload.Length > 0;
+                    payload = cut.Of(kind) ? token.Substring(colon + 1) : null;
+                    return true;
                 }
                 name = null;
                 return false;
             }
+            if (!Accepts(prefix, kind, ref name))
+            {
+                return false;
+            }
+            payload = cut.Of(kind) ? token.Substring(colon + 1) : null;
+            return true;
+        }
 
+        private static bool Accepts(string prefix, StyleVariantKind kind, ref string? name)
+        {
             // A default breakpoint a project sheet set to initial (`--breakpoint-*: initial`) is no variant.
             if (IsResponsive(kind) && StyleThemeTokens.Current?.ClearsBundled("breakpoint-", prefix) == true)
             {
@@ -245,19 +387,12 @@ namespace Velvet
                 name = null;
                 return false;
             }
-
-            payload = token.Substring(colon + 1);
-            if (payload.Length == 0)
-            {
-                name = null;
-                return false;
-            }
             return true;
         }
 
         // `max-[600px]:p-2` and `min-[600px]:p-2`: a query on the viewport's width at a written length.
-        private static bool TryParseArbitraryBreakpoint(string token, out StyleVariantKind kind, out string? name,
-            out string? payload)
+        private static bool TryParseArbitraryBreakpoint(string token, bool cutPayload, out StyleVariantKind kind,
+            out string? name, out string? payload)
         {
             kind = default;
             name = payload = null;
@@ -277,7 +412,7 @@ namespace Velvet
             }
             kind = StyleVariantKind.Container;
             name = spelling;
-            payload = token.Substring(close + 2);
+            payload = cutPayload ? token.Substring(close + 2) : null;
             return true;
         }
 
@@ -351,7 +486,7 @@ namespace Velvet
 
         // `@md:p-2`, `@max-lg/main:p-2`, `@min-[475px]:p-2`: the prefix runs to the first ':'. The prefix, `@`
         // included, is returned as the name, which is how a stacked variant tells one container query from another.
-        private static bool TryParseContainer(string token, out StyleVariantKind kind, out string? name,
+        private static bool TryParseContainer(string token, bool cutPayload, out StyleVariantKind kind, out string? name,
             out string? payload)
         {
             kind = default;
@@ -370,7 +505,7 @@ namespace Velvet
             }
             kind = StyleVariantKind.Container;
             name = prefix;
-            payload = token.Substring(colon + 1);
+            payload = cutPayload ? token.Substring(colon + 1) : null;
             return true;
         }
 

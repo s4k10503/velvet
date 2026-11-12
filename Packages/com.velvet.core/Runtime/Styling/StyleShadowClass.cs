@@ -95,7 +95,7 @@ namespace Velvet
     }
 
     // The colours an element's classes declare for each family, which a child's -inherit class takes.
-    internal sealed class DeclaredShadowColours
+    internal readonly struct DeclaredShadowColours
     {
         public DeclaredShadowColours(DeclaredShadowColour shadow, DeclaredShadowColour insetShadow,
             DeclaredShadowColour insetRing)
@@ -191,6 +191,10 @@ namespace Velvet
         // filter apart from box-shadow.
         public static bool IsShadowClass(string cls)
         {
+            if (!OpensWith(cls, "shadow"))
+            {
+                return false;
+            }
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
             return !string.IsNullOrEmpty(core) && (core == "shadow" || core.StartsWith("shadow-", StringComparison.Ordinal)
                 || core.StartsWith("shadow/", StringComparison.Ordinal));
@@ -199,10 +203,19 @@ namespace Velvet
         // inset-shadow-* and inset-ring-* write layers of the same box-shadow, so they are drawn by this paint.
         private static bool IsInsetLayerClass(string cls)
         {
+            if (!OpensWith(cls, "inset-"))
+            {
+                return false;
+            }
             var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
             return !string.IsNullOrEmpty(core) && (core == "inset-ring" || core.StartsWith("inset-shadow-", StringComparison.Ordinal)
                 || core.StartsWith("inset-ring-", StringComparison.Ordinal));
         }
+
+        // Whether cls, past a leading bang, opens with root. One that does not has no core opening with root either, so
+        // a reader asks this before StripImportant copies an important class of another family.
+        private static bool OpensWith(string? cls, string root)
+            => !string.IsNullOrEmpty(cls) && cls.AsSpan(cls[0] == '!' ? 1 : 0).StartsWith(root.AsSpan(), StringComparison.Ordinal);
 
         // Cheap early-out gate: true when ANY class is shadow or inset-ring, or begins with shadow-, shadow/,
         // inset-shadow- or inset-ring-. Used to skip the full parse on the ~99% of elements that carry no shadow class
@@ -312,11 +325,32 @@ namespace Velvet
             }
 
             Read(classNames, out var outer, out var inset, out var ring);
-            var layers = new List<ShadowSpec>(inset.Resolved(ShadowColourFamily.InsetShadow));
-            layers.AddRange(ring.Resolved());
-            layers.AddRange(outer.Resolved(ShadowColourFamily.Shadow));
-            spec = layers.ToArray();
+            spec = Joined(inset.Resolved(ShadowColourFamily.InsetShadow), ring.Resolved(),
+                outer.Resolved(ShadowColourFamily.Shadow));
             return spec.Length > 0;
+        }
+
+        // The three lists in order, as the one of them holding any layer where the other two hold none. That one can be a
+        // preset's own array (ShadowFamily.Resolved), so nothing writes into what TryExtract hands back.
+        private static ShadowSpec[] Joined(ShadowSpec[] first, ShadowSpec[] second, ShadowSpec[] third)
+        {
+            if (second.Length == 0 && third.Length == 0)
+            {
+                return first;
+            }
+            if (first.Length == 0 && third.Length == 0)
+            {
+                return second;
+            }
+            if (first.Length == 0 && second.Length == 0)
+            {
+                return third;
+            }
+            var joined = new ShadowSpec[first.Length + second.Length + third.Length];
+            first.CopyTo(joined, 0);
+            second.CopyTo(joined, first.Length);
+            third.CopyTo(joined, first.Length + second.Length);
+            return joined;
         }
 
         // The colours classNames declares for each family, which a discarded box-shadow keeps: they are declarations
@@ -335,6 +369,10 @@ namespace Velvet
             ring = new InsetRing();
             foreach (var cls in classNames)
             {
+                if (!OpensWith(cls, "shadow") && !OpensWith(cls, "inset-"))
+                {
+                    continue;
+                }
                 if (!TryRead(cls!, "shadow", Presets, ref outer) && !TryRead(cls!, "inset-shadow", InsetPresets, ref inset))
                 {
                     TryReadInsetRing(cls!, ref ring);
@@ -356,7 +394,8 @@ namespace Velvet
             {
                 return false;
             }
-            if (suffix is "inherit" or "initial")
+            var inherit = suffix.SequenceEqual("inherit".AsSpan());
+            if (inherit || suffix.SequenceEqual("initial".AsSpan()))
             {
                 // Neither takes a modifier.
                 if (alpha != null)
@@ -365,7 +404,7 @@ namespace Velvet
                 }
                 if (Takes(ref family.ColourImportant, important))
                 {
-                    family.Inherit = suffix == "inherit";
+                    family.Inherit = inherit;
                     family.Colour = null;
                 }
                 return true;
@@ -416,18 +455,21 @@ namespace Velvet
 
         // A size of the family: its -none (which takes no modifier), a preset, or a bracketed shadow list. Tailwind
         // writes `inset` ahead of each layer of an inset-shadow-[…].
-        private static bool TryReadSize(string suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
+        private static bool TryReadSize(ReadOnlySpan<char> suffix, Dictionary<string, ShadowSpec[]> presets, float? alpha,
             out ShadowSpec[] layers)
         {
             layers = Array.Empty<ShadowSpec>();
-            if (suffix == "none")
+            if (suffix.SequenceEqual("none".AsSpan()))
             {
                 return alpha == null;
             }
-            if (presets.TryGetValue(suffix, out var preset))
+            foreach (var preset in presets)
             {
-                layers = preset;
-                return true;
+                if (suffix.SequenceEqual(preset.Key.AsSpan()))
+                {
+                    layers = preset.Value;
+                    return true;
+                }
             }
             return StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
                 && TryParseArbitraryList(inner.ToString(), presets == InsetPresets, out layers);
@@ -449,10 +491,11 @@ namespace Velvet
             {
                 return;
             }
-            if (!TrySplitModifier(cls, "inset-ring", out var suffix, out var alpha, out _))
+            if (!TrySplitModifier(cls, "inset-ring", out var split, out var alpha, out _))
             {
                 return;
             }
+            var suffix = split.ToString();
             // A width takes no modifier.
             var width = alpha == null ? InsetRingWidth(suffix) : null;
             if (width != null)
@@ -470,7 +513,7 @@ namespace Velvet
                     ring.Colour = null;
                 }
             }
-            else if (TryReadColour(suffix, out var colour) && Takes(ref ring.ColourImportant, important))
+            else if (TryReadColour(suffix.AsSpan(), out var colour) && Takes(ref ring.ColourImportant, important))
             {
                 colour.a *= alpha ?? 1f;
                 ring.Colour = colour;
@@ -490,9 +533,10 @@ namespace Velvet
         // The suffix of a root-* class with its type hint dropped, and the /N after it, clamped to 0..1 as the alpha of
         // a colour (alpha) and as the factor --tw-shadow-alpha scales a colour beside it by (scale, SizeColourScale);
         // false for a class of another root, a malformed hint or a modifier that is no opacity modifier.
-        private static bool TrySplitModifier(string cls, string root, out string suffix, out float? alpha, out float? scale)
+        private static bool TrySplitModifier(string cls, string root, out ReadOnlySpan<char> suffix, out float? alpha,
+            out float? scale)
         {
-            suffix = string.Empty;
+            suffix = ReadOnlySpan<char>.Empty;
             alpha = null;
             scale = null;
             var slash = StyleColorValueParser.ColorModifierSlashIndex(cls, root.Length);
@@ -518,7 +562,7 @@ namespace Velvet
             {
                 return false;
             }
-            suffix = body.Substring(root.Length + 1);
+            suffix = body.AsSpan(root.Length + 1);
             return true;
         }
 
@@ -546,17 +590,17 @@ namespace Velvet
 
         // A colour a shadow-, inset-shadow- or inset-ring- suffix names: current (ShadowSpec.CurrentColor), a palette
         // name or transparent, or a bracket holding a colour.
-        private static bool TryReadColour(string suffix, out Color colour)
+        private static bool TryReadColour(ReadOnlySpan<char> suffix, out Color colour)
         {
             colour = default;
-            if (suffix == "current" || suffix == "[currentcolor]")
+            if (suffix.SequenceEqual("current".AsSpan()) || suffix.SequenceEqual("[currentcolor]".AsSpan()))
             {
                 colour = ShadowSpec.CurrentColor;
                 return true;
             }
             if (!StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                return VelvetPalette.TryResolveColorToken(suffix, out colour);
+                return VelvetPalette.TryGet(suffix, out colour);
             }
             return TailwindDataTypes.IsColor(inner) && StyleColorValueParser.TryParseColor(inner, out colour);
         }
@@ -629,6 +673,29 @@ namespace Velvet
         // The theme sizes Tailwind gives inset-shadow-*, which, unlike shadow-*, has no bare utility.
         private static readonly string[] s_insetPresets = { "2xs", "xs", "sm" };
 
+        private static bool IsPreset(ReadOnlySpan<char> suffix, bool inset)
+        {
+            if (inset)
+            {
+                foreach (var preset in s_insetPresets)
+                {
+                    if (suffix.SequenceEqual(preset.AsSpan()))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            foreach (var preset in Presets.Keys)
+            {
+                if (suffix.SequenceEqual(preset.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Offers core, a class of root's family without its important modifier, to the slots it writes, root being
         // "shadow" or "inset-shadow", as Tailwind writes it: a size, none or a bracket it does not type as a colour
         // writes the layer, and a size's /N the alpha variable as well, and a palette name, a keyword or a bracket it
@@ -640,23 +707,25 @@ namespace Velvet
             var inset = root == "inset-shadow";
             var slash = StyleColorValueParser.ColorModifierSlashIndex(core, 0);
             var modified = slash != -1;
-            var body = modified ? core.Substring(0, slash) : core;
+            var body = modified ? core.AsSpan(0, slash) : core.AsSpan();
             if (modified && !StyleColorValueParser.TryParseModifierPercent(core.AsSpan(slash + 1), out _))
             {
                 return;
             }
-            if (body == root && !inset)
+            // Each caller hands a core opening with root, and root holds no slash, so body opens with root and its
+            // length alone says whether anything follows.
+            if (body.Length == root.Length && !inset)
             {
                 layer.Offer(important, false, readsColour: true);
                 OfferSizeAlpha(core, modified, important, ref alpha);
                 return;
             }
-            if (!body.StartsWith(root + "-", StringComparison.Ordinal))
+            if (body.Length <= root.Length || body[root.Length] != '-')
             {
                 return;
             }
-            var suffix = body.Substring(root.Length + 1);
-            if (suffix == "none")
+            var suffix = body.Slice(root.Length + 1);
+            if (suffix.SequenceEqual("none".AsSpan()))
             {
                 // -none takes no modifier, as TryReadSize declines it.
                 if (!modified)
@@ -665,7 +734,7 @@ namespace Velvet
                 }
                 return;
             }
-            if (inset ? Array.IndexOf(s_insetPresets, suffix) >= 0 : Presets.ContainsKey(suffix))
+            if (IsPreset(suffix, inset))
             {
                 layer.Offer(important, false, readsColour: true);
                 OfferSizeAlpha(core, modified, important, ref alpha);
@@ -690,10 +759,14 @@ namespace Velvet
 
         // A colour the class names rather than brackets: a palette name, current or transparent, or inherit or initial,
         // which take no modifier, as TryRead declines them.
-        private static void OfferNamedColour(string core, string suffix, bool modified, bool important, ref BoxShadowSlot colour)
+        private static void OfferNamedColour(string core, ReadOnlySpan<char> suffix, bool modified, bool important,
+            ref BoxShadowSlot colour)
         {
-            var keyword = suffix is "inherit" or "initial";
-            if (keyword ? !modified : suffix is "current" or "transparent" || VelvetPalette.TryResolveColorToken(suffix, out _))
+            var keyword = suffix.SequenceEqual("inherit".AsSpan()) || suffix.SequenceEqual("initial".AsSpan());
+            if (keyword
+                    ? !modified
+                    : suffix.SequenceEqual("current".AsSpan()) || suffix.SequenceEqual("transparent".AsSpan())
+                        || VelvetPalette.TryResolveColorToken(suffix.ToString(), out _))
             {
                 colour.Offer(important, ModifierOutside(core, 0), mixesAlpha: !keyword);
             }
@@ -879,15 +952,16 @@ namespace Velvet
             return lengths < 2 || lengths > 4 || colours > 1 || insets > 1;
         }
 
-        // The bracket of a root-[…] class with its type hint split off, whatever /modifier follows it.
-        private static bool TryReadBracket(string cls, string root, out string? hint, out string value)
+        // The bracket of body, a root-[…] class with its modifier cut, with its type hint split off.
+        private static bool TryReadBracket(ReadOnlySpan<char> body, string root, out string? hint, out string value)
         {
             hint = null;
             value = string.Empty;
             var open = root.Length + 2;
-            var close = cls.LastIndexOf(']');
-            if (!cls.StartsWith(root + "-[", StringComparison.Ordinal) || close <= open
-                || !StyleArbitraryValueResolver.TrySplitTypeHint(cls.AsSpan(open, close - open), out hint, out var span))
+            var close = body.LastIndexOf(']');
+            if (!body.StartsWith(root.AsSpan(), StringComparison.Ordinal)
+                || !body.Slice(root.Length).StartsWith("-[".AsSpan(), StringComparison.Ordinal) || close <= open
+                || !StyleArbitraryValueResolver.TrySplitTypeHint(body.Slice(open, close - open), out hint, out var span))
             {
                 return false;
             }

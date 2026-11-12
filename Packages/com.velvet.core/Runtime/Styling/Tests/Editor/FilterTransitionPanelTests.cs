@@ -838,6 +838,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionFilterUnderAMotionTweenEasingInBack_When_TheTweenIsSteppedThreeQuartersIn_Then_ItIsWhereTheWebAnimationsBackInStandsThere()
+        {
+            // Arrange — the tween's keyword over the class's; Framer runs filter on the Web Animations API, whose backIn
+            // supportedWaapiEasing names.
+            var element = MountResolved("transition-filter duration-1000");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseInBack) }, null);
+            ForcePanelUpdate(element.panel);
+            ApplyBlur(element, 12f);
+            var expected = 12f * CubicBezierEvaluator.Evaluate(0.31f, 0.01f, 0.66f, -0.59f, 0.75f);
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.75f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_ABlurInsideItsDelay_When_ItIsTakenAwayAgain_Then_TheElementEndsUnblurred()
         {
             // Arrange — a second's tween after half a second's delay.
@@ -1316,6 +1336,9 @@ namespace Velvet.Tests
             }
             var wholeProperty = !element.resolvedStyle.transitionProperty
                 .Select(p => p.ToString()).Contains("filter");
+            // Half way along Tailwind's --default-transition-timing-function, on which transition-all's ease-in-out runs
+            // from its first frame (StyleEaseCurve).
+            var filterMidpoint = 12f * CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
 
             // Act — AddClass writes padding before changing duration. The ordered replay then writes
             // padding again under the new duration; skipping it retains the earlier one-second run.
@@ -1346,7 +1369,7 @@ namespace Velvet.Tests
 
             // Assert — paint distinguishes the two runs while their inline target and settled paint agree.
             Assert.That(actual, Is.EqualTo(classDiff ? new[] { 4f, 16f, 16f, 2f }
-                : new[] { 6f, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
+                : new[] { filterMidpoint, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
         }
 
         [Test]

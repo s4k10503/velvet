@@ -399,7 +399,7 @@ namespace Velvet.Tests
             // Arrange — the target does not exist at mount time: CreateElement's registry-portal branch
             // warns and returns a hidden placeholder without enqueuing a DrainPendingPortalMounts entry,
             // so the mount-time attach (ChildReconciler's drain branch) never runs for this target. The
-            // only remaining place the bridge can attach is PatchPortal's healing branch, on the first
+            // only remaining place the bridge can attach is the Portal patch's healing branch, on the first
             // patch after the id registers.
             LogAssert.Expect(LogType.Warning,
                 "[Portal] Target \"same-panel-late-heal-target\" is not registered. Its children mount once an element is registered under that id.");
@@ -449,9 +449,9 @@ namespace Velvet.Tests
             // Arrange — unlike the late-registration-heal case above, the target IS registered before
             // mount, so the Portal resolves and drains through DrainPendingPortalMounts on the very
             // first render — with ZERO children, since `show` starts false. That one-time drain stamp
-            // finds nothing new to mark, and PatchPortalChildren's own bookkeeping already records this
+            // finds nothing new to mark, and the Portal patch's own bookkeeping already records this
             // placeholder's target as resolved (PortalState[placeholder].Target != null), so the
-            // steady-state (already-resolved) branch of PatchPortal — not the healing branch pinned
+            // steady-state (already-resolved) branch of the Portal patch — not the healing branch pinned
             // above — is what this test exercises once the child actually mounts.
             var target = new VisualElement();
             _window.rootVisualElement.Add(target);

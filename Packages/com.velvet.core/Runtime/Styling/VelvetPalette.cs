@@ -15,6 +15,36 @@ namespace Velvet
         // (ColorUtility does not parse the "transparent" keyword).
         private static readonly Dictionary<string, Color> Parsed = BuildParsed();
 
+        // Indexed by length: whether a name TryGet answers has it. After Parsed, which it is built from.
+        private static readonly bool[] s_nameLengths = BuildNameLengths();
+
+        private static bool[] BuildNameLengths()
+        {
+            var longest = 0;
+            foreach (var name in Names())
+            {
+                longest = Math.Max(longest, name.Length);
+            }
+            var lengths = new bool[longest + 1];
+            foreach (var name in Names())
+            {
+                lengths[name.Length] = true;
+            }
+            return lengths;
+        }
+
+        // Every name TryGet answers: transparent and the map's.
+        private static IEnumerable<string> Names()
+        {
+            yield return Transparent;
+            foreach (var name in Parsed.Keys)
+            {
+                yield return name;
+            }
+        }
+
+        private const string Transparent = "transparent";
+
         private static Dictionary<string, Color> BuildParsed()
         {
             var map = new Dictionary<string, Color>(VelvetPaletteColors.Hex.Count + 2)
@@ -41,7 +71,7 @@ namespace Velvet
                 color = default;
                 return false;
             }
-            if (name == "transparent")
+            if (name == Transparent)
             {
                 color = new Color(0f, 0f, 0f, 0f);
                 return true;
@@ -52,6 +82,18 @@ namespace Velvet
                 return false;
             }
             return Parsed.TryGetValue(name, out color);
+        }
+
+        // TryGet for a name still inside the class it is read from, which is cut out only where some palette name has its
+        // length: a shadow-sm's size costs no string.
+        internal static bool TryGet(ReadOnlySpan<char> name, out Color color)
+        {
+            if (name.Length >= s_nameLengths.Length || !s_nameLengths[name.Length])
+            {
+                color = default;
+                return false;
+            }
+            return TryGet(name.ToString(), out color);
         }
 
         // Resolves a color TOKEN — the suffix after a utility prefix — that is either a named palette

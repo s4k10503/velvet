@@ -28,8 +28,15 @@ namespace Velvet
     // with z auto or 0 in flex order (when an unpositioned sibling would otherwise paint over one of them) and then
     // positive z, sorted by z. Equal keys keep tree order.
     //
-    // Safety invariant: a slot occupant (an ordinary child or a placeholder) changes only where the reconciler expects
-    // it to — when an element is created or patched — or at the end of a pass for a parent no parked diff holds.
+    // Safety invariant: a slot occupant (an ordinary child or a placeholder) changes when an element is created, when
+    // a settle relocates an element or returns it (from a patch, or from OnResolved / Restack / Reorder, which do not
+    // wait for a parent a diff is parked over), when a queued mount resolves (ResolveQueuedMount), or when Arrange
+    // converts a slot for a parent no diff is parked over. A settle's swap is reported through
+    // ReconcilerContext.NoteSlotOccupantChanged, so a diff holding the parent's old instances names the new occupant.
+    // The other two are not reported. They run only between walks — at the end of a top-level pass, or outside any
+    // pass — where the diffs holding old instances are the parked ones: Arrange converts nothing for their parents,
+    // and a queued placeholder is younger than what the entries they take name, since the queue empties at each
+    // top-level boundary and an entry a diff takes is read before its slot changes (OldSlotOccupants).
     // Everything else this moves is invisible to the reconciler's slot arithmetic (LogicalChildSlots.IsInvisible).
     internal static class FiberZLayerCoordinator
     {
@@ -552,8 +559,8 @@ namespace Velvet
             => ctx.ZLayerMembers.TryGetValue(real, out var member) ? member.StackingParent : real.parent;
 
         // Relocates real, still at its declared slot, out of it: a fresh placeholder takes the slot at the same
-        // physical index (real becomes invisible to the slot arithmetic in the same step, so the caller's re-fetch
-        // at that index reads the placeholder). Nothing leaves the panel; Arrange sorts real into its band.
+        // physical index (real becomes invisible to the slot arithmetic in the same step, so the placeholder holds
+        // the slot). Nothing leaves the panel; Arrange sorts real into its band.
         private static void RelocateFromOrdinarySlot(ReconcilerContext ctx, VisualElement real, StackingFacts facts)
         {
             var parent = real.parent!;
@@ -563,6 +570,7 @@ namespace Velvet
             ctx.ZLayerPlaceholders[placeholder] = real;
             ctx.ZLayerMembers[real] = new ZLayerMember(placeholder, parent, facts.Z, facts.Order);
             parent.hierarchy.Insert(parent.hierarchy.IndexOf(real), placeholder);
+            ctx.NoteSlotOccupantChanged(real, placeholder);
             MarkPending(ctx, parent);
         }
 
@@ -573,6 +581,7 @@ namespace Velvet
         {
             var parent = placeholder.parent!;
             Exchange(parent, placeholder, real);
+            ctx.NoteSlotOccupantChanged(placeholder, real);
             Retire(ctx, placeholder);
             RetireAnchorOf(ctx, real);
             s_held.Remove(real);

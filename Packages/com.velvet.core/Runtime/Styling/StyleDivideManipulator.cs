@@ -79,6 +79,14 @@ namespace Velvet
         // it measures without moving the container.
         private int ChildReading() => _spec.WidthMeasured != null ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
 
+        // Static lambdas, as StyleGapManipulator's are.
+        private void SyncPoll(bool wanted)
+            => StyleRelativeLengths.SyncPoll(ref _poll, target, wanted, this, static self => self.Reapply(),
+                static self => self.ChildReading());
+
+        // The resnap SyncScaleWatch registers, built once rather than on each spec update.
+        private System.Action<VisualElement>? _resnap;
+
         public StyleDivideManipulator(DivideSpec spec, ReconcilerContext ctx)
         {
             _spec = spec;
@@ -89,7 +97,7 @@ namespace Velvet
         public void UpdateSpec(DivideSpec spec)
         {
             _spec = spec;
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
+            SyncPoll(_spec.WidthMeasured != null);
             SyncScaleWatch();
             _hasSignature = false;
             Apply();
@@ -107,7 +115,7 @@ namespace Velvet
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
             ObserveChildContainer();
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.WidthMeasured != null, Reapply, ChildReading);
+            SyncPoll(_spec.WidthMeasured != null);
             SyncScaleWatch();
             Apply();
         }
@@ -122,7 +130,7 @@ namespace Velvet
             }
             if (_spec.WidthMeasured == null)
             {
-                PanelScaleWatch.Track(target, this, _ => Reapply());
+                PanelScaleWatch.Track(target, this, _resnap ??= _ => Reapply());
             }
             else
             {
@@ -132,7 +140,7 @@ namespace Velvet
 
         protected override void UnregisterCallbacksFromTarget()
         {
-            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
+            SyncPoll(false);
             PanelScaleWatch.Untrack(target, this);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);

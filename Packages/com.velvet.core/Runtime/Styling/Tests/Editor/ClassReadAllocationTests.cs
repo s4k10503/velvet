@@ -7,9 +7,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what the readers a patch hands each class of a list allocate for the classes named below: nothing
-    /// where no part of the class has to be cut out as a string, one string where a theme lookup has to be handed the
-    /// utility after a variant by name, and, where no sheet declares the theme variable a reader looks up, nothing
-    /// more inside a mount's theme scope than outside it. GWT, one assert per case.
+    /// where no part of the class has to be cut out as a string, one string where the utility after a variant has to
+    /// be handed on by name, to a theme lookup or as a variant parse's payload, and, where no sheet declares the theme
+    /// variable a reader looks up, nothing more inside a mount's theme scope than outside it. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     [Category("Performance")]
@@ -17,6 +17,10 @@ namespace Velvet.Tests
     {
         // A variant whose bracket opens with the shape of a type hint, as has-[:checked]: and has-[:focus]: do.
         private const string BracketedVariant = "has-[:checked]:bg-red-500";
+
+        // State, responsive, theme and relational variants over utilities of none of the families the readers below
+        // look for.
+        private static readonly string[] VariantClasses = { "hover:bg-red-500", "sm:p-2", "dark:bg-red-500", "group-hover:opacity-50" };
 
         private MountedTree _mounted;
 
@@ -132,6 +136,107 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AStateVariantClass_When_AskedWhetherItIsAVariant_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleVariantClass.IsVariant("hover:bg-red-500"));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AStateVariantClass_When_ParsedAsAVariant_Then_ItsPayloadIsTheOneBlockAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleVariantClass.TryParse("hover:bg-red-500", out _, out _));
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(1));
+        }
+
+        [TestCase("first:p-2")]
+        [TestCase("max-3xl:p-2")]
+        public void Given_NoThemeScope_When_AClassBehindAPrefixNoVariantNamesIsAskedWhetherItIsAVariant_Then_NothingIsAllocated(
+            string cls)
+        {
+            // Act
+            var blocks = WarmBlocksOutsideScope(() => StyleVariantClass.IsVariant(cls));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoFilterTransition_When_ReadForOne_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var read = (Func<string[], bool>)Delegate.CreateDelegate(typeof(Func<string[], bool>),
+                typeof(FiberFilterTransitionApplier).GetMethod("HasFilterTransitionClass",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+
+            // Act
+            var blocks = WarmBlocks(() => read(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoClipPath_When_AskedWhetherTheyWantAClipWrapper_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleClipPathClass.WantsClipWrapper(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoFilter_When_AskedWhetherTheyHoldAFilter_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleFilterValueParser.HasFilterClass(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        // Measured against the filter read it opens with, so this answers for its own animate-hue read alone.
+        [Test]
+        public void Given_VariantClassesNamingNoFilter_When_AskedWhetherTheyCarryOne_Then_ItAllocatesWhatTheFilterReadDoes()
+        {
+            // Arrange
+            var filterRead = WarmBlocks(() => StyleFilterValueParser.HasFilterClass(VariantClasses));
+
+            // Act
+            var blocks = WarmBlocks(() => WrapperInfrastructure.CarriesFilter(VariantClasses));
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(filterRead));
+        }
+
+        [Test]
+        public void Given_VariantClassesNamingNoBorder_When_TheirBorderInsetIsRead_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => SilhouetteBoundsSpacer.BorderInset(VariantClasses, out _, out _));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_ABracketedValueWithNoTypeHint_When_ReadAsAColour_Then_NothingIsAllocated()
+        {
+            // Act
+            var blocks = WarmBlocks(() => StyleColorValueParser.TryParseColorPrefix("w-", "120px".AsSpan(), false, null, out _));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
         public void Given_ABracketedVariant_When_ParsedAsAGap_Then_NothingIsAllocated()
         {
             // Act
@@ -218,6 +323,134 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(inside, Is.EqualTo(outside));
+        }
+
+        // The mount's sheets declare no breakpoint, so neither prefix is one TryBreakpointQuery could accept there.
+        [TestCase("first:p-2")]
+        [TestCase("max-3xl:p-2")]
+        public void Given_AMountScope_When_AClassBehindAPrefixNoBreakpointNamesIsAskedWhetherItIsAVariant_Then_NothingIsAllocated(
+            string cls)
+        {
+            // Act
+            var blocks = WarmBlocksInScope(() => StyleVariantClass.IsVariant(cls));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AScopeDeclaringALength_When_ItsPixelsAreRead_Then_ItAllocatesWhatReadingTheDeclaredTextDoes()
+        {
+            // Arrange
+            var scope = new StyleThemeTokens.Scope();
+            scope.Values["--breakpoint-3xl"] = "120rem";
+            var text = WarmBlocks(() => StyleArbitraryValueResolver.TryParsePixels("120rem".AsSpan(), out _));
+
+            // Act
+            var read = WarmBlocks(() => scope.TryGetPx("--breakpoint-3xl", out _));
+
+            // Assert
+            Assert.That(read, Is.EqualTo(text));
+        }
+
+        [Test]
+        public void Given_AScopeDeclaringALengthOnce_When_ItsSinglePixelsAreRead_Then_ItAllocatesWhatReadingTheDeclaredTextDoes()
+        {
+            // Arrange
+            var scope = new StyleThemeTokens.Scope();
+            scope.Values["--spacing"] = "0.25rem";
+            scope.Counts["--spacing"] = 1;
+            scope.RootCounts["--spacing"] = 1;
+            var text = WarmBlocks(() => StyleArbitraryValueResolver.TryParsePixels("0.25rem".AsSpan(), out _));
+
+            // Act
+            var read = WarmBlocks(() => scope.TryGetSinglePx("--spacing", out _));
+
+            // Assert
+            Assert.That(read, Is.EqualTo(text));
+        }
+
+        [Test]
+        public void Given_AnImportantClassOfAnotherFamily_When_AClipPathIsExtracted_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var classNames = new[] { "!bg-red-500" };
+
+            // Act
+            var blocks = WarmBlocks(() => StyleClipPathClass.TryExtract(classNames, out _));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnImportantClassOfNoThemeFamily_When_AskedWhetherItMayDeclareVariantState_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var mayDeclare = (Func<string[], bool>)Delegate.CreateDelegate(typeof(Func<string[], bool>),
+                typeof(FiberNodePatcher).GetMethod("MayDeclareVariantState",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static));
+            var classNames = new[] { "!flex" };
+
+            // Act
+            var blocks = WarmBlocks(() => mayDeclare(classNames));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnImportantClassOfNoThemeFamily_When_AskedWhetherItDeclaresAGatePayload_Then_NothingIsAllocated()
+        {
+            // Arrange
+            var classNames = new[] { "!flex" };
+
+            // Act
+            var blocks = WarmBlocks(() => StyleVariantPayload.DeclaresGatePayload(classNames));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AnImportantClassOfNoThemeFamily_When_ItsCustomPropertyTokensAreConfigured_Then_NothingIsAllocated()
+        {
+            // Arrange
+            _mounted = V.Mount(new VisualElement(), V.Div());
+            var configure = (Action<VisualElement, string[]>)Delegate.CreateDelegate(typeof(Action<VisualElement, string[]>),
+                new FiberNodePatcher(_mounted.Root.Reconciler.Context),
+                typeof(FiberNodePatcher).GetMethod("ApplyCustomPropertyConfig",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
+            var element = new VisualElement();
+            var classNames = new[] { "!flex" };
+
+            // Act
+            var blocks = WarmBlocks(() => configure(element, classNames));
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
+        // Measured against the same class without its bang, so this answers for the important class alone.
+        [Test]
+        public void Given_AnImportantClassOfNoThemeFamily_When_TheElementIsTrackedForThemeClasses_Then_ItAllocatesWhatThePlainClassDoes()
+        {
+            // Arrange
+            _mounted = V.Mount(new VisualElement(), V.Div());
+            var track = (Action<VisualElement, string[]>)Delegate.CreateDelegate(typeof(Action<VisualElement, string[]>),
+                new FiberNodePatcher(_mounted.Root.Reconciler.Context),
+                typeof(FiberNodePatcher).GetMethod("TrackThemed",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
+            var element = new VisualElement();
+            var plain = new[] { "flex" };
+            var important = new[] { "!flex" };
+            var plainBlocks = WarmBlocks(() => track(element, plain));
+
+            // Act
+            var importantBlocks = WarmBlocks(() => track(element, important));
+
+            // Assert
+            Assert.That(importantBlocks, Is.EqualTo(plainBlocks));
         }
     }
 }

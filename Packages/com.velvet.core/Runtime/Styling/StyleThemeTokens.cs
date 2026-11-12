@@ -57,7 +57,20 @@ namespace Velvet
             {
                 px = 0f;
                 return Counts.TryGetValue(property, out var count) && count == 1 && RootCounts.TryGetValue(property, out var root) && root == 1 && Values.TryGetValue(property, out var text)
-                    && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
+                    && StyleArbitraryValueResolver.TryParsePixels(text.AsSpan(), out px);
+            }
+
+            // Whether a project sheet declares the variable ns + name, asked without building its name.
+            public bool DeclaresValue(string ns, ReadOnlySpan<char> name)
+            {
+                foreach (var property in Values.Keys)
+                {
+                    if (property.StartsWith(ns, StringComparison.Ordinal) && property.AsSpan(ns.Length).SequenceEqual(name))
+                    {
+                        return true;
+                    }
+                }
+                return false;
             }
 
             // The value of the variable as the reading in progress gets it. An element reads what the cascade gives it and
@@ -87,8 +100,7 @@ namespace Velvet
             public bool TryGetPx(string property, out float px)
             {
                 px = 0f;
-                return TryGetText(property, out var text)
-                    && StyleArbitraryValueResolver.TryParseArbitraryPixels(("[" + text + "]").AsSpan(), out px);
+                return TryGetText(property, out var text) && StyleArbitraryValueResolver.TryParsePixels(text.AsSpan(), out px);
             }
 
             public bool ClearsNamespace(string ns) => Cleared.Contains(ns) || Cleared.Contains("all-");

@@ -317,7 +317,7 @@ namespace Velvet
             var insetShadowAlpha = default(StyleShadowClass.AlphaSlot);
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
+                if (!OpensWithBoxShadowRoot(cls))
                 {
                     continue;
                 }
@@ -356,6 +356,19 @@ namespace Velvet
             return new BoxShadowReading(declared, declared && (ring.Discards || insetRing.Discards
                 || (offset.Width.Set && offset.Colour.Rejected) || StyleShadowClass.Discards(shadow, shadowColour, shadowAlpha)
                 || StyleShadowClass.Discards(insetShadow, insetShadowColour, insetShadowAlpha)));
+        }
+
+        // Whether cls, past a leading bang, opens with a root ReadBoxShadow reads, so that an important class opening with
+        // none of them is passed over before StripImportant copies its core. A root ReadBoxShadow comes to read is added
+        // here too.
+        private static bool OpensWithBoxShadowRoot(string cls)
+        {
+            var rest = cls.AsSpan();
+            rest = rest.Slice(rest.StartsWith("!".AsSpan(), StringComparison.Ordinal) ? 1 : 0);
+            return rest.StartsWith("ring".AsSpan(), StringComparison.Ordinal)
+                || rest.StartsWith("shadow".AsSpan(), StringComparison.Ordinal)
+                || rest.StartsWith("inset-ring".AsSpan(), StringComparison.Ordinal)
+                || rest.StartsWith("inset-shadow".AsSpan(), StringComparison.Ordinal);
         }
 
         // The width and colour slots of ring-*, inset-ring-* or ring-offset-*.

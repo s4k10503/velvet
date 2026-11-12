@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine.UIElements;
 using System.Runtime.CompilerServices;
@@ -15,7 +16,8 @@ namespace Velvet
         Both,
     }
 
-    // A CSS <easing-function> Velvet runs: a cubic-bezier() curve, or steps(n, jump).
+    // A CSS <easing-function> Velvet runs: a cubic-bezier() curve, or steps(n, jump); or a curve mirrored as motion-utils'
+    // mirrorEasing mirrors one, which MotionEasing gives backInOut.
     internal readonly struct EaseFunction : IEquatable<EaseFunction>
     {
         public readonly BezierCurve Curve;
@@ -35,6 +37,9 @@ namespace Velvet
 
         public static implicit operator EaseFunction(BezierCurve curve) => new(curve, 0, StepJump.End);
 
+        // Held as a step count of -1, which no steps() has, so Equals and GetHashCode tell it from the curve itself.
+        public static EaseFunction MirrorOf(BezierCurve curve) => new(curve, -1, StepJump.End);
+
         // An ease-[...] layer carries a curve as x1, y1, x2, y2 and steps as the count, the jump and an x2 of -1, which
         // no curve holds (CSS wants x1 and x2 in 0 to 1).
         public static EaseFunction FromLayer(float v1, float v2, float v3, float v4)
@@ -45,9 +50,18 @@ namespace Velvet
 
         public float Evaluate(float t)
         {
+            if (Steps < 0)
+            {
+                // MUTANT_SURVIVES(equivalent, boundary): both halves give 0.5 at 0.5.
+                if (t <= 0.5f)
+                {
+                    return OnCurve(2f * t) / 2f;
+                }
+                return (2f - OnCurve(2f * (1f - t))) / 2f;
+            }
             if (!IsSteps)
             {
-                return CubicBezierEvaluator.Evaluate(Curve.X1, Curve.Y1, Curve.X2, Curve.Y2, t);
+                return OnCurve(t);
             }
             if (t >= 1f)
             {
@@ -67,6 +81,8 @@ namespace Velvet
             }
         }
 
+        private float OnCurve(float t) => CubicBezierEvaluator.Evaluate(Curve.X1, Curve.Y1, Curve.X2, Curve.Y2, t);
+
         public bool Equals(EaseFunction other)
             => Steps == other.Steps && Jump == other.Jump && Curve.X1 == other.Curve.X1 && Curve.Y1 == other.Curve.Y1
                 && Curve.X2 == other.Curve.X2 && Curve.Y2 == other.Curve.Y2;
@@ -74,6 +90,36 @@ namespace Velvet
         public override bool Equals(object? obj) => obj is EaseFunction other && Equals(other);
 
         public override int GetHashCode() => HashCode.Combine(Curve.X1, Curve.Y1, Curve.X2, Curve.Y2, Steps, Jump);
+    }
+
+    // The cubic-beziers one source gives the ease-in, ease-out and ease-in-out keywords.
+    internal readonly struct KeywordCurves
+    {
+        private readonly BezierCurve _in;
+        private readonly BezierCurve _out;
+        private readonly BezierCurve _inOut;
+
+        public KeywordCurves(BezierCurve easeIn, BezierCurve easeOut, BezierCurve easeInOut)
+        {
+            _in = easeIn;
+            _out = easeOut;
+            _inOut = easeInOut;
+        }
+
+        public EaseFunction? For(EasingMode mode)
+        {
+            switch (mode)
+            {
+                case EasingMode.EaseIn:
+                    return _in;
+                case EasingMode.EaseOut:
+                    return _out;
+                case EasingMode.EaseInOut:
+                    return _inOut;
+                default:
+                    return null;
+            }
+        }
     }
 
     // Runs a USS transition along an easing function transition-timing-function cannot name: it takes only an
@@ -87,17 +133,17 @@ namespace Velvet
     // transition-* utility but transition-none bundles, take Tailwind v4's curves (--ease-in, --ease-out, --ease-in-out
     // and --default-transition-timing-function). Both also leave a keyword on the element, so an engine that cannot be
     // reached eases by the keyword closest to the function. A timing function a Motion's tween writes (a play
-    // MotionTweenTiming holds) is the keyword it names, and so is one other code writes inline where the classes give
-    // the keyword; the layer's is written inline too, and is told apart by the keyword it left. The lists a narrowing
-    // writes in the rules' place (MotionTweenTiming.Narrow) stand for the rules.
+    // MotionTweenTiming holds) takes MotionEasing's curve for each of its keywords that has one, over both sources;
+    // one other code writes inline where the classes give the keyword is the keyword it names; the layer's is written
+    // inline too, and is told apart by the keyword it left. The lists a narrowing writes in the rules' place
+    // (MotionTweenTiming.Narrow) stand for the rules.
     //
     // The layer outranks the keyword source as an inline value outranks a class.
     internal static class StyleEaseCurve
     {
         // Tailwind v4's --ease-in, --ease-out and --ease-in-out; the last is also --default-transition-timing-function.
-        private static readonly BezierCurve s_in = new(0.4f, 0f, 1f, 1f);
-        private static readonly BezierCurve s_out = new(0f, 0f, 0.2f, 1f);
-        private static readonly BezierCurve s_inOut = new(0.4f, 0f, 0.2f, 1f);
+        private static readonly KeywordCurves s_tailwind =
+            new(new BezierCurve(0.4f, 0f, 1f, 1f), new BezierCurve(0f, 0f, 0.2f, 1f), new BezierCurve(0.4f, 0f, 0.2f, 1f));
 
         // The value of an <easing-function> Velvet runs: cubic-bezier() with both x coordinates in [0, 1], as CSS
         // requires, steps(), or one of CSS's easing keywords. `_` reads as a space, as it does in a Tailwind class.
@@ -211,18 +257,33 @@ namespace Velvet
             public EaseFunction? Layer;
             public EasingMode LayerMode;
             public bool Classed;
+            public bool Tweened;
+            // The repeat of the latest tween NoteTween saw, and the PropertyOverrides entries it lists.
+            public MotionRepeat TweenRepeat;
+            public IReadOnlyList<StylePropertyTransition>? TweenOverrides;
+            // The name and start of each transition a carry can take over that ran as that tween began
+            // (RunningStyleTransition.Running).
+            public List<(string Name, double StartSec)>? RunningAtTween;
             public bool Registered;
+
+            public bool HasEntryFor(string property)
+                => DrivenTweenTiming.LastNaming(TweenOverrides, DrivenTweenTiming.Named(property)) != null;
             public EaseFunction ShapedFor;
             public Func<float, float>? Shaped;
+            public Func<Func<float, float>, Func<float, float>?>? ToShaped;
         }
 
         private static readonly ConditionalWeakTable<VisualElement, Binding> s_bindings = new();
 
         private static readonly EventCallback<TransitionRunEvent> s_onRun = OnRun;
 
-        // The functions this class has given a transition: a transition running on one keeps it, as a CSS transition keeps
-        // its timing function until another replaces it.
-        private static readonly ConditionalWeakTable<Func<float, float>, object> s_given = new();
+        private static readonly Func<Func<float, float>, Func<float, float>?> s_engineToMotion =
+            static current => MotionEasing.InPlaceOfEngineCurve(current, accelerated: false);
+
+        private static readonly Func<Func<float, float>, Func<float, float>?> s_engineToAcceleratedMotion =
+            static current => MotionEasing.InPlaceOfEngineCurve(current, accelerated: true);
+
+        private static readonly Func<Func<float, float>, Func<float, float>?> s_keep = static _ => null;
 
         // The function the winning ease-[...] layer gives the element, or none; mode is the keyword left on the element
         // beside it.
@@ -278,10 +339,14 @@ namespace Velvet
         }
 
         // The function the element's transitions ease by where they resolve to the given keyword, for a tween Velvet
-        // runs itself.
-        internal static EaseFunction? CurveFor(VisualElement element, EasingMode resolved)
+        // runs itself of the given property.
+        internal static EaseFunction? CurveFor(VisualElement element, EasingMode resolved, string? property = null)
         {
-            if (!s_bindings.TryGetValue(element, out var binding) || MotionTweenTiming.PlaysCurve(element))
+            if (MotionTweenTiming.PlaysCurve(element))
+            {
+                return MotionEasing.FunctionOf(resolved, OnWebAnimations(element, property));
+            }
+            if (!s_bindings.TryGetValue(element, out var binding))
             {
                 return null;
             }
@@ -290,23 +355,55 @@ namespace Velvet
                 return binding.LayerMode == resolved ? layer : null;
             }
             return binding.Classed && MotionTweenTiming.PeekOwn(element).Curve.keyword == StyleKeyword.Null
-                ? OfKeyword(resolved)
+                ? s_tailwind.For(resolved)
                 : null;
         }
 
-        // Tailwind's curve for a keyword the bundled rules resolve to.
-        private static EaseFunction? OfKeyword(EasingMode mode)
+        // Whether Framer runs the property on the Web Animations API under the tween timing the element: opacity and filter
+        // are among the values accelerated-values.ts names, and the tween's repeat can keep them off it
+        // (MotionRepeat.KeepsWebAnimations), but not off a PropertyOverrides entry, which Framer's getValueTransition
+        // hands the value whole, with no repeat of the tween's.
+        private static bool OnWebAnimations(VisualElement element, string? property)
+            => (property == "opacity" || property == "filter")
+                && (!s_bindings.TryGetValue(element, out var binding) || binding.TweenRepeat.KeepsWebAnimations || binding.HasEntryFor(property));
+
+        // The curve a transition UI Toolkit runs for the element, which started at startSec, eases by once a carry takes it
+        // over, which can be before its run event reaches OnRun
+        // (Given_ATweenEnterEasingInCircThreeTenthsOfASecondIn_When_ACarryTakesItsOpacityOverBeforeItsRunEvent_Then_ItCarriesFramersWebAnimationsCircIn):
+        // under a Motion's tween, the one OnRun retimes it to. One that was running as the tween began keeps its own, as
+        // OnRun, which sees only transitions that start, leaves it.
+        internal static Func<float, float> TakenOver(VisualElement element, string property, double startSec,
+            Func<float, float> curve)
         {
-            switch (mode)
+            if (!MotionTweenTiming.PlaysCurve(element) || RanAtTween(element, property, startSec))
             {
-                case EasingMode.EaseIn:
-                    return s_in;
-                case EasingMode.EaseOut:
-                    return s_out;
-                case EasingMode.EaseInOut:
-                    return s_inOut;
-                default:
-                    return null;
+                return curve;
+            }
+            return MotionEasing.InPlaceOfEngineCurve(curve, OnWebAnimations(element, property)) ?? curve;
+        }
+
+        private static bool RanAtTween(VisualElement element, string property, double startSec)
+            => s_bindings.TryGetValue(element, out var binding) && binding.RunningAtTween?.Contains((property, startSec)) == true;
+
+        // For an element whose transitions a Motion's tween on that repeat and those entries is about to time, which UI
+        // Toolkit then runs; listened to until NoteTweenEnded finds no tween left playing on it.
+        internal static void NoteTween(VisualElement element, MotionRepeat repeat,
+            IReadOnlyList<StylePropertyTransition>? overrides)
+        {
+            var binding = s_bindings.GetValue(element, static _ => new Binding());
+            binding.Tweened = true;
+            binding.TweenRepeat = repeat;
+            binding.TweenOverrides = overrides;
+            binding.RunningAtTween = RunningStyleTransition.Running(element);
+            Sync(element, binding);
+        }
+
+        internal static void NoteTweenEnded(VisualElement element)
+        {
+            if (s_bindings.TryGetValue(element, out var binding))
+            {
+                binding.Tweened = MotionTweenTiming.Playing(element);
+                Sync(element, binding);
             }
         }
 
@@ -317,13 +414,14 @@ namespace Velvet
             {
                 binding.Layer = null;
                 binding.Classed = false;
+                binding.Tweened = false;
                 Sync(element, binding);
             }
         }
 
         private static void Sync(VisualElement element, Binding binding)
         {
-            var wanted = binding.Layer.HasValue || binding.Classed;
+            var wanted = binding.Layer.HasValue || binding.Classed || binding.Tweened;
             if (wanted == binding.Registered)
             {
                 return;
@@ -342,19 +440,39 @@ namespace Velvet
         private static void OnRun(TransitionRunEvent evt)
         {
             if (evt.currentTarget is not VisualElement element || !ReferenceEquals(evt.target, element)
-                || !s_bindings.TryGetValue(element, out var binding) || !TryResolvedMode(element, out var mode)
-                || CurveFor(element, mode) is not { } function)
+                || !s_bindings.TryGetValue(element, out var binding))
             {
                 return;
+            }
+            var classes = MotionTweenTiming.PlaysCurve(element) ? null : ToShaped(element, binding);
+            // Only the transitions the event reports, which start now: one already running keeps the curve it started
+            // on, as a CSS transition keeps its timing function. Under a tween each runs by its own keyword, since a
+            // tween's PropertyOverrides entries can name several, where the classes and the layer give one function for
+            // every transition.
+            foreach (var name in evt.stylePropertyNames)
+            {
+                RunningStyleTransition.Retime(element, name,
+                    classes ?? (OnWebAnimations(element, name.ToString()) ? s_engineToAcceleratedMotion : s_engineToMotion));
+            }
+        }
+
+        // Replaces a curve with the classes' or the layer's function for the keyword every transition of the element
+        // resolves, and keeps it where they give none.
+        private static Func<Func<float, float>, Func<float, float>?> ToShaped(VisualElement element, Binding binding)
+        {
+            if (!TryResolvedMode(element, out var mode) || CurveFor(element, mode) is not { } function)
+            {
+                return s_keep;
             }
             if (binding.Shaped == null || !binding.ShapedFor.Equals(function))
             {
                 var shaped = function;
                 binding.ShapedFor = function;
                 binding.Shaped = t => shaped.Evaluate(t);
-                s_given.Add(binding.Shaped, binding);
+                var given = binding.Shaped;
+                binding.ToShaped = _ => given;
             }
-            RunningStyleTransition.Retime(element, binding.Shaped, static current => s_given.TryGetValue(current, out _));
+            return binding.ToShaped!;
         }
 
         // The keyword every transition the element resolves eases by, where there is one.

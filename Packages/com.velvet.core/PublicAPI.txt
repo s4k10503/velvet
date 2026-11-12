@@ -438,6 +438,8 @@
 [Velvet] field Velvet.VelvetFontWeightEntry.upright: UnityEngine.TextCore.Text.FontAsset?
 [Velvet] field Velvet.VelvetFontWeightEntry.uprightAddress: System.String?
 [Velvet] field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetPreviewPanel.SettlePassMilliseconds: System.Int32
+[Velvet] field Velvet.VelvetPreviewPanel.SettlePasses: System.Int32
 [Velvet] field Velvet.VelvetResponsive.ContainerClass: System.String
 [Velvet] field Velvet.VelvetResponsive.ViewportClass: System.String
 [Velvet] field Velvet.VelvetStyleUtilities.DarkThemeClass: System.String
@@ -939,6 +941,7 @@
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
 [Velvet] method Velvet.VelvetPreviewPanel.Dispose(): System.Void
+[Velvet] method Velvet.VelvetPreviewPanel.Render(): System.Void
 [Velvet] method Velvet.VelvetPreviewPanel.Resize(System.Int32, System.Int32): System.Void
 [Velvet] method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
 [Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): Velvet.VelvetPreviewEnvironment?

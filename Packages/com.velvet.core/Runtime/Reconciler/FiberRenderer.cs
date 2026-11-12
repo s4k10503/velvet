@@ -294,11 +294,12 @@ namespace Velvet
             // those protections; outside a pass the queue is simply empty.
             ReclaimDeferredInlineEntries(fiber);
 
-            // Commit-phase deletion is post-order DFS — the deepest descendant's cleanups
-            // must complete before the parent's. Reorder: child VE removal + child fiber dispose
-            // run first (their effect cleanups fire via FiberEffects.RunOrphanFiberEffectCleanups
-            // while DI scopes / subscriptions / CTS held by this fiber are still alive), then this
-            // fiber's own cleanup. While a time-sliced reconcile is pending, PreviousTree diverges
+            // React's deletion reaches a component ahead of what it rendered: this fiber's cleanups run before its
+            // rows are reconciled away below, whose components are taken down the same way. The rest of what this
+            // fiber holds — DI scopes, subscriptions, CTS — is released after them.
+            FiberEffects.CleanUpDeleted(fiber);
+
+            // While a time-sliced reconcile is pending, PreviousTree diverges
             // from the actual DOM contents; FiberElementCleaner.RemoveElement silently skips
             // out-of-range indices so only existing elements are removed. Any pending
             // PendingIndexedState is cleared at the top of this Reconcile call.
@@ -347,9 +348,6 @@ namespace Velvet
             // committed tree's pooled parts back to the pool.
             retiredTree = fiber.PreviousTree;
 
-            FiberEffects.CleanupAllInsertionEffects(fiber);
-            FiberEffects.CleanupAllLayoutEffects(fiber);
-            FiberEffects.CleanupAllEffects(fiber);
             FiberOutletScope.Release(fiber);
             fiber.DisposeBlockerSlots();
             fiber.DisposeStoreSlots();
@@ -459,11 +457,24 @@ namespace Velvet
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
+            // A disposed fiber has nothing to reconcile into. The drain of a parked pass ahead of this call can dispose
+            // it: a boundary above swaps in its fallback for an error that drain rendered.
+            if (passContext == null) return;
             // A mark left from work that has since rendered would keep every identity skip of this reconcile off.
             FiberPendingWork.Below(fiber);
             var caught = FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
             if (caught != null) FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
+        }
+
+        // A render in a Portal's drain is at depth 0 as an isolated re-render is, but starts under the cursor the drain
+        // has populated from the Portal's snapshot and its walk (ChildReconciler.DrainPendingPortalMounts), as a nested
+        // expansion render starts under the walk's.
+        private static bool RebuildsContextSpine(ComponentFiber fiber)
+        {
+            var context = fiber.Reconciler?.Context;
+            return fiber.Parent != null && (context?.SharedReconcileDepth ?? 1) == 0
+                && context?.CurrentPortalPlaceholder == null;
         }
 
         // Returns whether this render's output became the fiber's PreviousTree.
@@ -503,12 +514,10 @@ namespace Velvet
             var pushedOnto = PushFiber(fiber);
             // Spine-rewalk-with-bailout: an isolated re-render (a standalone entry, not a
             // nested expansion render) starts with an empty live context cursor, so reconstruct the
-            // enclosing Providers from the committed spine before Render() reads them via UseContext. A
+            // enclosing Providers from the spine before Render() reads them via UseContext. A
             // nested expansion render (SharedReconcileDepth > 0) already has the cursor populated by the
             // ongoing walk, and a root fiber (Parent == null) pushes its own Providers during its reconcile.
-            var reconstructSpine = fiber.Parent != null
-                && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
-            var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
+            var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
             var ownedJournal = OpenPassJournal(fiber);
             try
             {
@@ -813,9 +822,7 @@ namespace Velvet
             // The main render unwound its spine in RenderAndReconcile's finally; without re-pushing it the
             // consumer would read the context default here and report a spurious "impure render" divergence.
             // A nested diagnostic (depth > 0) already has the cursor populated by the enclosing expansion.
-            var reconstructSpine = fiber.Parent != null
-                && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
-            var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
+            var contextSpine = RebuildsContextSpine(fiber) ? FiberContextSpine.Push(fiber) : default;
             VNode?[]? diagnosticTree = null;
             try
             {

@@ -1,6 +1,11 @@
 #if UNITY_EDITOR
 #nullable enable
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -20,6 +25,16 @@ namespace Velvet
     public sealed class VelvetPreviewPanel : IDisposable
     {
         private const int TextureDepth = 24;
+
+        /// <summary>How many update passes <see cref="Render"/> runs over the panels drawing into <see cref="Texture"/>
+        /// before it draws them.</summary>
+        public const int SettlePasses = 100;
+
+        /// <summary>How far each of <see cref="Render"/>'s update passes moves a panel's clock on, in milliseconds.</summary>
+        public const int SettlePassMilliseconds = 16;
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IRuntimePanel, SimulatedClock> s_clocks =
+            new();
 
         // Below any sorting order a layer host takes, which sits a few hundred from its declaring panel's.
         private const float ClearSortingOrder = -1e6f;
@@ -53,13 +68,16 @@ namespace Velvet
 
             _ownScaleMode = _settings.scaleMode;
             _ownScale = _settings.scale;
-            _settings.SetScreenToPanelSpaceFunction(OffPanel);
             Texture = CreateTexture(width, height);
+            // Ahead of the call below, which makes the panel: made with its target, it takes the texture's size and
+            // scale from the start rather than on its first update.
             _settings.targetTexture = Texture;
+            _settings.SetScreenToPanelSpaceFunction(OffPanel);
 
             // The clear is a panel of its own, sorted below everything else drawing into the texture: a
             // portal's Background layer host draws there before this panel does, so a clear on this
             // panel would erase it.
+            _settings.clearColor = false;
             _clearSettings = ScriptableObject.CreateInstance<PanelSettings>();
             _clearSettings.hideFlags = HideFlags.HideAndDontSave;
             _clearSettings.themeStyleSheet = PanelHostFactory.SharedEmptyTheme;
@@ -113,6 +131,63 @@ namespace Velvet
             Texture.Create();
         }
 
+        /// <summary>
+        /// Draws one frame into <see cref="Texture"/> before it returns, so a capture reads the texture back without
+        /// waiting for an editor frame. It first runs <see cref="SettlePasses"/> update passes over the runtime panels
+        /// drawing into the texture, each a simulated frame that moves the panel's clock on by
+        /// <see cref="SettlePassMilliseconds"/> before the panel updates; the clock does not move back afterwards. Work
+        /// those panels run on their own clock advances as over that many frames: the renders, effects and state
+        /// updates Velvet schedules on them are drawn, so is what Velvet measures from their layout, and a transition
+        /// timed by their clock that ends within the passes is drawn finished. Motion that reads its
+        /// mount's <see cref="MotionClock"/> rather than the panel's time moves only as far as that clock has. Work
+        /// still scheduled after the passes is drawn without waiting for it, and work resumed on a later editor or
+        /// player frame, such as a <see cref="VelvetTask.Yield"/> continuation, is drawn by a call after that frame.
+        /// The panels are then repainted and rendered, each pass in the order the panels sort in. An exception the
+        /// frame does not catch reaches the caller as it was thrown.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">The panel is disposed.</exception>
+        /// <exception cref="NotSupportedException">This editor lacks an engine member the frame calls, which the message
+        /// names.</exception>
+        public void Render()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewPanel));
+            var frame = FrameMembers.Resolved ?? throw new NotSupportedException(
+                $"{nameof(VelvetPreviewPanel)}.{nameof(Render)} cannot draw a frame in this editor, which has no "
+                + FrameMembers.Missing);
+
+            var active = RenderTexture.active;
+            try
+            {
+                for (var pass = 0; pass != SettlePasses; pass++)
+                {
+                    foreach (var panel in frame.PanelsDrawingInto(Texture))
+                    {
+                        frame.Advance(panel);
+                        frame.Update.Invoke(panel, null);
+                    }
+                }
+                GL.PushMatrix();
+                try
+                {
+                    foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Repaint.Invoke(null, new[] { panel });
+                    frame.RepaintEnd.Invoke(null, null);
+                    foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Render.Invoke(panel, null);
+                }
+                finally
+                {
+                    GL.PopMatrix();
+                }
+            }
+            catch (TargetInvocationException exception) when (exception.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+            }
+            finally
+            {
+                RenderTexture.active = active;
+            }
+        }
+
         // A scale the preview window resolved for a screen other than this texture, held at that value
         // whatever the texture's size; null restores the copied settings' own scaling.
         internal void PinScale(float? scale)
@@ -146,6 +221,86 @@ namespace Velvet
             };
 
         private static Vector2 OffPanel(Vector2 screen) => new(float.NaN, float.NaN);
+
+        // The frames Render has simulated on a panel, which only grows, so Render never moves the panel's time back.
+        private sealed class SimulatedClock
+        {
+            // A sentinel rather than null: a panel without a function of its own holds null, and is wrapped all the same.
+            internal object Installed = new();
+            internal long OffsetMilliseconds;
+        }
+
+        // One installed wrap: the function the panel read its time through when the wrap was made, plus the clock's
+        // offset. The inner function is the wrap's own rather than the clock's, so a function composed over this wrap
+        // and wrapped in its turn reaches this one's inner function rather than itself.
+        private sealed class ClockWrap
+        {
+            private readonly Func<double> _inner;
+            private readonly SimulatedClock _clock;
+
+            internal ClockWrap(Func<double> inner, SimulatedClock clock)
+            {
+                _inner = inner;
+                _clock = clock;
+            }
+
+            internal double Now() => _inner() + _clock.OffsetMilliseconds / 1000d;
+        }
+
+        private sealed class FrameMembers
+        {
+            private static readonly EngineMember[] s_declared =
+            {
+                EngineMember.SortedScreenOverlayPanels, EngineMember.RuntimePanelUpdate, EngineMember.RepaintRuntimePanel,
+                EngineMember.RuntimePanelRender, EngineMember.TextGenerationRepaintEnd, EngineMember.PanelTimeFunction,
+                EngineMember.PanelDefaultTime,
+            };
+
+            internal static readonly string Missing =
+                string.Join(", ", s_declared.Where(member => member.Resolve() == null));
+
+            internal static readonly FrameMembers? Resolved = Missing.Length == 0 ? new FrameMembers() : null;
+
+            private readonly MethodInfo _sortedPanels = EngineMember.SortedScreenOverlayPanels.ResolveMethod()!;
+            internal readonly MethodInfo Update = EngineMember.RuntimePanelUpdate.ResolveMethod()!;
+            internal readonly MethodInfo Repaint = EngineMember.RepaintRuntimePanel.ResolveMethod()!;
+            internal readonly MethodInfo Render = EngineMember.RuntimePanelRender.ResolveMethod()!;
+            internal readonly MethodInfo RepaintEnd = EngineMember.TextGenerationRepaintEnd.ResolveMethod()!;
+            private readonly PropertyInfo _panelTime = EngineMember.PanelTimeFunction.ResolveProperty()!;
+            private readonly Func<double> _defaultTime = (Func<double>)Delegate.CreateDelegate(typeof(Func<double>),
+                EngineMember.PanelDefaultTime.ResolveMethod()!);
+
+            // Wraps the function the panel reads its time through the first time, and again once something else has
+            // replaced the wrap, keeping the offset either way.
+            internal void Advance(IRuntimePanel panel)
+            {
+                var clock = s_clocks.GetOrCreateValue(panel);
+                var current = (Delegate?)_panelTime.GetValue(panel);
+                if (!ReferenceEquals(current, clock.Installed))
+                {
+                    var wrap = new ClockWrap(current == null
+                        ? _defaultTime
+                        : (Func<double>)Delegate.CreateDelegate(typeof(Func<double>), current.Target, current.Method), clock);
+                    Func<double> now = wrap.Now;
+                    // Recorded in the same statement that installs it: a wrap the clock has not recorded is taken for
+                    // another function next pass and wrapped again, counting the offset once more each time.
+                    _panelTime.SetValue(panel,
+                        clock.Installed = Delegate.CreateDelegate(_panelTime.PropertyType, wrap, now.Method));
+                }
+                clock.OffsetMilliseconds += SettlePassMilliseconds;
+            }
+
+            internal List<IRuntimePanel> PanelsDrawingInto(RenderTexture texture)
+            {
+                var drawing = new List<IRuntimePanel>();
+                foreach (var panel in (IEnumerable)_sortedPanels.Invoke(null, null))
+                {
+                    var runtime = panel as IRuntimePanel;
+                    if (runtime?.panelSettings.targetTexture == texture) drawing.Add(runtime!);
+                }
+                return drawing;
+            }
+        }
     }
 }
 #endif

@@ -214,7 +214,8 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
+                // Same pass-over as StyleEaseCurve.NoteClasses: the leaf tested below is part of its class.
+                if (string.IsNullOrEmpty(cls) || cls.IndexOf(ArbitraryPrefix, StringComparison.Ordinal) == -1)
                 {
                     continue;
                 }
@@ -268,7 +269,17 @@ namespace Velvet
         {
             spec = null;
             wantClip = false;
-            cls = StyleArbitraryValueResolver.StripImportant(cls ?? string.Empty, out important);
+            // MUTANT_SURVIVES(equivalent, literal): both callers read important only where this returns true, and every
+            // return of true follows StripImportant, which writes it.
+            important = false;
+            // A class this reads holds one of the two as written too, since the bang StripImportant takes out lies outside
+            // both; asked first, so an important class of another family is not copied.
+            if (cls == null || (cls.IndexOf(NoneClass, StringComparison.Ordinal) < 0
+                    && cls.IndexOf(ArbitraryPrefix, StringComparison.Ordinal) < 0))
+            {
+                return false;
+            }
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out important);
             if (string.IsNullOrEmpty(cls))
             {
                 return false;

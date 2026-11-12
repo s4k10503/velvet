@@ -141,8 +141,8 @@ internal static class AppPreviews
 ```
 
 The live window and headless capture use the same story definitions and mount lifecycle, and
-can use the same panel: the window shows a story through a `VelvetPreviewPanel`, so a capture
-taken through one built from the same `PanelSettings` at the same size holds the window's pixels.
+can use the same panel: the window shows a story through a `VelvetPreviewPanel`, and a capture can be
+taken through one built from the same `PanelSettings` at the same size.
 See [Rendering](#rendering) for what that panel is and
 [Headless screenshot capture](#headless-screenshot-capture) for building one.
 
@@ -300,12 +300,23 @@ The same `[VelvetPreview]` registry also works as the data source for a headless
 building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, build a
 `new VelvetPreviewPanel(settings, width, height)` from the game's `PanelSettings`, mount each story
 onto its `Root` through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]`
-environment), and read its `Texture` back, writing one PNG per story. That is the panel the window
-shows a story through, so at the window's screen size a capture holds the window's pixels for a
-story without an explicit size. In Edit Mode the panel writes the texture on a later
-editor frame, not during `VelvetPreviewHost.Mount`, so a harness waits for frames before reading
-back — a `[UnityTest]` yields `null`; `EditModeStoryCaptureTests` holds that path.
-`StoryCaptureTests` captures every registered story in Play Mode, waiting frames the same way.
+environment), call the panel's `Render()`, and read its `Texture` back, writing one PNG per story.
+That is the panel the window shows a story through, at the window's screen size for a story without an
+explicit size. In Edit Mode a mount does not draw its story into the texture in its own frame; `Render()`
+draws a frame of every panel drawing into the texture before it returns, so a harness reads the texture
+back in the same call. Before it draws, it runs `VelvetPreviewPanel.SettlePasses` update passes over
+those panels, each a simulated frame that first moves the panel's clock on by
+`VelvetPreviewPanel.SettlePassMilliseconds`, and the clock stays moved afterwards. Work those panels time by
+their own clock advances as over that many frames: the renders, effects and state updates Velvet schedules
+there are in the capture, so is what Velvet measures from their layout, and a transition timed by that clock
+that ends within the passes is captured finished. Motion that reads its mount's `MotionClock`
+rather than the panel's time ([Clocks](motion.md#clocks-holding-motion-with-game-time)) moves only as far as
+that clock has. Work still scheduled after the passes is captured without waiting for it, and work the
+story resumes on a later editor or player frame, such as a `VelvetTask.Yield()` continuation, is in a capture
+taken by a `Render()` after that frame. An exception the frame does not catch reaches the harness as it was
+thrown.
+`VelvetPreviewPanelTests` holds that path. `StoryCaptureTests` captures every registered story in Play
+Mode, waiting for frames instead.
 A harness built from `VelvetPreviewRegistry` and `VelvetPreviewHost` shares story discovery and mount
 lifecycle with the live window and the smoke test.
 

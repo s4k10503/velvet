@@ -73,7 +73,7 @@ namespace Velvet
         // The panel no member is on, for SyncFollows while the lead is not moving from a box it took from another holder.
         private static readonly VisualElement s_nowhere = new();
 
-        // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
+        // Called from FiberNodePatcher.PatchMotionPost for a MotionNode carrying a LayoutId, once the
         // patch's own class/style/children work is done. element.layout still holds the PRE-patch
         // resolved rect at this point (this frame's Yoga pass has not run yet) — capturing it now is the
         // same "read .layout synchronously before the mutation that invalidates it" pattern
@@ -909,7 +909,7 @@ namespace Velvet
             if (box != null) SetEntry(ctx, layoutId, element, box);
         }
 
-        // Called from FiberNodePatcher.PatchMotion for a Motion patched with no layoutId: one that held an id stops
+        // Called from FiberNodePatcher.PatchMotionPost for a Motion patched with no layoutId: one that held an id stops
         // holding it, shown again, and its tween and its wait end.
         internal static void Forget(VisualElement element, ReconcilerContext ctx)
         {
@@ -1434,7 +1434,7 @@ namespace Velvet
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
-            : UssEasing.Evaluate(_config.Easing, t);
+            : MotionEasing.Evaluate(_config.Easing, t);
     }
 
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.
@@ -1604,7 +1604,7 @@ namespace Velvet
             (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
                 : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                 : (_heldDurationSec, _heldDelaySec, _heldEasing);
-            _function = StyleEaseCurve.CurveFor(element, _easing);
+            _function = StyleEaseCurve.CurveFor(element, _easing, property);
             _durationSec *= _shortening;
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             if (_delaySec < 0f) _delaySec *= _shortening;

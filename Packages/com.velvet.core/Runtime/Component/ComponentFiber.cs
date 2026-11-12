@@ -819,7 +819,7 @@ namespace Velvet
         internal bool IsInlineMounted { get; set; }
 
         /// <summary>
-        /// The Portal placeholder whose children reconcile last reached this inline fiber, or null for one
+        /// The Portal placeholder whose children reconcile last reached this fiber, or null for one
         /// reached outside any Portal. A Portal's top-level Component child mounts inline with the portal
         /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
         /// removes rather than a descendant of any of them; this is what tells the teardown which of the
@@ -847,6 +847,11 @@ namespace Velvet
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
+        // The output a reconcile of this fiber's own rows is writing ahead of PreviousTree, which takes it only once that
+        // reconcile has returned, for a FiberContextSpine rebuilt meanwhile to read in its place — the drains that end a
+        // pass run inside its reconcile. FiberCommitWork.ReconcileRows owns when it is set and cleared.
+        internal VNode?[]? ReconcilingTree { get; set; }
+
         /// <summary>
         /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
         /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
@@ -854,7 +859,7 @@ namespace Velvet
         /// fixed the ancestor's <see cref="PreviousTree"/>, because a render whose output is discarded has
         /// already written its nodes onto the children it reached. <see cref="SourceTree"/> is what pairs the
         /// two, and <see cref="FiberContextSpine"/> compares nodes only where they pair and only while
-        /// descending a committed tree; its <c>SpineWalk</c> owns the second of those conditions.
+        /// descending the ancestor's own output; its <c>SpineWalk</c> owns the second of those conditions.
         /// </summary>
         internal ComponentNode? SourceNode { get; set; }
 
@@ -867,7 +872,8 @@ namespace Velvet
         /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
         /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
         /// that render's output was committed AND reached this fiber, which is what
-        /// <see cref="FiberContextSpine"/> tests before comparing nodes: a render whose output was discarded
+        /// <see cref="FiberContextSpine"/> tests before comparing nodes, against the array its OwnOutput picks
+        /// for this fiber: a render whose output was discarded
         /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
         /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
         /// </summary>
@@ -973,9 +979,9 @@ namespace Velvet
 
         internal ComponentFiber? NearestAncestorOutsideTheDeletion { get; private set; }
 
-        internal void MarkBeingDeleted() => IsBeingDeleted = true;
+        private void MarkBeingDeleted() => IsBeingDeleted = true;
 
-        internal void RecordTheNearestAncestorOutsideTheDeletion()
+        private void RecordTheNearestAncestorOutsideTheDeletion()
         {
             var ancestor = Parent;
             while (ancestor is { IsMountRoot: false } && (ancestor.IsBeingDeleted || ancestor.IsDisposed))

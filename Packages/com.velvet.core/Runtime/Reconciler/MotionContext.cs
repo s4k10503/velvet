@@ -34,7 +34,7 @@ namespace Velvet
 
         // The staggerChildren/delayChildren orchestration a Motion's inheriting children claim their slots from,
         // while that Motion's label changes this render or its mount enter plays. Pushed alongside ActiveLabel by
-        // FiberNodePatcher.PatchMotion and FiberNodeFactory.CreateForMotionNode; null (the default) means no
+        // FiberNodePatcher.EnterMotionChildren; null (the default) means no
         // orchestration is active. FiberNodePatcher.ResolveChildOrchestration owns which frame each Motion hands
         // its children.
         public static readonly ComponentContext<MotionOrchestrationFrame> Orchestration =
@@ -46,7 +46,7 @@ namespace Velvet
         public static readonly ComponentContext<MotionPlayback> Playback = ComponentContext<MotionPlayback>.Create(null);
 
         // What a Motion establishes for the subtree it reconciles, pushed together and popped together by
-        // FiberNodeFactory.CreateForMotionNode and FiberNodePatcher.PatchMotion. FiberContextSpine rebuilds the
+        // FiberNodePatcher.EnterMotionChildren and ExitMotionChildren. FiberContextSpine rebuilds the
         // two labels and the playback, and not the orchestration, for an isolated render.
         public static void PushForChildren(ComponentContextStack stack, string label, string? initialLabel,
             MotionOrchestrationFrame? orchestration, MotionPlayback? playback)

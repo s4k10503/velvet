@@ -638,7 +638,7 @@ namespace Velvet
                 return channel.Target;
             }
             var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
-            return Mathf.LerpUnclamped(channel.Origin, channel.Target, UssEasing.Evaluate(own.Easing, progress));
+            return Mathf.LerpUnclamped(channel.Origin, channel.Target, MotionEasing.Evaluate(own.Easing, progress, own.Accelerated));
         }
 
         /// <summary>
@@ -667,7 +667,8 @@ namespace Velvet
                 var delaySec = entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec;
                 if (entry.IsDefined)
                 {
-                    channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target);
+                    channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target,
+                        DrivenTweenTiming.Accelerated(longhands));
                 }
                 else
                 {

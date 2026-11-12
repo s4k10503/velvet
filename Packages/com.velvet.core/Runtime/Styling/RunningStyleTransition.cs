@@ -25,8 +25,9 @@ namespace Velvet
         private static readonly MethodInfo? s_indexOf = EngineMember.AnimationDataSetIndexOf.ResolveMethod();
         private static readonly FieldInfo? s_timings = EngineMember.AnimationDataSetTiming.ResolveField();
         private static readonly FieldInfo? s_valuesByProperty = EngineMember.AnimationSystemValues.ResolveField();
-        private static readonly FieldInfo? s_elements = EngineMember.AnimationDataSetElements.ResolveField();
-        private static readonly FieldInfo? s_count = EngineMember.AnimationDataSetCount.ResolveField();
+        private static readonly PropertyInfo? s_nameId = EngineMember.StylePropertyNameId.ResolveProperty();
+        private static readonly MethodInfo? s_updateValues = EngineMember.AnimationValuesUpdateValues.ResolveMethod();
+        private static readonly MethodInfo? s_updateComputedStyleAt = EngineMember.AnimationValuesUpdateComputedStyleAt.ResolveMethod();
         private static readonly FieldInfo? s_styles = EngineMember.AnimationDataSetStyle.ResolveField();
         private static readonly FieldInfo? s_startTime = EngineMember.AnimationTimingStart.ResolveField();
         private static readonly FieldInfo? s_duration = EngineMember.AnimationTimingDuration.ResolveField();
@@ -59,12 +60,44 @@ namespace Velvet
 
         private static readonly object?[] s_args = new object?[3];
 
+        // Each value a carry takes over, by the set its transitions are kept in, its id, and its name in a transition list.
+        private static readonly (FieldInfo? Set, object? Id, string Name)[] s_carried =
+        {
+            (s_floats, s_opacityId, "opacity"),
+            (s_rotates, s_rotateId, "rotate"),
+            (s_translates, s_translateId, "translate"),
+            (s_scales, s_scaleId, "scale"),
+            (s_lengths, s_cornerIds[0], "border-radius"),
+            (s_lengths, s_cornerIds[1], "border-radius"),
+            (s_lengths, s_cornerIds[2], "border-radius"),
+            (s_lengths, s_cornerIds[3], "border-radius"),
+        };
+
+        // The name and start of each transition of a value a carry takes over that the panel runs for the element now;
+        // null where it runs none of them.
+        public static System.Collections.Generic.List<(string Name, double StartSec)>? Running(VisualElement element)
+        {
+            System.Collections.Generic.List<(string Name, double StartSec)>? starts = null;
+            foreach (var (set, id, name) in s_carried)
+            {
+                if (Find(element, set, id) is not { } found) continue;
+                try
+                {
+                    (starts ??= new()).Add((name, (double)Read(s_startTime!, found.Timing)));
+                }
+                catch (Exception)
+                {
+                }
+            }
+            return starts;
+        }
+
         // Has the carry run on from the element's running opacity transition, if it has one.
         public static void TakeOverOpacity(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_floats, s_opacityId, value => ((float)value, 0));
+            TakeOver(element, carry, s_floats, s_opacityId, "opacity", value => ((float)value, 0));
 
         public static void TakeOverRotate(VisualElement element, LayoutIdCarry carry) =>
-            TakeOver(element, carry, s_rotates, s_rotateId, value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
+            TakeOver(element, carry, s_rotates, s_rotateId, "rotate", value => (((Rotate)value).angle.ToDegrees(), LayoutIdLook.Tag((Rotate)value)));
 
         // The x and y axes, each carried in the given unit. UI Toolkit runs a transition in the unit of its end and keeps
         // what a reversal runs back to as it was given, in its own unit or as none
@@ -74,7 +107,7 @@ namespace Velvet
         {
             for (var axis = 0; axis < 2; axis++)
             {
-                TakeOver(element, axes[axis], s_translates, s_translateId,
+                TakeOver(element, axes[axis], s_translates, s_translateId, "translate",
                     value => (InUnit(axis == 0 ? ((Translate)value).x : ((Translate)value).y, units[axis], element.layout.size[axis]),
                         MotionLayoutIdDriver.Tag((Translate)value, axis)));
             }
@@ -84,7 +117,7 @@ namespace Velvet
         {
             for (var axis = 0; axis < 2; axis++)
             {
-                TakeOver(element, axes[axis], s_scales, s_scaleId, value => (((Scale)value).value[axis], 0));
+                TakeOver(element, axes[axis], s_scales, s_scaleId, "scale", value => (((Scale)value).value[axis], 0));
             }
         }
 
@@ -100,7 +133,7 @@ namespace Velvet
         // given, as TakeOverTranslate reads
         // (Given_AMotionRoundingOnATransition_When_ItTakesAHeldIdAndMixesItsRadius_Then_ItsOwnRunsAsTheEngineRunsIt).
         public static void TakeOverRadius(VisualElement element, int corner, LayoutIdCarry carry, LengthUnit unit) =>
-            TakeOver(element, carry, s_lengths, s_cornerIds[corner],
+            TakeOver(element, carry, s_lengths, s_cornerIds[corner], "border-radius",
                 value => (InUnit((Length)value, unit, element.resolvedStyle.width), (int)((Length)value).unit));
 
         // A corner, in LayoutIdLook's corner order, as UI Toolkit draws it now: where a transition of it runs in the given
@@ -155,8 +188,9 @@ namespace Velvet
         }
 #endif
 
-        // read: a value of the transition as the carry holds it, and its LayoutIdCarry.TargetTag.
-        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property,
+        // name: the property's, as a transition list names it. read: a value of the transition as the carry holds it, and
+        // its LayoutIdCarry.TargetTag.
+        private static void TakeOver(VisualElement element, LayoutIdCarry carry, FieldInfo? set, object? property, string name,
             Func<object, (float Value, int Tag)> read)
         {
             if (Find(element, set, property) is not { } found) return;
@@ -166,8 +200,10 @@ namespace Velvet
                 var (system, timing, style) = found;
                 var (from, to, reversingStart) = (read(Read(s_from!, style)), read(Read(s_to!, style)), read(Read(s_reversingStart!, style)));
                 if (!AllNumbers(from.Value, to.Value, reversingStart.Value)) return;
-                var elapsedSec = (double)s_now!.GetValue(system) - (double)Read(s_startTime!, timing);
-                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec), (Func<float, float>)Read(s_curve!, timing),
+                var startSec = (double)Read(s_startTime!, timing);
+                var elapsedSec = (double)s_now!.GetValue(system) - startSec;
+                carry.TakeOver((from.Value, to.Value, (float)Read(s_duration!, timing), (float)elapsedSec),
+                    StyleEaseCurve.TakenOver(element, name, startSec, (Func<float, float>)Read(s_curve!, timing)),
                     (reversingStart.Value, (float)Read(s_shortening!, timing), (float)Read(s_eased!, timing)), (to.Tag, reversingStart.Tag));
             }
             catch (Exception)
@@ -175,13 +211,17 @@ namespace Velvet
             }
         }
 
-        // Has every transition the panel runs for the element ease along curve, in place of the curve its
-        // transition-timing-function named, except one that keepsCurve says already runs on a curve it was given. A member
-        // that does not resolve leaves the transitions on the curve they started with.
-        // StyleEaseCurveTransitionTests fails when the swap stops reaching the transition.
-        public static void Retime(VisualElement element, Func<float, float> curve, Predicate<Func<float, float>> keepsCurve)
+        // Has the transition the panel runs for the element's property ease along the curve replace gives for the one it
+        // runs on, and leaves it on its own where replace gives none. Its current frame is eased again on the new curve
+        // and written, so the frame on screen is on that curve whether or not the engine eased one before this ran. A
+        // member that does not resolve leaves the transition as it started. StyleEaseCurveTransitionTests fails when the
+        // swap stops reaching the transition, and MotionNamedEaseTransitionTests' first-frame cases when the frame is not
+        // written again.
+        public static void Retime(VisualElement element, StylePropertyName property,
+            Func<Func<float, float>, Func<float, float>?> replace)
         {
-            if (!s_readable || s_valuesByProperty == null || s_elements == null || s_count == null || element.panel == null)
+            if (!s_readable || s_valuesByProperty == null || s_nameId == null || s_updateValues == null
+                || s_updateComputedStyleAt == null || element.panel == null)
             {
                 return;
             }
@@ -189,36 +229,35 @@ namespace Velvet
             {
                 var system = s_system!.GetValue(element.panel);
                 if (system == null || !s_now!.DeclaringType!.IsInstanceOfType(system)
-                    || s_valuesByProperty.GetValue(system) is not System.Collections.IDictionary byProperty)
+                    || s_valuesByProperty.GetValue(system) is not System.Collections.IDictionary byProperty
+                    || s_nameId.GetValue(property) is not { } id || byProperty[id] is not { } values)
                 {
                     return;
                 }
-                var seen = new System.Collections.Generic.HashSet<object>();
-                foreach (var values in byProperty.Values)
+                var running = Read(s_running!, values);
+                (s_args[0], s_args[1], s_args[2]) = (element, id, null);
+                if (Close(s_indexOf!, running.GetType()) is not MethodInfo indexOf || indexOf.Invoke(running, s_args) is not true)
                 {
-                    if (!seen.Add(values))
-                    {
-                        continue;
-                    }
-                    var running = Read(s_running!, values);
-                    var elements = (VisualElement[])Read(s_elements, running);
-                    var timings = (Array)Read(s_timings!, running);
-                    var count = (int)Read(s_count, running);
-                    for (var i = 0; i < count; i++)
-                    {
-                        if (!ReferenceEquals(elements[i], element))
-                        {
-                            continue;
-                        }
-                        var timing = timings.GetValue(i)!;
-                        var field = (FieldInfo)Close(s_curve!, timing.GetType());
-                        if (field.GetValue(timing) is Func<float, float> current && !keepsCurve(current))
-                        {
-                            field.SetValue(timing, curve);
-                            timings.SetValue(timing, i);
-                        }
-                    }
+                    return;
                 }
+                var index = (int)s_args[2]!;
+                var timings = (Array)Read(s_timings!, running);
+                var timing = timings.GetValue(index)!;
+                var curveField = (FieldInfo)Close(s_curve!, timing.GetType());
+                if (curveField.GetValue(timing) is not Func<float, float> current || replace(current) is not { } curve)
+                {
+                    return;
+                }
+                curveField.SetValue(timing, curve);
+                var elapsedSec = (double)s_now.GetValue(system) - (double)Read(s_startTime!, timing);
+                if (elapsedSec >= 0.0)
+                {
+                    ((FieldInfo)Close(s_eased!, timing.GetType()))
+                        .SetValue(timing, curve((float)elapsedSec / (float)Read(s_duration!, timing)));
+                }
+                timings.SetValue(timing, index);
+                s_updateValues.Invoke(values, null);
+                s_updateComputedStyleAt.Invoke(values, new object[] { index });
             }
             catch (Exception)
             {

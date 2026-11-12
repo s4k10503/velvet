@@ -19,6 +19,7 @@ namespace Velvet
     {
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
+        private readonly NodePatchWalk _patchWalk;
         private readonly FiberNodeFactory _factory;
         private readonly FiberElementCleaner _cleaner;
         // Shared with the keyed/indexed fast path: LIS anchor computation + non-anchor re-placement.
@@ -26,12 +27,13 @@ namespace Velvet
         // Shared identity-key resolution (same instance the fast path uses).
         private readonly ReconcileKeying _keying;
 
-        public GeneralPathReconciler(ReconcilerContext ctx, FiberNodePatcher patcher,
+        public GeneralPathReconciler(ReconcilerContext ctx, NodePatchWalk patchWalk,
             FiberNodeFactory factory, FiberElementCleaner cleaner, ChildElementPlacement placement,
             ReconcileKeying keying)
         {
             _ctx = ctx;
-            _patcher = patcher;
+            _patcher = patchWalk.Patcher;
+            _patchWalk = patchWalk;
             _factory = factory;
             _cleaner = cleaner;
             _placement = placement;
@@ -92,9 +94,12 @@ namespace Velvet
             // OffscreenChanges, which would have hidden or shown their effects to match, is never applied.
             public List<(ComponentFiber Fiber, bool IsOffscreen, VisualElement? HiddenUnder,
                 ComponentFiber? OffscreenUnder)>? OffscreenBefore;
-            // Every old-leaf lookup of this walk goes through it; LogicalSlotCursor owns what it saves and when
-            // it falls back.
+            // Whether an old leaf's slot is still occupied is asked through it; LogicalSlotCursor owns what it saves
+            // and when it falls back.
             public LogicalSlotCursor OldSlots;
+            // Which element an old leaf is, read before the walk and again where a drain wrote into the container
+            // (OldSlotOccupants.ResolveAgain).
+            public OldSlotOccupants OldOccupants = null!;
             // What a presence's removals of this walk keep until the removals run: the retirement of the
             // dropped ghosts' trees, applied once FinalizeGeneralCommit has removed their leaves, and the put-back
             // of the presence's per-key records and the unstaging of the settles it staged, applied where the walk
@@ -109,27 +114,6 @@ namespace Velvet
 
         internal readonly record struct CommittedLeaf(int OldIndex, bool Linear, ChildKey Key);
 
-        // Runs effect cleanups for fibers present on the old side but absent on the new side
-        // (orphans), before any DOM removal. Scoped to this reconcile call's expansion.
-        internal void RunOrphanEffectCleanups(
-            List<ComponentFiber> oldFibers,
-            HashSet<ComponentFiber> newFibers)
-        {
-            if (oldFibers.Count == 0) return;
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) fiber.MarkBeingDeleted();
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) fiber.RecordTheNearestAncestorOutsideTheDeletion();
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) FiberEffects.RunOrphanFiberEffectCleanups(fiber);
-            }
-        }
-
         // The three tables whose contents are meaningful only within one Reconcile call: they are rented
         // together at its start and returned together at its end, and the orphan diff (old \ new) is valid
         // only over a matched pair. Scoping them as one value is what keeps a sibling fiber's re-render —
@@ -142,19 +126,6 @@ namespace Velvet
             internal ProviderPairTable OldProviders { get; init; }
             internal List<ComponentFiber?> OldOwners { get; init; }
             internal List<ChildKey> OldKeys { get; init; }
-        }
-
-        // Fully disposes orphan fibers (old-side, absent on the new side) and unregisters
-        // them. Effect cleanups already ran via RunOrphanEffectCleanups.
-        internal void SweepOrphans(
-            List<ComponentFiber> oldFibers,
-            HashSet<ComponentFiber> newFibers)
-        {
-            if (oldFibers.Count == 0) return;
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) _ctx.ComponentRegistry.DisposeAndRemove(fiber);
-            }
         }
 
         // Reconcile entry for a container whose new children require inline expansion (NeedsExpansion
@@ -190,11 +161,15 @@ namespace Velvet
                 OldOwners = pairing.OldOwners,
                 Committed = new List<CommittedLeaf>(),
                 Placements = pool.RentPlacementList(),
+                OldOccupants = pool.RentOldSlotOccupants(),
             };
             var owner = _ctx.FiberStack.Current;
             var removalsRan = false;
+            DeletionCommit? deletion = null;
             try
             {
+                if (parent != null) commit.OldOccupants.Resolve(parent, slotStart, oldNodes.Length, int.MaxValue, _patcher);
+                _ctx.OpenOldInstances.Add(commit.OldOccupants);
                 if (commit.OldKeys.Count == 0)
                 {
                     for (var i = 0; i < oldNodes.Length; i++) commit.OldKeys.Add(_keying.ReconcileKey(oldNodes[i], i));
@@ -246,15 +221,12 @@ namespace Velvet
                     KeepFibersTheStoppedWalkLeft(
                         oldFibers, newFibers, commit.SkippedByAbort, OwnerKeepsItsNewTree(owner) ? owner : null);
                 }
-                // Orphan effect cleanups run BEFORE the DOM-removal pass (Finalize → RemoveElement),
-                // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
-                // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
-                RunOrphanEffectCleanups(oldFibers, newFibers);
+                deletion = TakeDownTheDeletion(commit, oldFibers, newFibers);
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
                     if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
-                    FinalizeGeneralCommit(commit);
+                    FinalizeGeneralCommit(commit, deletion);
                     ApplyOffscreenChanges(commit);
                     if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
                 }
@@ -265,11 +237,12 @@ namespace Velvet
                     // puts their offscreen state back to.
                     RestoreWhatTheSuspensesWrote(commit);
                 }
-                SweepOrphans(oldFibers, newFibers);
+                _ctx.HostCommit.DisposeOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
             finally
             {
+                deletion?.End();
                 // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
                 // to follow.
                 if (!removalsRan)
@@ -285,6 +258,9 @@ namespace Velvet
                 pool.ReturnOrphanedIndexSet(commit.UsedOldIndices);
                 pool.ReturnKeySet(commit.NewKeys);
                 pool.Return(commit.NewElements);
+                var open = _ctx.OpenOldInstances.LastIndexOf(commit.OldOccupants);
+                if (open >= 0) _ctx.OpenOldInstances.RemoveAt(open);
+                pool.ReturnOldSlotOccupants(commit.OldOccupants);
             }
         }
 
@@ -329,7 +305,7 @@ namespace Velvet
 
         // Matches one emitted new leaf against the old leaves and commits it in place under the live
         // context: an existing element of the same identity is patched (its children reconcile via
-        // PatchCommon while ancestor Providers are still pushed), otherwise a fresh element is
+        // NodePatchWalk while ancestor Providers are still pushed), otherwise a fresh element is
         // created (its children reconcile via CreateElement under the same live context). The
         // element is recorded in GeneralCommitState.NewElements in new order; its final
         // placement is decided by FinalizeGeneralCommit. Existing elements stay at their
@@ -352,8 +328,6 @@ namespace Velvet
             // A walk a catch on the aborting path stopped commits no further leaf: a leaf matched by slot would
             // patch whatever the fallback's reconcile left at that slot.
             if (_ctx.IsAborted) return;
-            var parent = commit.Parent!;
-            var slotStart = commit.SlotStart;
             var key = emittedKey.OwnedBy(_ctx.FiberStack.Current);
             var oldNodes = commit.OldNodes!;
 
@@ -365,11 +339,11 @@ namespace Velvet
             }
             var ordinal = commit.NewElements.Count;
             var linear = ordinal == 0 || commit.Committed[ordinal - 1].Linear;
-            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear, out var oldPhysical);
+            var oldIndex = MatchOldLeaf(commit, key, ordinal, linear);
             if (oldIndex >= 0)
             {
                 var oldNode = oldNodes[oldIndex];
-                var existingDom = parent.ElementAt(oldPhysical);
+                var existingDom = commit.OldOccupants.Occupant(oldIndex)!;
                 if (reusedByOwner && ReferenceEquals(oldNode, node) && node is ElementNode
                     && !_ctx.ZLayerPlaceholders.ContainsKey(existingDom)
                     && !_ctx.StackingFacts.ContainsKey(existingDom))
@@ -378,12 +352,8 @@ namespace Velvet
                 }
                 else if (ReconcileKeying.CanPatch(oldNode, node))
                 {
-                    var actual = _patcher.ResolveWrapped(existingDom);
-                    _patcher.PatchNode(actual, oldNode, node);
+                    existingDom = _patchWalk.PatchNode(commit.OldOccupants.Resolved(oldIndex)!, oldNode, node);
                     if (_ctx.IsAborted) return;
-                    // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
-                    commit.OldSlots.TryGetPhysical(parent, slotStart + oldIndex, out oldPhysical);
-                    existingDom = parent.ElementAt(oldPhysical);
                     commit.NewElements.Add((existingDom, true));
                 }
                 else
@@ -410,10 +380,8 @@ namespace Velvet
         // walk). The slot check degrades a stale oldNodes/DOM mismatch (e.g. after a prior aborted/suspended
         // commit) to a fresh create instead of throwing IndexOutOfRange — the time-sliced keyed path asserts
         // this invariant; the general path can be re-entered mid-suspend so it guards defensively.
-        private static int MatchOldLeaf(
-            GeneralCommitState commit, ChildKey key, int ordinal, bool linear, out int physical)
+        private static int MatchOldLeaf(GeneralCommitState commit, ChildKey key, int ordinal, bool linear)
         {
-            physical = -1;
             int oldIndex;
             if (linear && ordinal < commit.OldKeys.Count && commit.OldKeys[ordinal].Equals(key)
                 && !commit.UsedOldIndices.Contains(ordinal))
@@ -428,7 +396,7 @@ namespace Velvet
             {
                 return -1;
             }
-            return commit.OldSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out physical) ? oldIndex : -1;
+            return commit.OldSlots.TryGetPhysical(commit.Parent!, commit.SlotStart + oldIndex, out _) ? oldIndex : -1;
         }
 
         // Emits one expanded leaf under the key its position gives it: commits it in place under live context
@@ -602,35 +570,78 @@ namespace Velvet
             }
         }
 
+        // An old leaf stays only where a new leaf patched it; one replaced goes with the rest.
+        private static void MarkPatchedOldLeaves(GeneralCommitState commit)
+        {
+            var patched = commit.UsedOldIndices;
+            patched.Clear();
+            for (var j = 0; j < commit.NewElements.Count; j++)
+            {
+                if (commit.NewElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
+            }
+        }
+
+        // What the walk deletes — the old leaves it removes and the fibers its old side reached and its new side did
+        // not — taken down in React's order ahead of the removals (DeletionCommit), which FinalizeGeneralCommit runs
+        // over the leaves the deletion names. A walk an abort stopped removes no leaf, and still takes down the
+        // orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
+        private DeletionCommit? TakeDownTheDeletion(
+            GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
+            var oldLength = commit.OldNodes!.Length;
+            DeletionCommit? deletion = null;
+            if (!_ctx.IsAborted)
+            {
+                MarkPatchedOldLeaves(commit);
+                // MUTANT_SURVIVES(equivalent, boundary): past the last old leaf Occupant reads null, which is skipped.
+                for (var i = 0; i < oldLength; i++)
+                {
+                    // A leaf whose slot was empty when the walk read the old instances has none to remove.
+                    var row = commit.OldOccupants.Occupant(i);
+                    if (row == null || commit.UsedOldIndices.Contains(i)) continue;
+                    (deletion ??= BeginDeletion(commit)).AddRemovedRow(i, row);
+                }
+            }
+            if (deletion == null && !HasOrphan(oldFibers, newFibers)) return null;
+            deletion ??= BeginDeletion(commit);
+            deletion.Run(oldFibers, newFibers, oldLength);
+            return deletion;
+        }
+
+        private DeletionCommit BeginDeletion(GeneralCommitState commit)
+            => _ctx.HostCommit.BeginDeletion(commit.Parent, commit.SlotStart, commit.OldOccupants);
+
+        private static bool HasOrphan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
+            foreach (var fiber in oldFibers)
+            {
+                if (!newFibers.Contains(fiber)) return true;
+            }
+            // MUTANT_SURVIVES(equivalent, literal): a deletion begun over nothing deleted takes nothing down.
+            // Its Run finds no orphan and no removed row, and FinalizeGeneralCommit reads no removed row from it.
+            return false;
+        }
+
         // Removes old leaves not reused by the walk, then re-places the committed elements into
         // [slotStart, slotStart + NewElements.Count) with the minimum number of DOM moves via
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
         // ReconcileKeyedSync with linearEnd == 0: all matching happened in CommitLeaf, and the leaves it
         // matched linearly are placed with the rest rather than ahead of them.
-        private void FinalizeGeneralCommit(GeneralCommitState commit)
+        private void FinalizeGeneralCommit(GeneralCommitState commit, DeletionCommit? deletion)
         {
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            // An old leaf stays only where a new leaf patched it; one replaced goes with the rest.
-            var patched = commit.UsedOldIndices;
-            patched.Clear();
-            for (var j = 0; j < newElements.Count; j++)
+            // Removal, from the last old leaf down, of the leaves the deletion took down.
+            var removed = deletion?.RemovedRows;
+            for (var i = (removed?.Count ?? 0) - 1; i >= 0; i--)
             {
-                if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
+                var index = removed![i].Index;
+                var old = commit.OldOccupants.Occupant(index);
+                if (old != null) _ctx.HostCommit.Remove(parent, old, commit.OldOccupants.PhysicalAtEntry(index));
             }
-            // Removal (reverse so not-yet-visited indices stay valid).
-            var cursor = new DescendingSlotCursor();
-            for (var i = oldNodes.Length - 1; i >= 0; i--)
-            {
-                if (!patched.Contains(i))
-                {
-                    _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
-                }
-            }
-
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
             {
@@ -645,8 +656,7 @@ namespace Velvet
             if (reordered) _ctx.ComponentRegistry.CommitChildOrderToRows(parent, newElements, commit.Placements);
             foreach (var (fiber, firstRow, rows) in commit.Placements)
             {
-                fiber.MountSlotStart = slotStart + firstRow;
-                fiber.MountSlotCount = rows;
+                _ctx.HostCommit.PlaceRows(fiber, slotStart + firstRow, rows);
             }
         }
 
@@ -1254,8 +1264,8 @@ namespace Velvet
                 if (boundary.IsDisposed) return;
                 // Published only once the fallback has expanded: a catch on the aborting path during that
                 // expansion reconciles this boundary's rows from the tree they still hold, the failed one. The
-                // fallback is committed before the failed tree retires, as FiberErrorBoundary.TryShowFallback
-                // orders it.
+                // fallback is committed before the failed tree retires, so that the sweep's owner mark spares a node
+                // the two share.
                 var failedTree = boundary.PreviousTree;
                 boundary.PreviousTree = caught.FallbackTree;
                 FiberTreeReturn.ReturnRetiredTree(failedTree, boundary);
@@ -1729,13 +1739,21 @@ namespace Velvet
             InlineWalk walk, GeneralCommitState commit, int from, int to, ComponentFiber? boundaryFiber, bool hidden)
         {
             var roots = new HashSet<VisualElement>();
-            for (var i = from; i < to; i++)
+            _targetRows = RenderedChildrenCache.Rent();
+            try
             {
-                // CommitLeaf records an element for every leaf it commits.
-                var row = commit.NewElements[i].element!;
-                if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
-                if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
-                AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+                for (var i = from; i < to; i++)
+                {
+                    // CommitLeaf records an element for every leaf it commits.
+                    var row = commit.NewElements[i].element!;
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
+                    if (!hidden && walk.HiddenPrimaryElements.Contains(row)) continue;
+                    AddWithPortalChildren(row, roots, i, commit, walk, hidden);
+                }
+            }
+            finally
+            {
+                _targetRows.Return();
             }
             foreach (var (fiber, placeholder) in HeldFibers(roots))
             {
@@ -1764,6 +1782,10 @@ namespace Velvet
             }
         }
 
+        // The rows of the Portal targets a SetPrimaryHidden call reaches, each target read once for the call, which
+        // rents it; AddWithPortalChildren runs only inside that call.
+        private RenderedChildrenCache? _targetRows;
+
         private void AddWithPortalChildren(VisualElement element, HashSet<VisualElement> roots, int row,
             GeneralCommitState commit, InlineWalk walk, bool hidden)
         {
@@ -1772,12 +1794,15 @@ namespace Velvet
             (commit.DisplayChanges ??= new()).Add((row, element, hidden));
             foreach (var (placeholder, slots) in _ctx.PortalState)
             {
-                // An entry with no target holds no slot, so its loop below runs no step.
-                if (HolderOf(placeholder, roots) != element) continue;
-                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength; slot++)
+                if (slots.Target == null || HolderOf(placeholder, roots) != element) continue;
+                var rows = _targetRows!.Of(slots.Target);
+                for (var slot = slots.SlotStart; slot < slots.SlotStart + slots.SlotLength && slot < rows.Count; slot++)
                 {
-                    if (!LogicalChildSlots.TryGetPhysical(slots.Target!, slot, out var physical)) break;
-                    AddWithPortalChildren(slots.Target![physical], roots, row, commit, walk, hidden);
+                    // A relocated row is hidden or revealed as the element it stands for, as SetPrimaryHidden takes a
+                    // row of the walk's own.
+                    var portalRow = rows[slot];
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(portalRow, out var relocated)) portalRow = relocated;
+                    AddWithPortalChildren(portalRow, roots, row, commit, walk, hidden);
                 }
             }
         }
@@ -1934,34 +1959,7 @@ namespace Velvet
         }
 
         private void ApplyOffscreenChanges(GeneralCommitState commit)
-        {
-            if (commit.DisplayChanges != null)
-            {
-                foreach (var (_, element, hidden) in commit.DisplayChanges)
-                {
-                    if (hidden)
-                    {
-                        SuspenseHiddenElements.Hide(element);
-                        _ctx.DetachRefsWhileHidden(element);
-                        // UI Toolkit lets go of the focus of an element no longer displayed only at its next layout
-                        // pass, which SuspenseHiddenFocusPanelTests pins; the commit that hides it lets go of it here.
-                        var focused = element.focusController?.focusedElement as VisualElement;
-                        if (SuspenseHiddenElements.IsAtOrUnderHidden(focused)) focused!.Blur();
-                    }
-                    else
-                    {
-                        SuspenseHiddenElements.Reveal(element);
-                        _ctx.AttachRefsHiddenUnder(element);
-                    }
-                }
-            }
-            if (commit.OffscreenChanges == null) return;
-            foreach (var (fiber, hidden) in commit.OffscreenChanges)
-            {
-                if (hidden) FiberEffects.HideLayoutEffects(fiber);
-                else FiberEffects.ShowLayoutEffects(fiber, _ctx);
-            }
-        }
+            => _ctx.HostCommit.ApplyOffscreenChanges(commit.DisplayChanges, commit.OffscreenChanges);
 
         // Walks what the boundary's record says is in the container — the fallback, behind the primary where that
         // is kept hidden, or else the primary — and says whether the fallback is shown.
@@ -3748,9 +3746,9 @@ namespace Velvet
         // child's own subtree — which sets its own anchor for ITS keyed children — does not leave the outer
         // anchor cleared once its own expansion returns and this child's subtree keeps unwinding.
         // anchorMotionElement: the anchor Motion's own live element, as recorded by CreateElement /
-        // PatchMotion during this very expansion — the target the caller's variant enter/exit classes must
-        // land on (the resting variant classes live there, not on a wrapper anchor). Null when the emission
-        // did not reach the Motion (or there is none); callers fall back to the classic, anchor-targeted
+        // NodePatchWalk.ReconcileUnderMotion during this very expansion — the target the caller's variant enter/exit
+        // classes must land on (the resting variant classes live there, not on a wrapper anchor). Null when the
+        // emission did not reach the Motion (or there is none); callers fall back to the classic, anchor-targeted
         // transition then.
         private VisualElement? EmitPresenceChildAsAnchor(
             in PresenceChildSite site,

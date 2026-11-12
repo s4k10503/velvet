@@ -598,6 +598,44 @@ namespace Velvet.Tests
             Assert.That(parsed, Is.False);
         }
 
+        // A probe stuck at zero satisfies the zero guard below without measuring anything; this canary is what makes its
+        // zero mean something.
+        // GREEN_ON_BASE(characterization): the probe already counts a 16-byte array allocation on the base, which is all this case asserts.
+        [Test]
+        public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
+        {
+            // Act
+            var blocks = GCAllocationCanary.BlocksForKnownArray();
+
+            // Assert
+            Assert.That(blocks, Is.GreaterThan(0));
+        }
+
+        // The sheet declares breakpoints, none of them first, so the prefix is still no query TryBreakpointQuery could
+        // accept.
+        [Test]
+        public void Given_ASheetDeclaringBreakpoints_When_AClassBehindAPrefixNoneNamesIsAskedWhetherItIsAVariant_Then_NothingIsAllocated()
+        {
+            // Arrange
+            AttachSheets(false);
+            _mounted = V.Mount(_window.rootVisualElement, V.Div());
+            void Ask() => StyleVariantClass.IsVariant("first:p-2");
+
+            // Act
+            int blocks;
+            using (StyleThemeTokens.Pass(_mounted.Root.Reconciler.Context))
+            {
+                for (var i = 0; i < 64; i++)
+                {
+                    Ask();
+                }
+                blocks = GCAllocationProbe.MedianBlocksDuring(Ask);
+            }
+
+            // Assert
+            Assert.That(blocks, Is.Zero);
+        }
+
         [Test]
         public void Given_ACustomBreakpointToken_When_ParsedOutsideEveryScope_Then_ItIsNotAVariant()
         {
