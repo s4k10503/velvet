@@ -888,13 +888,7 @@ namespace Velvet
             // class must be cleared here. Adding a new index without updating this block leaks.
             _inlineInstances.Clear();
             _inlineFiberToKey.Clear();
-            // MUTANT_SURVIVES(equivalent): no read after this Dispose can find an entry the table still holds.
-            // Each read looks it up for a fiber another table of this registry names, all of them cleared here, and a
-            // fiber registered after this is not a key here.
             _successors.Clear();
-            // MUTANT_SURVIVES(equivalent): no read after this Dispose can find an entry the table still holds.
-            // Its one read looks it up for a fiber _inlineFiberToKey names, cleared above, and a fiber registered
-            // after this is not a key here.
             _predecessors.Clear();
             _parentToInlineFibers.Clear();
             _tenancies.Clear();
