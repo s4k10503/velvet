@@ -116,28 +116,41 @@ namespace Velvet.Tests
             Assert.That(AnyStrictlyBetween(samples, 0f, 300f), Is.True, string.Join(", ", samples));
         }
 
-        // GREEN_ON_BASE(characterization): an empty dependency list plays once per mount, as the base's
-        // omitted list did, so the host's new required argument leaves this playback as the base has it.
+        private static AnimationSequenceStep[] AwayCoverHoldGone() => new[]
+        {
+            AnimationSequenceStep.To("away", Linear(0.001f)),
+            AnimationSequenceStep.To("cover", Linear(0.3f)),
+            AnimationSequenceStep.To("hold", Linear(0.3f)),
+            AnimationSequenceStep.To("gone", Linear(0.3f)),
+            AnimationSequenceStep.Wait(0.5f),
+        };
+
+        // GREEN_ON_BASE(characterization): the base already tweens the cover step of this sequence on a runtime panel.
         [UnityTest]
-        public IEnumerator Given_AnAwayCoverHoldGoneSequence_When_FramesAdvance_Then_BothMovingStepsPassThroughAnIntermediateTranslate()
+        public IEnumerator Given_AnAwayCoverHoldGoneSequence_When_FramesAdvance_Then_TheCoverStepPassesThroughAnIntermediateTranslate()
         {
             // Arrange
             var samples = new List<float>();
-            var steps = new[]
-            {
-                AnimationSequenceStep.To("away", Linear(0.001f)),
-                AnimationSequenceStep.To("cover", Linear(0.3f)),
-                AnimationSequenceStep.To("hold", Linear(0.3f)),
-                AnimationSequenceStep.To("gone", Linear(0.3f)),
-                AnimationSequenceStep.Wait(0.5f),
-            };
 
             // Act
-            yield return MountAndSample(steps, 1.8, samples);
+            yield return MountAndSample(AwayCoverHoldGone(), 1.8, samples);
 
             // Assert
-            Assert.That((AnyStrictlyBetween(samples, 0f, 300f), AnyStrictlyBetween(samples, -300f, 0f)),
-                Is.EqualTo((true, true)), string.Join(", ", samples));
+            Assert.That(AnyStrictlyBetween(samples, 0f, 300f), Is.True, string.Join(", ", samples));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already tweens the gone step of this sequence on a runtime panel.
+        [UnityTest]
+        public IEnumerator Given_AnAwayCoverHoldGoneSequence_When_FramesAdvance_Then_TheGoneStepPassesThroughAnIntermediateTranslate()
+        {
+            // Arrange
+            var samples = new List<float>();
+
+            // Act
+            yield return MountAndSample(AwayCoverHoldGone(), 1.8, samples);
+
+            // Assert
+            Assert.That(AnyStrictlyBetween(samples, -300f, 0f), Is.True, string.Join(", ", samples));
         }
     }
 }

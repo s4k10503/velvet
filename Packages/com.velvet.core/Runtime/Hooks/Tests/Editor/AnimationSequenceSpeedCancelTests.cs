@@ -73,6 +73,9 @@ namespace Velvet.Tests
             Assert.That(set, Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
+        // GREEN_ON_BASE(characterization): the base already holds a cancelled Bezier fade at the opacity it started from.
+        // Removing `Playback.CancelPlays();` from `SequenceWalker.Cancel` leaves the paused fade where it stood,
+        // which reddens this case.
         [Test]
         public void Given_ASequencePartWayThroughABezierFade_When_Cancelled_Then_TheMotionHoldsTheOpacityTheFadeStartedFrom()
         {
@@ -87,7 +90,8 @@ namespace Velvet.Tests
 
             // Assert
             var opacity = Opacity();
-            Assert.That((moving > 0f, opacity.keyword, opacity.value), Is.EqualTo((true, StyleKeyword.Undefined, 0f)));
+            Assert.That(moving > 0f && opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN,
+                Is.EqualTo(0f));
         }
 
         [Test]
