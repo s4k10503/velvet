@@ -557,7 +557,9 @@ namespace Velvet
         // nothing left.
         internal static void CleanUpDeleted(ComponentFiber fiber)
         {
-            CleanupAllInsertionEffects(fiber);
+            // React's deletion of a subtree a Suspense hides runs none of its insertion cleanups, and its layout ones
+            // ran as it was hidden (HideLayoutEffects).
+            if (!fiber.LayoutEffectsHidden) CleanupAllInsertionEffects(fiber);
             CleanupAllLayoutEffects(fiber);
             CleanupAllEffects(fiber);
         }

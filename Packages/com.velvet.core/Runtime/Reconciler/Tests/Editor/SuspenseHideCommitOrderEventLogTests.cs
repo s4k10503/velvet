@@ -8,7 +8,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the commit sequence of a revealed <c>V.Suspense</c> that suspends again as one <see cref="EventLog"/>
     /// string: React 19's <c>disappearLayoutEffects</c> walks the hidden tree in pre-order, running a component's
-    /// layout cleanups as it reaches the component and detaching an element's ref as it reaches the element.
+    /// layout cleanups as it reaches the component and detaching an element's ref as it reaches the element. A
+    /// Suspense removed while it hides that tree runs none of the tree's insertion cleanups, as react-reconciler
+    /// 19.1's deletion of a hidden subtree runs none.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseHideCommitOrderEventLogTests
@@ -283,6 +285,31 @@ namespace Velvet.Tests
             return mounted;
         }
 
+        [Component]
+        private static VNode InsertionCleanupProbe(Named props)
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseInsertionEffect(() => () => log.Add("ins-x:" + props.Name), Array.Empty<object>());
+            return V.Div();
+        }
+
+        // A Suspense its parent can remove, whose primary and fallback each hold a component with an insertion effect.
+        [Component]
+        private static VNode RemovableSuspense()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            var (blocked, _) = EventLog.UseState("Block", 0);
+            return V.Fragment(shown
+                ? V.Suspense(
+                    fallback: V.Component(InsertionCleanupProbe, new Named("F"), key: "f"),
+                    children: new VNode[]
+                    {
+                        V.Component(InsertionCleanupProbe, new Named("H"), key: "h"),
+                        V.Component(Reader, blocked, key: "reader"),
+                    })
+                : null);
+        }
+
         private static void Suspend(EventLog log, MountedTree mounted)
         {
             log.Clear();
@@ -527,6 +554,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ref-x:O lay-x:E ref-x:D ref-x:O2 ins:F ref:F lay:F eff:F"));
+        }
+
+        [Test]
+        public void Given_ASuspenseHidingAComponentWithAnInsertionEffect_When_TheSuspenseIsRemoved_Then_OnlyItsFallbacksInsertionCleanupRuns()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(RemovableSuspense)),
+                new MountOptions { OnCaughtError = (_, _) => { } });
+            mounted.DrainForTest();
+            Suspend(log, mounted);
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:F"));
         }
     }
 }

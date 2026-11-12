@@ -3,8 +3,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // React's commitDeletionEffectsOnFiber over what one container's reconcile deletes, or over an element leaving
-    // outside one: the pre-order walk of PreOrderTeardown, in which a component's cleanups run where the walk reaches
+    // React's commitDeletionEffectsOnFiber over what one container's reconcile deletes, or over what leaves outside
+    // one: the pre-order walk of PreOrderTeardown, in which a component's cleanups run where the walk reaches
     // the component (FiberEffects.CleanUpDeleted), and an element's ref detaches where the walk reaches the element. It
     // runs ahead of the removals, which find neither left to run.
     internal sealed class DeletionCommit : PreOrderTeardown
@@ -91,9 +91,9 @@ namespace Velvet
             s_pool.Push(this);
         }
 
-        // An element leaving outside a container reconcile's deletion, for which it returns the fibers mounted under
-        // the element. Without a component held below it, the element teardown that follows
-        // (FiberElementCleaner.CleanupElementCore) reaches its refs in this walk's order.
+        // An element leaving outside a container reconcile's deletion, or a Portal placeholder whose children leave
+        // its target (FiberElementCleaner.ReleasePortalRangeForRetarget), for which it returns the fibers mounted under
+        // the element.
         internal static List<ComponentFiber>? TakeDownLeaving(ReconcilerContext ctx, FiberElementCleaner cleaner,
             VisualElement element)
         {
@@ -103,10 +103,15 @@ namespace Velvet
                 commit.AddRowAsRoot(element);
                 commit.CollectHeldFibers();
                 var mounted = commit._roots[element];
-                if (commit._fibers.Count == 0) return mounted;
+                // With no fiber held below the element and no ref in the context, the walk has nothing to take down.
+                if (commit._fibers.Count == 0 && ctx.RefCallbacks.Count == 0) return mounted;
                 ComponentFiber.BeginDeletion(commit._fibers);
                 foreach (var fiber in commit._fibers) commit.Place(fiber);
                 commit.VisitRow(element);
+                // MUTANT_SURVIVES(equivalent): no EventLog reading tells a fiber this walk misses taken down here from
+                // it taken down later in the same teardown (FiberElementCleaner.CleanupElement), which reaches it by
+                // the list returned below or by the Portal it belongs to. Before that the teardown runs no other
+                // cleanup and detaches no ref: the walk took down every other fiber and ref the element holds.
                 commit.TakeDownTheRest();
                 return mounted;
             }
@@ -173,6 +178,10 @@ namespace Velvet
             if (held == null) return;
             foreach (var fiber in held)
             {
+                // MUTANT_SURVIVES(equivalent, clause removed): a fiber held twice is placed and taken down twice.
+                // That happens to a Portal's child when the Portal's target is inside a removed element: its rows are
+                // roots inside another root, and its children are held by both. The second CleanUpDeleted finds
+                // nothing left (FiberEffects.CleanUpDeleted), and BeginDeletion and the placement keep the first.
                 if (!fiber.IsDisposed && _collected.Add(fiber)) _fibers.Add(fiber);
             }
         }

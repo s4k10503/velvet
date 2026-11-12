@@ -705,6 +705,8 @@ namespace Velvet
             {
                 return;
             }
+            // The departing children are a deletion's, taken down in its order before CleanupPortal releases them.
+            DeletionCommit.TakeDownLeaving(_ctx, this, placeholder);
             CleanupPortal(placeholder);
             _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0, First = null, Last = null };
         }

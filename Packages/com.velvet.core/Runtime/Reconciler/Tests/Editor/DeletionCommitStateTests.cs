@@ -145,6 +145,7 @@ namespace Velvet.Tests
         [TestCase("_startingAt")]
         [TestCase("_endingIn")]
         [TestCase("_endingInPortal")]
+        [TestCase("_placed")]
         [TestCase("_rendered._of")]
         public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsWhatItHeld(string field)
         {
@@ -160,7 +161,6 @@ namespace Velvet.Tests
             Assert.That(EntriesLeftInPooledWalks(field), Is.EqualTo(0));
         }
 
-        [TestCase("_spareFiberLists")]
         [TestCase("_childrenAtDepth")]
         public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoListAPooledWalkKeepsHoldsAnEntry(string field)
         {

@@ -1,5 +1,7 @@
 using System;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -88,7 +90,7 @@ namespace Velvet.Tests
             return V.Fragment(shown ? V.Component(Probed, new Named("D"), key: "d") : null);
         }
 
-        // The deleted child's parent is a component that follows a sibling updated in the same commit.
+        // The deleted child's parent is a component whose rows follow a sibling's.
         [Component]
         private static VNode SiblingBeforeTheParent()
             => V.Div(children: new VNode[] { V.Component(Stateful, key: "s"), V.Component(Dropper, key: "m") });
@@ -315,6 +317,93 @@ namespace Velvet.Tests
                     : null);
         }
 
+        [Component]
+        private static VNode Wrapping(Named props)
+        {
+            UseInsertionAndLayoutEffects(props.Name, Array.Empty<object>());
+            return V.Component(Probed, new Named(props.Name + "i"), key: "i");
+        }
+
+        // Keyed elements, each holding a component that renders another with no element between them, so both start
+        // at the inner one's element.
+        [Component]
+        private static VNode KeyedWrappedRows()
+        {
+            var (keys, _) = EventLog.UseState("WrappedKeys", new[] { "A", "B" });
+            var refA = EventLog.UseRefCallback("A");
+            var refB = EventLog.UseRefCallback("B");
+            var rows = new VNode[keys.Length];
+            for (var i = 0; i < keys.Length; i++)
+            {
+                rows[i] = V.Div(key: keys[i], refCallback: keys[i] == "A" ? refA : refB, children: new VNode[]
+                {
+                    V.Component(Wrapping, new Named("W" + keys[i]), key: "w"),
+                });
+            }
+            return V.Div(children: rows);
+        }
+
+        private sealed record Target(VisualElement Element);
+
+        // Keyed Portals into one target, each of two elements with a ref and no component, as a list's own rows.
+        [Component]
+        private static VNode KeyedPortals(Target target)
+        {
+            var (keys, _) = EventLog.UseState("PortalKeys", new[] { "A", "B" });
+            var refA1 = EventLog.UseRefCallback("A1");
+            var refA2 = EventLog.UseRefCallback("A2");
+            var refB1 = EventLog.UseRefCallback("B1");
+            var refB2 = EventLog.UseRefCallback("B2");
+            var portals = new VNode[keys.Length];
+            for (var i = 0; i < keys.Length; i++)
+            {
+                var isA = keys[i] == "A";
+                portals[i] = V.Portal(target.Element, new VNode[]
+                {
+                    V.Div(refCallback: isA ? refA1 : refB1),
+                    V.Div(refCallback: isA ? refA2 : refB2),
+                }, key: keys[i]);
+            }
+            return V.Div(children: portals);
+        }
+
+        // Keyed elements in a tree with no ref, each holding a component ahead of a Portal of another.
+        [Component]
+        private static VNode KeyedRowsWithAPortal(Target target)
+        {
+            var (keys, _) = EventLog.UseState("PortalRowKeys", new[] { "A", "B" });
+            var rows = new VNode[keys.Length];
+            for (var i = 0; i < keys.Length; i++)
+            {
+                rows[i] = V.Div(key: keys[i], children: new VNode[]
+                {
+                    V.Component(Unreffed, new Named("D" + keys[i]), key: "d"),
+                    V.Portal(target.Element, new VNode[] { V.Component(Unreffed, new Named("C" + keys[i]), key: "c") },
+                        key: "p"),
+                });
+            }
+            return V.Div(children: rows);
+        }
+
+        private const string RegisteredId = "deletion-commit-order-target";
+
+        [TearDown]
+        public void TearDown() => RuntimeStateProbe.ClearPortalRegistry();
+
+        // A Portal into a registered id, whose element holds a component.
+        [Component]
+        private static VNode RegisteredPortal()
+        {
+            var holderRef = EventLog.UseRefCallback("R");
+            return V.Div(children: new VNode[]
+            {
+                V.Portal(RegisteredId, new VNode[]
+                {
+                    V.Div(refCallback: holderRef, children: new VNode[] { V.Component(Probed, new Named("C"), key: "c") }),
+                }),
+            });
+        }
+
         private static MountedTree Mount(EventLog log, VNode root)
         {
             var mounted = V.Mount(new VisualElement(), log.Provide(root));
@@ -526,6 +615,68 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("ins-x:P lay-x:P ins-x:Pc lay-x:Pc"));
+        }
+
+        [Test]
+        public void Given_AKeyedPortalOfTwoElementsWithRefs_When_ItLeavesAListOfPortals_Then_TheirRefsDetachInTheirOrder()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(KeyedPortals, new Target(new VisualElement())));
+
+            // Act
+            log.Setter<string[]>("PortalKeys").Invoke(new[] { "B" });
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ref-x:A1 ref-x:A2"));
+        }
+
+        [Test]
+        public void Given_APortalIntoARegisteredId_When_TheIdIsRegisteredToAnotherElement_Then_ItsChildrenAreTakenDownInPreOrderBeforeTheyMountAgain()
+        {
+            // Arrange
+            var log = new EventLog();
+            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+            using var mounted = Mount(log, V.Component(RegisteredPortal));
+            LogAssert.Expect(LogType.Warning, $"[FiberPortalRegistry] Id \"{RegisteredId}\" is already registered. Overwriting.");
+
+            // Act
+            FiberPortalRegistry.Register(RegisteredId, new VisualElement());
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ref-x:R ins-x:C lay-x:C ref-x:C ins:C ref:C lay:C ref:R"));
+        }
+
+        [Test]
+        public void Given_AKeyedElementHoldingAComponentThatRendersAnother_When_ItLeavesAListOfElements_Then_TheOuterIsTakenDownFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(KeyedWrappedRows));
+
+            // Act
+            log.Setter<string[]>("WrappedKeys").Invoke(new[] { "B" });
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ref-x:A ins-x:WA lay-x:WA ins-x:WAi lay-x:WAi ref-x:WAi"));
+        }
+
+        [Test]
+        public void Given_AKeyedElementHoldingAComponentAheadOfAPortalInATreeWithNoRef_When_ItLeavesAListOfElements_Then_TheComponentIsTakenDownFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(KeyedRowsWithAPortal, new Target(new VisualElement())));
+
+            // Act
+            log.Setter<string[]>("PortalRowKeys").Invoke(new[] { "B" });
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:DA lay-x:DA ins-x:CA lay-x:CA"));
         }
     }
 }

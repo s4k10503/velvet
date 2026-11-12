@@ -11,10 +11,12 @@ namespace Velvet
     internal abstract class PreOrderTeardown
     {
         protected ReconcilerContext Ctx = null!;
-        private readonly Dictionary<VisualElement, List<ComponentFiber>> _startingAt = new();
-        private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingIn = new();
-        private readonly Dictionary<VisualElement, List<ComponentFiber>> _endingInPortal = new();
-        private readonly Stack<List<ComponentFiber>> _spareFiberLists = new();
+        // Each place the walk takes fibers down at maps to the first of them, chained through _placed, so a walk
+        // placing one fiber at each of many rows takes no list per row.
+        private readonly Dictionary<VisualElement, int> _startingAt = new();
+        private readonly Dictionary<VisualElement, int> _endingIn = new();
+        private readonly Dictionary<VisualElement, int> _endingInPortal = new();
+        private readonly List<Placed> _placed = new();
         private readonly RenderedChildrenCache _rendered = new();
         private readonly HashSet<VisualElement> _visited = new();
         private readonly List<List<VisualElement>> _childrenAtDepth = new();
@@ -73,20 +75,34 @@ namespace Velvet
             return false;
         }
 
-        // The fibers taken down at one place, enclosing ones ahead of those inside them and siblings in their order.
-        private bool AddInTreeOrder(Dictionary<VisualElement, List<ComponentFiber>> lists, VisualElement at,
-            ComponentFiber fiber)
+        private struct Placed
         {
-            var first = !lists.TryGetValue(at, out var list);
-            if (first)
+            public ComponentFiber Fiber;
+            public int Next;
+        }
+
+        // The fibers taken down at one place, enclosing ones ahead of those inside them and siblings in their order:
+        // each goes behind the last one already there that it does not precede.
+        private bool AddInTreeOrder(Dictionary<VisualElement, int> chains, VisualElement at, ComponentFiber fiber)
+        {
+            var index = _placed.Count;
+            var first = !chains.TryGetValue(at, out var head);
+            var after = -1;
+            for (var i = first ? -1 : head; i >= 0; i = _placed[i].Next)
             {
-                list = _spareFiberLists.Count > 0 ? _spareFiberLists.Pop() : new List<ComponentFiber>();
-                lists[at] = list;
+                if (!PrecedesInPreOrder(fiber, _placed[i].Fiber)) after = i;
             }
-            var slot = list!.Count;
-            while (slot > 0 && PrecedesInPreOrder(fiber, list[slot - 1])) slot--;
-            list.Insert(slot, fiber);
+            _placed.Add(new Placed { Fiber = fiber, Next = after >= 0 ? _placed[after].Next : first ? -1 : head });
+            if (after >= 0) SetNext(after, index);
+            else chains[at] = index;
             return first;
+        }
+
+        private void SetNext(int at, int next)
+        {
+            var placed = _placed[at];
+            placed.Next = next;
+            _placed[at] = placed;
         }
 
         private static bool PrecedesInPreOrder(ComponentFiber a, ComponentFiber b)
@@ -163,10 +179,10 @@ namespace Velvet
 
         protected void TakeDownEndingIn(VisualElement container) => TakeDownFrom(_endingIn, container);
 
-        private void TakeDownFrom(Dictionary<VisualElement, List<ComponentFiber>> lists, VisualElement at)
+        private void TakeDownFrom(Dictionary<VisualElement, int> chains, VisualElement at)
         {
-            if (!lists.TryGetValue(at, out var fibers)) return;
-            foreach (var fiber in fibers) TakeDown(fiber);
+            if (!chains.TryGetValue(at, out var head)) return;
+            for (var i = head; i >= 0; i = _placed[i].Next) TakeDown(_placed[i].Fiber);
         }
 
         protected virtual void Clear()
@@ -174,32 +190,31 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent): DeletionCommit.Begin and SuspenseOffscreenCommit.Apply assign it first.
             // The reset only lets the pooled instance drop the context it pointed at.
             Ctx = null!;
-            ReturnLists(_startingAt);
-            ReturnLists(_endingIn);
-            ReturnLists(_endingInPortal);
+            ClearAndTrim(_startingAt);
+            ClearAndTrim(_endingIn);
+            ClearAndTrim(_endingInPortal);
+            ClearAndTrim(_placed);
             _rendered.Clear();
             ClearAndTrim(_visited);
         }
 
-        private void ReturnLists(Dictionary<VisualElement, List<ComponentFiber>> lists)
-        {
-            foreach (var list in lists.Values)
-            {
-                list.Clear();
-                // MUTANT_SURVIVES(equivalent, boundary): a list not kept spare only makes a later walk allocate one.
-                if (_spareFiberLists.Count < SparesKept) _spareFiberLists.Push(list);
-            }
-            ClearAndTrim(lists);
-        }
+        // An instance is pooled for the rest of the domain, so a table ClearAndTrim clears gives back its capacity
+        // once a walk has filled it past this many entries, and keeps it for the next walk otherwise.
+        private const int CapacityKept = 4096;
 
-        // An instance is pooled for the rest of the domain, so a walk far larger than the usual one gives back the
-        // capacity of the sets and tables ClearAndTrim clears, and leaves at most this many spare lists.
-        private const int SparesKept = 64;
+        protected static void ClearAndTrim<T>(List<T> list)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
+            var trim = list.Count > CapacityKept;
+            list.Clear();
+            // MUTANT_SURVIVES(equivalent): TrimExcess changes the capacity, which no walk reads.
+            if (trim) list.TrimExcess();
+        }
 
         protected static void ClearAndTrim<T>(HashSet<T> set)
         {
             // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
-            var trim = set.Count > SparesKept;
+            var trim = set.Count > CapacityKept;
             set.Clear();
             // MUTANT_SURVIVES(equivalent): TrimExcess changes the capacity, which no walk reads.
             if (trim) set.TrimExcess();
@@ -208,7 +223,7 @@ namespace Velvet
         protected static void ClearAndTrim<TKey, TValue>(Dictionary<TKey, TValue> table)
         {
             // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
-            var trim = table.Count > SparesKept;
+            var trim = table.Count > CapacityKept;
             table.Clear();
             // MUTANT_SURVIVES(equivalent): TrimExcess changes the capacity, which no walk reads.
             if (trim) table.TrimExcess();
