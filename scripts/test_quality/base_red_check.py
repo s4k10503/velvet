@@ -344,10 +344,25 @@ def measured_by(relative):
 def is_test_side(relative):
     """Whether a file is the branch's test material rather than the production code under test.
 
-    This is what gets carried onto the base tree. TestUtilities is in because a changed helper is
-    part of the case that calls it, and a base tree without it compiles neither.
+    TestUtilities is in because a changed helper is part of the case that calls it, and a base tree
+    without it compiles neither. `carried_files` owns what else is carried onto the base tree.
     """
     return kind_of(relative) is not None or "/TestUtilities/" in "/" + relative
+
+
+# What configures the compile, as against a source it compiles or a file a case loads.
+# `assembly_absent_on_base` is written for an added asmdef the base tree has not got.
+COMPILE_CONFIGURATION = (".asmdef", ".rsp")
+
+
+def carried_when_added(relative):
+    """Whether a file the branch adds goes onto the base tree for sitting in a C# test directory, as
+    a style sheet a case loads does.
+
+    A `.meta` is left out because `build_base_tree` carries one beside the file it describes.
+    """
+    return (platform_of(relative) is not None
+            and not relative.endswith((".meta",) + COMPILE_CONFIGURATION))
 
 
 def masked_lines(text, mask):
@@ -879,6 +894,17 @@ def deleted_files(project, since):
         if len(fields) >= 3:
             gone.append(fields[1])
     return gone
+
+
+def added_files(project, since):
+    """The paths the branch holds and the base does not.
+
+    Without rename detection, so a renamed file's new path is one of them: `changed_lines_by_file`
+    reads a rename that changed no line as no change at all.
+    """
+    added = git(project, "diff", "--name-only", "--no-renames", "--diff-filter=A", since).stdout
+    untracked = git(project, "ls-files", "--others", "--exclude-standard").stdout
+    return added.splitlines() + untracked.splitlines()
 
 
 # --------------------------------------------------------------------------------------------------
@@ -1698,10 +1724,10 @@ def assembly_absent_on_base(project, base_tree, relative):
     """The asmdef a carried file belongs to, where the base tree has not got it.
 
     Unity gives a source file to the nearest asmdef at or above it. A branch that adds a test assembly
-    adds the asmdef too, and the asmdef is not a `.cs` and so is never carried -- so on the base the
-    file falls to the next asmdef up, which for a fixture under `Runtime/` is the runtime assembly. An
-    `AssemblyInfo.cs` landing there is a duplicate attribute and takes the whole compile with it, and
-    the name-spelling comparison cannot see it: such a file spells no type at all.
+    adds the asmdef too, and `COMPILE_CONFIGURATION` keeps the asmdef from being carried -- so on the
+    base the file falls to the next asmdef up, which for a fixture under `Runtime/` is the runtime
+    assembly. An `AssemblyInfo.cs` landing there is a duplicate attribute and takes the whole compile
+    with it, and the name-spelling comparison cannot see it: such a file spells no type at all.
     """
     owner = None
     directory = PurePosixPath(relative).parent
@@ -2034,9 +2060,17 @@ BUILD_STOPPED = "Scripts have compiler errors"
 
 
 def carried_files(project, since):
-    """The files `build_base_tree` copies onto the base: the branch's test side, as it stands now."""
-    changed = changed_lines_by_file(project, since)
-    return {name for name in changed if is_test_side(name) and (project / name).exists()}
+    """The files `build_base_tree` copies onto the base, as the branch has them now.
+
+    The test side the branch changed or added, and what `carried_when_added` takes of the rest it
+    adds. Of the rest it changes without adding, nothing: a style sheet the base already holds is one
+    the base's own cases can load, and the controls `collect` keeps and the canaries
+    `canary_fixtures` picks are read as the base's text.
+    """
+    added = added_files(project, since)
+    carried = {name for name in [*changed_lines_by_file(project, since), *added] if is_test_side(name)}
+    carried.update(name for name in added if carried_when_added(name))
+    return {name for name in carried if (project / name).exists()}
 
 
 def unbuilt_reason(project, since, log_text, withdrawn=(), removed=()):
@@ -2306,10 +2340,11 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     # The floor is one more than the carried count, and the one-a-round regime is why. A round the
     # log explains nothing about withdraws one silent file, so a run of those spends a round per
     # file that still holds a live case and then needs one more to ask the tree it has emptied. That
-    # is at most the carried count, which also counts the other platform's files, the Python lane's
-    # and the helpers -- so the floor is an upper bound rather than the number, and over-advising
-    # costs nothing: the loop breaks as soon as nothing is left to ask. What the other regime needs
-    # is how deep the put-backs go, and the multiplier only guesses at that.
+    # is at most the carried count, which also counts the other platform's files, the Python lane's,
+    # the helpers and the files a case loads -- so the floor is an upper bound rather than the
+    # number, and over-advising costs nothing: the loop breaks as soon as nothing is left to ask.
+    # What the other regime needs is how deep the put-backs go, and the multiplier only guesses at
+    # that.
     return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
             "{}\n"
             "  --max-rounds {}\n"
@@ -2528,8 +2563,7 @@ def main():
     if args.plan:
         return 0
 
-    changed = changed_lines_by_file(project, since)
-    carry = sorted(name for name in changed if is_test_side(name) and (project / name).exists())
+    carry = sorted(carried_files(project, since))
     drop = sorted(name for name in deleted_files(project, since) if is_test_side(name))
 
     if args.emit:

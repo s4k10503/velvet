@@ -625,7 +625,10 @@ A declaration for a method that is posed reads, above it:
 Both instruments above ask what happens when the production code is broken on purpose.
 `scripts/test_quality/base_red_check.py` asks the cheaper question first, and the one a pull request is
 actually claiming: was this case red before the change it says it pins? It checks out the merge base,
-copies the branch's changed test files onto it, and runs the cases the branch wrote there.
+copies the branch's test files onto it, and runs the cases the branch wrote there. What it copies is
+what the branch changed of its test files and of `TestUtilities/`, and each file it adds under a C#
+test directory other than an assembly definition, a compiler response file or a `.meta` — a style
+sheet a case loads, say — with, beside each copied file, the `.meta` the branch holds for it.
 
 ```bash
 python3 scripts/test_quality/base_red_check.py --base origin/main --plan   # what it would ask, no run

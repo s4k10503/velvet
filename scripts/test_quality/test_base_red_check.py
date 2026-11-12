@@ -2150,6 +2150,137 @@ class DroppedFromTheBaseTreeTests(unittest.TestCase):
                          ([self.FIXTURE, self.PRODUCTION], [self.FIXTURE]))
 
 
+class CarriedFixtureTests(unittest.TestCase):
+    """What `carried_files` takes and leaves beyond the test side `changed_lines_by_file` reads.
+
+    On a base tree without a style sheet the branch added, a case loading it reads nothing, and one
+    that then stops before it compares is a case the base could not answer.
+    """
+
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    SHEET = "Packages/p/Runtime/A/Tests/Editor/Probe.uss"
+    RULE = ".probe { width: 1px; }\n"
+
+    def carried(self, base, branch):
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a fixture\n", **base}, branch)
+        return base_red_check.carried_files(root, since)
+
+    def built(self, branch):
+        """The base tree `build_base_tree` builds from what `carried_files` reads off `branch`."""
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a fixture\n"}, branch)
+        tree = worktree_beside(self, root)
+        base_red_check.build_base_tree(
+            root, since, tree, sorted(base_red_check.carried_files(root, since)), [])
+        return tree
+
+    def test_Given_AStyleSheetAddedInATestDirectory_When_TheBaseTreeIsBuilt_Then_ItIsThere(self):
+        # Arrange / Act
+        tree = self.built({self.SHEET: self.RULE})
+
+        # Assert
+        self.assertTrue((tree / self.SHEET).is_file())
+
+    def test_Given_AnAddedStyleSheetsMeta_When_TheBaseTreeIsBuilt_Then_ItIsThere(self):
+        # Arrange / Act
+        tree = self.built({self.SHEET: self.RULE, self.SHEET + ".meta": "guid: 0\n"})
+
+        # Assert
+        self.assertTrue((tree / (self.SHEET + ".meta")).is_file())
+
+    def test_Given_AStyleSheetRenamedUnchanged_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- the base holds the text under the old name only, so a case loading the new one
+        # finds nothing there either.
+        old = "Packages/p/Runtime/A/Tests/Editor/Earlier.uss"
+
+        # Act
+        carried = self.carried({old: self.RULE}, {old: None, self.SHEET: self.RULE})
+
+        # Assert
+        self.assertIn(self.SHEET, carried)
+
+    def test_Given_AHelperRenamedUnchanged_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- the base tree drops the old name, so without the new one the cases calling the
+        # helper find it under neither.
+        old = "Packages/p/TestUtilities/Probe.cs"
+        renamed = "Packages/p/TestUtilities/Probing.cs"
+
+        # Act
+        carried = self.carried({old: "class Probe { }\n"}, {old: None, renamed: "class Probe { }\n"})
+
+        # Assert
+        self.assertIn(renamed, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no style sheet it already holds, and still does not.
+    def test_Given_AStyleSheetTheBaseHolds_When_TheBranchChangesIt_Then_ItIsNotCarried(self):
+        # Act
+        carried = self.carried({self.SHEET: self.RULE}, {self.SHEET: ".probe { width: 2px; }\n"})
+
+        # Assert
+        self.assertNotIn(self.SHEET, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no style sheet added outside a test directory.
+    def test_Given_AStyleSheetAddedOutsideATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange -- carrying production material would put the branch's change under the case.
+        production = "Packages/p/Runtime/A/Probe.uss"
+
+        # Act
+        carried = self.carried({}, {production: self.RULE})
+
+        # Assert
+        self.assertNotIn(production, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no asmdef added in a test directory.
+    def test_Given_AnAsmdefAddedInATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange
+        definition = "Packages/p/Runtime/A/Tests/Editor/Probe.Tests.asmdef"
+
+        # Act
+        carried = self.carried({}, {definition: "{}\n"})
+
+        # Assert
+        self.assertNotIn(definition, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no response file added in a test directory.
+    def test_Given_AResponseFileAddedInATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange
+        response = "Packages/p/Runtime/A/Tests/Editor/csc.rsp"
+
+        # Act
+        carried = self.carried({}, {response: "-nullable:enable\n"})
+
+        # Assert
+        self.assertNotIn(response, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries a test directory's meta only beside its file.
+    def test_Given_AnAddedStyleSheetsMeta_When_TheCarriedFilesAreRead_Then_ItIsNoEntryOfItsOwn(self):
+        # Act
+        carried = self.carried({}, {self.SHEET: self.RULE, self.SHEET + ".meta": "guid: 0\n"})
+
+        # Assert
+        self.assertNotIn(self.SHEET + ".meta", carried)
+
+    def test_Given_AStyleSheetAddedInATestDirectory_When_TheBaseTreeIsEmitted_Then_ItIsThere(self):
+        # Arrange -- `--emit` builds the tree CI runs, from a call site of its own.
+        case = ("namespace N\n{\n    class ProbeTests\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => BODY;\n    }\n}\n")
+        root, since = two_commit_repo(
+            self, {self.FIXTURE: case.replace("BODY", "Assert.Pass()")},
+            {self.FIXTURE: case.replace("BODY", "Assert.That(1, Is.EqualTo(1))"), self.SHEET: self.RULE})
+        tree = worktree_beside(self, root)
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", since, "--lane", "csharp",
+             "--emit", str(root / "plan.json"), "--base-tree", str(tree)],
+            capture_output=True, text=True)
+        if printed.returncode != 0:
+            raise RuntimeError("--emit did not run:\n" + printed.stdout + printed.stderr)
+
+        # Assert
+        self.assertTrue((tree / self.SHEET).is_file())
+
+
 class UnbuildableOnBaseTests(unittest.TestCase):
     """Which carried files the reading withdraws, over a real base tree rather than an invented one."""
 
