@@ -14,3 +14,10 @@
 - The readers configuring an element's state, responsive, container and group/peer variant manipulators cut a variant
   class's payload out only where its kind is the one being read, where before each of them cut out the payload of
   every variant class; and a class holding fewer than two `:` is skipped when looking for a stacked one.
+
+### Fixed
+
+- A gradient's `from-`, `via-` or `to-` palette colour reads as its own mount's sheets give it. The reading of the
+  first mount to render the class was handed to later ones, so a mount whose sheets set `--color-*: initial` could
+  take the palette colour, or another mount lose it. A gradient re-measured after its font or the panel changed now
+  reads its stops under its mount's sheets too.

@@ -35,6 +35,9 @@ namespace Velvet
             => StyleRelativeLengths.SyncPoll(ref binding.Poll, element, measured,
                 (Element: element, Binding: binding, ClassNames: classNames), static moved =>
                 {
+                    // Under the element's mount's theme scope, as the pass that bound it read the classes: outside it a
+                    // palette stop that scope's sheets clear reads as a colour again.
+                    using var themeScope = StyleThemeTokens.Use(null, moved.Element);
                     if (StyleGradientClass.TryExtract(moved.ClassNames, moved.Element, out var spec, out _)
                         && !moved.Binding.Spec.Equals(spec))
                     {

@@ -37,6 +37,7 @@ namespace Velvet.Tests
 
         private EditorPanelSimulator _sim;
         private MountedTree _mounted;
+        private Texture2D _texture;
 
         [SetUp]
         public void SetUp()
@@ -60,6 +61,11 @@ namespace Velvet.Tests
             _sim = null;
             s_parentClass?.Dispose();
             s_parentClass = null;
+            if (_texture != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_texture);
+                _texture = null;
+            }
         }
 
         // The frame keeps the parent off the panel root, whose size the panel decides.
@@ -1034,11 +1040,29 @@ namespace Velvet.Tests
             _sim.panelSize = new Vector2(200, 300);
             Settle();
 
-            // Assert — the spread is a hundredth of the panel's width on each side; NaN unless the panel's width moved.
+            // Assert — the spread is a hundredth of the panel's width on each side; NaN unless the panel's width moved, and
+            // -1 where the caster has no spacer, which neither that nor NaN equals.
             var expected = ViewportWidth > 0f && ViewportWidth != viewportBefore
                 ? before - (2f * (viewportBefore - ViewportWidth) / 100f)
                 : float.NaN;
-            Assert.That(spacer?.style.width.value.value ?? float.NaN, Is.EqualTo(expected).Within(0.01f));
+            Assert.That(spacer != null ? spacer.style.width.value.value : -1f, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves an image written over a gradient after its bind when a re-measure reads the same spec.
+        [Test]
+        public void Given_AnImageWrittenOverAnEmGradient_When_APanelResizeLeavesItsSpecAsItWas_Then_TheImageIsKept()
+        {
+            // Arrange — the radius is 2em under a 20px font, so the resize moves what the poll reads and not the spec.
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] bg-radial-[circle_2em_at_center,#ff0000,#0000ff]");
+            _texture = new Texture2D(2, 2);
+            Child.style.backgroundImage = new StyleBackground(_texture);
+
+            // Act
+            _sim.panelSize = new Vector2(200, 300);
+            Settle();
+
+            // Assert
+            Assert.That(Child.style.backgroundImage.value.texture, Is.SameAs(_texture));
         }
 
         // GREEN_ON_BASE(characterization): the base repaints a caster whose shadow spread measures the viewport once the panel resizes.

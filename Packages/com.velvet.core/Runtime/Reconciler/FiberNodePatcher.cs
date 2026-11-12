@@ -2935,13 +2935,13 @@ namespace Velvet
                 || _ctx.SupportsVariants.ContainsKey(element)
                 || _ctx.CustomPropertyClasses.ContainsKey(element);
 
-        // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
-        // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
-        // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
         // A class of the element's own, no variant, that may be a custom-property token once StripImportant has copied it.
         private static bool MayBeOwnCustomPropertyToken(string cls)
             => !IsEmptyOrVariantToken(cls) && StyleCustomPropertyClass.MayBeCustomPropertyClassAsWritten(cls);
 
+        // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
+        // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
+        // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
         private void ApplyCustomPropertyConfig(VisualElement element, string[] classNames)
         {
             List<(string Core, long Priority, int Declaration, int Order)>? tokens = null;
