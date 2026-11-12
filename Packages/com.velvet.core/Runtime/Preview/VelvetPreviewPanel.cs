@@ -138,7 +138,7 @@ namespace Velvet
         /// <see cref="SettlePassMilliseconds"/> before the panel updates; the clock does not move back afterwards. Work
         /// those panels run on their own clock advances as over that many frames: the renders, effects and state
         /// updates Velvet schedules on them are drawn, so is what Velvet measures from their layout, and a transition
-        /// timed by their clock that is shorter than the passes together is drawn finished. Motion that reads its
+        /// timed by their clock that ends within the passes is drawn finished. Motion that reads its
         /// mount's <see cref="MotionClock"/> rather than the panel's time moves only as far as that clock has. Work
         /// still scheduled after the passes is drawn without waiting for it, and work resumed on a later editor or
         /// player frame, such as a <see cref="VelvetTask.Yield"/> continuation, is drawn by a call after that frame.
@@ -184,8 +184,6 @@ namespace Velvet
             }
             finally
             {
-                // MUTANT_SURVIVES(unreachable, line removed): no suite case throws from a panel's repaint or render,
-                // which is where the frame sets another texture active.
                 RenderTexture.active = active;
             }
         }
@@ -224,16 +222,29 @@ namespace Velvet
 
         private static Vector2 OffPanel(Vector2 screen) => new(float.NaN, float.NaN);
 
-        // A panel's time as Render moves it: the function the panel read its time through before, plus the frames Render
-        // has simulated on it, which only grows, so Render never moves the panel's time back.
+        // The frames Render has simulated on a panel, which only grows, so Render never moves the panel's time back.
         private sealed class SimulatedClock
         {
             // A sentinel rather than null: a panel without a function of its own holds null, and is wrapped all the same.
             internal object Installed = new();
-            internal Func<double> Inner = null!;
             internal long OffsetMilliseconds;
+        }
 
-            internal double Now() => Inner() + OffsetMilliseconds / 1000d;
+        // One installed wrap: the function the panel read its time through when the wrap was made, plus the clock's
+        // offset. The inner function is the wrap's own rather than the clock's, so a function composed over this wrap
+        // and wrapped in its turn reaches this one's inner function rather than itself.
+        private sealed class ClockWrap
+        {
+            private readonly Func<double> _inner;
+            private readonly SimulatedClock _clock;
+
+            internal ClockWrap(Func<double> inner, SimulatedClock clock)
+            {
+                _inner = inner;
+                _clock = clock;
+            }
+
+            internal double Now() => _inner() + _clock.OffsetMilliseconds / 1000d;
         }
 
         private sealed class FrameMembers
@@ -267,15 +278,14 @@ namespace Velvet
                 var current = (Delegate?)_panelTime.GetValue(panel);
                 if (!ReferenceEquals(current, clock.Installed))
                 {
-                    clock.Inner = current == null
+                    var wrap = new ClockWrap(current == null
                         ? _defaultTime
-                        : (Func<double>)Delegate.CreateDelegate(typeof(Func<double>), current.Target, current.Method);
-                    Func<double> now = clock.Now;
+                        : (Func<double>)Delegate.CreateDelegate(typeof(Func<double>), current.Target, current.Method), clock);
+                    Func<double> now = wrap.Now;
                     // Recorded in the same statement that installs it: a wrap the clock has not recorded is taken for
-                    // another function next pass and wrapped again, and a clock whose inner function is its own wrap
-                    // calls itself.
+                    // another function next pass and wrapped again, counting the offset once more each time.
                     _panelTime.SetValue(panel,
-                        clock.Installed = Delegate.CreateDelegate(_panelTime.PropertyType, clock, now.Method));
+                        clock.Installed = Delegate.CreateDelegate(_panelTime.PropertyType, wrap, now.Method));
                 }
                 clock.OffsetMilliseconds += SettlePassMilliseconds;
             }

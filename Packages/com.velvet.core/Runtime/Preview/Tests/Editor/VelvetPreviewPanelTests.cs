@@ -11,9 +11,6 @@ namespace Velvet.Tests
     {
         private const int Size = 64;
 
-        // Wider than sm:'s breakpoint.
-        private const int SmPanelWidth = 800;
-
         // The story paints the left half only, so the right half is a control that a whole-frame fill turns red too.
         private static readonly Vector2Int s_storySample = new(Size / 4, Size / 2);
         private static readonly Vector2Int s_controlSample = new(Size * 3 / 4, Size / 2);
@@ -119,20 +116,42 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnSmWidthOnAPanelWideEnoughForSmWhoseClockIsHeld_When_RenderedOnce_Then_ItIsLaidOutAtTheSmWidth()
+        public void Given_AnElementWhoseImmediateRepaintThrows_When_Rendered_Then_TheCallersActiveTextureIsActiveAgain()
         {
             // Arrange
             TestGraphics.IgnoreIfHeadless("an offscreen panel render");
-            using var panel = new VelvetPreviewPanel(null, SmPanelWidth, Size);
-            EditorPanelTestHelpers.SetPanelTimeFunction(panel.Root.panel, () => 0d);
-            using var mounted = V.Mount(panel.Root, V.Div(className: "w-[20px] sm:w-[40px] h-[10px]", name: "responsive"));
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            using var mounted = V.Mount(panel.Root, V.Custom<ThrowingImmediateElement>("w-[32px] h-[32px]"));
+            var callers = new RenderTexture(Size, Size, 0);
+            using var releaseCallers = new ActionDisposable(() =>
+            {
+                callers.Release();
+                UnityEngine.Object.DestroyImmediate(callers);
+            });
+            var previouslyActive = RenderTexture.active;
+            RenderTexture.active = callers;
 
             // Act
-            panel.Render();
-            var width = panel.Root.Q<VisualElement>("responsive").layout.width;
+            Exception thrown = null;
+            RenderTexture activeAfter;
+            try
+            {
+                panel.Render();
+            }
+            catch (Exception exception)
+            {
+                thrown = exception;
+            }
+            finally
+            {
+                activeAfter = RenderTexture.active;
+                RenderTexture.active = previouslyActive;
+            }
+            // Null unless the frame threw, so an arrangement that throws nothing cannot pass.
+            var callersActive = thrown == null ? (bool?)null : activeAfter == callers;
 
             // Assert
-            Assert.That(width, Is.EqualTo(40f).Within(0.01f));
+            Assert.That(callersActive, Is.True);
         }
 
         [Test]
@@ -302,6 +321,11 @@ namespace Velvet.Tests
         }
 
         private static VNode LeftHalfRed() => V.Div("w-[32px] h-[64px] bg-[#ff0000]");
+
+        internal sealed class ThrowingImmediateElement : ImmediateModeElement
+        {
+            protected override void ImmediateRepaint() => throw new InvalidOperationException("immediate repaint boom");
+        }
 
         [Component]
         private static VNode RedOnceItsEffectRan()

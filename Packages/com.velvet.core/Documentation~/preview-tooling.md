@@ -309,7 +309,7 @@ those panels, each a simulated frame that first moves the panel's clock on by
 `VelvetPreviewPanel.SettlePassMilliseconds`, and the clock stays moved afterwards. Work those panels time by
 their own clock advances as over that many frames: the renders, effects and state updates Velvet schedules
 there are in the capture, so is what Velvet measures from their layout, and a transition timed by that clock
-and shorter than the passes together is captured finished. Motion that reads its mount's `MotionClock`
+that ends within the passes is captured finished. Motion that reads its mount's `MotionClock`
 rather than the panel's time ([Clocks](motion.md#clocks-holding-motion-with-game-time)) moves only as far as
 that clock has. Work still scheduled after the passes is captured without waiting for it, and work the
 story resumes on a later editor or player frame, such as a `VelvetTask.Yield()` continuation, is in a capture
