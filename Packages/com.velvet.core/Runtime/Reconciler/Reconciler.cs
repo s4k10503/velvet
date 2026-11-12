@@ -1144,7 +1144,7 @@ namespace Velvet
                 bridge.Release();
             }
             _ctx.SamePanelPortalBridges.Clear();
-            // MUTANT_SURVIVES(unreachable, line removed): the table is empty by now, for the reason
+            // MUTANT_SURVIVES(unreachable, line removed): no fixture leaves a row in the table by now, for the reason
             // ReconcilerContext.ReleasePortalRowFamilies gives.
             _ctx.ReleasePortalRowFamilies();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created

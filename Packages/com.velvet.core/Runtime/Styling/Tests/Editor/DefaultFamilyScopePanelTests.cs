@@ -717,15 +717,77 @@ namespace Velvet.Tests
                 EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
             }
 
-            // Act
+            // Act — then an update of the panel, which reads the row again once its copy has been made.
             VelvetFonts.DefaultFamily = "second";
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            }
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert — the row's own inline value, which that update would have written over.
+            Assert.That(LineBoxFont.SourceOf(row.style.unityFontDefinition.value.fontAsset), Is.SameAs(second));
+        }
+
+        [Test]
+        public void Given_APortalRowWithRichTextOffUnderAnAuthorsFontRule_When_TheRuleStopsMatching_Then_ItIsDrawnInACopyOfTheDefaultFamily()
+        {
+            // Arrange — rich text off, the row is drawn in LineBoxFont's copy of the font it takes while the rule
+            // applies.
+            var first = LineBoxFamily("first", ref s_lineBoxFirst);
+            VelvetFonts.DefaultFamily = "first";
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var target = NewRootUnderAuthorSheet("author-font");
+            _mounted = V.Mount(NewRootElement(),
+                PortalInto(target, V.Label(className: "text-[16px]", text: "row", name: "row")));
+            var row = target.Q<Label>("row");
+            row.enableRichText = false;
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            }
+
+            // Act — the update of the panel that reads the row again, then the passes that copy what it wrote.
+            target.RemoveFromClassList("author-font");
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             for (var i = 0; i < 3; i++)
             {
                 EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
             }
 
             // Assert
-            Assert.That(LineBoxFont.SourceOf(row.resolvedStyle.unityFontDefinition.fontAsset), Is.SameAs(second));
+            Assert.That(LineBoxFont.SourceOf(row.resolvedStyle.unityFontDefinition.fontAsset), Is.SameAs(first));
+        }
+
+        // GREEN_ON_BASE(characterization): a rich-text-off portal row naming a family is drawn in a copy of it.
+        // The base writes nothing on the row; this pins that a copy of the row's own inline font is not written over.
+        [Test]
+        public void Given_APortalRowWithRichTextOffNamingAFamily_When_TheRegistryChanges_Then_ItIsDrawnInACopyOfThatFamily()
+        {
+            // Arrange — its class writes the family inline, which LineBoxFont copies.
+            LineBoxFamily("first", ref s_lineBoxFirst);
+            var named = LineBoxFamily("named", ref s_lineBoxSecond);
+            VelvetFonts.DefaultFamily = "first";
+            VelvetStyleUtilities.AttachTo(_host.Root);
+            var target = NewRootElement();
+            _mounted = V.Mount(NewRootElement(),
+                PortalInto(target, V.Label(className: "font-named text-[16px]", text: "row", name: "row")));
+            var row = target.Q<Label>("row");
+            row.enableRichText = false;
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            }
+
+            // Act — a registry change, which every held element is decided again for.
+            LineBoxFamily("first", ref s_lineBoxFirst);
+            for (var i = 0; i < 3; i++)
+            {
+                EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            }
+
+            // Assert
+            Assert.That(LineBoxFont.SourceOf(row.resolvedStyle.unityFontDefinition.fontAsset), Is.SameAs(named));
         }
     }
 }

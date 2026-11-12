@@ -160,10 +160,15 @@ namespace Velvet
         private static void Write(VisualElement element, Root root, FontAsset? asset)
         {
             var inline = element.style.unityFontDefinition;
-            // LineBoxFont shows the element's font through a copy of it, which is the write here where it copies that.
+            // LineBoxFont shows the element's font through a copy of it, which is the write here where it copies that,
+            // and stands for no inline value where it copies an inherited one.
             var shown = inline.value.fontAsset;
-            var ours = root.Written != null && (shown == root.Written || LineBoxFont.SourceOf(shown) == root.Written);
-            if (!ours && inline.keyword != StyleKeyword.Null) return;
+            var source = LineBoxFont.SourceOf(shown);
+            var ours = root.Written != null && (shown == root.Written || source == root.Written);
+            if (!ours && inline.keyword != StyleKeyword.Null
+                && (asset == null || !LineBoxFontOwner.CopiesInherited(element))) return;
+            // Written again over its own copy, the copy would be made again, and the write after it, at every update.
+            if (ours && source != null && source == asset) return;
 
             root.Written = asset;
             element.style.unityFontDefinition = asset == null
