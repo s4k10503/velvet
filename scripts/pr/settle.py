@@ -39,9 +39,10 @@ Eleven preconditions:
   whoever reads it decides.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
   Nor is a list complete while the head still has a workflow run to finish, carries a workflow
-  whose newest run failed, or lacks a context its base requires; `expected_checks.py` owns what each
+  run that failed, or lacks a context its base requires; `expected_checks.py` owns what each
   of those is and why it is read. A mutation campaign's runs and checks are left out of all of it,
-  since no merge waits on one; `campaign.py` says which those are.
+  since no merge waits on one; `campaign.py` says which those are. The checks of a run GitHub
+  cancelled are read as `expected_checks.read_duplicates` says.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty` nor one that is closed
@@ -357,15 +358,17 @@ _BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
 _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
 
 
-def checks(project, sha, runs=()):
+def checks(project, sha, runs=(), jobs=None, now=None):
     """Check results for one head, or an empty list when no workflow ever ran for it.
 
-    `runs` is `campaign_runs`' reading of the same head, whose campaigns' checks are left out.
+    `runs` is `campaign_runs`' reading of the same head, whose campaigns' checks are left out, and
+    `jobs` `run_jobs`' reading of its open runs at `now`.
     """
     slug = repository(project)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
                          rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)),
-                         campaign.suites(runs))
+                         campaign.suites(runs), campaign.others(runs), jobs or {},
+                         time.time() if now is None else now)
 
 
 def campaign_runs(project, sha):
@@ -412,7 +415,7 @@ def whole_page(payload, listed, kind):
         raise RuntimeError(f"{total} {kind} exist for this head but only {len(listed)} were read")
 
 
-def check_results(runs, statuses, left_out=frozenset()):
+def check_results(runs, statuses, left_out=frozenset(), workflow_runs=(), jobs=None, now=0):
     """One bucket per check, from the check-runs payload and the legacy commit-status one.
 
     One commit carries two check surfaces, and the base can require a context from either, so
@@ -421,6 +424,8 @@ def check_results(runs, statuses, left_out=frozenset()):
 
     A page that did not carry everything raises rather than deciding; `whole_page` owns why. A check
     run of a suite in `left_out` is left out, and so is a status `campaign.STATUS_CONTEXT` names.
+    `expected_checks.read_duplicates` reads the check runs against `workflow_runs`, the head's runs
+    whose suites they are in, with `jobs` and `now` for those still open.
     """
     listed = runs.get("check_runs", [])
     reported = statuses.get("statuses", [])
@@ -428,10 +433,15 @@ def check_results(runs, statuses, left_out=frozenset()):
     whole_page(statuses, reported, "commit statuses")
     listed = [run for run in listed
               if (run.get("check_suite") or {}).get("id") not in left_out]
+    suites = {run.get("check_suite_id"): run.get("id") for run in workflow_runs}
     results = [{"name": run.get("name", ""),
                 "bucket": "pending" if run.get("status") != "completed"
-                else _BUCKET.get(run.get("conclusion") or "", "fail")}
+                else _BUCKET.get(run.get("conclusion") or "", "fail"),
+                "run": suites.get((run.get("check_suite") or {}).get("id"))}
                for run in listed]
+    results = [{"name": entry["name"], "bucket": entry["bucket"]}
+               for entry in expected_checks.read_duplicates(results, list(workflow_runs), jobs or {},
+                                                            now, lambda entry: entry["run"])]
     results.extend({"name": status.get("context", ""),
                     "bucket": _STATUS_BUCKET.get(status.get("state") or "", "fail")}
                    for status in reported if status.get("context") != campaign.STATUS_CONTEXT)
@@ -730,7 +740,7 @@ def blocking_reasons(project, number, base=None, states=None):
     now = time.time()
     others = campaign.others(runs)
     jobs = run_jobs(project, others, now)
-    results = checks(project, before.sha, runs)
+    results = checks(project, before.sha, runs, jobs, now)
     after = head_sha(project, number)
     ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
                                else entry["bucket"]) for entry in results])

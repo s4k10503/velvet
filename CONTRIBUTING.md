@@ -1431,16 +1431,17 @@ measured before it ships.
 The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
 runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
 the head like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled
-pull request, and a failed newest run blocks its merge.
+pull request, and a failed one blocks its merge.
 
 ### Merging a pull request
 
-A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
-its head has passed or been skipped; every other pull request is merged by hand after review, with
-`settle.py merge`. The label means *review has settled: merge when every check on the head has passed
-or been skipped*: add it once review has settled, and remove it to hold the pull request. Labelling
-takes triage access or above, so only an account holding that can opt a pull request in. The workflow
-does not create the label; it has to exist in the repository.
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once
+`settle.py merge` finds nothing blocking it, and settle's docstring owns what blocks, which checks it
+leaves out included. Every other pull request is merged by hand after review, with `settle.py merge`.
+The label means *review has settled: merge once `settle.py merge` would*: add it once review has
+settled, and remove it to hold the pull request. Labelling takes triage access or above, so only an
+account holding that can opt a pull request in. The workflow does not create the label; it has to
+exist in the repository.
 
 A pull request in a stack is merged through GitHub's asynchronous merge endpoint, since GitHub refuses
 a stack member on the one `settle.py merge` uses for every other pull request. GitHub documents that
