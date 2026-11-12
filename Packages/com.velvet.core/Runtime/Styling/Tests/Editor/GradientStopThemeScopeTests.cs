@@ -27,6 +27,9 @@ namespace Velvet.Tests
             PanelSimulator.ResetCurrentTime();
             _sim = new EditorPanelSimulator { panelSize = new Vector2(400, 300) };
             _sim.ResetTimePerSimulatedFrameToDefault();
+            // The colour namespace's initial removes the palette names that the bundled sheets above a mount declare and
+            // the project's sheets there do not (StyleThemeTokens.Scope.ClearsBundled).
+            VelvetStyleUtilities.AttachTo(_sim.rootVisualElement);
         }
 
         [TearDown]

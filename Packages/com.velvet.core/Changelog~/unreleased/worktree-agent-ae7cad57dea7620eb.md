@@ -2,6 +2,9 @@
 
 - A patch of an element carrying `gap-*`, `divide-*`, a grid, a box shadow or a gradient no longer builds a closure or
   a delegate to keep a relative-length poll up when none of its lengths is a measured one.
+- A patch of a `divide-*` container whose width is in pixels, and a write of a bracketed pixel border width such as
+  `border-[3px]`, no longer allocates two objects to keep the element on the watch that snaps it again when the panel's
+  scale changes.
 - A patch of a shadowed element no longer cuts a preset's name out of its `shadow-*` or `inset-shadow-*` class as a
   string, `shadow-inner` aside, copies the layers of a single family into a list and an array, or records the colours
   its classes declare in a new object when they are the ones it recorded last time.
