@@ -234,9 +234,12 @@ namespace Velvet
                     MoveTransforms(_root);
                     if (!s_computedDuringReads.Contains(this)) s_computedDuringReads.Add(this);
                 }
-                // MUTANT_SURVIVES(equivalent): an unrecorded version only sends the next read through the computation.
+                // MUTANT_SURVIVES(equivalent): an unrecorded version only sends the next read past the check above.
+                // It computes again only where the tree reads as dirty, and that computation changes nothing for the
+                // reason the check above gives.
                 _laidOutVersion = _version();
-                // MUTANT_SURVIVES(equivalent): an unrecorded computation only sends the next read through another.
+                // MUTANT_SURVIVES(equivalent): an unrecorded computation only sends each later read past that check.
+                // It computes again only where the tree reads as dirty, as an unrecorded version's read does.
                 _laidOut = true;
             }
 

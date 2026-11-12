@@ -508,8 +508,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base runs a GeometryChangedEvent callback that mounts a tree once.
         // Here the mount computes the panel's layout from inside the callback; running the layout updater's
-        // `Update` there instead of `_calculate.Invoke(node, s_unbounded)` in `FiberLayoutReflow` dispatches the
-        // host's next GeometryChangedEvent while this one is still running, which reaches the callback again.
+        // `Update` there instead of `_members.Calculate.Invoke(node, s_unbounded)` in `FiberLayoutReflow` dispatches
+        // the host's next GeometryChangedEvent while this one is still running, which reaches the callback again.
         [Test]
         public void Given_AGeometryChangedCallbackThatUnregistersItselfAndMountsATree_When_ThePanelLaysItsHostOut_Then_TheCallbackRunsOnce()
         {
