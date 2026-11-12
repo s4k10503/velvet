@@ -107,6 +107,7 @@ Run: python3 scripts/test_quality/base_red_check.py --base origin/main
 
 import argparse
 import ast
+import codecs
 import importlib.util
 import io
 import json
@@ -350,8 +351,9 @@ def is_test_side(relative):
     return kind_of(relative) is not None or "/TestUtilities/" in "/" + relative
 
 
-# What configures the compile, as against a source it compiles or a file a case loads.
-# `assembly_absent_on_base` is written for an added asmdef the base tree has not got.
+# An assembly definition and a compiler response file, left as the base has them because they are
+# input to the compile rather than material a case reads. `assembly_absent_on_base` is written for an
+# added asmdef the base tree has not got.
 COMPILE_CONFIGURATION = (".asmdef", ".rsp")
 
 
@@ -359,7 +361,8 @@ def carried_when_added(relative):
     """Whether a file the branch adds goes onto the base tree for sitting in a C# test directory, as
     a style sheet a case loads does.
 
-    A `.meta` is left out because `build_base_tree` carries one beside the file it describes.
+    A `.meta` is not taken here: `build_base_tree` copies a carried file's beside it, and a folder's
+    is left out.
     """
     return (platform_of(relative) is not None
             and not relative.endswith((".meta",) + COMPILE_CONFIGURATION))
@@ -848,9 +851,9 @@ def changed_lines_by_file(project, since):
     changed = {}
     current = None
     for line in diff.splitlines():
-        if line.startswith("+++ b/"):
-            current = line[6:]
-        elif line.startswith("+++ ") or line.startswith("diff --git"):
+        if line.startswith("+++ "):
+            current = patch_path(line[4:])
+        elif line.startswith("diff --git"):
             current = None
         elif line.startswith("@@") and current is not None:
             match = re.search(r"\+(\d+)(?:,(\d+))?", line)
@@ -858,11 +861,29 @@ def changed_lines_by_file(project, since):
                 start = int(match.group(1))
                 count = int(match.group(2) or 1)
                 changed.setdefault(current, set()).update(range(start, start + count))
-    for name in git(project, "diff", "--name-only", "--diff-filter=A", since).stdout.splitlines():
+    for name in listed(project, "diff", "--name-only", "--diff-filter=A", since):
         changed[name] = None
-    for name in git(project, "ls-files", "--others", "--exclude-standard").stdout.splitlines():
+    for name in listed(project, "ls-files", "--others", "--exclude-standard"):
         changed[name] = None
     return changed
+
+
+def listed(project, command, *arguments):
+    """The paths a git listing prints, read NUL-separated so that none arrives in git's quoting."""
+    return [name for name in git(project, command, "-z", *arguments).stdout.split("\0") if name]
+
+
+def patch_path(header):
+    """The repository-relative path a patch's `+++ ` header names, or None for `/dev/null`.
+
+    Spelled as on disk: a header's trailing tab and its quoting are undone, as `UnusualPathTests`
+    holds them.
+    """
+    if header.endswith("\t"):
+        header = header[:-1]
+    if len(header) > 1 and header[0] == header[-1] == '"':
+        header = codecs.escape_decode(header[1:-1].encode("utf-8"))[0].decode("utf-8")
+    return header[2:] if header.startswith("b/") else None
 
 
 def asked_about_nothing(derived, wanted):
@@ -883,28 +904,22 @@ def asked_about_nothing(derived, wanted):
 def deleted_files(project, since):
     """The paths the base holds and the branch does not, so the base tree stops holding them either.
 
-    A rename is one of them. Git reports a rename as R rather than as A+D whenever it can pair the
-    two halves, so a filter that reads only D leaves the base's copy in place beside the carried one
-    -- two files declaring one fixture class, which either refuses to build or reports the same name
-    twice for the results to collapse into one.
+    Without rename detection, so a renamed file's old path is one of them. Git reports a rename as R
+    rather than as A+D whenever it can pair the two halves, so a filter that reads only D leaves the
+    base's copy in place beside the carried one -- two files declaring one fixture class, which
+    either refuses to build or reports the same name twice for the results to collapse into one.
     """
-    gone = git(project, "diff", "--name-only", "--diff-filter=D", since).stdout.splitlines()
-    for line in git(project, "diff", "--name-status", "--diff-filter=R", since).stdout.splitlines():
-        fields = line.split("\t")
-        if len(fields) >= 3:
-            gone.append(fields[1])
-    return gone
+    return listed(project, "diff", "--name-only", "--no-renames", "--diff-filter=D", since)
 
 
 def added_files(project, since):
-    """The paths the branch holds and the base does not.
+    """The paths the branch holds and the base does not, committed or not.
 
     Without rename detection, so a renamed file's new path is one of them: `changed_lines_by_file`
     reads a rename that changed no line as no change at all.
     """
-    added = git(project, "diff", "--name-only", "--no-renames", "--diff-filter=A", since).stdout
-    untracked = git(project, "ls-files", "--others", "--exclude-standard").stdout
-    return added.splitlines() + untracked.splitlines()
+    return (listed(project, "diff", "--name-only", "--no-renames", "--diff-filter=A", since)
+            + listed(project, "ls-files", "--others", "--exclude-standard"))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -2070,7 +2085,7 @@ def carried_files(project, since):
     added = added_files(project, since)
     carried = {name for name in [*changed_lines_by_file(project, since), *added] if is_test_side(name)}
     carried.update(name for name in added if carried_when_added(name))
-    return {name for name in carried if (project / name).exists()}
+    return {name for name in carried if (project / name).is_file()}
 
 
 def unbuilt_reason(project, since, log_text, withdrawn=(), removed=()):

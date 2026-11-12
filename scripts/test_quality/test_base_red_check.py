@@ -2173,6 +2173,52 @@ class CarriedFixtureTests(unittest.TestCase):
             root, since, tree, sorted(base_red_check.carried_files(root, since)), [])
         return tree
 
+    def uncommitted(self, ignore="\n"):
+        """(a repository whose branch commit is only `ignore` as its .gitignore, the merge base).
+
+        What a case writes into it afterwards is the branch's uncommitted work.
+        """
+        return two_commit_repo(self, {self.FIXTURE: "// a fixture\n"}, {".gitignore": ignore})
+
+    def test_Given_AStyleSheetAddedAndNotCommitted_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- a run before a commit, which `changed_lines_by_file` measures as well.
+        root, since = self.uncommitted()
+        (root / self.SHEET).write_text(self.RULE)
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertIn(self.SHEET, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no file the ignore rules hide, and still does not.
+    def test_Given_AnIgnoredFileInATestDirectory_When_TheCarriedFilesAreRead_Then_ItIsNotAmongThem(self):
+        # Arrange
+        root, since = self.uncommitted(ignore="*.log\n")
+        ignored = "Packages/p/Runtime/A/Tests/Editor/run.log"
+        (root / ignored).write_text("a run\n")
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertNotIn(ignored, carried)
+
+    # GREEN_ON_BASE(characterization): the base carries no directory a branch puts in a test directory.
+    def test_Given_ANestedRepositoryInATestDirectory_When_TheCarriedFilesAreRead_Then_NoDirectoryIsAmongThem(self):
+        # Arrange -- the untracked listing names it as a directory, and `build_base_tree` copies files.
+        root, since = self.uncommitted()
+        nested = root / "Packages/p/Runtime/A/Tests/Editor/Nested"
+        nested.mkdir()
+        subprocess.run(["git", "-C", str(nested), "init", "-q"], check=True, capture_output=True)
+        (nested / "Probe.uss").write_text(self.RULE)
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertFalse(any((root / name).is_dir() for name in carried))
+
     def test_Given_AStyleSheetAddedInATestDirectory_When_TheBaseTreeIsBuilt_Then_ItIsThere(self):
         # Arrange / Act
         tree = self.built({self.SHEET: self.RULE})
@@ -2279,6 +2325,94 @@ class CarriedFixtureTests(unittest.TestCase):
 
         # Assert
         self.assertTrue((tree / self.SHEET).is_file())
+
+
+class UnusualPathTests(unittest.TestCase):
+    """A path git does not print as it is spelled on disk, read back as it is spelled on disk.
+
+    Read in git's spelling it names no file on disk, and what was read off it is lost in silence.
+    """
+
+    DIRECTORY = "Packages/p/Runtime/A/Tests/Editor/"
+    FIXTURE = DIRECTORY + "ProbeTests.cs"
+    ACCENTED = DIRECTORY + "Probé.uss"
+    ACCENTED_FIXTURE = DIRECTORY + "ProbéTests.cs"
+
+    def test_Given_AStyleSheetWithAnAccentedNameAdded_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.ACCENTED: ".a { }\n"})
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED, carried)
+
+    def test_Given_AStyleSheetWithAnAccentedNameNotCommitted_When_TheCarriedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.FIXTURE: "// b\n"})
+        (root / self.ACCENTED).write_text(".a { }\n")
+
+        # Act
+        carried = base_red_check.carried_files(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED, carried)
+
+    def test_Given_AnAccentedTestFileChanged_When_ItsLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.ACCENTED_FIXTURE: "// a\n"},
+                                      {self.ACCENTED_FIXTURE: "// a\n// b\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED_FIXTURE, changed)
+
+    def test_Given_ATestFileWithASpaceInItsNameChanged_When_ItsLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        spaced = self.DIRECTORY + "Probe Tests.cs"
+        root, since = two_commit_repo(self, {spaced: "// a\n"}, {spaced: "// a\n// b\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(spaced, changed)
+
+    def test_Given_AnAccentedTestFileAdded_When_ItsLinesAreRead_Then_ItIsReadAsAddedWhole(self):
+        # Arrange -- its patch names it too, so only the reading as added whole tells the listing's
+        # spelling apart.
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.ACCENTED_FIXTURE: "// a\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIsNone(changed.get(self.ACCENTED_FIXTURE, "absent"))
+
+    def test_Given_AnAccentedTestFileNotCommitted_When_ItsLinesAreRead_Then_ItIsReadAsAddedWhole(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.FIXTURE: "// b\n"})
+        (root / self.ACCENTED_FIXTURE).write_text("// a\n")
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIsNone(changed.get(self.ACCENTED_FIXTURE, "absent"))
+
+    def test_Given_AnAccentedTestFileDeleted_When_TheDroppedFilesAreRead_Then_ItIsAmongThem(self):
+        # Arrange
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n", self.ACCENTED_FIXTURE: "// a\n"},
+                                      {self.ACCENTED_FIXTURE: None})
+
+        # Act
+        dropped = base_red_check.deleted_files(root, since)
+
+        # Assert
+        self.assertIn(self.ACCENTED_FIXTURE, dropped)
 
 
 class UnbuildableOnBaseTests(unittest.TestCase):
