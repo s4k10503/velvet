@@ -24,6 +24,11 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
         private MountedTree _second;
+        // Created once and never destroyed, as FontRelativeUnitPanelTests' are, for the reason given there.
+        private static FontAsset s_sans;
+        private static FontAsset s_sansItalic;
+        private static FontAsset s_serif;
+
         private FontAsset _sans;
         private FontAsset _sansItalic;
         private FontAsset _serif;
@@ -32,9 +37,9 @@ namespace Velvet.Tests
         public void SetUp()
         {
             VelvetFonts.Clear();
-            _sans = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
-            _sansItalic = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
-            _serif = FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            _sans = s_sans != null ? s_sans : (s_sans = NewAsset());
+            _sansItalic = s_sansItalic != null ? s_sansItalic : (s_sansItalic = NewAsset());
+            _serif = s_serif != null ? s_serif : (s_serif = NewAsset());
             // An italic face beside the upright one, so a write of the default family has a face to pick between.
             VelvetFonts.Register(new VelvetFontFamily("sans",
                 new VelvetFontWeightEntry { weight = VelvetFontWeight.Normal, upright = _sans, italic = _sansItalic }));
@@ -53,36 +58,10 @@ namespace Velvet.Tests
             _host?.Dispose();
             _host = null;
             VelvetFonts.Clear();
-            DestroyAsset(_sans);
-            _sans = null;
-            DestroyAsset(_sansItalic);
-            _sansItalic = null;
-            DestroyAsset(_serif);
-            _serif = null;
         }
 
-        private static void DestroyAsset(FontAsset asset)
-        {
-            if (asset == null)
-            {
-                return;
-            }
-
-            foreach (var atlas in asset.atlasTextures ?? System.Array.Empty<Texture2D>())
-            {
-                if (atlas != null)
-                {
-                    Object.DestroyImmediate(atlas);
-                }
-            }
-
-            if (asset.material != null)
-            {
-                Object.DestroyImmediate(asset.material);
-            }
-
-            Object.DestroyImmediate(asset);
-        }
+        private static FontAsset NewAsset() =>
+            FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
 
         private bool ResolvesSans(string name) =>
             _host.Root.Q<Label>(name).resolvedStyle.unityFontDefinition.fontAsset == _sans;
