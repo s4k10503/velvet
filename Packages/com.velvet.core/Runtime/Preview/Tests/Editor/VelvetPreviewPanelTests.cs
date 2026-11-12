@@ -80,6 +80,123 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMeasuredWidthOnAPanelWhoseClockIsHeld_When_RenderedOnce_Then_ItIsLaidOutAtTheWidthItMeasures()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render");
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            // Held, so the result does not depend on how long the passes take.
+            EditorPanelTestHelpers.SetPanelTimeFunction(panel.Root.panel, () => 0d);
+            using var mounted = V.Mount(panel.Root, V.Div(className: "w-[calc(100%-16px)] h-[32px] bg-[#ff0000]", name: "measured"));
+
+            // Act
+            panel.Render();
+            var width = panel.Root.Q<VisualElement>("measured").layout.width;
+
+            // Assert
+            Assert.That(width, Is.EqualTo(Size - 16f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AMeasuredWidthInsideAnotherOnAPanelWhoseClockIsHeld_When_RenderedOnce_Then_ItMeasuresTheWidthTheOuterResolvedTo()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render");
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            EditorPanelTestHelpers.SetPanelTimeFunction(panel.Root.panel, () => 0d);
+            using var mounted = V.Mount(panel.Root, V.Div(className: "w-[calc(100%-16px)] h-[32px]", name: "outer",
+                children: new VNode[] { V.Div(className: "w-[calc(100%-8px)] h-[16px]", name: "inner") }));
+
+            // Act
+            panel.Render();
+            var width = panel.Root.Q<VisualElement>("inner").layout.width;
+
+            // Assert
+            Assert.That(width, Is.EqualTo(Size - 16f - 8f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AModelviewTheCallerSet_When_APreviewPanelRenders_Then_TheCallerStillHasIt()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render and a ReadPixels readback");
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            Fill(panel.Texture, Color.blue);
+            using var mounted = V.Mount(panel.Root, LeftHalfRed());
+            var callers = GL.modelview;
+            GL.modelview = Matrix4x4.Translate(new Vector3(3f, 5f, 7f));
+
+            // Act
+            float kept;
+            try
+            {
+                panel.Render();
+                kept = GL.modelview.m03;
+            }
+            finally
+            {
+                GL.modelview = callers;
+            }
+            // NaN unless the frame drew, so a Render that draws nothing cannot pass.
+            var translation = StoryRedBesideAnUnpaintedControl(panel.Texture) == true ? kept : float.NaN;
+
+            // Assert
+            Assert.That(translation, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void Given_SettingsThatClearTheirPanelAndABackgroundPortal_When_Rendered_Then_ThePortalsPixelsSurvive()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render and a ReadPixels readback");
+            var settings = ScriptableObject.CreateInstance<PanelSettings>();
+            using var destroySettings = new ActionDisposable(() => UnityEngine.Object.DestroyImmediate(settings));
+            settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            settings.scale = 1f;
+            settings.clearColor = true;
+            settings.colorClearValue = Color.blue;
+            using var panel = new VelvetPreviewPanel(settings, Size, Size);
+            using var mounted = V.Mount(panel.Root,
+                V.Div("w-[64px] h-[64px]", V.Portal(UILayer.Background, new VNode[] { LeftHalfRed() })));
+
+            // Act
+            panel.Render();
+            var portalDrawn = StoryRedBesideAnUnpaintedControl(panel.Texture);
+
+            // Assert
+            Assert.That(portalDrawn, Is.True);
+        }
+
+        [Test]
+        public void Given_APreviewPanel_When_Built_Then_ItsPanelIsSizedToItsTexture()
+        {
+            // Arrange
+            const int width = 32;
+
+            // Act
+            using var panel = new VelvetPreviewPanel(null, width, Size);
+            var panelWidth = panel.Root.panel.visualTree.style.width.value.value;
+
+            // Assert
+            Assert.That(panelWidth, Is.EqualTo((float)width));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already maps every screen position off the panel.
+        // This change moves the call that does it behind the texture's assignment, which must keep the mapping.
+        [Test]
+        public void Given_APreviewPanel_When_AScreenPositionIsMappedOntoIt_Then_ItLandsOffThePanel()
+        {
+            // Arrange
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+
+            // Act
+            var mapped = RuntimePanelUtils.ScreenToPanel(panel.Root.panel, new Vector2(10f, 10f));
+
+            // Assert
+            Assert.That(float.IsNaN(mapped.x), Is.True);
+        }
+
+        [Test]
         public void Given_TwoPreviewPanelsWithAStoryEach_When_OneIsRendered_Then_TheOthersTextureIsNotDrawnInto()
         {
             // Arrange

@@ -26,8 +26,8 @@ namespace Velvet
     {
         private const int TextureDepth = 24;
 
-        /// <summary>How many times <see cref="Render"/> updates the panels drawing into <see cref="Texture"/> before it
-        /// draws them.</summary>
+        /// <summary>How many update passes <see cref="Render"/> runs over the panels drawing into <see cref="Texture"/>
+        /// before it draws them.</summary>
         public const int SettlePasses = 100;
 
         // Below any sorting order a layer host takes, which sits a few hundred from its declaring panel's.
@@ -62,13 +62,16 @@ namespace Velvet
 
             _ownScaleMode = _settings.scaleMode;
             _ownScale = _settings.scale;
-            _settings.SetScreenToPanelSpaceFunction(OffPanel);
             Texture = CreateTexture(width, height);
+            // Ahead of the call below, which makes the panel: made with its target, it takes the texture's size and
+            // scale from the start rather than on its first update.
             _settings.targetTexture = Texture;
+            _settings.SetScreenToPanelSpaceFunction(OffPanel);
 
             // The clear is a panel of its own, sorted below everything else drawing into the texture: a
             // portal's Background layer host draws there before this panel does, so a clear on this
             // panel would erase it.
+            _settings.clearColor = false;
             _clearSettings = ScriptableObject.CreateInstance<PanelSettings>();
             _clearSettings.hideFlags = HideFlags.HideAndDontSave;
             _clearSettings.themeStyleSheet = PanelHostFactory.SharedEmptyTheme;
@@ -124,11 +127,13 @@ namespace Velvet
 
         /// <summary>
         /// Draws one frame into <see cref="Texture"/> before it returns, so a capture reads the texture back without
-        /// waiting for an editor frame. Every runtime panel drawing into the texture is first updated
-        /// <see cref="SettlePasses"/> times, so a state update a story's mount effect makes is drawn, and a story still
-        /// scheduling work after those updates is drawn without waiting for it. The panels are then repainted and
-        /// rendered, each pass in the order the panels sort in. An exception the frame does not catch reaches the
-        /// caller as it was thrown.
+        /// waiting for an editor frame. It first runs <see cref="SettlePasses"/> update passes over the runtime panels
+        /// drawing into the texture, each followed by a run of Velvet's relative-length polls on them, so the renders,
+        /// effects and state updates Velvet schedules on those panels are drawn, and so is a length measured from
+        /// their layout; work still scheduled after the passes is drawn without waiting for it. Work resumed on a later
+        /// editor or player frame, such as a <see cref="VelvetTask.Yield"/> continuation, is drawn by a call after that
+        /// frame. The panels are then repainted and rendered, each pass in the order the panels sort in. An exception
+        /// the frame does not catch reaches the caller as it was thrown.
         /// </summary>
         /// <exception cref="ObjectDisposedException">The panel is disposed.</exception>
         /// <exception cref="NotSupportedException">This editor lacks an engine member the frame calls, which the message
@@ -140,19 +145,35 @@ namespace Velvet
                 $"{nameof(VelvetPreviewPanel)}.{nameof(Render)} cannot draw a frame in this editor, which has no "
                 + FrameMembers.Missing);
 
+            var active = RenderTexture.active;
             try
             {
                 for (var pass = 0; pass != SettlePasses; pass++)
                 {
                     foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Update.Invoke(panel, null);
+                    foreach (var panel in frame.PanelsDrawingInto(Texture)) RelativeLengthPoll.RunUnder(panel.visualTree);
                 }
-                foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Repaint.Invoke(null, new[] { panel });
-                frame.RepaintEnd.Invoke(null, null);
-                foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Render.Invoke(panel, null);
+                GL.PushMatrix();
+                try
+                {
+                    foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Repaint.Invoke(null, new[] { panel });
+                    frame.RepaintEnd.Invoke(null, null);
+                    foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Render.Invoke(panel, null);
+                }
+                finally
+                {
+                    GL.PopMatrix();
+                }
             }
             catch (TargetInvocationException exception) when (exception.InnerException != null)
             {
                 ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+            }
+            finally
+            {
+                // MUTANT_SURVIVES(unreachable, line removed): no suite case throws from a panel's repaint or render,
+                // which is where the frame sets another texture active.
+                RenderTexture.active = active;
             }
         }
 
@@ -209,12 +230,13 @@ namespace Velvet
             internal readonly MethodInfo Render = EngineMember.RuntimePanelRender.ResolveMethod()!;
             internal readonly MethodInfo RepaintEnd = EngineMember.TextGenerationRepaintEnd.ResolveMethod()!;
 
-            internal List<object> PanelsDrawingInto(RenderTexture texture)
+            internal List<IRuntimePanel> PanelsDrawingInto(RenderTexture texture)
             {
-                var drawing = new List<object>();
+                var drawing = new List<IRuntimePanel>();
                 foreach (var panel in (IEnumerable)_sortedPanels.Invoke(null, null))
                 {
-                    if ((panel as IRuntimePanel)?.panelSettings.targetTexture == texture) drawing.Add(panel);
+                    var runtime = panel as IRuntimePanel;
+                    if (runtime?.panelSettings.targetTexture == texture) drawing.Add(runtime!);
                 }
                 return drawing;
             }
