@@ -38,13 +38,6 @@ namespace Velvet
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
         private readonly Dictionary<ComponentFiber, HashSet<ComponentFiber>> _parentToInlineFibers = new();
-        // A fiber a walk mounted in place of one whose boundary mounts its output afresh, by the fiber it replaces and
-        // the other way round. The replaced fiber keeps its key until it leaves and hands the key on then, so a walk
-        // that unwinds before it leaves still finds it by that key, as React leaves current. The one waiting is what
-        // answers for the key while its boundary mounts that output afresh (AnsweringFor), which hands a walk retrying
-        // after an unwind the fiber, and the read, the walk it gave up mounted.
-        private readonly Dictionary<ComponentFiber, ComponentFiber> _successors = new();
-        private readonly Dictionary<ComponentFiber, ComponentFiber> _predecessors = new();
         // Inline fibers by the container their rows share, whatever fiber or Portal placed them there:
         // FiberCommitWork moves the starts of the ones a row-count change lands ahead of.
         private readonly Dictionary<VisualElement, InlineTenancy> _tenancies = new();
@@ -146,7 +139,8 @@ namespace Velvet
             var existingFiber = site.IsInline
                 ? LookupInline((ComponentFiber)site.Anchor!, site.PortalScope, site.MountPoint, site.PositionKey, identity)
                 : LookupWrapper((VisualElement)site.Anchor!, identity);
-            existingFiber = AnsweringFor(existingFiber);
+            // Mounted again rather than handed back: the boundary whose output it is mounts that output afresh.
+            if (existingFiber != null && _ctx.FibersBeingReplaced?.Contains(existingFiber) == true) existingFiber = null;
 
             if (existingFiber != null)
             {
@@ -346,15 +340,7 @@ namespace Velvet
             {
                 var parentFiber = (ComponentFiber)anchor!;
                 var key = (parentFiber, site.PortalScope, site.MountPoint, site.PositionKey, identity);
-                if (_inlineInstances.TryGetValue(key, out var holder) && _ctx.FibersBeingReplaced?.Contains(holder) == true)
-                {
-                    _successors[holder] = fiber;
-                    _predecessors[fiber] = holder;
-                }
-                else
-                {
-                    _inlineInstances[key] = fiber;
-                }
+                _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
                 RetainExplicitPositionKey(site.PositionKey);
                 if (site.MountPoint != null)
@@ -435,23 +421,10 @@ namespace Velvet
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
             {
                 _inlineFiberToKey.Remove(fiber);
+                // A fiber mounted in its place where a boundary mounts its output afresh holds the key by now.
                 if (_inlineInstances.TryGetValue(key, out var holder) && ReferenceEquals(holder, fiber))
                 {
-                    if (_successors.Remove(fiber, out var successor))
-                    {
-                        // MUTANT_SURVIVES(equivalent): the successor holds the key from here on, and where the else
-                        // branch below reads the entry, the link it removes went here.
-                        _predecessors.Remove(successor);
-                        _inlineInstances[key] = successor;
-                    }
-                    else
-                    {
-                        _inlineInstances.Remove(key);
-                    }
-                }
-                else if (_predecessors.Remove(fiber, out var predecessor))
-                {
-                    _successors.Remove(predecessor);
+                    _inlineInstances.Remove(key);
                 }
                 ReleaseExplicitPositionKey(key.positionKey);
                 if (key.container != null && _tenancies.TryGetValue(key.container, out var tenancy))
@@ -517,6 +490,10 @@ namespace Velvet
             DisposeTogether(doomed);
         }
 
+        // What parent's output has mounted inline, copied, as the fibers it mounts from here on join the set it copies.
+        internal HashSet<ComponentFiber>? InlineChildrenOf(ComponentFiber parent)
+            => _parentToInlineFibers.TryGetValue(parent, out var children) ? new HashSet<ComponentFiber>(children) : null;
+
         internal void DisposeAndRemove(ComponentFiber fiber)
         {
             if (fiber == null) return;
@@ -534,20 +511,6 @@ namespace Velvet
             VisualElement? container)
         {
             return LookupInline(parentFiber, portalScope, container, positionKey, identity);
-        }
-
-        // As TryGetFiberForInlineKey, for the new side of a walk: the fiber GetOrCreateInline would hand back.
-        internal ComponentFiber? TryGetNewSideFiberForInlineKey(
-            ComponentFiber? parentFiber, object positionKey, object identity, VisualElement? portalScope,
-            VisualElement? container)
-            => AnsweringFor(LookupInline(parentFiber, portalScope, container, positionKey, identity));
-
-        // The fiber a lookup hands back for the one its key names: where that one's boundary mounts its output afresh,
-        // the fiber waiting to replace it, or none, so that a new one mounts.
-        private ComponentFiber? AnsweringFor(ComponentFiber? holder)
-        {
-            if (holder == null || _ctx.FibersBeingReplaced?.Contains(holder) != true) return holder;
-            return _successors.TryGetValue(holder, out var successor) ? successor : null;
         }
 
         // Returns the inline registration key under which fiber is registered, or false when it is not
@@ -888,8 +851,6 @@ namespace Velvet
             // class must be cleared here. Adding a new index without updating this block leaks.
             _inlineInstances.Clear();
             _inlineFiberToKey.Clear();
-            _successors.Clear();
-            _predecessors.Clear();
             _parentToInlineFibers.Clear();
             _tenancies.Clear();
             _wrapperIndex.Clear();

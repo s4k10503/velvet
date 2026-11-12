@@ -316,11 +316,6 @@ namespace Velvet
         {
             fiber.CaughtError = (exception, info);
             ctx.PendingCaughtErrorReports.Add((fiber, exception, info, ctx.NextCaughtErrorSequence++));
-            RecordTakenErrors(ctx, fiber);
-        }
-
-        private static void RecordTakenErrors(ReconcilerContext ctx, ComponentFiber fiber)
-        {
             var taken = ctx.ErrorsDuringFallbackSwap;
             var tookAny = false;
             for (var i = 0; i < taken.Count; i++)
@@ -333,39 +328,9 @@ namespace Velvet
             if (!tookAny) return;
             taken.RemoveAll(entry => ReferenceEquals(entry.Boundary, fiber));
             // Its fallback renders again with the newest error, as React's getDerivedStateFromError takes it.
-            // MUTANT_SURVIVES(equivalent, guard removed): the root then renders the tree V.Mount was handed, whose output
-            // OutputOf replaces with V.Mount's empty Fragment, the one the root's rows already hold, so mounting it afresh
-            // removes and adds nothing, and the reports are already queued.
             if (fiber.IsMountRoot) return;
             fiber.MountOutputAfreshNextRender();
             FiberWorkLoop.RequestRenderFromHook(fiber);
-        }
-
-        // The first half of the render a boundary takes for what its last swap threw, which mounts its output afresh. A
-        // cleanup of the fallback it unmounts that throws is taken as one of a swap's is, rather than swapping a fallback
-        // in under this render's reconcile of the same rows, and is caught once the unmount is done.
-        internal static VNode?[] UnmountTheShownFallback(ComponentFiber boundary, VNode?[] shown)
-        {
-            var unmounted = shown;
-            TakingErrorsAsTheSwap(boundary, () => unmounted = FiberCommitWork.UnmountOwnRows(boundary, shown));
-            RecordTakenErrors(boundary.Reconciler!.Context, boundary);
-            return unmounted;
-        }
-
-        // An error out of work a boundary does to its own rows outside a render of its content, such as the disposal of
-        // what a failed output mounted, is the boundary's own, taken as one out of its fallback swap is
-        // (TakeDuringTheSwap), which records it rather than raising an abort that would release the elements around it.
-        internal static void TakingErrorsAsTheSwap(ComponentFiber boundary, Action work)
-        {
-            boundary.IsShowingFallback = true;
-            try
-            {
-                work();
-            }
-            finally
-            {
-                boundary.IsShowingFallback = false;
-            }
         }
 
         // A boundary that has caught renders its fallback from then on, as React's does until it remounts: a

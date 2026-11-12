@@ -3207,13 +3207,6 @@ namespace Velvet
             VisualElement? portalScope, long position)
             => _suspensePrimariesReproduced.Remove(new(boundary, parent, portalScope, position, true));
 
-        internal IReadOnlyDictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>
-            SuspenseRecordsOf(ComponentFiber boundary)
-            => _suspenseFallbackKeys.TryGetValue(boundary, out var keys) ? keys : s_noSuspenseRecords;
-
-        private static readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseFallbackRecord>
-            s_noSuspenseRecords = new();
-
         // The records RecordsOf takes, and the primaries an old side of the boundary's rows reproduced for a new side
         // to read. FiberCommitWork.UnmountOwnRows owns why they go before the boundary's next output mounts.
         internal void ForgetRecordsOf(ComponentFiber boundary)

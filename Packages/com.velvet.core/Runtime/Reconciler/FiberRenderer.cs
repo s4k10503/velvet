@@ -455,23 +455,18 @@ namespace Velvet
         // only a fallback this render swapped in has set it. A deferred render keeps its abort even so: it swaps
         // one in only in the drain of a parked pass ahead of this call, into rows the walk around it is diffing,
         // and that walk must stop.
-        // Returns whether it unmounted oldTree to mount newTree afresh, as the render a boundary takes for what its last
-        // swap threw does (ComponentFiber.TakeMountsOutputAfresh); the walk expanding an inline one does that instead.
-        private static bool ReconcileRenderedTree(
+        private static void ReconcileRenderedTree(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var passContext = fiber.Reconciler?.Context;
             // A disposed fiber has nothing to reconcile into. The drain of a parked pass ahead of this call can dispose
             // it: a boundary above swaps in its fallback for an error that drain rendered.
-            if (passContext == null) return false;
+            if (passContext == null) return;
             // A mark left from work that has since rendered would keep every identity skip of this reconcile off.
             FiberPendingWork.Below(fiber);
-            var unmounted = !deferReconcile && fiber.TakeMountsOutputAfresh();
-            if (unmounted) oldTree = FiberErrorBoundary.UnmountTheShownFallback(fiber, oldTree);
             var caught = FiberCommitWork.ReconcileIntoSlotRange(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
             if (caught != null) FiberErrorBoundary.ShowCaughtFallback(fiber, caught);
             if (!deferReconcile && fiber.FallbackReplacedPreviousTree) passContext!.IsAborted = false;
-            return unmounted;
         }
 
         // A render in a Portal's drain is at depth 0 as an isolated re-render is, but starts under the cursor the drain
@@ -573,7 +568,7 @@ namespace Velvet
                 }
 
                 reconciling = !deferReconcile;
-                var unmountedOldTree = ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
+                ReconcileRenderedTree(fiber, oldTree, newTree, frameBudgetMs, deferReconcile);
 
                 // Reconciler can be nulled mid-render when a descendant disposes this fiber
                 // (e.g. an ErrorBoundary unmount cascade that re-enters this fiber's owner).
@@ -587,12 +582,10 @@ namespace Velvet
                     // A disposed fiber must not retain its newly rendered tree (post-commit
                     // would no longer see it). Aborted reconciles are likewise discarded so the
                     // next render starts from the pre-throw PreviousTree. Only the DISCARDED output
-                    // (and a superseded parked baseline) retire here — not oldTree, which IS the
-                    // retained PreviousTree baseline and must keep its pooled parts, unless this render
-                    // unmounted it to mount its output afresh and it is the baseline no longer.
+                    // (and a superseded parked baseline) retire here — never oldTree, which IS the
+                    // retained PreviousTree baseline and must keep its pooled parts.
                     FiberTreeReturn.ReturnRetiredTree(newTree, fiber);
                     FiberCommitWork.ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
-                    if (unmountedOldTree) FiberTreeReturn.ReturnRetiredTree(oldTree, fiber);
                 }
                 else
                 {

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -26,14 +25,7 @@ namespace Velvet.Tests
     /// next update.</item>
     /// <item>Where swapping the fallback in unmounts a child whose cleanup throws, the render the boundary takes
     /// for that error mounts the fallback afresh, whether the boundary renders on its own or in its parent's walk,
-    /// and the render after that keeps it. Where that render unmounts a fallback whose cleanup throws, one more such
-    /// render mounts a single fallback for that error, and where that render ends discarded, the fallback it unmounted
-    /// leaves no props bag rented out. An error the fallback's own update throws after that render is the boundary's
-    /// to catch.</item>
-    /// <item>Where a transition gives up a walk that caught in the boundary because the fallback's content suspended,
-    /// the boundary still records the Suspense it showed as showing its fallback, and once the reads resolve, the
-    /// retry shows what the fallback read and cleans up the child the boundary showed once, the reader that replaces
-    /// that child included.</item>
+    /// and the render after that keeps it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -66,11 +58,6 @@ namespace Velvet.Tests
             s_setProbe = default;
             s_setBoundaryRender = default;
             s_onCleanup = null;
-            s_probeCleanupThrows = 0;
-            s_start = default;
-            s_loads = new List<VelvetTaskCompletionSource<int>>();
-            s_counterCleanups = 0;
-            s_loadingBoundary = null;
         }
 
         [Component(Compiler = false)]
@@ -142,13 +129,10 @@ namespace Velvet.Tests
             Hooks.UseFallback(_ => V.Label(text: "fallback"));
             return V.Fragment(new VNode[]
             {
-                PooledRow(),
+                V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id, onClick: () => { }))),
                 V.Component(LayoutThrower, tick, key: "thrower"),
             });
         }
-
-        private static VNode PooledRow()
-            => V.Div(children: V.List(new[] { "open" }, id => id, id => V.Button(text: id, onClick: () => { })));
 
         private MountedTree MountWithCount(Func<VNode> boundary)
         {
@@ -486,7 +470,6 @@ namespace Velvet.Tests
         {
             var (first, setFirst) = Hooks.UseState(error);
             s_setProbe = setFirst;
-            if (first == "throw") throw new InvalidOperationException("probe render throw");
             return V.Label(name: "probe", text: first);
         }
 
@@ -551,22 +534,6 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>("probe")?.text, Is.EqualTo("swap cleanup throw"));
         }
 
-        [Test]
-        public void Given_ABoundaryThatRenderedAgainForWhatItsSwapThrew_When_ItsFallbacksOwnUpdateThrows_Then_ItMountsAFallbackForThatError()
-        {
-            // Arrange
-            using var mounted = MountSwapError();
-            ThrowFromTheThrower(mounted);
-
-            // Act
-            s_setProbe.Invoke("throw");
-            mounted.FlushStateForTest();
-            mounted.FlushStateForTest();
-
-            // Assert — a boundary that passes the error on leaves no probe, and a fallback kept in place throws again
-            Assert.That(_root.Q<Label>("probe")?.text, Is.EqualTo("probe render throw"));
-        }
-
         // GREEN_ON_BASE(characterization): the base keeps the fallback across the boundary's renders.
         // This pins that the boundary's next render after the one for the error its swap threw keeps the fallback.
         [Test]
@@ -599,228 +566,6 @@ namespace Velvet.Tests
 
             // Assert — a fallback kept from the first swap reads the error it started from, the thrower's
             Assert.That(_root.Q<Label>("probe")?.text, Is.EqualTo("swap cleanup throw"));
-        }
-
-        private static int s_probeCleanupThrows;
-
-        [Component(Compiler = false)]
-        private static VNode CleanupThrowingProbe(string error)
-        {
-            Hooks.UseEffect((Func<Action>)(() => () =>
-            {
-                if (s_probeCleanupThrows-- > 0) throw new InvalidOperationException("probe cleanup throw");
-            }), Array.Empty<object>());
-            return V.Label(name: "probe", text: error);
-        }
-
-        // As SwapErrorBoundary, with a fallback whose passive cleanup throws the first time it runs.
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode CleanupThrowingFallbackBoundary()
-        {
-            Hooks.UseFallback(exception => V.Component(CleanupThrowingProbe, exception.Message, key: "probe"));
-            return V.Fragment(new VNode[]
-            {
-                V.Component(CleanupThrowingChild, key: "child"),
-                V.Component(OwnTickThrower, key: "thrower"),
-            });
-        }
-
-        // As SwapErrorBoundary, with pooled nodes in the fallback for the thrower's error, and a fallback for the
-        // error its swap throws whose content throws as it renders.
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode PooledSwapBoundary()
-        {
-            Hooks.UseFallback(exception => exception.Message == "swap cleanup throw"
-                ? V.Component(RenderThrower, 1, key: "probe")
-                : PooledRow());
-            return V.Fragment(new VNode[]
-            {
-                V.Component(CleanupThrowingChild, key: "child"),
-                V.Component(OwnTickThrower, key: "thrower"),
-            });
-        }
-
-        [Test]
-        public void Given_AFallbackWhoseCleanupThrows_When_TheRenderForWhatTheSwapThrewUnmountsIt_Then_OneFallbackStartsFromThatCleanupsError()
-        {
-            // Arrange
-            s_probeCleanupThrows = 1;
-            using var mounted = V.Mount(_root, V.Component(CleanupThrowingFallbackBoundary, key: "boundary"),
-                CaughtErrors.Unlogged);
-            mounted.FlushEffectsForTest();
-
-            // Act — a flush for each render the errors ask for, and one to spare
-            s_setThrowerTick.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.FlushStateForTest();
-            mounted.FlushStateForTest();
-            mounted.FlushStateForTest();
-
-            // Assert — a fallback swapped in under that render's own unmount reads beside the one the render mounts
-            var probes = _root.Query<Label>("probe").ToList().Select(label => label.text);
-            Assert.That(string.Join(",", probes), Is.EqualTo("probe cleanup throw"));
-        }
-
-        // GREEN_ON_BASE(characterization): the base retires what the boundary showed when its fallback swaps in.
-        // This pins that a render for what the swap threw, which ends discarded, still returns the pooled parts of the
-        // fallback it unmounted.
-        [Test]
-        public void Given_AFallbackHoldingPooledNodes_When_TheRenderForWhatTheSwapThrewEndsDiscardedAndTheMountIsDisposed_Then_ThePoolCountsNoPropsRentedOut()
-        {
-            // Arrange
-            var before = VNodePoolTestAccess.RentedOutCountsForTest().Props;
-            var mounted = V.Mount(_root, V.Component(PooledSwapBoundary, key: "boundary"), CaughtErrors.Unlogged);
-            mounted.FlushEffectsForTest();
-            s_setThrowerTick.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.FlushStateForTest();
-
-            // Act
-            mounted.Dispose();
-
-            // Assert
-            Assert.That(VNodePoolTestAccess.RentedOutCountsForTest().Props - before, Is.EqualTo(0));
-        }
-
-        #endregion
-
-        #region A catch in a walk a transition gives up
-
-        private static TransitionStarter s_start;
-        private static List<VelvetTaskCompletionSource<int>> s_loads;
-        private static int s_counterCleanups;
-        private static ComponentFiber s_loadingBoundary;
-
-        // Reads page 0 at once, and starts a load the case resolves for any later page.
-        private static int ReadPage(int page) => Hooks.Use<int>(_ =>
-        {
-            if (page == 0) return VelvetTask.FromResult(0);
-            var source = new VelvetTaskCompletionSource<int>();
-            s_loads.Add(source);
-            return source.Task;
-        }, page);
-
-        [Component(Compiler = false)]
-        private static VNode CountingReader(int page)
-        {
-            Hooks.UseEffect((Func<Action>)(() => () => s_counterCleanups++), Array.Empty<object>());
-            return V.Label(name: "counted", text: "counted:" + ReadPage(page));
-        }
-
-        [Component(Compiler = false)]
-        private static VNode PageLoader(int page) => V.Label(name: "loaded", text: "loaded:" + ReadPage(page));
-
-        [Component(Compiler = false)]
-        private static VNode NeverRead() => V.Label(text: "read:" + Hooks.Use(() => s_never.Task, "never"));
-
-        // The child the fallback repeats sits in a fragment at the fallback's own position, the boundary shows a
-        // Suspense of its own showing its fallback, and the fallback, that child included, reads a page that waits until
-        // the case resolves it.
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode LoadingFallbackBoundary(int page)
-        {
-            s_loadingBoundary = FiberAmbientStack.Current;
-            Hooks.UseFallback(_ => V.Fragment(new VNode[]
-            {
-                V.Component(CountingReader, page, key: "counter"),
-                V.Component(PageLoader, page, key: "loader"),
-            }));
-            return V.Fragment(new VNode[]
-            {
-                V.Fragment(new VNode[] { V.Component(CountingReader, 0, key: "counter") }),
-                V.Suspense(V.Label(text: "own-loading"), new VNode[] { V.Component(NeverRead, key: "never") }, key: "own"),
-                V.Component(RenderThrower, page, key: "thrower"),
-            });
-        }
-
-        // The page turns in a transition, under a Suspense showing its children, which gives the transition's walk up
-        // where the boundary's fallback suspends.
-        [Component(Compiler = false)]
-        private static VNode TransitionHost()
-        {
-            var (page, setPage) = Hooks.UseState(0);
-            var (_, start) = Hooks.UseTransition();
-            s_setPage = setPage;
-            s_start = start;
-            return V.Suspense(V.Label(text: "loading"), new VNode[]
-            {
-                V.Component(LoadingFallbackBoundary, page, key: "boundary"),
-            });
-        }
-
-        private MountedTree MountTransitionHost()
-        {
-            var mounted = V.Mount(_root, V.Component(TransitionHost, key: "host"), CaughtErrors.Unlogged);
-            mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
-            return mounted;
-        }
-
-        private static void TurnPageInATransition(MountedTree mounted)
-        {
-            s_start.Invoke(() => s_setPage.Invoke(1));
-            mounted.FlushStateForTest();
-            mounted.FlushStateForTest();
-        }
-
-        // The retry reaches each read once the one ahead of it has resolved. Bounded, since a retry that mounts a reader
-        // again starts a load every time.
-        private static void ResolveTheLoads(MountedTree mounted)
-        {
-            for (var resolved = 0; resolved < s_loads.Count && resolved < 4; resolved++)
-            {
-                s_loads[resolved].TrySetResult(7);
-                mounted.FlushStateForTest();
-                mounted.FlushStateForTest();
-            }
-            mounted.FlushEffectsForTest();
-        }
-
-        [Test]
-        public void Given_ACatchInAWalkATransitionGaveUpWhereTheFallbackSuspended_When_ItsReadsResolve_Then_TheChildTheBoundaryShowedIsCleanedUpOnce()
-        {
-            // Arrange
-            using var mounted = MountTransitionHost();
-            TurnPageInATransition(mounted);
-
-            // Act
-            ResolveTheLoads(mounted);
-
-            // Assert — a child the fallback took over is never cleaned up, one no key reaches any more stays too, and a
-            // retry that mounts the fallback's own reader again starts its load over and never settles
-            Assert.That(s_counterCleanups, Is.EqualTo(1));
-        }
-
-        // GREEN_ON_BASE(characterization): the base hands the retry the reader the walk it gave up mounted, by its key.
-        // This pins that mounting the fallback afresh leaves the reader no shown child held the key of to the retry.
-        [Test]
-        public void Given_ACatchInAWalkATransitionGaveUpWhereTheFallbackSuspended_When_ItsReadsResolve_Then_TheFallbackShowsWhatItRead()
-        {
-            // Arrange
-            using var mounted = MountTransitionHost();
-            TurnPageInATransition(mounted);
-
-            // Act
-            ResolveTheLoads(mounted);
-
-            // Assert — a reader mounted again starts its load over and shows nothing yet
-            Assert.That(_root.Q<Label>("loaded")?.text, Is.EqualTo("loaded:7"));
-        }
-
-        [Test]
-        public void Given_ABoundaryShowingItsOwnSuspensesFallback_When_ATransitionGivesUpTheWalkThatCaughtInIt_Then_TheBoundaryStillRecordsThatFallbackAsShown()
-        {
-            // Arrange
-            using var mounted = MountTransitionHost();
-
-            // Act
-            TurnPageInATransition(mounted);
-
-            // Assert — a catch the walk never reached reads the same, so the one load the fallback's first read started is
-            // read beside it
-            Assert.That(
-                s_loads.Count == 1 && mounted.Root.Reconciler.Context.IsBoundaryShowingFallback(s_loadingBoundary),
-                Is.True);
         }
 
         #endregion
