@@ -351,9 +351,9 @@ def is_test_side(relative):
     return kind_of(relative) is not None or "/TestUtilities/" in "/" + relative
 
 
-# An assembly definition and a compiler response file, left as the base has them because they are
-# input to the compile rather than material a case reads. `assembly_absent_on_base` is written for an
-# added asmdef the base tree has not got.
+# An assembly definition and a compiler response file in a C# test directory, left there as the base
+# has them because they are input to the compile rather than material a case reads.
+# `assembly_absent_on_base` is written for an added asmdef the base tree has not got.
 COMPILE_CONFIGURATION = (".asmdef", ".rsp")
 
 
@@ -847,7 +847,8 @@ def changed_lines_by_file(project, since):
     Diffed against the working tree rather than against HEAD, so a branch whose change is not
     committed yet is still measured -- which is the state a run before a commit is in.
     """
-    diff = git(project, "diff", "--unified=0", "--diff-filter=d", since).stdout
+    diff = git(project, "diff", "--unified=0", "--diff-filter=d", "--src-prefix=a/", "--dst-prefix=b/",
+               since).stdout
     changed = {}
     current = None
     for line in diff.splitlines():
@@ -874,10 +875,11 @@ def listed(project, command, *arguments):
 
 
 def patch_path(header):
-    """The repository-relative path a patch's `+++ ` header names, or None for `/dev/null`.
+    """The repository-relative path a patch's `+++ ` header names, or None for one naming no `b/`
+    path, which under the prefixes `changed_lines_by_file` passes is `/dev/null`.
 
-    Spelled as on disk: a header's trailing tab and its quoting are undone, as `UnusualPathTests`
-    holds them.
+    Spelled as on disk: a header's trailing tab and its quoting are undone, the tab first, as
+    `UnusualPathTests` holds them.
     """
     if header.endswith("\t"):
         header = header[:-1]

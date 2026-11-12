@@ -2381,6 +2381,31 @@ class UnusualPathTests(unittest.TestCase):
         # Assert
         self.assertIn(spaced, changed)
 
+    def test_Given_ATestFileWithASpaceAndAnAccentInItsNameChanged_When_ItsLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- its header is quoted and then tabbed, so the quotes are found only once the tab
+        # is off.
+        both = self.DIRECTORY + "Prob é.cs"
+        root, since = two_commit_repo(self, {both: "// a\n"}, {both: "// a\n// b\n"})
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(both, changed)
+
+    def test_Given_ARepositoryConfiguredForNoPrefix_When_AChangedTestFilesLinesAreRead_Then_ItIsAmongThem(self):
+        # Arrange -- a setting in someone's own git configuration, which the headers read here
+        # would otherwise follow.
+        root, since = two_commit_repo(self, {self.FIXTURE: "// a\n"}, {self.FIXTURE: "// a\n// b\n"})
+        subprocess.run(["git", "-C", str(root), "config", "diff.noprefix", "true"], check=True,
+                       capture_output=True)
+
+        # Act
+        changed = base_red_check.changed_lines_by_file(root, since)
+
+        # Assert
+        self.assertIn(self.FIXTURE, changed)
+
     def test_Given_AnAccentedTestFileAdded_When_ItsLinesAreRead_Then_ItIsReadAsAddedWhole(self):
         # Arrange -- its patch names it too, so only the reading as added whole tells the listing's
         # spelling apart.
