@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -155,10 +156,10 @@ namespace Velvet.Tests
                 }, key: "portal"),
                 V.Component(After, key: "after"));
 
-        // The list renders its row again in the pass that reconciles the Portal's children, ahead of a component after
-        // it in the same Portal.
+        // The list renders its row again in the pass that reconciles the Portal's children, which reaches the component
+        // after the list once the row's scope has ended.
         [Component]
-        private static VNode ListThenLeafInAPortalThenSibling(ParentProps props)
+        private static VNode ListThenChildInAPortalThenSibling(ParentProps props)
         {
             var (value, _) = EventLog.UseState("Gen", 0);
             return V.Fragment(
@@ -170,9 +171,9 @@ namespace Velvet.Tests
                         itemHeight: 50f,
                         renderer: item => V.Component(Leaf, new Dep(item, value), key: item),
                         overscan: 0),
-                    V.Component(Leaf, new Dep("Leaf", value), key: "leaf"),
+                    V.Component(PortalChild, key: "child"),
                 }, key: "portal"),
-                V.Component(Leaf, new Dep("After", value), key: "after"));
+                V.Component(After, key: "after"));
         }
 
         private static string MountAndLog(bool lastRendersNothing)
@@ -330,27 +331,40 @@ namespace Velvet.Tests
                 + $" eff-x:{last} eff-x:After eff:{last} eff:After"));
         }
 
+        // GREEN_ON_BASE(characterization): the base leaves the walk's Portal named once a list's row scope ends.
+        // The branch saves and restores it around that scope (Reconciler.BeginDetachedItemScope); without the save the
+        // component after the list is stamped with no Portal and its effects run after the sibling's.
         [Test]
-        public void Given_AListThenAComponentInAPortalAndASiblingAfterIt_When_ThePassThatRendersTheListsRowCommits_Then_ThePortalsComponentRunsAheadOfTheSibling()
+        public void Given_APassThatRenderedAListsRowInAPortal_When_TheComponentAfterTheListAndASiblingAfterThePortalUpdate_Then_TheComponentsEffectsRunFirst()
         {
-            // Arrange — the list holds its row once a range update has placed it
+            // Arrange — the list holds its row once a range update has placed it, and the viewport height a geometry
+            // pass would have left at that row, so the pass that renders the host renders the row too
             var log = new EventLog();
             var target = new VisualElement();
             using var mounted = V.Mount(new VisualElement(),
-                log.Provide(V.Component(ListThenLeafInAPortalThenSibling, new ParentProps(target, false))));
+                log.Provide(V.Component(ListThenChildInAPortalThenSibling, new ParentProps(target, false))));
             mounted.DrainForTest();
             var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
             list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(list, 50f);
             mounted.DrainForTest();
+            log.Clear();
             log.Setter<int>("Gen").Invoke(1);
-            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.DrainForTest();
+            var renderedTheRow = log.ToString().Contains("eff:R");
             log.Clear();
 
             // Act
-            mounted.FlushEffectsForTest();
+            log.Setter<int>("PortalChild").Invoke(1);
+            log.Setter<int>("After").Invoke(1);
+            mounted.DrainForTest();
 
-            // Assert
-            Assert.That(log.ToString(), Is.EqualTo("eff-x:R eff-x:Leaf eff-x:After eff:R eff:Leaf eff:After"));
+            // Assert — a pass that rendered no row of the list says nothing here, so that reading is a sentinel
+            Assert.That(renderedTheRow ? log.ToString() : "the pass rendered no row of the list", Is.EqualTo(
+                "ins-x:Leaf ins:Leaf lay-x:Leaf ins-x:After ins:After lay-x:After lay:Leaf lay:After"
+                + " eff-x:Leaf eff-x:After eff:Leaf eff:After"));
         }
     }
 }
