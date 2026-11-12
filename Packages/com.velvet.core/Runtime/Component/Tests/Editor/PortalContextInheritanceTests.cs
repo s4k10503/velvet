@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// Covers both MOUNT-time inheritance and an ISOLATED re-render of a portal-hosted consumer (its own
     /// setState, without the host re-rendering), which reads the Providers around it as the host's output holds
     /// them then: a value the host's render changed after the mount, above the Portal, inside it, or around a Portal
-    /// a memo of the host's keeps. The VirtualList counterpart is exercised by VirtualListTests and
-    /// VirtualListRowScopeTests.
+    /// a memo of the host's keeps, and the value the host kept where a boundary aborted a render of it that patched the
+    /// Portal. The VirtualList counterpart is exercised by VirtualListTests and VirtualListRowScopeTests.
     /// </remarks>
     [TestFixture]
     internal sealed class PortalContextInheritanceTests
@@ -165,6 +165,47 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APortalPatchedInAHostRenderItsBoundaryAborted_When_TheChildReRendersAlone_Then_ItReadsTheValueTheHostKept()
+        {
+            // Arrange — a committed render changes the value; the next changes it again and patches the Portal, and the
+            // boundary after the Portal then aborts that render, so the host keeps the output of the committed one.
+            using var mounted = V.Mount(_root, V.Component(AbortablePortalHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+            s_setHostValue.Invoke("aborting");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_lastSeen = null;
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_lastSeen, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_APortalInAPortalPatchedInAHostRenderItsBoundaryAborted_When_TheInnerChildReRendersAlone_Then_ItReadsTheValueTheHostKept()
+        {
+            // Arrange — as for a single Portal, with the child's Portal inside another one.
+            s_innerPortalTarget = new VisualElement();
+            using var mounted = V.Mount(
+                _root, V.Component(AbortableNestedPortalHostRender, key: "host"), CaughtErrors.Unlogged);
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+            s_setHostValue.Invoke("aborting");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_lastSeen = null;
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_lastSeen, Is.EqualTo("second"));
+        }
+
+        [Test]
         public void Given_MotionContextAbovePortal_When_ChildReRendersInIsolation_Then_StillReadsActiveLabel()
         {
             // Arrange: a portal child Motion consumer that mounted under an enclosing Motion's active label.
@@ -287,6 +328,58 @@ namespace Velvet.Tests
             var (value, setValue) = Hooks.UseState("first");
             s_setHostValue = setValue;
             return V.Provider(ThemeContext, value, new VNode[] { V.Memoized(ConsumerPortal, Array.Empty<object>()) });
+        }
+
+        private static readonly Func<VisualElement, Action> s_refusingCleanup =
+            _ => () => throw new InvalidOperationException("ref cleanup refused");
+
+        // Takes its label's ref away once told to, and catches the cleanup that throws.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode CleanupRefusingBoundary(bool holdRef)
+        {
+            Hooks.UseFallback(_ => V.Label(name: "refused", text: "fallback"));
+            return V.Label(name: "held", refCallback: holdRef ? s_refusingCleanup : null);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode AbortablePortalHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(ThemeContext, value, new VNode[]
+            {
+                V.Div(name: "abortable", children: new VNode[]
+                {
+                    V.Portal("ctx-portal-target", children: new VNode[]
+                    {
+                        V.Component(RerenderConsumerRender, key: "consumer"),
+                    }),
+                    V.Component(CleanupRefusingBoundary, value != "aborting", key: "boundary"),
+                }),
+            });
+        }
+
+        private static VisualElement s_innerPortalTarget;
+
+        [Component(Compiler = false)]
+        private static VNode AbortableNestedPortalHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(ThemeContext, value, new VNode[]
+            {
+                V.Div(name: "abortable", children: new VNode[]
+                {
+                    V.Portal("ctx-portal-target", children: new VNode[]
+                    {
+                        V.Portal(s_innerPortalTarget, children: new VNode[]
+                        {
+                            V.Component(RerenderConsumerRender, key: "consumer"),
+                        }),
+                    }),
+                    V.Component(CleanupRefusingBoundary, value != "aborting", key: "boundary"),
+                }),
+            });
         }
 
         private static VNode ConsumerPortal()

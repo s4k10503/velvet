@@ -20,11 +20,14 @@ namespace Velvet.Tests
     /// rendered since that value changed; a row a render of the host mounts reads the value that render gave the
     /// Provider, a scroll having rendered a range before it; one inside a Provider of the row's own reads that
     /// Provider's value over one of the same context above the list, and so does one inside a Provider the host puts
-    /// around the list, as does a Portal's child a row holds. A component outside the enclosing Provider
+    /// around the list, as does a Portal's child a row holds — with the list behind a memo under a Provider in a Portal,
+    /// or in a Suspense's shown fallback, too — and after a render of the host that a boundary aborted, the row reads
+    /// the value the host kept. A component outside the enclosing Provider
     /// reads the context's default after a scroll has mounted rows under that Provider.</item>
     /// <item>A row that renders again on its own reads the value its enclosing Provider holds then, whether a render of
     /// the host gave the Provider that value or a memoized host has not rendered since, and so does a Portal's child a
-    /// row holds under such a memoized host.</item>
+    /// row holds under such a memoized host. A row reads its own row's Provider where every row's Provider holds one
+    /// shared body node.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -273,13 +276,138 @@ namespace Velvet.Tests
             return V.Provider(s_theme, theme, children: new VNode[] { V.Component(MemoizedPortalRowsHost, key: "host") });
         }
 
+        // The host's boundary, beside its list, takes the ref away from its label once flipped, in the render that also
+        // changes the value around the list.
         [Component(Compiler = false)]
-        private static VNode AbortingHostUnderAProviderBesideAReader()
+        private static VNode ProvidingListBesideABoundaryHost()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            var (flipped, setFlipped) = Hooks.UseState(false);
+            s_setFlipped = setFlipped;
+            return V.Provider(s_theme, flipped ? "flipped" : "kept", children: new VNode[]
+            {
+                V.Div(name: flipped ? "host-flipped" : "host-initial", children: new VNode[]
+                {
+                    V.VirtualList(
+                        items: new[] { "a", "b" },
+                        keySelector: item => item,
+                        itemHeight: 10f,
+                        renderer: Row,
+                        overscan: 0,
+                        key: "list"),
+                    V.Component(RefBoundary, !flipped, key: "boundary"),
+                }),
+            });
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<string, StateUpdater<int>> s_sharedBodyBumps = new();
+        private static VNode[] s_sharedRowBody;
+
+        // Every row's Provider holds the same body node.
+        private static VNode SharedBodyRow(string item) => V.Provider(s_theme, "item-" + item, children: s_sharedRowBody);
+
+        [Component(Compiler = false)]
+        private static VNode SharedBody()
+        {
+            var (count, bump) = Hooks.UseState(0);
+            var theme = Hooks.UseContext(s_theme);
+            s_sharedBodyBumps[theme] = bump;
+            return V.Label(name: "body-" + theme, text: theme + "#" + count);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SharedBodyListHost()
+            => V.VirtualList(
+                items: new[] { "a", "b" },
+                keySelector: item => item,
+                itemHeight: 10f,
+                renderer: SharedBodyRow,
+                overscan: 0);
+
+        // The row's Provider holds a Portal, which holds the body.
+        [Component(Compiler = false)]
+        private static VNode ProvidedPortalRowsHost()
+            => V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 10f,
+                renderer: item => V.Provider(s_theme, "portal-row-" + item, children: new VNode[]
+                {
+                    V.Portal(s_portalTarget, children: new VNode[] { V.Component(SharedBody) }),
+                }),
+                overscan: 0);
+
+        // The row's Provider holds an element, which holds the body.
+        [Component(Compiler = false)]
+        private static VNode FramedBodyListHost()
+            => V.VirtualList(
+                items: new[] { "a" },
+                keySelector: item => item,
+                itemHeight: 10f,
+                renderer: item => V.Provider(s_theme, "framed-" + item, children: new VNode[]
+                {
+                    V.Div(name: "frame", children: new VNode[] { V.Component(SharedBody) }),
+                }),
+                overscan: 0);
+
+        private static VNode ThemedRowsList()
+            => V.VirtualList(
+                items: new[] { "a", "b", "c" },
+                keySelector: item => item,
+                itemHeight: 10f,
+                renderer: Row,
+                overscan: 0);
+
+        private static VisualElement s_otherPortalTarget;
+
+        // The list sits in the second of two Portals, behind a memo whose dependencies never change, under a Provider the
+        // Portal holds.
+        [Component(Compiler = false)]
+        private static VNode PortalMemoListHost()
             => V.Div(children: new VNode[]
             {
-                V.Provider(s_theme, "light", children: new VNode[] { V.Component(ListBesideABoundaryHost, key: "host") }),
-                V.Component(OutsideReader, key: "outside"),
+                V.Portal(s_otherPortalTarget, children: new VNode[] { V.Label(text: "other") }),
+                V.Portal(s_portalTarget, children: new VNode[]
+                {
+                    V.Provider(s_theme, "list", children: new VNode[] { V.Memoized(ThemedRowsList, Array.Empty<object>()) }),
+                }),
             });
+
+        private static VelvetTaskCompletionSource<int> s_neverRead;
+
+        [Component(Compiler = false)]
+        private static VNode NeverReadyReader()
+        {
+            var value = Hooks.Use<int>(_ => s_neverRead.Task, 0);
+            return V.Label(text: "read " + value);
+        }
+
+        // The list is the fallback of a Suspense whose reader never resolves, with the context around the Suspense.
+        [Component(Compiler = false)]
+        private static VNode SuspenseFallbackListHost()
+            => V.Provider(s_theme, "list", children: new VNode[]
+            {
+                V.Suspense(fallback: ThemedRowsList(), children: new VNode[] { V.Component(NeverReadyReader, key: "reader") }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode ThemeRootAroundAPortalMemoListHost()
+            => V.Provider(s_theme, "light", children: new VNode[] { V.Component(PortalMemoListHost, key: "host") });
+
+        [Component(Compiler = false)]
+        private static VNode ThemeRootAroundASuspenseFallbackListHost()
+            => V.Provider(s_theme, "light", children: new VNode[] { V.Component(SuspenseFallbackListHost, key: "host") });
+
+        // A list the mount's root does not render, over the root as its host, with the context the test hands it.
+        private static FiberVirtualListController ListOutsideTheHostsOutput(
+            MountedTree mounted, ScrollView scrollView, Func<string, VNode> renderer)
+        {
+            var context = new ComponentContextStack();
+            context.Push(s_theme, "captured");
+            var node = V.VirtualList(
+                items: new[] { "a" }, keySelector: item => item, itemHeight: 10f, renderer: renderer, overscan: 0);
+            return new FiberVirtualListController(scrollView, node, mounted.Root.Reconciler, mounted.Root, context);
+        }
 
         private FiberVirtualListController Controller(MountedTree mounted)
             => mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
@@ -547,31 +675,156 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>("a")?.text, Is.EqualTo("list-2"));
         }
 
-        // GREEN_ON_BASE(characterization): the base's item scope pushes onto the context cursor only what it pops.
-        // What this pins is that a scope that does not find the list in its host's output leaves nothing behind either.
         [Test]
-        public void Given_AHostWhoseAbortedRenderPatchedItsList_When_AScrollRendersARange_Then_AComponentOutsideTheProviderStillReadsTheDefault()
+        public void Given_AHostWhoseAbortedRenderChangedTheValueAroundItsList_When_AScrollMountsARow_Then_TheRowReadsTheValueTheHostKept()
         {
-            // Arrange — the host's render patches the list and its boundary then aborts that render, so the host keeps
-            // the output it had, which holds the list's earlier node.
+            // Arrange — the host's render changes the value and patches the list, and its boundary then aborts that
+            // render, so the host keeps the output it had, which holds the list's earlier node.
             using var mounted = V.Mount(
-                _root, V.Component(AbortingHostUnderAProviderBesideAReader, key: "root"), CaughtErrors.Unlogged);
+                _root, V.Component(ProvidingListBesideABoundaryHost, key: "host"), CaughtErrors.Unlogged);
             s_setFlipped.Invoke(true);
             mounted.FlushStateForTest();
-            var keptList = (s_hostFiber?.PreviousTree?[0] as BaseElementNode)?.Children?[0];
+            var keptProvider = s_hostFiber?.PreviousTree?[0] as ContextProviderNode;
+            var keptList = (keptProvider?.Children?[0] as BaseElementNode)?.Children?[0];
             var listNode = typeof(FiberVirtualListController)
                 .GetField("_node", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .GetValue(Controller(mounted));
-            var arranged = s_fallbackShown && !ReferenceEquals(keptList, listNode);
+            var arranged = s_fallbackShown && keptList != null && !ReferenceEquals(keptList, listNode);
 
-            // Act — a scroll, then a render of the reader alone.
-            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 20f);
-            s_renderOutside.Invoke(previous => previous + 1);
-            mounted.FlushStateForTest();
+            // Act
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
 
             // Assert — null where the boundary caught nothing or the list's node was still the one the host kept, which
             // the label's text never equals.
-            Assert.That(arranged ? _root.Q<Label>("outside")?.text : null, Is.EqualTo("none"));
+            Assert.That(arranged ? _root.Q<Label>("a")?.text : null, Is.EqualTo("kept"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base walks the row's own captured node for the row's own body.
+        // What this pins is that a row whose body node the other rows share reads its own row's Provider.
+        [Test]
+        public void Given_RowsWhoseProvidersShareOneBodyNode_When_TheSecondRowsBodyRendersAgainAlone_Then_ItReadsItsOwnRowsProvider()
+        {
+            // Arrange — a scroll mounts both rows.
+            s_sharedBodyBumps.Clear();
+            s_sharedRowBody = new VNode[] { V.Component(SharedBody) };
+            using var mounted = V.Mount(_root, V.Component(SharedBodyListHost, key: "host"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 20f);
+
+            // Act
+            s_sharedBodyBumps["item-b"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("body-item-b")?.text, Is.EqualTo("item-b#1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base walks the row's own captured node down to the body inside its element.
+        // What this pins is that a row is found from a component inside one of the row's elements.
+        [Test]
+        public void Given_ARowWhoseProviderHoldsAnElementAroundItsBody_When_TheBodyRendersAgainAlone_Then_ItReadsTheRowsProvider()
+        {
+            // Arrange — a scroll mounts the row.
+            s_sharedBodyBumps.Clear();
+            using var mounted = V.Mount(_root, V.Component(FramedBodyListHost, key: "host"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act
+            s_sharedBodyBumps["framed-a"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("body-framed-a")?.text, Is.EqualTo("framed-a#1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the row's Provider off the Portal's snapshot, taken inside the row.
+        // What this pins is that a walk through the list to the Portal goes through the row's Provider on its way.
+        [Test]
+        public void Given_APortalInsideARowsProvider_When_ThePortalsChildRendersAgainAlone_Then_ItReadsTheRowsProvider()
+        {
+            // Arrange — a scroll mounts the row, and its Portal's child after it.
+            s_sharedBodyBumps.Clear();
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(ProvidedPortalRowsHost, key: "host"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act
+            s_sharedBodyBumps["portal-row-a"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_portalTarget.Q<Label>("body-portal-row-a")?.text, Is.EqualTo("portal-row-a#1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a row's captured context on every render of the row alone.
+        // What this pins is that a row whose list no output of its host holds still reads it.
+        [Test]
+        public void Given_ARowOfAListItsHostDoesNotRender_When_TheRowRendersAgainAlone_Then_ItReadsTheContextTheListCaptured()
+        {
+            // Arrange
+            s_sharedBodyBumps.Clear();
+            using var mounted = V.Mount(_root, V.Label(text: "host"));
+            var scrollView = new ScrollView();
+            using var list = ListOutsideTheHostsOutput(mounted, scrollView, _ => V.Component(SharedBody));
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act
+            s_sharedBodyBumps["captured"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(scrollView.Q<Label>("body-captured")?.text, Is.EqualTo("captured#1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads a Portal child's captured context on every render of it alone.
+        // What this pins is that a Portal's child whose Portal no output of its declaring component holds still reads it.
+        [Test]
+        public void Given_APortalInARowOfAListItsHostDoesNotRender_When_ThePortalsChildRendersAgainAlone_Then_ItReadsTheContextThePortalCaptured()
+        {
+            // Arrange
+            s_sharedBodyBumps.Clear();
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Label(text: "host"));
+            using var list = ListOutsideTheHostsOutput(
+                mounted, new ScrollView(),
+                _ => V.Portal(s_portalTarget, children: new VNode[] { V.Component(SharedBody) }));
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act
+            s_sharedBodyBumps["captured"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_portalTarget.Q<Label>("body-captured")?.text, Is.EqualTo("captured#1"));
+        }
+
+        [Test]
+        public void Given_AListBehindAMemoUnderAProviderInAPortal_When_AScrollMountsARow_Then_TheRowReadsThatProvider()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            s_otherPortalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundAPortalMemoListHost, key: "root"));
+
+            // Act
+            mounted.Root.Reconciler.Context.VirtualListControllers[s_portalTarget.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Assert
+            Assert.That(s_portalTarget.Q<Label>("a")?.text, Is.EqualTo("list"));
+        }
+
+        [Test]
+        public void Given_AListInTheShownFallbackOfASuspenseUnderAProviderOfTheSameContextAsOneAboveTheHost_When_AScrollMountsARow_Then_TheRowReadsTheNearerProvider()
+        {
+            // Arrange
+            s_neverRead = new VelvetTaskCompletionSource<int>();
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundASuspenseFallbackListHost, key: "root"));
+
+            // Act
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Assert
+            Assert.That(_root.Q<Label>("a")?.text, Is.EqualTo("list"));
         }
     }
 }

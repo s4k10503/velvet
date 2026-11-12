@@ -60,7 +60,8 @@ namespace Velvet
         // nested VirtualLists).
         // outsidePass is whether the range opened its bracket (BeginRangeForController).
         object? BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode list, bool outsidePass);
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, FiberVirtualListController list,
+            bool outsidePass);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
         // DescendantNodes is THIS item's rendered vnode — what FiberContextSpine falls back on to rebuild a Provider

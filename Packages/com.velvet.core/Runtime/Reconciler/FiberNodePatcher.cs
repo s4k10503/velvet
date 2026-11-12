@@ -1241,7 +1241,7 @@ namespace Velvet
             {
                 return;
             }
-            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children, describe);
+            PatchPortalChildrenPre(ref patch, target, newNode, oldNode.Children, newNode.Children, describe);
         }
 
         // Resolves the target VisualElement a Portal patch reconciles its slot range against, across the
@@ -1402,14 +1402,15 @@ namespace Velvet
         // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
         // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
         private void StampNewTopLevelChildren(
-            ComponentFiber declaringFiber, HashSet<ComponentFiber> childFibersBefore, VNode?[]? descendantNodes)
+            ComponentFiber declaringFiber, HashSet<ComponentFiber> childFibersBefore, VNode?[]? descendantNodes,
+            VisualElement placeholder)
         {
             DetachedMountContext? detached = null;
             for (var f = declaringFiber.Child; f != null; f = f.Sibling)
             {
                 if (childFibersBefore.Contains(f)) continue;
                 detached ??= new DetachedMountContext(_ctx.ComponentContextStack.SnapshotTops(),
-                    descendantNodes, declaringFiber, declaringFiber);
+                    descendantNodes, declaringFiber, placeholder, logicalParent: declaringFiber);
                 f.DetachedMountContext = detached;
             }
         }
@@ -1462,8 +1463,8 @@ namespace Velvet
                     newNode.FocusOrder, _ctx);
             }
 
-            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
-                "world-space");
+            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, newNode, oldNode.Children,
+                newNode.Children, "world-space");
         }
 
         // The shared slot-range child patch for every portal flavor (registry, held element, layer,
@@ -1471,7 +1472,7 @@ namespace Velvet
         // ClosePortalRange shifts the downstream ranges on the same target by the growth delta. describe names the
         // target in diagnostics only.
         private void PatchPortalChildrenPre(
-            ref SelfPatch patch, VisualElement target, VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw,
+            ref SelfPatch patch, VisualElement target, VNode newNode, VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw,
             string describe)
         {
             var placeholder = patch.Element;
@@ -1493,7 +1494,7 @@ namespace Velvet
                 ? Array.Empty<VNode>()
                 : oldChildrenRaw ?? Array.Empty<VNode>();
             patch.NewChildren = newChildrenRaw ?? Array.Empty<VNode>();
-            patch.Portal.PrevState = prevState;
+            patch.Portal.PrevState = prevState with { Node = newNode, PreviousNode = prevState.Node };
             patch.Portal.StampedChildren = newChildrenRaw;
         }
 
@@ -1546,7 +1547,8 @@ namespace Velvet
                 }
                 if (mounted && portal.DeclaringFiber != null)
                 {
-                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildFibersBefore!, portal.StampedChildren);
+                    StampNewTopLevelChildren(
+                        portal.DeclaringFiber, portal.ChildFibersBefore!, portal.StampedChildren, placeholder);
                 }
             }
             finally

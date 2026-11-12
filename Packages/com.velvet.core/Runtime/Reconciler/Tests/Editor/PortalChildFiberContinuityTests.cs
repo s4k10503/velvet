@@ -709,7 +709,10 @@ namespace Velvet.Tests
         }
 
         // The sibling is an ordinary direct child fiber of the same declaring fiber the deferred mount
-        // anchors this portal's children on, and the portal's position is outside the Provider around it.
+        // anchors this portal's children on, so the mount's own "which of these did I just create" diff is
+        // the only thing keeping the portal's DetachedMountContext off it. Carrying that stamp would send
+        // the sibling's isolated re-render down the spine's detached arm, which reads the context at the
+        // portal's position — above the Provider written below it.
         [Component]
         private static VNode PortalAndProviderHost()
             => V.Div(name: "scope-host", children: new VNode?[]
@@ -718,7 +721,11 @@ namespace Velvet.Tests
                 V.Provider(ScopeContext, "inside", new VNode[] { V.Component(ContextReadingSibling, key: "s") }),
             });
 
-        // GREEN_ON_BASE(characterization): the base reads the Provider around the sibling here.
+        // GREEN_ON_BASE(characterization): the base anchors a drained portal child on the reconcile root,
+        // where this declaring fiber's other children are not, so its stamp cannot reach them and the case
+        // is green there for want of the anchor rather than by the diff this pins. The anchor being the
+        // declaring fiber is what makes that diff load-bearing, and removing either half of it — the
+        // before-set add, or the skip that reads it — leaves every other case in this fixture green.
         [Test]
         public void Given_APortalBesideAContextConsumingSibling_When_TheSiblingReRendersAlone_Then_ItStillReadsTheProviderAroundIt()
         {
@@ -738,6 +745,48 @@ namespace Velvet.Tests
             Assert.That(
                 (s_contextSeen, Names(container.Q<VisualElement>("scope-host"))),
                 Is.EqualTo(("inside", "|sibling-1")));
+        }
+
+        private static StateUpdater<bool> s_setSiblingShown;
+
+        // The sibling arrives in a render that also patches the portal, ahead of it, so the patch's own "which of
+        // these did I just create" diff is what keeps the portal's DetachedMountContext off it, the mount's having
+        // run before the sibling existed.
+        [Component(Compiler = false)]
+        private static VNode PortalAfterALateSiblingHost()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_setSiblingShown = setShown;
+            return V.Div(name: "late-host", children: new VNode?[]
+            {
+                shown
+                    ? V.Provider(ScopeContext, "inside", new VNode[] { V.Component(ContextReadingSibling, key: "s") })
+                    : null,
+                V.Portal("continuity-target", children: new VNode?[] { V.Component(PlainPortalChild) }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a patched portal's stamp off a sibling the patch did not create.
+        // Removing either half of that diff in FiberNodePatcher — the before-set add, or the skip that reads it — is
+        // what this pins.
+        [Test]
+        public void Given_ASiblingThatArrivesInARenderPatchingAPortal_When_TheSiblingReRendersAlone_Then_ItStillReadsTheProviderAroundIt()
+        {
+            // Arrange
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            _mounted = V.Mount(container, V.Component(PortalAfterALateSiblingHost, key: "host"));
+            s_setSiblingShown.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act
+            s_setSiblingTick.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert — null where the sibling did not render again, since what it read before is "inside" too.
+            var rerendered = container.Q<VisualElement>("sibling-1") != null;
+            Assert.That(rerendered ? s_contextSeen : null, Is.EqualTo("inside"));
         }
 
         private static string s_deepSeen;

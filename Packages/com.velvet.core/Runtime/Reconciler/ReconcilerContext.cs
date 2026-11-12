@@ -28,9 +28,13 @@ namespace Velvet
     // have left the target — is addressed by, which the shifts in PortalSlotTracker keep.
     // ChildrenPending is set where the drain of a mount suspended: the Portal's node stands in the tree its
     // owner committed with children that nothing mounted, so the patch that follows diffs them from nothing.
+    // Node is the node the Portal last mounted or patched from and PreviousNode the one before it: a render of the
+    // declaring component that is discarded after patching the Portal leaves the committed node in PreviousNode.
+    // FiberContextSpine finds the Portal in its declaring component's output by them.
     internal readonly record struct PortalSlotInfo(
         VisualElement? Target, int SlotStart, int SlotLength,
         string? TargetId = null, ComponentFiber? DeclaringFiber = null,
+        VNode? Node = null, VNode? PreviousNode = null,
         VisualElement? First = null, VisualElement? Last = null, bool ChildrenPending = false);
 
     // ReconcilerContext.PortalState: the ranges as Portals recorded them, read back as their rows place them.
@@ -184,14 +188,18 @@ namespace Velvet
     // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
     // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
     // walk is needed). The snapshot and DescendantNodes are what the mount saw, and a later patch leaves an
-    // existing child's as they were, so FiberContextSpine walks the anchor's current output instead and reads the
-    // two only where that walk does not find the node the child last rendered from.
+    // existing child's as they were, so FiberContextSpine walks the anchor's current output to the mount's host
+    // instead, Placeholder's Portal or List's list, and reads the two only where that walk does not find the host.
     internal sealed class DetachedMountContext
     {
         internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
         internal readonly VNode?[]? DescendantNodes;
         internal readonly ComponentFiber Anchor;
         internal readonly bool RootProviderChildrenStartAtWalkRoot;
+        // The Portal or world-space panel whose children the fiber is among, and the list whose rows it is among;
+        // one is set.
+        internal readonly VisualElement? Placeholder;
+        internal readonly FiberVirtualListController? List;
         // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
         // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
         // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
@@ -201,6 +209,7 @@ namespace Velvet
 
         internal DetachedMountContext(
             List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
+            VisualElement? placeholder = null, FiberVirtualListController? list = null,
             ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
         {
             EnclosingSnapshot = MotionContext.OutlivingPass(enclosingSnapshot);
@@ -208,6 +217,8 @@ namespace Velvet
             Anchor = anchor;
             LogicalParent = logicalParent;
             RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
+            Placeholder = placeholder;
+            List = list;
         }
     }
 

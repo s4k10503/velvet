@@ -436,6 +436,38 @@ namespace Velvet.Tests
             Assert.That(target.Q<VisualElement>("pm").ClassListContains("opacity-100"), Is.True);
         }
 
+        [Component(Compiler = false)]
+        private static VNode PresenceAroundAListHost()
+            => V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
+            {
+                V.Div(key: "a", children: new VNode[]
+                {
+                    V.VirtualList(
+                        items: new[] { "row" },
+                        keySelector: item => item,
+                        itemHeight: 10f,
+                        renderer: item => V.Motion(key: "lm", name: "lm", variants: s_fade, initial: "hidden",
+                            animate: "visible", transition: s_child),
+                        overscan: 0),
+                }),
+            });
+
+        // GREEN_ON_BASE(characterization): the base's item scope puts the snapshot under a list's rows outside a pass.
+        // What this pins is that the context a scroll's rows read keeps the presence's mount gate the snapshot carries.
+        [Test]
+        public void Given_APresenceChildMountedUnderInitialFalse_When_AVirtualListInsideItMountsAMotionRow_Then_ThatMotionDoesNotEnter()
+        {
+            // Arrange — the list renders its rows once a range update asks for them, after the presence's first render.
+            using var mounted = V.Mount(Root, V.Component(PresenceAroundAListHost, key: "host"));
+
+            // Act
+            mounted.Root.Reconciler.Context.VirtualListControllers[Root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("lm").ClassListContains("opacity-100"), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): a presence's initial: false already left alone a Motion mounting
         // outside it.
         [Test]

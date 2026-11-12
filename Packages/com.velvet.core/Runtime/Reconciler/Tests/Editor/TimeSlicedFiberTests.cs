@@ -1356,8 +1356,9 @@ namespace Velvet.Tests
         private static TransitionStarter s_listParkStart;
         private static ComponentFiber s_listParkFiber;
 
-        // Keyed Divs ahead of the list, so a transition render under the tiny budget parks before the list's own Div.
-        [Component]
+        // Keyed Divs ahead of the list, so a transition render under the tiny budget parks before the list's own Div,
+        // and a memo whose dependencies never change, so every render's output holds the list's one node.
+        [Component(Compiler = false)]
         private static VNode ParkingHostOfAVirtualList()
         {
             var (gen, setGen) = Hooks.UseState(0);
@@ -1372,21 +1373,21 @@ namespace Velvet.Tests
             }
             children[ParkRowCount - 1] = V.Div(key: "list-cell", children: new VNode?[]
             {
-                V.Provider(RowCtx, $"g{gen}", new VNode[]
-                {
-                    V.VirtualList(
-                        items: new[] { 100, 101 },
-                        keySelector: item => "v" + item,
-                        itemHeight: 10f,
-                        renderer: item => V.Component(ParkRowBody, item, key: "v" + item),
-                        overscan: 0),
-                }),
+                V.Provider(RowCtx, $"g{gen}", new VNode[] { V.Memoized(ParkedRowsList, Array.Empty<object>()) }),
             });
             return V.Fragment(children: children);
         }
 
+        private static VNode ParkedRowsList()
+            => V.VirtualList(
+                items: new[] { 100, 101 },
+                keySelector: item => "v" + item,
+                itemHeight: 10f,
+                renderer: item => V.Component(ParkRowBody, item, key: "v" + item),
+                overscan: 0);
+
         [Test]
-        public void Given_AParkedRenderThatHasNotReachedAVirtualList_When_ARowOfTheListReRendersAlone_Then_ItReadsTheProviderTheHostLastCommitted()
+        public void Given_AParkedRenderReusingAVirtualListItHasNotReached_When_ARowOfTheListReRendersAlone_Then_ItReadsTheProviderTheHostLastCommitted()
         {
             // Arrange — a scroll mounts the rows; a committed render changes the value around the list; a transition
             // render that changes it again parks before it reaches the list's Div.

@@ -62,9 +62,24 @@ namespace Velvet
         private readonly Dictionary<int, (VNode node, VisualElement element)> _oldNodesByItemIndex = new();
         private readonly HashSet<string> _reusedKeys = new();
 
-        // What FiberContextSpine reads to walk to a row through the output that holds this list.
+        // What FiberContextSpine reads to walk to a row through the output that holds this list. PreviousNode is the
+        // node Update last replaced, which a render of the host discarded after patching the list leaves in the
+        // output the host kept.
         internal VirtualListNode Node => _node;
-        internal VNode[] RenderedRows => _renderedNodes;
+        internal VirtualListNode? PreviousNode { get; private set; }
+        internal VisualElement ScrollView => _scrollView;
+
+        // The node of the rendered row whose element is or holds element, or null where no rendered row does.
+        internal VNode? RowHolding(VisualElement? element)
+        {
+            var index = 0;
+            foreach (var row in _renderedElements)
+            {
+                if (row != null && (ReferenceEquals(row, element) || row.Contains(element))) return _renderedNodes[index];
+                index++;
+            }
+            return null;
+        }
 
         public FiberVirtualListController(
             ScrollView scrollView,
@@ -125,6 +140,7 @@ namespace Velvet
             }
 
             var previousRef = _node.ListRef;
+            PreviousNode = _node;
             _node = newNode ?? throw new ArgumentNullException(nameof(newNode));
             // A ref the list no longer names lets go of the handle, as React detaches a replaced ref.
             ReleaseRef(previousRef);
@@ -416,7 +432,7 @@ namespace Velvet
             // Render the items under the context that encloses the V.VirtualList: the scope parents new item
             // fibers under the host (so they share its context) and puts that context on the cursor for the item
             // bodies (Reconciler.BeginDetachedItemScope says from where), then stamps the new fibers.
-            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, _node, outsidePass);
+            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, this, outsidePass);
             try
             {
                 for (var i = 0; i < newCount; i++)

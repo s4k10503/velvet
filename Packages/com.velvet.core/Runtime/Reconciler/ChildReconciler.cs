@@ -515,12 +515,12 @@ namespace Velvet
                     }
                     _parkSetAside = setAside;
                 }
-                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
+                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent, placeholder);
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent,
-                    ChildrenPending: mountSuspended);
+                    ChildrenPending: mountSuspended, Node: node);
                 _ctx.PortalState.Anchor(placeholder);
                 suspended |= mountSuspended;
                 HideMountUnderHiddenSuspense(placeholder, resolvedTarget, slotStart, slotLength, declaringFiber);
@@ -594,14 +594,16 @@ namespace Velvet
         // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
         private static void StampDrainedChildren(
             ComponentFiber? anchor, HashSet<ComponentFiber>? before,
-            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
+            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent,
+            VisualElement placeholder)
         {
             if (anchor == null) return;
             DetachedMountContext? detachedContext = null;
             for (var f = anchor.Child; f != null; f = f.Sibling)
             {
                 if (before!.Contains(f)) continue;
-                detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
+                detachedContext ??= new DetachedMountContext(
+                    contextSnapshot, children, anchor, placeholder, logicalParent: logicalParent);
                 f.DetachedMountContext = detachedContext;
             }
         }

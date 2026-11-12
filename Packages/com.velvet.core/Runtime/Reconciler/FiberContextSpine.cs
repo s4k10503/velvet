@@ -62,29 +62,27 @@ namespace Velvet
             // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
             // node instead, where OwnOutput says that node can be compared. Two occurrences a
             // declaring body builds from one shared node instance are one node, so those stay
-            // unseparated and the walk still takes the first. A walk by reference is the exception for
-            // PortalScope, which TargetPortalScope owns there.
+            // unseparated and the walk still takes the first. A walk by reference sets the two itself: PortalScope to
+            // the Portal whose children it is in, which is what a memo or a Suspense there was written under, and
+            // Container to the element its target placed (a Portal's placeholder or a list's scroll view), which a
+            // Suspense's container, a Portal's target and a list's row must hold for the walk to go through them.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
 
-            // The array being walked where it is Ancestor's own output, as FiberContextSpine.OwnOutput picks it. Null
-            // for a detached mount's captured DescendantNodes, which is
+            // The array being walked where it is Ancestor's own output: its ReconcilingTree where it has one, else
+            // its PreviousTree. Null for a detached mount's captured DescendantNodes, which is
             // stamped onto a fiber only on the drain that created it — so after the declaring body renders again
             // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
-            // longer names. Null for a walk by reference too, which matches no node by registry key.
+            // longer names.
             internal VNode?[]? OwnOutput { get; init; }
             // One per Push, cleared at each edge. An element's children are reconciled by a new walk,
             // so PushScope starts their occurrence count over where that walk's claim does.
             internal InlineKeyClaims Claims { get; init; }
-            // The node a walk finds by reference instead of by registry key. Such a walk also descends the children
-            // of a Portal, a world-space panel and a VirtualList, which a keyed walk skips, since the node can sit
-            // inside one of them.
+            // The node of a Portal, a world-space panel or a VirtualList that a walk finds by reference instead of a
+            // spine child by registry key. Such a walk also goes through the Portals and lists on its way, which a
+            // keyed walk skips, since the node can sit inside one of them.
             internal VNode? Target { get; init; }
-            // The Portal scope of Target's own registration key. A walk by reference starts with no PortalScope,
-            // which is what the anchor's own output was written under, gives a Portal's children this one, and gives
-            // a VirtualList's rows none again, since the item scope pushes the host.
-            internal VisualElement? TargetPortalScope { get; init; }
-            // Read by a walk by reference to find a VirtualList's controller from its node.
+            internal Dictionary<VisualElement, PortalSlotInfo> Portals { get; init; }
             internal Dictionary<VisualElement, FiberVirtualListController> Controllers { get; init; }
         }
 
@@ -119,7 +117,14 @@ namespace Velvet
         // returns a handle whose Unwind pops them in reverse. A no-op (empty handle) when
         // the fiber has no reconciler / no parent (a root re-render needs no reconstruction — it pushes
         // its own Providers during its own reconcile).
-        internal static FiberContextSpine Push(ComponentFiber target)
+        internal static FiberContextSpine Push(ComponentFiber target) => Push(target, around: null);
+
+        // Pushes anchor's spine and then the Providers that anchor's output puts around list, where that output holds
+        // the list's node.
+        internal static FiberContextSpine PushAround(ComponentFiber anchor, FiberVirtualListController list)
+            => Push(anchor, list);
+
+        private static FiberContextSpine Push(ComponentFiber target, FiberVirtualListController? around)
         {
             var ctx = target.Reconciler?.Context;
             if (ctx == null || target.Parent == null) return default;
@@ -160,20 +165,17 @@ namespace Velvet
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
                 // `ancestor`'s output hides this child behind a wrapper-emitting leaf the keyed
                 // descent skips (see the default arm of PushEnclosingProvidersForNode, which is where both
-                // kinds of host land). The walk to the node the child last rendered from descends those hosts.
+                // kinds of host land). PushAroundDetachedHost walks to the host instead. Where `ancestor`'s output
+                // holds no node of the host, the context captured where the detached mount ran is pushed as the
+                // base, then — when descendant VNodes were captured — those are walked to recover any Provider
+                // placed directly inside the subtree above this child. Deeper spine edges (this child -> target)
+                // then push the in-subtree Providers normally on top.
+                // Unwind is balanced per context key regardless of push origin (Pop discards the top), so the
+                // raw base pushes here coexist correctly with the Provider pushes the other edges add.
                 var detached = child.DetachedMountContext;
                 if (detached != null)
                 {
-                    var sourceNode = child.SourceNode;
-                    if (sourceNode != null && PushAroundNode(ancestor, child, sourceNode, in shared))
-                    {
-                        continue;
-                    }
-                    // Where that walk does not find the node, the context captured where the detached mount
-                    // ran is pushed as the base, then — when descendant VNodes were captured — those are walked to
-                    // recover any Provider placed directly inside the subtree above this child. Unwind is balanced
-                    // per context key regardless of push origin (Pop discards the top), so the raw base pushes here
-                    // coexist with the Provider pushes the other edges add.
+                    if (PushAroundDetachedHost(ancestor, child, detached, in shared)) continue;
                     var snapshot = detached.EnclosingSnapshot;
                     if (snapshot != null)
                     {
@@ -234,20 +236,8 @@ namespace Velvet
                 PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
             }
 
+            if (around != null) PushAroundList(target, around, in shared);
             return new FiberContextSpine(stack, pushed, rawPushedKeys);
-        }
-
-        // Pushes anchor's spine and then the Providers that anchor's output puts around node. found is false where
-        // PushAroundNode does not find node, and then nothing is left pushed.
-        internal static FiberContextSpine PushAround(ComponentFiber anchor, VNode node, out bool found)
-        {
-            var spine = Push(anchor);
-            var ctx = anchor.Reconciler?.Context;
-            var pushed = spine._pushed ?? new List<ContextProviderNode>();
-            found = ctx != null && PushAroundNode(anchor, null, node, Shared(ctx, pushed, new InlineKeyClaims()));
-            if (found) return new FiberContextSpine(ctx!.ComponentContextStack, pushed, spine._rawPushedKeys);
-            spine.Unwind();
-            return default;
         }
 
         // The members a walk takes from the spine rather than from the edge it walks.
@@ -259,39 +249,84 @@ namespace Velvet
                 Registry = ctx.ComponentRegistry,
                 MemoCache = ctx.FiberMemoCache,
                 Claims = claims,
+                Portals = ctx.PortalState.Stored,
                 Controllers = ctx.VirtualListControllers,
             };
 
-        // The output of ancestor's that a walk to child reads. Where child was last reached from the baseline of
+        // The output of ancestor's that a keyed walk to child reads. Where child was last reached from the baseline of
         // ancestor's parked pass, that pass has not reached child yet, and child's rows are still that baseline's;
         // otherwise it is the output ancestor is reconciling, or else the one it kept last.
-        private static VNode?[]? OwnOutput(ComponentFiber ancestor, ComponentFiber? child)
+        private static VNode?[]? OwnOutput(ComponentFiber ancestor, ComponentFiber child)
         {
             var parked = ancestor.PendingOldTree;
-            return parked != null && ReferenceEquals(child?.SourceTree, parked)
+            return parked != null && ReferenceEquals(child.SourceTree, parked)
                 ? parked
                 : ancestor.ReconcilingTree ?? ancestor.PreviousTree;
         }
 
-        // Pushes the Providers ancestor's output puts around node, found by reference. A parked pass's output holds a
-        // node the pass has not reached only where it reuses the node, so the baseline that pass diffs from is searched
-        // as well. False, with nothing pushed, where neither holds it.
-        private static bool PushAroundNode(
-            ComponentFiber ancestor, ComponentFiber? spineChild, VNode node, in SpineWalk shared)
+        // A detached child is among the current children of its Portal or in one of its list's current rows. The walk
+        // goes to that host's node in ancestor's output by reference, then by registry key to the child in what the
+        // host holds now, as the walk over a mount's captured nodes does. False, with nothing pushed, where ancestor's
+        // output holds neither the host's node nor the one that node replaced.
+        private static bool PushAroundDetachedHost(
+            ComponentFiber ancestor, ComponentFiber child, DetachedMountContext detached, in SpineWalk shared)
         {
-            shared.Registry.TryGetInlineKey(spineChild!, out _, out _, out var scope, out var container);
-            var walk = shared with
+            if (detached.List is { } list)
             {
-                Ancestor = ancestor,
-                Container = container,
-                Target = node,
-                TargetPortalScope = scope,
-            };
-            return PushAroundNodeIn(OwnOutput(ancestor, spineChild), in walk)
-                || PushAroundNodeIn(ancestor.PendingOldTree, in walk);
+                if (!PushAroundList(ancestor, list, in shared)) return false;
+                var withinRow = KeyedWithinHost(ancestor, child, in shared);
+                // A row is one rendered node rather than a reconciled child array.
+                PushEnclosingProvidersForNode(
+                    list.RowHolding(child.MountPoint), 0, FiberKeying.WalkRoot, in withinRow,
+                    rootProviderChildrenStartAtWalkRoot: true);
+                return true;
+            }
+            // A detached child's stamp names its list or its Portal.
+            var placeholder = detached.Placeholder!;
+            shared.Portals.TryGetValue(placeholder, out var portal);
+            var host = PushAroundHostNode(ancestor, portal.Node, placeholder, in shared) ? portal.Node
+                : PushAroundHostNode(ancestor, portal.PreviousNode, placeholder, in shared) ? portal.PreviousNode
+                : null;
+            if (host == null) return false;
+            var withinPortal = KeyedWithinHost(ancestor, child, in shared);
+            PushEnclosingProviders(
+                FiberKeying.UnwrapLoneFragment(ChildrenOf(host)), FiberKeying.WalkRoot, in withinPortal);
+            return true;
         }
 
-        private static bool PushAroundNodeIn(VNode?[]? tree, in SpineWalk walk)
+        private static VNode?[] ChildrenOf(VNode host)
+            => (host as PortalNode)?.Children ?? (host as WorldSpaceNode)?.Children ?? System.Array.Empty<VNode?>();
+
+        private static bool PushAroundList(ComponentFiber ancestor, FiberVirtualListController list, in SpineWalk shared)
+            => PushAroundHostNode(ancestor, list.Node, list.ScrollView, in shared)
+                || PushAroundHostNode(ancestor, list.PreviousNode, list.ScrollView, in shared);
+
+        private static SpineWalk KeyedWithinHost(ComponentFiber ancestor, ComponentFiber child, in SpineWalk shared)
+        {
+            shared.Registry.TryGetInlineKey(child, out _, out _, out var scope, out var container);
+            return shared with
+            {
+                Ancestor = ancestor,
+                SpineChild = child,
+                IsInlineSpineChild = true,
+                PortalScope = scope,
+                Container = container,
+            };
+        }
+
+        // Pushes the Providers ancestor's output puts around node, found by reference, and leaves them pushed where it
+        // is found; element is what node placed. The baseline of ancestor's parked pass is searched first: the parked
+        // output holds a node of the baseline's only where it reuses the node, and the baseline's Providers are the
+        // committed ones.
+        private static bool PushAroundHostNode(
+            ComponentFiber ancestor, VNode? node, VisualElement element, in SpineWalk shared)
+        {
+            var walk = shared with { Ancestor = ancestor, Container = element, Target = node };
+            return PushAroundHostNodeIn(ancestor.PendingOldTree, in walk)
+                || PushAroundHostNodeIn(ancestor.ReconcilingTree ?? ancestor.PreviousTree, in walk);
+        }
+
+        private static bool PushAroundHostNodeIn(VNode?[]? tree, in SpineWalk walk)
             => tree != null && PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
 
         // Pops every Provider this handle pushed, restoring the cursor. Safe on a default handle.
@@ -399,46 +434,55 @@ namespace Velvet
                 default:
                     // A keyed walk skips a wrapper-emitting leaf (Portal / VirtualList). A spine child mounted inside
                     // one is stamped with a DetachedMountContext by the reconcile that mounted it, and Push walks to
-                    // a stamped child by reference instead.
-                    return walk.Target != null && PushDetachedHostChildren(node, in walk);
+                    // the leaf by reference instead.
+                    return walk.Target != null && PushThroughDetachedHost(node, in walk);
             }
         }
 
-        // A Portal and a world-space panel reconcile their children in a walk of their own, and a VirtualList each of
-        // the rows it rendered last, which are read off its controller.
-        private static bool PushDetachedHostChildren(VNode node, in SpineWalk walk)
+        // A walk by reference goes through a Portal or a world-space panel whose node, or the node it replaced, a pass
+        // last mounted or patched, under that Portal's scope, and through the row that holds the element its target
+        // placed of a list whose node, or the node it replaced, a pass last created or patched, under no Portal scope
+        // (ReconcilerContext.PortalChildKeyScope says why a list's item scope drops it).
+        private static bool PushThroughDetachedHost(VNode node, in SpineWalk walk)
         {
             switch (node)
             {
-                case PortalNode { Children: { } children }:
-                    return PushInFreshScope(
-                        FiberKeying.UnwrapLoneFragment(children), FiberKeying.WalkRoot,
-                        walk with { PortalScope = walk.TargetPortalScope });
-                case WorldSpaceNode { Children: { } children }:
-                    return PushInFreshScope(
-                        FiberKeying.UnwrapLoneFragment(children), FiberKeying.WalkRoot,
-                        walk with { PortalScope = walk.TargetPortalScope });
+                case PortalNode:
+                case WorldSpaceNode:
+                    var placeholder = PlaceholderOf(node, walk.Portals);
+                    return placeholder != null && PushInFreshScope(
+                        FiberKeying.UnwrapLoneFragment(ChildrenOf(node)), FiberKeying.WalkRoot,
+                        walk with { PortalScope = placeholder });
                 case VirtualListNode list:
-                    return PushVirtualListRows(list, walk with { PortalScope = null });
+                    var row = RowOf(list, walk.Controllers, walk.Container);
+                    return row != null && PushEnclosingProvidersForNode(
+                        row, 0, FiberKeying.WalkRoot, walk with { PortalScope = null },
+                        rootProviderChildrenStartAtWalkRoot: true);
                 default:
                     return false;
             }
         }
 
-        // The controller is the one whose node is this instance, the one its list was last created or patched from, so a
-        // list node no pass has reached the list from finds none.
-        private static bool PushVirtualListRows(VirtualListNode list, in SpineWalk walk)
+        private static VisualElement? PlaceholderOf(VNode node, Dictionary<VisualElement, PortalSlotInfo> portals)
         {
-            foreach (var controller in walk.Controllers.Values)
+            foreach (var entry in portals)
             {
-                if (!ReferenceEquals(controller.Node, list)) continue;
-                foreach (var row in controller.RenderedRows)
+                if (ReferenceEquals(entry.Value.Node, node) || ReferenceEquals(entry.Value.PreviousNode, node)) return entry.Key;
+            }
+            return null;
+        }
+
+        private static VNode? RowOf(
+            VirtualListNode list, Dictionary<VisualElement, FiberVirtualListController> controllers, VisualElement? element)
+        {
+            foreach (var controller in controllers.Values)
+            {
+                if (ReferenceEquals(controller.Node, list) || ReferenceEquals(controller.PreviousNode, list))
                 {
-                    // One rendered node per row rather than a reconciled child array, as the item scope creates it.
-                    if (PushEnclosingProvidersForNode(row, 0, FiberKeying.WalkRoot, in walk, rootProviderChildrenStartAtWalkRoot: true)) return true;
+                    return controller.RowHolding(element);
                 }
             }
-            return false;
+            return null;
         }
 
         private static bool PushProviderSubtree(
@@ -512,8 +556,9 @@ namespace Velvet
         {
             var innerPosition = FiberKeying.MemoInner(position, memo.Key, nodeIndex);
             // A memo this walk has to find encloses the spine child at the spine child's own level, so it was
-            // written with Ancestor current and under the spine child's PortalScope. One position can hold an
-            // entry for each of several containers, and nothing here says which container this is.
+            // written with Ancestor current and under the spine child's PortalScope, or in a walk by reference, the
+            // Portal scope of where the walk is. One position can hold an entry for each of several containers, and
+            // nothing here says which container this is.
             var memoPosition = FiberKeying.MemoAt(walk.Ancestor, walk.PortalScope, memo.Key, position, innerPosition);
             for (var candidate = 0; walk.MemoCache.PeekInner(memoPosition, memo, candidate) is { } inner; candidate++)
             {
