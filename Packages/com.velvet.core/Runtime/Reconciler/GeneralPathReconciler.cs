@@ -204,7 +204,7 @@ namespace Velvet
                     // too, where a suspended span keeps them for the retry.
                     if (exception is BoundaryCaughtSignal signal)
                     {
-                        DisposingFailedOutputOf(signal.Boundary, () => DisposeFibersMountedBy(oldFibers, newFibers));
+                        FiberErrorBoundary.TakingErrorsAsTheSwap(signal.Boundary, () => DisposeFibersMountedBy(oldFibers, newFibers));
                     }
                     throw;
                 }
@@ -1090,7 +1090,7 @@ namespace Velvet
                     // An existing component whose render threw into a boundary this walk is expanding is part of
                     // the failed output, which the boundary disposes with the fibers it added (ExpandBoundaryInline);
                     // one the old side never reached would otherwise stay registered and render, and throw, again.
-                    var failed = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
+                    var failed = _ctx.ComponentRegistry.TryGetNewSideFiberForInlineKey(
                         parentFiber, slotKey, identity, portalScope, walk.Parent);
                     if (failed != null) walk.NewFibers.Add(failed);
                     throw;
@@ -1100,7 +1100,7 @@ namespace Velvet
                     // The component whose render suspended stays in the new tree, which a Suspense above keeps
                     // offscreen with its state, as React keeps it: left out of the walk's fibers, the pass's orphan
                     // sweep would dispose it, and with it the read that is to reveal it.
-                    var suspended = _ctx.ComponentRegistry.TryGetFiberForInlineKey(
+                    var suspended = _ctx.ComponentRegistry.TryGetNewSideFiberForInlineKey(
                         parentFiber, slotKey, identity, portalScope, walk.Parent);
                     if (suspended != null) walk.NewFibers.Add(suspended);
                     // A Suspense keeping its committed primary needs every leaf of it committed to hide them, so the
@@ -1206,7 +1206,7 @@ namespace Velvet
                 RollbackCommitTo(commit, preCount, fibersBefore, walk.NewFibers);
                 _ctx.PendingCompletions.RemoveRange(
                     completionsBefore, _ctx.PendingCompletions.Count - completionsBefore);
-                DisposingFailedOutputOf(boundary, () => DropFibersTheFailedOutputAdded(walk, fibersBefore));
+                FiberErrorBoundary.TakingErrorsAsTheSwap(boundary, () => DropFibersTheFailedOutputAdded(walk, fibersBefore));
                 // A boundary above that caught an error out of the disposal has replaced this one with its fallback.
                 if (boundary.IsDisposed) return;
                 walk.RestoreComponentKeyClaims(claimsBefore);
@@ -1247,27 +1247,13 @@ namespace Velvet
             }
         }
 
-        // An error out of the disposal of what a boundary's failed output mounted is the boundary's own, taken as one
-        // out of its fallback swap is (FiberErrorBoundary.TakeDuringTheSwap), which records it rather than raising
-        // an abort that would release the elements around it.
-        private static void DisposingFailedOutputOf(ComponentFiber boundary, Action dispose)
-        {
-            boundary.IsShowingFallback = true;
-            try
-            {
-                dispose();
-            }
-            finally
-            {
-                boundary.IsShowingFallback = false;
-            }
-        }
-
         // A boundary's output mounted afresh in the walk, as React's forceUnmountCurrentAndReconcile mounts it after a
         // capture and FiberCommitWork.UnmountOwnRows outside a walk: no row and no component the walk's old side holds
-        // for the boundary is taken by tree. The rows go in the removal pass, the components are left to the orphan
-        // cleanups rather than handed back by their registration, and what the old output recorded against the boundary
-        // goes before tree reads it.
+        // for the boundary is taken by tree. The rows go in the removal pass. The components are mounted again rather
+        // than handed back by their registration, and keep their keys until the orphan cleanups of a walk that ends
+        // dispose them (ComponentRegistry hands each key on then), so a walk that unwinds leaves them the components
+        // their keys name, as React leaves current. What the old output recorded against the boundary goes before tree
+        // reads it, the Suspense records journaled for a walk that unwinds to put back (RestoreWhatTheSuspensesWrote).
         private void ExpandAfresh(
             InlineWalk walk,
             ComponentFiber boundary,
@@ -1276,10 +1262,21 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
-            ForgetOldRowsOf(walk.Commit!, boundary);
+            var commit = walk.Commit!;
+            ForgetOldRowsOf(commit, boundary);
+            foreach (var record in _ctx.SuspenseRecordsOf(boundary))
+            {
+                (commit.RecordsBefore ??= new()).Add(
+                    (boundary, record.Key.Container, record.Key.PortalScope, record.Key.Position, record.Value));
+            }
             _ctx.ForgetRecordsOf(boundary);
+            HashSet<ComponentFiber>? replaced = null;
+            foreach (var old in walk.OldFibers)
+            {
+                if (ReferenceEquals(old.Parent, boundary)) (replaced ??= new HashSet<ComponentFiber>()).Add(old);
+            }
             var enclosing = _ctx.FibersBeingReplaced;
-            _ctx.FibersBeingReplaced = _ctx.ComponentRegistry.InlineChildrenOf(boundary);
+            _ctx.FibersBeingReplaced = replaced;
             try
             {
                 ExpandFiberTree(walk, boundary, tree, component, position, nodeIndex);

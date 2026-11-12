@@ -458,7 +458,6 @@ namespace Velvet
             try
             {
                 if (deferReconcile) return null;
-                if (fiber.TakeMountsOutputAfresh()) oldTree = UnmountOwnRows(fiber, oldTree);
                 if (fiber.CatchesErrors) return ReconcileOwnRowsCatching(fiber, oldTree, newTree, frameBudgetMs);
                 ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
                 return null;
