@@ -888,20 +888,6 @@ namespace Velvet
         /// </summary>
         internal bool FallbackReplacedPreviousTree { get; set; }
 
-        // Set where a boundary takes an error out of its own fallback swap (FiberErrorBoundary.RecordCatch), whose
-        // render it asks for then mounts the boundary's output afresh, as React's next render of a boundary that
-        // captured reconciles through forceUnmountCurrentAndReconcile. That render takes it with TakeMountsOutputAfresh.
-        private bool _mountsOutputAfresh;
-
-        internal void MountOutputAfreshNextRender() => _mountsOutputAfresh = true;
-
-        internal bool TakeMountsOutputAfresh()
-        {
-            if (!_mountsOutputAfresh) return false;
-            _mountsOutputAfresh = false;
-            return true;
-        }
-
         /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
         internal VNode?[]? PendingOldTree { get; set; }
 
