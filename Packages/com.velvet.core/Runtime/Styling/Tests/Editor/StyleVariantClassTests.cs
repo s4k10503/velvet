@@ -572,5 +572,31 @@ namespace Velvet.Tests
         {
             Assert.That(StyleSupportsVariantClass.IsSupports("supports-[]:bg-mark"), Is.False);
         }
+
+        // GREEN_ON_BASE(characterization): the base reads a floor or ceiling on a default breakpoint outside a scope too.
+        [TestCase("max-md:p-2", "@max-md/*viewport")]
+        [TestCase("min-2xl:p-2", "@min-2xl/*viewport")]
+        public void Given_NoThemeScope_When_AFloorOrCeilingOnADefaultBreakpointIsParsed_Then_ItIsAQueryOnTheViewport(
+            string token, string expected)
+        {
+            // Act
+            StyleVariantClass.TryParse(token, out _, out var name, out _);
+
+            // Assert — null where a scope was open, which the query's spelling can never equal.
+            Assert.That(StyleThemeTokens.Current == null ? name : null, Is.EqualTo(expected));
+        }
+
+        // GREEN_ON_BASE(characterization): outside a scope the base reads none of these prefixes as a variant.
+        [TestCase("first:p-2")]
+        [TestCase("max-3xl:p-2")]
+        [TestCase("max-:p-2")]
+        public void Given_NoThemeScope_When_APrefixNamingNoDefaultBreakpointIsChecked_Then_ItIsNotAVariant(string token)
+        {
+            // Act
+            var variant = StyleVariantClass.IsVariant(token);
+
+            // Assert — null where a scope was open, which is not false.
+            Assert.That(StyleThemeTokens.Current == null ? variant : (bool?)null, Is.False);
+        }
     }
 }

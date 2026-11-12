@@ -1,3 +1,4 @@
+using System;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -8,6 +9,8 @@ namespace Velvet
     // tweens on.
     internal sealed class FiberFilterTransitionApplier
     {
+        private const string FilterTransitionClass = "transition-filter";
+
         private readonly ReconcilerContext _ctx;
 
         public FiberFilterTransitionApplier(ReconcilerContext ctx)
@@ -56,12 +59,9 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                var leaf = cls;
-                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
-                {
-                    leaf = payload;
-                }
-                if (leaf == "transition-filter")
+                // Same pass-over as StyleEaseCurve.NoteClasses: a peel leaves a suffix of its class.
+                if (cls != null && cls.EndsWith(FilterTransitionClass, StringComparison.Ordinal)
+                    && StyleVariantClass.LeafOf(cls) == FilterTransitionClass)
                 {
                     return true;
                 }
