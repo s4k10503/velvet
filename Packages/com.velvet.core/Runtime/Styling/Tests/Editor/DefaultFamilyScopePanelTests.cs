@@ -659,6 +659,45 @@ namespace Velvet.Tests
             return asset;
         }
 
+        // GREEN_ON_BASE(characterization): a legacy font the app writes inline on the mount root later shows there.
+        // The base writes nothing there; this pins that the definition written before is taken off for it.
+        [Test]
+        public void Given_ATreeMountedWithADefaultFamily_When_TheAppWritesALegacyFontInlineOnItsRoot_Then_ItsLabelDoesNotResolveTheDefaultFamily()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var mountRoot = NewRootElement();
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Act — written, then the update of the panel that reads the root again.
+            mountRoot.style.unityFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        [Test]
+        public void Given_ALegacyInlineFontOnARootADefaultStylesheetsRuleGivesADefinition_When_ATreeMounts_Then_ItsLabelResolvesTheDefaultFamily()
+        {
+            // Arrange — flagged the way a panel's theme is; its definition is drawn ahead of the legacy font.
+            VelvetFonts.DefaultFamily = "sans";
+            var theme = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ThemeSheet);
+            EngineMember.StyleSheetIsDefault.ResolveProperty()!.SetValue(theme, true);
+            _host.Root.styleSheets.Add(theme);
+            var mountRoot = NewRootElement();
+            mountRoot.AddToClassList("theme-defined-font");
+            mountRoot.style.unityFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.SameAs(_sans));
+        }
+
         [Test]
         public void Given_APortalRowWithRichTextOffDrawnInACopyOfTheDefaultFamily_When_TheDefaultFamilyChanges_Then_ItIsDrawnInACopyOfTheNewOne()
         {
