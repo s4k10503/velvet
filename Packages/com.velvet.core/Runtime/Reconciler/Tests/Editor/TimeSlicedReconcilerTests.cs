@@ -480,6 +480,44 @@ namespace Velvet.Tests
                 "A mixed add/remove/reorder park/resumes to the exact new order");
         }
 
+        // GREEN_ON_BASE(characterization): the base reports an old row whose slot a parked keyed pass finds gone.
+        // What this pins is that keyed Pass 2 asks that bound of each old row it takes; deleting the
+        // AssertDomIndexInvariant call in ProcessKeyedNode is what reddens it.
+        [Test]
+        public void Given_AKeyedReorderParkedPartWay_When_RowsAreTakenOutOfItsContainerBeforeItResumes_Then_ThePassReportsTheBrokenSlotInvariant()
+        {
+            // Arrange — a park after one node leaves most of Pass 2's old rows for the slices after the removal
+            var oldChildren = BuildKeyedLabelArray(50, "a");
+            var newChildren = ReversedKeyedLabelArray(50, "a");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+            _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
+            var parked = _reconciler.HasPendingWork;
+            while (_root.childCount > 1)
+            {
+                _root.RemoveAt(_root.childCount - 1);
+            }
+            var reports = 0;
+            void CountReport(string message, string stackTrace, UnityEngine.LogType type)
+            {
+                if (type == UnityEngine.LogType.Assert && message.Contains("DOM index invariant violated")) reports++;
+            }
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            UnityEngine.Application.logMessageReceived += CountReport;
+
+            // Act
+            try
+            {
+                DrainPendingWork();
+            }
+            finally
+            {
+                UnityEngine.Application.logMessageReceived -= CountReport;
+            }
+
+            // Assert — a pass that finished before the removal leaves nothing to report, which no count stands for
+            Assert.That(parked ? reports : -1, Is.GreaterThan(0));
+        }
+
         [Test]
         public void Given_ReversedKeyedList_When_ResumedWithSufficientBudget_Then_CompletesInOneStep()
         {

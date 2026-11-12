@@ -6,14 +6,16 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies that <see cref="LogicalSlotCursor"/> answers as <see cref="LogicalChildSlots.TryGetPhysical"/>
     /// does when the container changed under the slot it remembers, and when the slot asked for lies past
-    /// the last rendered child.
+    /// the last rendered child or below the remembered one.
     /// <list type="bullet">
     /// <item>A child inserted ahead of that slot shifts every later slot's physical index.</item>
     /// <item>A container shrunk to that slot's physical index reports the slot empty.</item>
     /// <item>A slot past the last rendered child is reported empty, at the static walk's append position, which
     /// sits ahead of a trailing invisible child rather than at the end of the child list.</item>
+    /// <item>A slot below that slot is found across an invisible child, and a negative slot is reported empty.</item>
     /// </list>
-    /// <see cref="GeneralPathSlotLookupScalingTests"/> holds that the cursor walks on rather than from the start.
+    /// <see cref="GeneralPathSlotLookupScalingTests"/> holds that the cursor walks on rather than from the start,
+    /// and <see cref="PatchLoopSlotLookupScalingTests"/> that it walks back as well.
     /// <para>
     /// <see cref="LogicalSlotCursor.Insert"/> puts a child where <see cref="LogicalChildSlots.ToPhysical"/> does,
     /// whether or not the slot it remembers still describes the container.
@@ -89,6 +91,45 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((occupied, physical), Is.EqualTo((false, 3)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base answers a slot below the remembered one by walking from the start.
+        // What this pins is that walking back from the remembered slot skips an invisible child as that walk does; a walk
+        // back that stops at the first rendered child it meets is what reddens it.
+        [Test]
+        public void Given_ARememberedSlot_When_ASlotTwoBelowItAcrossAnInvisibleChildIsAsked_Then_ItIsFoundWhereTheWalkFromTheStartFindsIt()
+        {
+            // Arrange — r0 r1 spacer r2 r3: slot 1 is physical 1, two rendered children back from slot 3 at physical 4
+            var container = Container(4);
+            var spacer = new VisualElement();
+            spacer.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+            container.Insert(2, spacer);
+            var cursor = new LogicalSlotCursor();
+            cursor.TryGetPhysical(container, 3, out _);
+
+            // Act
+            cursor.TryGetPhysical(container, 1, out var physical);
+
+            // Assert
+            Assert.That(physical, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the base answers a negative slot as empty by walking from the start.
+        // What this pins is that the walk back, which runs out of rendered children before reaching one, leaves the
+        // answer to that walk; reporting the slot found once it runs out is what reddens it.
+        [Test]
+        public void Given_ARememberedSlot_When_ANegativeSlotIsAsked_Then_ItIsEmpty()
+        {
+            // Arrange
+            var container = Container(3);
+            var cursor = new LogicalSlotCursor();
+            cursor.TryGetPhysical(container, 2, out _);
+
+            // Act
+            var occupied = cursor.TryGetPhysical(container, -1, out _);
+
+            // Assert
+            Assert.That(occupied, Is.False);
         }
 
         private static VisualElement Named(string name) => new VisualElement { name = name };
