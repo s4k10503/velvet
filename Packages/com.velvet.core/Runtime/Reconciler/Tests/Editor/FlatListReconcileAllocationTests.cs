@@ -44,7 +44,7 @@ namespace Velvet.Tests.Performance
         }
 
         // GREEN_ON_BASE(refactor): the base allocates nothing reconciling an unchanged indexed list.
-        // Dropping the return in ReconcileIndexedFrom's `finally` reddens it, at 5 blocks.
+        // Dropping the return in ReconcileIndexedFrom's `finally` reddens it.
         [Test]
         public void Given_AWarmPool_When_AnUnchangedIndexedListReconciles_Then_NothingIsAllocated()
         {
@@ -62,7 +62,7 @@ namespace Velvet.Tests.Performance
         }
 
         // GREEN_ON_BASE(refactor): the base allocates nothing reconciling an unchanged keyed list.
-        // Dropping the return in ReconcileKeyedSync's `finally` reddens it, at 5 blocks.
+        // Dropping the return in ReconcileKeyedSync's `finally` reddens it.
         [Test]
         public void Given_AWarmPool_When_AnUnchangedKeyedListReconciles_Then_NothingIsAllocated()
         {

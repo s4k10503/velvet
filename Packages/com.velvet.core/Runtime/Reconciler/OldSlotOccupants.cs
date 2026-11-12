@@ -8,14 +8,14 @@ namespace Velvet
     // The element each old leaf of one container occupies, read from the live child list, beside the element a patch
     // of it reaches through a wrapper. Entry i is old leaf i, at logical slot slotStart + i; a slot nothing occupied
     // is null. Resolve reads at once; Defer reads at the first entry taken or at EnsureResolved, so a pass that takes
-    // none and never parks walks no child. The diff takes the element it patches, reuses or removes from here rather
-    // than from the live list — ContainerOldInstanceReadTests fails where a slot read comes back — while inserts stay
-    // addressed by slot. An entry it takes has to be read before anything changes what stands at its slot: the step
-    // that takes a leaf reads its entry before it writes, a removal reads the entry of a leaf the walk kept no element
-    // for, and a pass calls EnsureResolved before it parks, since other work runs before its next slice. A patch does
-    // not write its result back. Once read from the list, an entry changes only where a z-layer swap names the slot's
-    // new element (ReplaceOccupant) or the list is read again (ResolveAgain). A parked pass owns its instance until
-    // the slice that finishes it, or a fresh pass or Dispose that discards it.
+    // none and never parks reads nothing into this instance. The diff takes the element it patches, reuses or removes
+    // from here rather than from the live list — ContainerOldInstanceReadTests fails where a slot read comes back —
+    // while inserts stay addressed by slot. The step that takes a leaf reads its entry, and a removal reads the entry
+    // of a leaf the walk kept no element for; a patch does not write its result back. An entry the diff takes has to
+    // be read before anything changes what stands at its slot, and a pass calls EnsureResolved before it parks, since
+    // other work runs before its next slice. Once read from the list, an entry changes only where a z-layer swap names
+    // the slot's new element (ReplaceOccupant) or the list is read again (ResolveAgain). A parked pass owns its
+    // instance until the slice that finishes it, or a fresh pass or Dispose that discards it.
     internal sealed class OldSlotOccupants
     {
         private readonly List<VisualElement?> _occupants = new();

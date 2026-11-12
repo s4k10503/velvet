@@ -35,8 +35,8 @@ namespace Velvet
     // ReconcilerContext.NoteSlotOccupantChanged, so a diff holding the parent's old instances names the new occupant.
     // The other two are not reported. They run only between walks — at the end of a top-level pass, or outside any
     // pass — where the diffs holding old instances are the parked ones: Arrange converts nothing for their parents,
-    // and a queued placeholder is younger than their instances, since the queue empties at each top-level boundary and
-    // a diff's old instances name what stood at its slots when it started (OldSlotOccupants).
+    // and a queued placeholder is younger than what the entries they take name, since the queue empties at each
+    // top-level boundary and an entry a diff takes is read before its slot changes (OldSlotOccupants).
     // Everything else this moves is invisible to the reconciler's slot arithmetic (LogicalChildSlots.IsInvisible).
     internal static class FiberZLayerCoordinator
     {
