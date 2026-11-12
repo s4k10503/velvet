@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 328 case(s) that ran the site: Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox, Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
+ "file": "e1ccb5c4a7c7744d22a8d88adda9e7f6256d085b2e0cbd5041af1cfbeea63657",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_MoreIdsThanTheCapHoldingBoxes_When_TheirMotionsLeave_Then_OnlyTheCapKeepsABox",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e37a1a559c54ef339d58fb3bc1c37903d1bf7144ac8de1ea145aba5c2a9c2b6e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_TheOnlyLayoutIdMotionHoldingAnId_When_ItIsTornDownOutsideARender_Then_TheIdKeepsItsBoxWithoutTheElement",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e37a1a559c54ef339d58fb3bc1c37903d1bf7144ac8de1ea145aba5c2a9c2b6e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "SetEntry(ctx, layoutId, null, box);",
+  "column": 16,
+  "line": 1005,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 385 case(s) that ran the site: Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+ "file": "4a79751a652b4bf22e6d537ac73edd46c4cbaec6f52c0711bc0209356d5ee657",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ComponentDisplayNameTests.Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ComponentDisplayNameTests.cs": "b868828f80d29a6dbc22a8e1048f0b156a0a04765dabac9c9d40eb41a2b62893",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ">=",
+  "before": ">",
+  "column": 35,
+  "line": 191,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberRefPlacement.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,43 @@
+{
+ "detail": "EditMode: 3 failed in Velvet.Tests.Styling.Editor: Given_ALayoutIdMotionNotLaidOutYet_When_ItIsTornDown_Then_NoWaitIsLeftForIt, Given_ALayoutIdMotionWaitingForItsLayout_When_ItsBoxIsReseated_Then_NoWaitIsLeftForIt, Given_AReseatedLayoutIdMotionWaitingOnItsNewBox_When_ItsOldBoxChangesGeometry_Then_TheNewWaitStands",
+ "file": "e1ccb5c4a7c7744d22a8d88adda9e7f6256d085b2e0cbd5041af1cfbeea63657",
+ "killers": [
+  {
+   "case": "Velvet.Tests.LayoutIdBookkeepingTests.Given_ALayoutIdMotionNotLaidOutYet_When_ItIsTornDown_Then_NoWaitIsLeftForIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdBookkeepingTests.cs": "c665735ea67b87e063be40b30afdab521f71e959058ef16deabdfa9094af8112",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LayoutIdBookkeepingTests.Given_ALayoutIdMotionWaitingForItsLayout_When_ItsBoxIsReseated_Then_NoWaitIsLeftForIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdBookkeepingTests.cs": "c665735ea67b87e063be40b30afdab521f71e959058ef16deabdfa9094af8112",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.LayoutIdBookkeepingTests.Given_AReseatedLayoutIdMotionWaitingOnItsNewBox_When_ItsOldBoxChangesGeometry_Then_TheNewWaitStands",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/LayoutIdBookkeepingTests.cs": "c665735ea67b87e063be40b30afdab521f71e959058ef16deabdfa9094af8112",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "Wait(element, new LayoutIdPendingSettle(null, Layout(element), timing), ctx);",
+  "column": 16,
+  "line": 140,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionLayoutIdDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

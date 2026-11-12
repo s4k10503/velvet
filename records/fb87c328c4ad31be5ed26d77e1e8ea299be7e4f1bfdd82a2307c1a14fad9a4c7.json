@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 20 case(s) that ran the site: Given_ASpringOverAPercentVerticalRest_When_ItsDrawnValuesAreRead_Then_TheVerticalUnitIsPercent",
+ "file": "5f8838919b7f5297e7e740e6ed6d6e342fa32f8f850f0b8b15afe28a2bffae99",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionSpringTranslateUnitTests.Given_ASpringOverAPercentVerticalRest_When_ItsDrawnValuesAreRead_Then_TheVerticalUnitIsPercent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionSpringTranslateUnitTests.cs": "97f5e0e1c990882e5b7e0656d628988f6d724e91954b9dbc7a7629c884f89501"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "drawn.TranslateYUnit = state.TranslateY?.Unit ?? LengthUnit.Pixel;",
+  "column": 12,
+  "line": 737,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionSpringDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

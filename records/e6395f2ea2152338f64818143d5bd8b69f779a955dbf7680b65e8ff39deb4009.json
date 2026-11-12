@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 806 case(s) that ran the site: Given_AnAnchorWhoseExitWaitsForItsChildren_When_ItsChildIsStillExiting_Then_ItsOpacityEntryHasNotStarted",
+ "file": "b956eec3e885c26754dd6af5f3e1e9e9ef6165e1dc483385295a6836b4b8829e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnchorTests.Given_AnAnchorWhoseExitWaitsForItsChildren_When_ItsChildIsStillExiting_Then_ItsOpacityEntryHasNotStarted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/AnimatePresenceAnchorTests.cs": "0a520fcd3e93e0a8d23c2b0b140583dcb4e42b19eaa5b3486ac8c0c364e19ac2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 65,
+  "line": 50,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

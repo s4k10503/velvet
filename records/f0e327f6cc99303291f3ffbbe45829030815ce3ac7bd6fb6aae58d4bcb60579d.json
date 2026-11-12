@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.MotionClockTests.Given_ATweenExitOfEveryChannelKindOnAHeldClock_When_ItIsCancelledAQuarterOfTheWayOut_Then_EachTurnsBackOverTheShortenedDuration",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "086279064b5f213e0fbcd6d74c204b07f456ea58909b354243087057813f9c16",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
@@ -15,7 +15,7 @@
   {
    "case": "Velvet.Tests.MotionClockTests.Given_ATweenWhoseOverrideNamesAllOfEveryChannelKind_When_TheClockStepsAFrame_Then_EachMovesOnTheOverride",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "086279064b5f213e0fbcd6d74c204b07f456ea58909b354243087057813f9c16",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
@@ -25,7 +25,7 @@
   {
    "case": "Velvet.Tests.MotionClockTests.Given_ATweenWithAnOverrideNamingTheShorthandOfItsLength_When_TheClockStepsAFrame_Then_ItTimesTheLonghand",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "d79c8246d1adde0c1d9c3fa645656f36aabf8f879789caba9a64da6fea360fda",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionClockTests.cs": "086279064b5f213e0fbcd6d74c204b07f456ea58909b354243087057813f9c16",
     "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeldMotionClock.cs": "11626c318b9d7e0b38bbec25a5fde088de8f678ed082ad3efb3c88ff57186777",
@@ -33,7 +33,7 @@
    }
   }
  ],
- "measured_by": "42872060540",
+ "measured_by": "43140876866",
  "mutant": {
   "after": "false",
   "before": "true",
@@ -47,6 +47,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
  "verdict": "killed"
 }

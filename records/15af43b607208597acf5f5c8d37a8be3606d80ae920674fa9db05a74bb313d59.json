@@ -1,0 +1,33 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ARotatedLayoutIdMotionInsideAnother_When_ItTakesAClip_Then_TheWrapperItHoldsCarriesTheClip",
+ "file": "af25f5c03538ea8ce1f9416ed3136e678a383a68efb3339c310bd9f364c77365",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionLayoutIdSurfaceTests.Given_ARotatedLayoutIdMotionInsideAnother_When_ItTakesAClip_Then_TheWrapperItHoldsCarriesTheClip",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionLayoutIdSurfaceTests.cs": "e37a1a559c54ef339d58fb3bc1c37903d1bf7144ac8de1ea145aba5c2a9c2b6e",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/MotionSimulatedPanelTestsBase.cs": "319b26852fbe6c4376e12d0d0c9e76d0ced9d71ce1cae10efb9b3d4871118db3",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 26,
+  "line": 72,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

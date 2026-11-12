@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 2 failed among the 69 case(s) that ran the site: Given_ABoundaryWhoseFallbackIsTheSameSuspense_When_ALayoutCleanupOfItsHideSwapsTheFallbackIn_Then_TheLabelItKeepsIsDisplayed, Given_ABoundaryWhoseFallbackIsTheSameSuspenseAndALayoutCleanupAheadOfALabel_When_TheCleanupSwapsTheFallbackIn_Then_TheLabelKeepsItsRef",
+ "file": "8ba1b20a9859c9e5bbca3eb8ac7953953568652621f955cf92e3991c154b6e4b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SuspenseOffscreenCommitTests.Given_ABoundaryWhoseFallbackIsTheSameSuspenseAndALayoutCleanupAheadOfALabel_When_TheCleanupSwapsTheFallbackIn_Then_TheLabelKeepsItsRef",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseOffscreenCommitTests.cs": "516922d2463b4057076a74719b81dcdd1379160d3a908556243aa8d32609bbce",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  },
+  {
+   "case": "Velvet.Tests.SuspenseOffscreenCommitTests.Given_ABoundaryWhoseFallbackIsTheSameSuspense_When_ALayoutCleanupOfItsHideSwapsTheFallbackIn_Then_TheLabelItKeepsIsDisplayed",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SuspenseOffscreenCommitTests.cs": "516922d2463b4057076a74719b81dcdd1379160d3a908556243aa8d32609bbce",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VNodePoolTestAccess.cs": "d50fccad2f12416b791e49faf5d592049f746ea390282ca8319ad81957333cdb"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "s_heldForHide.Remove(element);",
+  "column": 12,
+  "line": 31,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/SuspenseHiddenElements.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

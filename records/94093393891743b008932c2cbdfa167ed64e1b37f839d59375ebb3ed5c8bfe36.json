@@ -1,0 +1,29 @@
+{
+ "detail": "EditMode: 1 failed among the 573 case(s) that ran the site: Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
+ "file": "e48d1cd3d51947a1a88217b2885cfa6c9e696e6ad5d409009a73497805d23bbe",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimatePresenceAnimationTests.Given_RapidRekey_When_SettledOnKnownTab_Then_AllCardsPresent_NoneDisappeared",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/AnimatePresenceAnimationTests.cs": "a7ff95ec31fa180d58adaecff71bbaaaf3f7e0961ca58e218d0a694974b935a8",
+    "Packages/com.velvet.core/Runtime/Component/Tests/Editor/SimulatedPanelTestBase.cs": "a06149cf212c91277fd1442580aee292a959fef6bf985e77628aabdbb0acacc8"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "<=",
+  "before": "<",
+  "column": 29,
+  "line": 1306,
+  "operator": "boundary",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

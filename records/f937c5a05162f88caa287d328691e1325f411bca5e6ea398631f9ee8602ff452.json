@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 2 case(s) that ran the site: Given_AShadowWhoseXOffsetIsInEms_When_Extracted_Then_TheShadowIsRead",
+ "file": "d50d8684d262481249f8b0c8d38402014f0433738a94c2297f5d7a2237f201a3",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MeasuredLengthParseTests.Given_AShadowWhoseXOffsetIsInEms_When_Extracted_Then_TheShadowIsRead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MeasuredLengthParseTests.cs": "086d16ad21bb57e4d3f8da284a1a98d321c6f69facac945eb2f7144c310d2c6c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "lengthCount++;",
+  "column": 20,
+  "line": 997,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

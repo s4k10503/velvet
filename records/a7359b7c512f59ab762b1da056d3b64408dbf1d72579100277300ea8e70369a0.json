@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 1 failed among the 3 case(s) that ran the site: Given_ADividedRowWithBorderBottomInherit_When_Resolved_Then_ItsBottomIsItsParentsBottomColour",
+ "file": "204a3fa94dc959802c8ff3980534a4eb8a485b2d906aa6cd99e78f5c7238c280",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ColourReferenceWatchTests.Given_ADividedRowWithBorderBottomInherit_When_Resolved_Then_ItsBottomIsItsParentsBottomColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ColourReferenceWatchTests.cs": "f0c456ff8b29b859a79c101b58ae2f31db0a6f9002e67dbb7c8565a4dc6eb33a",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationCanary.cs": "fc61cead251d89e031e7591ac080a706d0568f2f3427cd7cda1ec3c93b965e58",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/PanelTestBase.cs": "49bf5e210ff301f45b0290afb910d9f08bb884155bfd49d6e9a4ac4d714cef8f",
+    "Packages/com.velvet.core/TestUtilities/TestGraphics.cs": "8cddb0b34843eed1bd7954f1ace6933058b82bbdc6ca3a1af39700abcead66ff"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 22,
+  "line": 3182,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleArbitraryValueResolver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

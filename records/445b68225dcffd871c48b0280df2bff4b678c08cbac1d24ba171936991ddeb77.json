@@ -1,0 +1,38 @@
+{
+ "detail": "EditMode: 2 failed among the 847 case(s) that ran the site: Given_BlurPresetThenContrastPreset_When_Applied_Then_BothComposeAsFilters, Given_BrightnessAndContrast_When_Applied_Then_BrightnessComposesBeforeContrast",
+ "file": "3efa101d3088f5050beb1acf44c341abeb49775b94165385120b1a31a923efe7",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_BlurPresetThenContrastPreset_When_Applied_Then_BothComposeAsFilters",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_BrightnessAndContrast_When_Applied_Then_BrightnessComposesBeforeContrast",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "-",
+  "before": "+",
+  "column": 47,
+  "line": 606,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFilterValueParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

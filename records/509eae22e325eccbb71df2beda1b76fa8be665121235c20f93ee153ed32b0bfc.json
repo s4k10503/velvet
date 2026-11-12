@@ -1,0 +1,58 @@
+{
+ "detail": "EditMode: 3 failed among the 3 case(s) that ran the site: Given_AVerticalSortableList_When_TheFirstItemIsDraggedOverTheLast_Then_TheMiddleItemMovesUpOneSlot, Given_AVerticalSortableListThatShiftedAnItemWithATimingOfItsOwn_When_TheDragEnds_Then_TheItemHasItsOwnTimingBack, Given_AVerticalSortableListThatShiftedItsMiddleItem_When_TheDragEnds_Then_TheMiddleItemHasNoInlineTransitionProperty",
+ "file": "74f32e14d484e07dd7278a112b6dab83b8a997a61eeff22fd1be35b8d75e8e25",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DndParityTests.Given_AVerticalSortableListThatShiftedAnItemWithATimingOfItsOwn_When_TheDragEnds_Then_TheItemHasItsOwnTimingBack",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "fbe022d26829d363d9aaa40832f19a0e79aa7ffa216a0a637a103db38bdb02d3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndParityTests.Given_AVerticalSortableListThatShiftedItsMiddleItem_When_TheDragEnds_Then_TheMiddleItemHasNoInlineTransitionProperty",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "fbe022d26829d363d9aaa40832f19a0e79aa7ffa216a0a637a103db38bdb02d3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.DndParityTests.Given_AVerticalSortableList_When_TheFirstItemIsDraggedOverTheLast_Then_TheMiddleItemMovesUpOneSlot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "fbe022d26829d363d9aaa40832f19a0e79aa7ffa216a0a637a103db38bdb02d3",
+    "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/PanelPhaseTimings.cs": "6a783014738e6aacdade94f0ef490c3e5299f67d1109606959c277841c7eef26",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "_store = store;",
+  "column": 12,
+  "line": 362,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/DndSortable.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

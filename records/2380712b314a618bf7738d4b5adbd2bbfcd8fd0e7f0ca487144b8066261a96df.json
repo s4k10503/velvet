@@ -1,0 +1,32 @@
+{
+ "detail": "EditMode: 1 failed among the 89 case(s) that ran the site: Given_AHookOnlyAnOpenRenderCalls_When_Closed_Then_ItThrowsFewerHooks(\"UseMutation\",\"UseMutation\",1,0)",
+ "file": "a2be4807a69712b4608d70dce683a21d2015d79d19cbfde37c590e0e78da9eb4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.HookCountDiagnosticTests.Given_AHookOnlyAnOpenRenderCalls_When_Closed_Then_ItThrowsFewerHooks(\"UseMutation\",\"UseMutation\",1,0)",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/HookCountDiagnosticTests.cs": "e6a1e91618e9f9dea44b09e7e1bcb7651a71de315c09f3ad3162a67ca461fc1e",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 24,
+  "line": 2627,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

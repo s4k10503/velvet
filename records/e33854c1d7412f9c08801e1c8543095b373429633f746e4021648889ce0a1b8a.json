@@ -1,0 +1,23 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "e48d1cd3d51947a1a88217b2885cfa6c9e696e6ad5d409009a73497805d23bbe",
+ "killers": [],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 26,
+  "line": 1078,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberZLayerCoordinator.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "survived"
+}

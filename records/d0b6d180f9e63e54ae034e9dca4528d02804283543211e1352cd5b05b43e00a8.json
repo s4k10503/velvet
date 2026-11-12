@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 2 failed among the 217 case(s) that ran the site: Given_AClassListWhoseFamilyTokensAreInOrder_When_ItsLiveOrderIsRestored_Then_EachTokensFamilyIsReadOnce, Given_AClassListWhoseOneFamilyTokenIsLive_When_ItsLiveOrderIsRestoredAgain_Then_NothingIsAllocated",
+ "file": "b405050f0a86c305eb2ee9937b181808f78ed5f59d4003affbca67f199046d1c",
+ "killers": [
+  {
+   "case": "Velvet.Tests.FamilyOrderRestoreCostTests.Given_AClassListWhoseFamilyTokensAreInOrder_When_ItsLiveOrderIsRestored_Then_EachTokensFamilyIsReadOnce",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FamilyOrderRestoreCostTests.cs": "0dd1d3aa3d0db7833d152368a0558004c7c949ed0726f536f4e674ac6a68e55b",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.FamilyOrderRestoreCostTests.Given_AClassListWhoseOneFamilyTokenIsLive_When_ItsLiveOrderIsRestoredAgain_Then_NothingIsAllocated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/FamilyOrderRestoreCostTests.cs": "0dd1d3aa3d0db7833d152368a0558004c7c949ed0726f536f4e674ac6a68e55b",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 204,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleFamilyOrder.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

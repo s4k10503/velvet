@@ -1,0 +1,34 @@
+{
+ "detail": "EditMode: 2 failed among the 54 case(s) that ran the site: Given_ASequenceSegmentOfThreeOpacityKeyframesWithNoTransition_When_SevenTenthsOfItsThreeTenthsOfASecondPass_Then_TheSecondPairIsAlongItsOwnEaseOut, Given_ASequenceSegmentWithNoTransition_When_HalfOfThreeTenthsOfASecondPasses_Then_ItIsHalfwayAlongTheEaseOut",
+ "file": "18f7ea07c64a5b2c500f38fbe473bb82ce4f987789aeefbe345d57073e7b7e52",
+ "killers": [
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentOfThreeOpacityKeyframesWithNoTransition_When_SevenTenthsOfItsThreeTenthsOfASecondPass_Then_TheSecondPairIsAlongItsOwnEaseOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  },
+  {
+   "case": "Velvet.Tests.AnimateTransitionDefaultsTests.Given_ASequenceSegmentWithNoTransition_When_HalfOfThreeTenthsOfASecondPasses_Then_ItIsHalfwayAlongTheEaseOut",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/AnimateTransitionDefaultsTests.cs": "4f1df3ffccb06b00107c98831f717a86d47df2b0313c6802a1a57a577f8f06a8"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "_ease = EaseOut;",
+  "column": 12,
+  "line": 447,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Animator.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

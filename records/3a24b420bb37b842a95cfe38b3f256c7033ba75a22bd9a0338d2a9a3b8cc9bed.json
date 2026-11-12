@@ -1,0 +1,36 @@
+{
+ "detail": "EditMode: 1 failed among the 185 case(s) that ran the site: Given_AScopedCallWaitingInOnMutate_When_TheScopeFreesWhileOffline_Then_ItPausesWithoutContinuing",
+ "file": "a2be4807a69712b4608d70dce683a21d2015d79d19cbfde37c590e0e78da9eb4",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MutationObserverParityTests.Given_AScopedCallWaitingInOnMutate_When_TheScopeFreesWhileOffline_Then_ItPausesWithoutContinuing",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationNetworkFixture.cs": "aa42f1a160f1666ad5836b12d293453383b671dd91ea8268658d21c82d2d6dc0",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/MutationObserverParityTests.cs": "1e691f64241e94f5d72c34a44b93d79271aaa73e028d8cefdec87651d2b70812",
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/PlayMode/MutationNetworkFixture.cs": "d36eb54f9801b3f8edc3adfc45c2b4718218bae0777884c7a541f94e8580a9e1",
+    "Packages/com.velvet.core/TestUtilities/CaughtErrors.cs": "ae6198d93a44820ec30b5f726991416087303ddf76be01d897a0dac625b249a9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
+    "Packages/com.velvet.core/TestUtilities/VelvetTaskFrameDriverTestExtensions.cs": "0e6fdaecfb53c37e3943edddc49923eddecd4a9cb293d2bd2a77fc06e81a3e75"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "",
+  "before": " && cache.CanRun(mutation)",
+  "column": 46,
+  "line": 2883,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/Hooks.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed among the 6 case(s) that ran the site: Given_AShadowBesideAFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds, Given_AShadowBesideAHoverFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds, Given_AShadowedTextField_When_AHoverFilterIsAdded_Then_TheInputBoxsShadowReservesItsBounds",
+ "file": "79dbd8cc4fc70f41922501209b8e0a529d8825d5bf505b452c68907c1988dd05",
+ "killers": [
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AShadowBesideAFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "bf4e05c8ed208725019f906519b48feac7f86c06d86351b8fdb81a1acec9b894",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AShadowBesideAHoverFilterOnATextField_When_Reconciled_Then_TheInputBoxsShadowReservesItsBounds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "bf4e05c8ed208725019f906519b48feac7f86c06d86351b8fdb81a1acec9b894",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InputBoxSurfaceTests.Given_AShadowedTextField_When_AHoverFilterIsAdded_Then_TheInputBoxsShadowReservesItsBounds",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/InputBoxSurfaceTests.cs": "bf4e05c8ed208725019f906519b48feac7f86c06d86351b8fdb81a1acec9b894",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "routed.Add(payload);",
+  "column": 20,
+  "line": 125,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/WrapperInfrastructure.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

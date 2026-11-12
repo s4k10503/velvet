@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed among the 24 case(s) that ran the site: Given_AZeroDurationTweenWithAnAnimatingOverride_When_AskedWhetherItsExitAnimates_Then_ItDoes",
+ "file": "218dd704330e077f06b11061eafff19efd019406bf7cfc676c876866b0780aaf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleTransitionConfigDefinedTests.Given_AZeroDurationTweenWithAnAnimatingOverride_When_AskedWhetherItsExitAnimates_Then_ItDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleTransitionConfigDefinedTests.cs": "a350af9aec283362e0081ba5c22aaf428d12ec65bb578391c0c92cd494d89781"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "!=",
+  "before": "==",
+  "column": 27,
+  "line": 488,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionConfig.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
+ "file": "207a264f0d222cb53f09031b7d7b3dfcc9b003e9bc4176047ae52ae1ccf67a62",
+ "killers": [
+  {
+   "case": "Velvet.Tests.BezierChannelHandBackTests.Given_ABezierRotateAGestureHeld_When_TheGestureHandsRotateBack_Then_TheChannelWritesAgain",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/BezierChannelHandBackTests.cs": "d416518c568f1ae8f5ca3d53f92a74c46412d04afb3bc6ec66c065f4fb203159"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "returned |= Restart(state, state.Rotate, named, (StyleLonghand.Rotate, ArbitraryProperty.Rotate), shown);",
+  "column": 12,
+  "line": 487,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BezierTweenDriver.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

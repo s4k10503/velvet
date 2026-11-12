@@ -1,0 +1,57 @@
+{
+ "detail": "EditMode: 4 failed among the 600 case(s) that ran the site: Given_AMountedQuery_When_ItsEntryIsInvalidated_Then_ItsReaderIsToldBeforeTheCache, Given_AMountedQuery_When_ItsRequestLands_Then_TheCacheAnnouncesItsResultUpdated, Given_AMountedQuery_When_TheQueryIsInvalidated_Then_ItIsInvalidated",
+ "file": "e891afdd2bd306de496bf8d447f34154046ff9164538f1def7f2aefd47f2927b",
+ "killers": [
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_ItsEntryIsInvalidated_Then_ItsReaderIsToldBeforeTheCache",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_ItsRequestLands_Then_TheCacheAnnouncesItsResultUpdated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_TheQueryIsInvalidated_Then_ItIsInvalidated",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.QueryCacheTests.Given_AMountedQuery_When_TheQueryIsInvalidated_Then_NothingIsFetched",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Hooks/Tests/Editor/QueryCacheTests.cs": "0b7b39a8c622b096633e859404152402a1c589f60c7fea07d752dc1da6ca4d6d",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "==",
+  "before": "!=",
+  "column": 40,
+  "line": 1636,
+  "operator": "equality",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQuery.cs",
+  "shadowed": [
+   "clause removed",
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed: Given_AResetLineBox_When_ItIsAskedWhetherItsTextSpansLines_Then_ItDoesNot",
+ "file": "a2b81c3d2e1342974d168185dfa3a7b36003aa7899b3092e4af86ad3ff73a07a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TextLineBoxResetTests.Given_AResetLineBox_When_ItIsAskedWhetherItsTextSpansLines_Then_ItDoesNot",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/TextLineBoxResetTests.cs": "3b403111db8078576d67b0649e3ddbfd763550c706bc0a7851e5ae352cadd7e2"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 26,
+  "line": 277,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/TextLineBox.cs",
+  "shadowed": [
+   "line removed"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 14 case(s) that ran the site: Given_ABackgroundOpacityModifierAbove100_When_Parsed_Then_TheBackgroundIsTransparent",
+ "file": "cb2a1212f53b3b67485dca9a24ddc4fad97e5652066ca3ba00e2c5d6fed5bb26",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ArbitraryValueTests.Given_ABackgroundOpacityModifierAbove100_When_Parsed_Then_TheBackgroundIsTransparent",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/ArbitraryValueTests.cs": "e60a8a9542ebf5f93a63f53edab595c1db4c9dda2cda69e6e6869f408437a009",
+    "Packages/com.velvet.core/TestUtilities/ReconcilerScope.cs": "96e1fadf3c954d4391a1ffc90fbeca1b85189a5007ecf3a0bf4d1d9cbe9130d1",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "+",
+  "before": "-",
+  "column": 53,
+  "line": 364,
+  "operator": "arithmetic",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleColorValueParser.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

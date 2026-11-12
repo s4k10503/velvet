@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_ASpringExitWithItsOwnPhysics_When_Played_Then_TheElementIsExiting",
+ "file": "b956eec3e885c26754dd6af5f3e1e9e9ef6165e1dc483385295a6836b4b8829e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.SpringExitPhysicsTests.Given_ASpringExitWithItsOwnPhysics_When_Played_Then_TheElementIsExiting",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/SpringExitPhysicsTests.cs": "33a8870d17b244d3bd124787a841f5e5e605a7d1b841b4cb300f7f174cc6a550"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "StartSpringVariant(in play, physics.Stiffness, physics.Damping, physics.Mass, null, null);",
+  "column": 16,
+  "line": 964,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleAnimationScheduler.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

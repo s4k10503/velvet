@@ -1,0 +1,40 @@
+{
+ "detail": "EditMode: 3 failed among the 8 case(s) that ran the site: Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --spacing-2: var(--spacing-1); --font: \\\"Inter\\\"; }\"), Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --f: blur(4px) var(--a) linear-gradient(to right, #fff, #000); }\"), Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: var(--a, 1px) var(--a,1px) var(--a,,1px) var( --a ) var( ) Var(a); }\")",
+ "file": "a5af3a44872fb35f4e092f25f307fd6831f8c615c35c379611243a7ae53da1eb",
+ "killers": [
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --f: blur(4px) var(--a) linear-gradient(to right, #fff, #000); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --spacing-2: var(--spacing-1); --font: \\\"Inter\\\"; }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  },
+  {
+   "case": "Velvet.Tests.UssCustomPropertyTextTests.Given_ACustomPropertyTheImporterHolds_When_TheSheetIsRewritten_Then_ItIsUnchanged(\":root { --x: var(--a, 1px) var(--a,1px) var(--a,,1px) var( --a ) var( ) Var(a); }\")",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/UssCustomPropertyTextTests.cs": "24bb22a1cc129cb0a608b9bc9021d032bfec6d6a4c0250cd879c6eee33e16c1a"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 19,
+  "line": 604,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Editor/StyleSheets/UssCustomPropertyText.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

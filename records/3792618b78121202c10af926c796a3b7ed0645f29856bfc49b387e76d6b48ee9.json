@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.DivideClassParityTests.Given_ADivideWidthWithAnEmptyTypeHintValue_When_Extracted_Then_NoDivideIsRead",
    "files": {
-    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DivideClassParityTests.cs": "71b88f729857c2ef28aafd149853f940609ac7351c941e72035c182700bd6bb9",
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DivideClassParityTests.cs": "6209534146b183263d235acb4e5a6b0bf60227a4bf7ff08f6c0ce1c8503aca17",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166",
@@ -17,7 +17,7 @@
    }
   }
  ],
- "measured_by": "42872060540",
+ "measured_by": "43140876866",
  "mutant": {
   "after": "true",
   "before": "false",
@@ -31,6 +31,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
  "verdict": "killed"
 }

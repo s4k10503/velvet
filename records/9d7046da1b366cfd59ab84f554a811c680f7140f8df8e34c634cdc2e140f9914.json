@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 145 case(s) that ran the site: Given_ANarrowedElementWhoseTransitionClassIsRemoved_When_TheNarrowingIsSynced_Then_NoTransitionPropertyIsLeftInline",
+ "file": "d65e5d26b5986daae08f00ea305c3729f5bd582a5ec9457f5f757b6497bae98f",
+ "killers": [
+  {
+   "case": "Velvet.Tests.MotionNativeTransitionGuardNarrowingTests.Given_ANarrowedElementWhoseTransitionClassIsRemoved_When_TheNarrowingIsSynced_Then_NoTransitionPropertyIsLeftInline",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/MotionNativeTransitionGuardNarrowingTests.cs": "55c6ec701b2c88789b1aa9b8898bb613f3c9cc3eb8f4389d46108c8ad0604237"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "Release(element, owner);",
+  "column": 16,
+  "line": 275,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/MotionNativeTransitionGuard.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

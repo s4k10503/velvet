@@ -1,0 +1,46 @@
+{
+ "detail": "EditMode: 3 failed: Given_ABoundaryUnderAProviderWhosePortalChildThrowsInTheMountsDrain_When_TheBoundaryCatches_Then_ItsFallbackReadsTheProvider, Given_AFallbackProvidingAroundABoundaryWithAPortal_When_AnEffectErrorSwapsItInAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider, Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateThrowsBelowItAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider",
+ "file": "a3a88b4645681c6c3bfd136e5137f422dceaef914cf480c535ed803d1656d039",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_ABoundaryUnderAProviderWhosePortalChildThrowsInTheMountsDrain_When_TheBoundaryCatches_Then_ItsFallbackReadsTheProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_AFallbackProvidingAroundABoundaryWithAPortal_When_AnEffectErrorSwapsItInAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ParkedPassResumeTests.Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateThrowsBelowItAndThePortalsChildThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ParkedPassResumeTests.cs": "72a4c64fc996b36d6e4c2ed9e87ffd11b935c402c6590d4cb05f1534008e56d4",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "fiber.ReconcilingTree = newTree;",
+  "column": 12,
+  "line": 377,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

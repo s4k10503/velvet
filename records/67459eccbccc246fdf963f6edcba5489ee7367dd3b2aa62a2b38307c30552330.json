@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 1 case(s) that ran the site: Given_AChildNoDashIsBoundTo_When_ItsPaintedColourIsRead_Then_NoneIsRead",
+ "file": "036279df75a11500340b8b6c91f32c55034d7a1da60b43f3197dd2820c26000a",
+ "killers": [
+  {
+   "case": "Velvet.Tests.DivideDashPainterReadTests.Given_AChildNoDashIsBoundTo_When_ItsPaintedColourIsRead_Then_NoneIsRead",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DivideDashPainterReadTests.cs": "d8fad8ea198299e31b9a2f39145b5d45052222efe4f55e8d600ae9510b8f6fb0"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "true",
+  "before": "false",
+  "column": 23,
+  "line": 162,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/DivideDashPainter.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

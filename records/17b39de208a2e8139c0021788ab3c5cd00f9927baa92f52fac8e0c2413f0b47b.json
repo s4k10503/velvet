@@ -1,0 +1,30 @@
+{
+ "detail": "EditMode: 1 failed among the 64 case(s) that ran the site: Given_FollowingSiblingParked_When_PrecedingSiblingItselfTimeSliced_Then_StaysAlignedAcrossSlices",
+ "file": "ef2e2ccd70e81a608161316c0430878ed8b55a44f6a32979467d22338e1388a5",
+ "killers": [
+  {
+   "case": "Velvet.Tests.TimeSlicedFiberTests.Given_FollowingSiblingParked_When_PrecedingSiblingItselfTimeSliced_Then_StaysAlignedAcrossSlices",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/TimeSlicedFiberTests.cs": "5b205b88b63dbf30cfdf8ec80f3b2cb2bde32988936ca630397d3b462c4406f9",
+    "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
+    "Packages/com.velvet.core/TestUtilities/MountedTreeTestExtensions.cs": "b549ad1e5d094508d721076481c751017737a184c6c767573fc33e31a8e6a166"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "resumeContext.HostCommit.ShiftRows(fiber, slice.UnshiftedChange);",
+  "column": 24,
+  "line": 709,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Reconciler/FiberWorkLoop.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

@@ -1,0 +1,114 @@
+{
+ "detail": "EditMode survived; PlayMode: 11 failed: Given_AClippingChildWhoseShadowIsInItsTextColour_When_Rendered_Then_TheShadowIsInTheChildsColour, Given_AClippingChildWhoseShadowSpreadIsInEms_When_Rendered_Then_ItIsMeasuredAgainstTheChildsFontSize, Given_AChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
+ "file": "a9a3072608307c84738fc126efde54d48f11dd12163b4e44be895b6a2fa7891e",
+ "killers": [
+  {
+   "case": "Velvet.Tests.ClippedShadowOwnStylePlaybackTests.Given_AClippingChildWhoseShadowIsInItsTextColour_When_Rendered_Then_TheShadowIsInTheChildsColour",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ClippedShadowOwnStylePlaybackTests.cs": "5eb8107b14533704b3bdaa1442f89dd4f79e567df2dd42373422e761ad3e9532",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ClippedShadowOwnStylePlaybackTests.Given_AClippingChildWhoseShadowSpreadIsInEms_When_Rendered_Then_ItIsMeasuredAgainstTheChildsFontSize",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ClippedShadowOwnStylePlaybackTests.cs": "5eb8107b14533704b3bdaa1442f89dd4f79e567df2dd42373422e761ad3e9532",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InheritedShadowDiscardPlaybackTests.Given_AChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/InheritedShadowDiscardPlaybackTests.cs": "9062e56725bb9f069c40c44cd288a91e94974c9eb1b67444a05c09ba715183e7",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.InheritedShadowDiscardPlaybackTests.Given_AClippingChildInheritingAnInvalidShadowColour_When_Rendered_Then_ItsSpreadIsNotPainted",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/InheritedShadowDiscardPlaybackTests.cs": "9062e56725bb9f069c40c44cd288a91e94974c9eb1b67444a05c09ba715183e7",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29",
+    "Packages/com.velvet.core/TestUtilities/VisualElementTestExtensions.cs": "c7032a86f57ba5c12b8e1b6e49d52492b72253210eaf6aea4a224eaae9b4650c"
+   }
+  },
+  {
+   "case": "Velvet.Tests.RoundedFullSilhouettePlaybackTests.Given_ABoxWithAnOversizedInlineRadiusWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/RoundedFullSilhouettePlaybackTests.cs": "8c025e411ed39e2a3cd5ae2a69a53dd50589caf5da39e1c641a7196e9f67ac1f",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShaderBackedPaintRuntimeTests.Given_ABoxShadowCasterSkewedOnBothAxesByOneClass_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShaderBackedPaintRuntimeTests.cs": "155f71b1c2df656983c23044c5c9d16f81223bc4942ca6237b842c1c69438354",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShaderBackedPaintRuntimeTests.Given_ABoxShadowCasterSkewedOnY_When_RenderedOnARuntimePanel_Then_TheShadowTiltsTheWayTheFaceDoes",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShaderBackedPaintRuntimeTests.cs": "155f71b1c2df656983c23044c5c9d16f81223bc4942ca6237b842c1c69438354",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShaderBackedPaintRuntimeTests.Given_AnInsetShadowOnAnElementUnderEightPixelsTall_When_RenderedOnARuntimePanel_Then_NothingIsPaintedBelowIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShaderBackedPaintRuntimeTests.cs": "155f71b1c2df656983c23044c5c9d16f81223bc4942ca6237b842c1c69438354",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowFadeOpacityPlaybackTests.Given_AShadowCaster_When_ItsOpacityIsHalved_Then_TheHaloIsHalvedWithIt",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShadowFadeOpacityPlaybackTests.cs": "20dec33b3e6575c505242b7b557d91a4b829bd67a860ede32ec39d392c2555a5",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  },
+  {
+   "case": "Velvet.Tests.ShadowFadeOpacityPlaybackTests.Given_ATranslucentShadowCaster_When_AnEnterIsInFlightOverIt_Then_TheHaloMatchesTheSameCasterAtRest",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/PlayMode/ShadowFadeOpacityPlaybackTests.cs": "20dec33b3e6575c505242b7b557d91a4b829bd67a860ede32ec39d392c2555a5",
+    "Packages/com.velvet.core/TestUtilities/RenderTexturePanelHost.cs": "194e0d5bc1138e5ae5cdeeae94298ce65a10fe077c4a75c73599e7abfa531bb6",
+    "Packages/com.velvet.core/TestUtilities/TargetFrameRateScope.cs": "2a2bdd5a934388428380fda4fcf82e2ec5df7d1ab86930011f6dbb3f772ae50c",
+    "Packages/com.velvet.core/TestUtilities/TestPanelSettings.cs": "c7a36f6a4acd48eb54e9b4c339d7caf0c56cbef64dacd018497182f9fadacc29"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": ";",
+  "before": "mwd.SetNextVertex(new Vertex { position = new Vector3(minX, maxY, Vertex.nearZ), tint = tint, uv = new Vector2(0f, 0f) });",
+  "column": 12,
+  "line": 582,
+  "operator": "line removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/BoxShadowSilhouette.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

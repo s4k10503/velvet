@@ -1,0 +1,21 @@
+{
+ "detail": "EditMode survived; PlayMode: -",
+ "file": "e71a6ad0a25df92fedbcce5940851ab413d8aacfc4d2e5218662792f60cc93b9",
+ "killers": [],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 47,
+  "line": 430,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Hooks/HookQueries.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "PlayMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "survived"
+}

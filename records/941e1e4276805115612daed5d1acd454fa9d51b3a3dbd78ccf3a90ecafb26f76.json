@@ -1,0 +1,31 @@
+{
+ "detail": "EditMode: 1 failed: Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone",
+ "file": "b2e326396ef5dcfde155c164298949381f7e8d3ee7fa89686f073410ab4cbe71",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleEaseCurveTests.Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleEaseCurveTests.cs": "c385be0438de392db5fbf00d0fe02540638ff635c9e423a42112965822f5ab7e",
+    "Packages/com.velvet.core/TestUtilities/GCAllocationProbe.cs": "492823c099cf4f4de89da0da69c98d45cfc042070d93e2d0c0b95773310ebc2c"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "",
+  "before": " && !s_bindings.TryGetValue(element, out _)",
+  "column": 24,
+  "line": 332,
+  "operator": "clause removed",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleEaseCurve.cs",
+  "shadowed": [
+   "logic"
+  ]
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}

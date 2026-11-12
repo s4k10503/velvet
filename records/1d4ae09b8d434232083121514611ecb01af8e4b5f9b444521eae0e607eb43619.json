@@ -5,7 +5,7 @@
   {
    "case": "Velvet.Tests.DndParityTests.Given_AKeyboardDragOverOneDroppable_When_ASecondArrowKeyMovesIt_Then_ItsMoveListsThatDroppableOnce",
    "files": {
-    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "f21400fa9d3af65d1e3d59a33d805060b779ff1652f5983c06c349de6ffb17d3",
+    "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/DndParityTests.cs": "fbe022d26829d363d9aaa40832f19a0e79aa7ffa216a0a637a103db38bdb02d3",
     "Packages/com.velvet.core/TestUtilities/EditorPanelTestHelpers.cs": "3bde908b6bbb58852eea652b2a59079bb03e5d6b12c0a4618db5feb1fea2dbe2",
     "Packages/com.velvet.core/TestUtilities/FiberBatchSchedulerTestExtensions.cs": "ad7c579678d4dd1a5554d7748bb2c2e3e03b7bf2a7200d4987fa3c2b69384a1f",
     "Packages/com.velvet.core/TestUtilities/HeadlessEditorPanelHost.cs": "c9d6223736a116118e1e1fac201b7fa7039a9bf5fb09fe7784ac08f6dfc94397",
@@ -15,7 +15,7 @@
    }
   }
  ],
- "measured_by": "42872060540",
+ "measured_by": "43140876866",
  "mutant": {
   "after": ";",
   "before": "_queryBuffer.Clear();",
@@ -29,6 +29,6 @@
  "platform": "EditMode",
  "schema": 3,
  "stood": null,
- "tests": "263aac50e3877ae16fc6220feb4d02f6446308f91c6965765a7efd36266ebd85",
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
  "verdict": "killed"
 }

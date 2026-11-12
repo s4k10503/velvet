@@ -1,0 +1,28 @@
+{
+ "detail": "EditMode: 1 failed among the 72 case(s) that ran the site: Given_AConfigNamingOnlyAStiffness_When_PlayedOnAVariant_Then_ItRunsOnItsOwnKnobs",
+ "file": "218dd704330e077f06b11061eafff19efd019406bf7cfc676c876866b0780aaf",
+ "killers": [
+  {
+   "case": "Velvet.Tests.StyleTransitionConfigDefinedTests.Given_AConfigNamingOnlyAStiffness_When_PlayedOnAVariant_Then_ItRunsOnItsOwnKnobs",
+   "files": {
+    "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/StyleTransitionConfigDefinedTests.cs": "a350af9aec283362e0081ba5c22aaf428d12ec65bb578391c0c92cd494d89781"
+   }
+  }
+ ],
+ "measured_by": "43140876866",
+ "mutant": {
+  "after": "false",
+  "before": "true",
+  "column": 53,
+  "line": 137,
+  "operator": "literal",
+  "path": "Packages/com.velvet.core/Runtime/Styling/StyleTransitionConfig.cs",
+  "shadowed": []
+ },
+ "mutator": 10,
+ "platform": "EditMode",
+ "schema": 3,
+ "stood": null,
+ "tests": "3a0737ae805726605d7b4b1c058bc11f5aa4144189d9159ff88180e9426f3730",
+ "verdict": "killed"
+}
