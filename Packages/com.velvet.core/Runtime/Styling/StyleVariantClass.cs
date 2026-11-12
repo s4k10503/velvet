@@ -172,6 +172,11 @@ namespace Velvet
 
         internal static string LeafOf(string cls) => TryParse(cls, out _, out var payload) ? LeafOf(payload!) : cls;
 
+        // TryParse's verdict and kind, with no payload cut out for a keyword variant: a reader after one kind asks this of
+        // every class and TryParse of that kind's classes alone.
+        internal static bool TryParseKind(string? token, out StyleVariantKind kind)
+            => Parse(token, wantPayload: false, out kind, out _, out _);
+
         // The keywords of s_kinds as an array, which a match walks without the string a dictionary lookup needs.
         private static readonly KeyValuePair<string, StyleVariantKind>[] s_keywords =
             new List<KeyValuePair<string, StyleVariantKind>>(s_kinds).ToArray();
@@ -211,6 +216,29 @@ namespace Velvet
                 }
             }
             return false;
+        }
+
+        // Whether token[0..length), an unnamed prefix no keyword spells, may be one TryBreakpointQuery accepts, answered in
+        // place: outside a theme scope only max- or min- and a default breakpoint can be, inside one also a breakpoint its
+        // sheets declare, bare or behind either.
+        private static bool MayNameBreakpoint(string token, int length)
+        {
+            if (StyleThemeTokens.Current is not { } scope)
+            {
+                return BoundsDefaultBreakpoint(token, length);
+            }
+            var bound = string.CompareOrdinal(token, 0, "max-", 0, 4) == 0 || string.CompareOrdinal(token, 0, "min-", 0, 4) == 0
+                ? 4
+                : 0;
+            var name = token.AsSpan(bound, length - bound);
+            foreach (var known in s_themeNames.Values)
+            {
+                if (name.SequenceEqual(known.AsSpan()))
+                {
+                    return true;
+                }
+            }
+            return scope.DeclaresValue("--breakpoint-", name);
         }
 
         // IsVariant reads no payload and passes wantPayload false, which the keyword paths honour.
@@ -269,7 +297,7 @@ namespace Velvet
             name = null;
             payload = null;
             var unnamed = token.IndexOf('/', 0, colon) == -1;
-            if (unnamed && StyleThemeTokens.Current == null && !BoundsDefaultBreakpoint(token, colon))
+            if (unnamed && !MayNameBreakpoint(token, colon))
             {
                 return false;
             }

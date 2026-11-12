@@ -87,22 +87,37 @@ namespace Velvet
 
         // The shadow colours each element's classes declare, recorded whether or not it paints a shadow, for a
         // child's -inherit to take.
-        private static readonly ConditionalWeakTable<VisualElement, DeclaredShadowColours> s_declaredColours = new();
+        private static readonly ConditionalWeakTable<VisualElement, DeclaredColoursRecord> s_declaredColours = new();
+
+        // Written over in place, so an element holds one record while it carries a shadow class, however often its
+        // colours change.
+        private sealed class DeclaredColoursRecord
+        {
+            public DeclaredShadowColours Colours;
+        }
 
         // Records the colours classNames declares on element, or forgets them where it declares none, and repaints the
         // descendants that inherit them when they changed: a child's own classes did not change, and none of it is
         // otherwise told.
         internal static void RecordDeclaredColours(VisualElement element, string[]? classNames)
         {
-            var had = s_declaredColours.TryGetValue(element, out var before);
+            var had = s_declaredColours.TryGetValue(element, out var record);
             if (classNames != null && StyleShadowClass.HasShadowClass(classNames))
             {
                 var declared = StyleShadowClass.DeclaredColours(classNames);
-                s_declaredColours.AddOrUpdate(element, declared);
-                if (!had || !before!.SameAs(declared))
+                if (had && record!.Colours.SameAs(declared))
                 {
-                    RepaintInheritors(element);
+                    return;
                 }
+                if (had)
+                {
+                    record!.Colours = declared;
+                }
+                else
+                {
+                    s_declaredColours.Add(element, new DeclaredColoursRecord { Colours = declared });
+                }
+                RepaintInheritors(element);
             }
             else if (had)
             {
@@ -157,7 +172,7 @@ namespace Velvet
                 {
                     return default;
                 }
-                var colour = declared.Of(family);
+                var colour = declared.Colours.Of(family);
                 if (!colour.Inherit)
                 {
                     return colour;
@@ -244,10 +259,11 @@ namespace Velvet
         // Starts the re-measuring poll while a layer holds a length the element measures, and stops it after.
         private static void SyncPoll(VisualElement element, BoxShadowBinding binding)
             => StyleRelativeLengths.SyncPoll(ref binding.Poll, element,
-                Array.Exists(binding.Layers, layer => layer.Measured != null), () =>
+                Array.Exists(binding.Layers, static layer => layer.Measured != null), (Element: element, Binding: binding),
+                static moved =>
                 {
-                    SyncBoundsSpacer(element, binding);
-                    element.MarkDirtyRepaint();
+                    SyncBoundsSpacer(moved.Element, moved.Binding);
+                    moved.Element.MarkDirtyRepaint();
                 });
 
         // Unregisters the callbacks, releases the face suppression (so a pooled / detached upright caster

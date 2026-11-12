@@ -2628,6 +2628,12 @@ namespace Velvet
         {
             foreach (var className in classNames ?? Array.Empty<string>())
             {
+                // The outer layer ends at a ':' and the inner holds one of its own, so a class with fewer than two is
+                // passed over before either parse cuts out a payload.
+                if (className == null || className.IndexOf(':') == className.LastIndexOf(':'))
+                {
+                    continue;
+                }
                 string? rest = null;
                 if (!StyleVariantClass.TryParse(className, out _, out rest)
                     && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
@@ -2658,7 +2664,11 @@ namespace Velvet
             List<int>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (StyleVariantClass.TryParse(classNames[i], out var k, out var payload) && k == kind)
+                if (!StyleVariantClass.TryParseKind(classNames[i], out var k) || k != kind)
+                {
+                    continue;
+                }
+                if (StyleVariantClass.TryParse(classNames[i], out _, out var payload))
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
                     (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
@@ -2754,13 +2764,17 @@ namespace Velvet
             spelling = string.Empty;
             query = default;
             payload = string.Empty;
-            if (!StyleVariantClass.TryParse(token, out var kind, out var name, out var rest))
+            if (!StyleVariantClass.TryParseKind(token, out var kind) || kind != StyleVariantKind.Container)
+            {
+                return false;
+            }
+            if (!StyleVariantClass.TryParse(token, out _, out var name, out var rest))
             {
                 return false;
             }
             spelling = name ?? string.Empty;
             payload = rest ?? string.Empty;
-            return kind == StyleVariantKind.Container && StyleContainerQuery.TryParse(spelling, out query);
+            return StyleContainerQuery.TryParse(spelling, out query);
         }
 
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
@@ -2791,8 +2805,12 @@ namespace Velvet
             Dictionary<(bool IsPeer, string Name), List<int>[]>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (!StyleVariantClass.TryParse(classNames[i], out var kind, out var name, out var payload)
+                if (!StyleVariantClass.TryParseKind(classNames[i], out var kind)
                     || StyleVariantClass.RelationalOf(kind) is not { } relational)
+                {
+                    continue;
+                }
+                if (!StyleVariantClass.TryParse(classNames[i], out _, out var name, out var payload))
                 {
                     continue;
                 }
@@ -2852,8 +2870,8 @@ namespace Velvet
         {
             foreach (var className in classNames ?? Array.Empty<string>())
             {
-                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBecomeThemeClass(
-                    StyleArbitraryValueResolver.StripImportant(className, out _)))
+                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                    && StyleThemeClass.MayBecomeThemeClass(StyleArbitraryValueResolver.StripImportant(className, out _)))
                 {
                     StyleThemeTokens.Track(_ctx, element, classNames!);
                     return;
@@ -2903,7 +2921,8 @@ namespace Velvet
             foreach (var className in classNames)
             {
                 if (className != null && (className.IndexOfAny(s_variantStateChars) >= 0
-                    || StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null))
+                    || (StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                        && StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null)))
                 {
                     return true;
                 }

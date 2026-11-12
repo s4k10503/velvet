@@ -32,13 +32,15 @@ namespace Velvet
         // Reads the classes again on the element once a length they hold measures has moved (its font, the
         // panel), and binds what they come to there.
         private static void SyncMeasuredPoll(VisualElement element, GradientBinding binding, string[] classNames, bool measured)
-            => StyleRelativeLengths.SyncPoll(ref binding.Poll, element, measured, () =>
-            {
-                if (StyleGradientClass.TryExtract(classNames, element, out var spec, out _) && !binding.Spec.Equals(spec))
+            => StyleRelativeLengths.SyncPoll(ref binding.Poll, element, measured,
+                (Element: element, Binding: binding, ClassNames: classNames), static moved =>
                 {
-                    GradientBackground.Rebind(element, binding, spec);
-                }
-            });
+                    if (StyleGradientClass.TryExtract(moved.ClassNames, moved.Element, out var spec, out _)
+                        && !moved.Binding.Spec.Equals(spec))
+                    {
+                        GradientBackground.Rebind(moved.Element, moved.Binding, spec);
+                    }
+                });
 
         // Patch-time reconciliation of an element's gradient against its new class list: re-apply on a changed spec, attach a newly-gradiented element, clear one
         // whose gradient classes were removed, or the steady state (spec unchanged), which skips the re-bake

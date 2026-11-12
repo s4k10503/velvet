@@ -270,7 +270,8 @@ namespace Velvet
 
             // A shape with lengths the element measures is baked as measured, and again once they move.
             var spec = binding.Spec;
-            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, spec.HasMeasured, () => SyncMask(element, binding));
+            StyleRelativeLengths.SyncPoll(ref binding.Poll, element, spec.HasMeasured, (Element: element, Binding: binding),
+                static moved => SyncMask(moved.Element, moved.Binding));
             if (spec.HasMeasured)
             {
                 if (!StyleRelativeLengths.TryBasisOf(element, out var basis))
