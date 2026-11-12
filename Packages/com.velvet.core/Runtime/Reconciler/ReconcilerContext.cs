@@ -1719,10 +1719,12 @@ namespace Velvet
             var anchor = ContentOwnerOf(target) ?? target;
             var detachBridge = FiberCrossPanelEventDispatcher.AttachBridge(anchor, this);
             var sheetWatch = VelvetStyleUtilities.WatchForMissingSheet(target);
+            var defaultFamily = DefaultFamilyRoots.Hold(target);
             SamePanelPortalBridges[target] = new SamePanelBridge(() =>
             {
                 detachBridge();
                 sheetWatch.Dispose();
+                defaultFamily.Dispose();
                 releaseNavigatorHold?.Invoke();
             });
         }

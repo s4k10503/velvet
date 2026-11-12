@@ -60,10 +60,12 @@ namespace Velvet
         public static event Action? FontsChanged;
 
         /// <summary>
-        /// Family applied to elements that specify a weight/style but no explicit <c>font-&lt;name&gt;</c> and have no ancestor carrying one that Velvet rendered;
-        /// their descendants inherit the asset written there. A label with no font class and no ancestor
-        /// carrying one is not reached (Documentation~/fonts.md, "What DefaultFamily reaches"). Null or
-        /// empty leaves a weight/style-only element on the font its stylesheets and ancestors give it.
+        /// The family the elements Velvet renders start from, as the <c>font-family</c> Tailwind's preflight
+        /// gives <c>html</c>: Velvet writes it on the elements a tree and its portals render into, for what is
+        /// under them to inherit, and resolves it for a weight, italic or width class where neither the element
+        /// nor an ancestor Velvet rendered names a family (Documentation~/fonts.md, "What DefaultFamily reaches").
+        /// A name that is null, empty or not registered writes no font, leaving each element on the one its
+        /// stylesheets and ancestors give it.
         /// </summary>
         public static string? DefaultFamily
         {

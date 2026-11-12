@@ -107,27 +107,22 @@ With the `Bold` entry registered, `font-bold` renders a **true** bold asset rath
 
 ### What `DefaultFamily` reaches
 
-`DefaultFamily` supplies the family to an element that has a weight, italic or width class (`font-normal`,
-`font-bold`, `italic`, `font-stretch-condensed`, …), no `font-<name>`, and no ancestor naming a family (below), and Velvet writes the resolved asset inline on that
-element. Its descendants inherit that asset like any other. **A label with no font class, and no
-ancestor carrying one, gets no font from Velvet**: it keeps whatever font its stylesheets, ancestors
-and the panel's text settings give it.
+`DefaultFamily` is the family the elements Velvet renders start from, as the `font-family` Tailwind's preflight
+gives `html` is. Velvet writes it inline on the element a tree is mounted on, and what is under that element
+inherits it, a label with no font class included, down to an element given a font of its own. Content a portal
+renders attaches under its container rather than under that element ([portals.md](portals.md)), so Velvet writes
+the family on the container as well, unless the container sits inside another element it writes the family on,
+and on the root of each layer or world-space panel it creates. The asset written is the one a normal-weight,
+upright request of the family resolves to, and the write follows a change to the registry at once, with no render.
 
-To have every label under the mounted root start from the registered family, put a font class on that
-root. Either kind works:
-
-```csharp
-VelvetFonts.Register(families, defaultFamily: "sans");
-V.Mount(root, V.Div("font-sans", app));    // names the family
-V.Mount(root, V.Div("font-normal", app));  // follows DefaultFamily
-```
-
-A label under that root inherits the root's asset unless the label, or an element between them, is
-assigned another one, or a stylesheet sets a font on the label itself. Content a portal renders
-(`V.Portal`, `V.WorldSpace`, see [portals.md](portals.md)) attaches under its target rather than
-under this root, so the target, layer root or world-space panel root needs the class too.
-`DefaultFamilyScopePanelTests` pins the scope and both kinds of root on a panel with no theme
-stylesheet.
+An element whose font classes resolve to an asset has that asset written inline
+([How resolution works](#how-resolution-works)), and what is under it inherits that one instead; a font a
+stylesheet sets on an element below the root decides there in the same way. The value on the root is inline, so
+it outranks a font a stylesheet sets on that element or on an element above it. A font the app wrote inline on
+that element is left in place, and the value Velvet wrote is taken off when the tree is disposed or the last
+portal leaves the container. `DefaultFamilyScopePanelTests` pins where the family is written and taken off, on a
+panel with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font class on the runtime
+theme this project ships.
 
 A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
