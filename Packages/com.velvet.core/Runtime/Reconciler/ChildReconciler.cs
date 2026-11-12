@@ -923,7 +923,7 @@ namespace Velvet
             if (occupants == null)
             {
                 occupants = _ctx.BufferPool.RentOldSlotOccupants();
-                occupants.Resolve(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
+                occupants.Defer(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
             }
             var inputs = new IndexedPassInputs(parent, oldNodes, newNodes, slotStart, slotLimit, occupants);
 
@@ -981,6 +981,7 @@ namespace Velvet
         private void ParkIndexedResume(
             in IndexedPassInputs inputs, IndexedReconcilePhase resumePhase, int resumeIndex)
         {
+            inputs.OldOccupants.EnsureResolved();
             PendingIndexedState = new IndexedReconcileState(
                 inputs.Parent, inputs.OldNodes, inputs.NewNodes,
                 resumePhase, resumeIndex, inputs.OldOccupants, slotStart: inputs.SlotStart, slotLimit: inputs.SlotLimit);
@@ -1191,7 +1192,7 @@ namespace Velvet
             var occupants = _ctx.BufferPool.RentOldSlotOccupants();
             try
             {
-                occupants.Resolve(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
+                occupants.Defer(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
                 var pass = new KeyedSyncPass
                 {
                     Parent = parent,
@@ -1568,7 +1569,7 @@ namespace Velvet
             if (state.OldOccupants == null && state.Parent != null)
             {
                 state.OldOccupants = _ctx.BufferPool.RentOldSlotOccupants();
-                state.OldOccupants.Resolve(state.Parent, state.SlotStart, state.OldNodes.Length, state.SlotLimit, _patcher);
+                state.OldOccupants.Defer(state.Parent, state.SlotStart, state.OldNodes.Length, state.SlotLimit, _patcher);
             }
 
             if (frameBudgetMs > 0)
@@ -1939,6 +1940,7 @@ namespace Velvet
             // Precondition: ReconcileKeyedFrom initialized _stopwatch when frameBudgetMs > 0.
             // The early return above ensures we only reach this point with frameBudgetMs > 0, so it is non-null.
             if (_stopwatch!.Elapsed.TotalMilliseconds <= frameBudgetMs) return false;
+            state.OldOccupants?.EnsureResolved();
             state.ResumeIndex = nextResumeIndex;
             PendingKeyedState = state;
             _stopwatch.Stop();

@@ -28,8 +28,8 @@ namespace Velvet
     /// answers "is the slot occupied" and "where" in one walk. That walk is proportional to the slot index,
     /// and every child it passes is asked <see cref="IsInvisible"/>, so a loop calling these once per child is
     /// quadratic in the child count, and whatever <see cref="IsInvisible"/> costs is paid that many times. A
-    /// diff reads its old rows once, at the container's entry (<see cref="OldSlotOccupants"/>), and removes them
-    /// by element, which <c>HostCommitQueue</c> searches for from where the entry found it. What it still asks
+    /// diff reads its old rows into <see cref="OldSlotOccupants"/> rather than once per child, and removes them
+    /// by element, which <c>HostCommitQueue</c> searches for from where that read found it. What it still asks
     /// by slot, a <see cref="LogicalSlotCursor"/> answers, walking on or back from the last slot it resolved, not
     /// a cached count, which every insert and remove would have to invalidate: the general path's leaf commit,
     /// <c>ChildReconciler</c>'s check of each slot the indexed diff patches and of each old row keyed Pass 2 takes
