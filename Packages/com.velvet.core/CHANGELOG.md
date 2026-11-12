@@ -7,83 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased — breaking]
 
-## [3.0.0] - 2026-11-09
+## [3.0.0] - 2026-11-13
 
 ### Highlights
 
-- Components keep the identity React gives them. An unkeyed child is matched by the index it is
-  written at, a sibling written as `cond ? node : null` that stops rendering no longer costs its
-  siblings their state, a keyed `V.Fragment` returned whole keeps its key, and the container a
-  `V.Component` is written into is part of which instance it is, so moving one across a `V.Portal`'s
-  boundary remounts it. An error a boundary catches is logged instead of swallowed, and one no
-  boundary catches unmounts the tree `V.Mount` mounted, as a React root does.
+- Components keep the state React keeps, and errors stop disappearing. An unkeyed child is matched by the position
+  it is written at, so a sibling `cond ? node : null` that stops rendering no longer moves the state of the siblings
+  after it; a keyed `V.Fragment` a component returns whole keeps its key; and the container a `V.Component` is
+  written into is part of which instance it is, so a move across a `V.Portal`'s boundary remounts it. A boundary
+  logs the error it catches, and mounts its fallback afresh when the error comes from an effect, a ref callback or
+  the render of its own or a child's update; an error no boundary catches unmounts the tree `V.Mount` mounted, as a
+  React root does.
 
-- Suspense and transitions behave as in React. A `V.Suspense` that has shown its children and
-  suspends again hides them rather than tearing them down, a transition update leaves shown children
-  on screen instead of swapping in the fallback, and `UseState` / `UseReducer` queue each update on
-  the lane it was written on. Pending passive effects run before the next render, and
-  `UseSyncExternalStore` and `UseStore` subscribe in the commit's effects, so a render that is
-  discarded subscribes nothing.
+- Suspense, transitions and effects run as React runs them. A `V.Suspense` that suspends again after showing its
+  children hides them rather than tearing them down, a transition keeps shown children on screen instead of
+  swapping in the fallback, and `UseState` and `UseReducer` queue each update on the lane it was written on.
+  Passive effects run children first and before the next render, a `V.Portal`'s children commit where the portal
+  sits, a `V.Suspense` runs the layout cleanups of what it hides before hiding it, a removed subtree is taken down
+  from the top in one walk, and `UseSyncExternalStore` and `UseStore` subscribe in the commit's effects. Where no
+  other portal or virtual-list row encloses them, a parked time-sliced render's resume, a portal's first render and
+  an error boundary's fallback read the `V.Provider` above them, where they could read a context's default or
+  another Provider's value.
 
-- The utility classes are Tailwind v4's. The palette, the radius, blur, tracking and easing scales,
-  and the line height each `text-*` size pairs with come from v4; spacing takes any bare multiple,
-  brackets read CSS math functions and custom properties, a stylesheet's theme tokens resolve as
-  classes, and `@container` queries, logical-direction utilities, per-side border colours, `order-*`,
-  `backdrop-*`, `disabled:` and `animate-ping` / `animate-bounce` are new. What draws changed with
-  them: `hue-rotate-*`, translucent filters, `drop-shadow-*`, rings beside outlines, text line boxes
-  and `z-*` in flex flow now render as CSS describes them.
+- Stylesheets the UI Toolkit importer used to empty now load, and labels take the default font. A custom property
+  holding a `rem`, an exponent, Tailwind's `--aspect-video: 16 / 9`, an `rgb()` with a percentage or a `var()`, or
+  another value the importer refuses or misreads is kept as the text it was written with, where the importer failed
+  the whole file or stored a different value. `VelvetFonts.DefaultFamily` reaches a label that names no font, as the
+  font Tailwind's preflight gives `html` reaches a `<p>`, and gives way to one an author's stylesheet sets.
 
-- Motion plays with Framer Motion's defaults. A transition that names nothing runs each value on the
-  default Framer Motion picks for it, a duration left unset is 0.3 s rather than an instant jump,
-  repeats apply to `V.Motion` plays and to `Animator.Animate`, and a per-value transition replaces
-  the enclosing one for its property. `Hooks.UseAnimate`, `AnimatePresence(propagate:)`, per-variant
-  transitions, sequence `Speed`, spring `Bounce` and a separate `layoutId` transition are new.
+- The utility classes are Tailwind v4's. The palette, the radius, blur, tracking and easing scales and the line
+  height paired with each `text-*` size come from v4; spacing takes a bare multiple of 0.25 such as `p-13` or
+  `gap-4.5`, brackets read CSS math functions and custom properties, and a stylesheet's theme tokens generate
+  classes. `@container` queries, logical-direction utilities, per-side border colours, `order-*`, `backdrop-*`,
+  `disabled:` and `animate-ping` / `animate-bounce` are new. What draws follows CSS: `hue-rotate-*` and filters over
+  translucent pixels, `drop-shadow-*`, `shadow-*` and `ring-*` layers and colours, a ring beside an outline, text
+  line boxes, `z-*` in flex flow, and a class transition eased on Tailwind's curve from its first frame.
 
-- Routing follows React Router 7's data router. Routes rank as React Router ranks them, index and
-  pathless routes are their own kinds, a path no route matches commits with an `ErrorResponse`, and
-  route actions arrive with `UseSubmit`, `UseActionData` and a request body read by its `encType`.
-  Deferred loader data with `V.Await`, `UseMatches`, `UseRouteLoaderData`, `UseResolvedPath`,
-  `UseHref`, and `NavigateOptions` carrying `state` and `relative` are new.
+- Motion follows Framer Motion. A transition that names nothing gives each value the default Framer picks for it,
+  an unset duration is 0.3 s rather than a jump, `EaseIn`, `EaseOut`, `EaseInOut` and the back eases run on
+  Framer's curves, repeats apply to `V.Motion` plays and to `Animator.Animate`, and a per-value transition replaces
+  the enclosing one for its property. `Hooks.UseAnimate`, `AnimatePresence(propagate:)`, per-variant transitions,
+  sequence `Speed`, spring `Bounce` and `StyleTransitionConfig.Layout` for a `layoutId` move are new.
 
-- Data fetching is TanStack Query v5's. Each `QueryClient` holds a `QueryCache` and a
-  `MutationCache` whose entries you can find and filter; `UseSuspenseQuery`, `UseQueries`,
-  `UseInfiniteQuery`, `UseIsFetching`, `UseMutationState` and `UseIsMutating` join `UseQuery` and
-  `UseMutation`; and queries and mutations retry by a `RetryPolicy`, pause while the device is
-  offline under their `NetworkMode`, and refetch on focus and reconnect.
+- Routing is React Router 7's data router. Routes rank as React Router ranks them, index and pathless routes are
+  kinds of their own, a path no route matches commits with a 404 `ErrorResponse`, and route actions arrive with
+  `UseSubmit` and `UseActionData`, reading a request body by its `encType`. Deferred loader data through `V.Await`,
+  `UseMatches`, `UseRouteLoaderData`, `UseResolvedPath`, `UseHref`, and `state` and `relative` on a navigation are
+  new.
 
-- Velvet no longer needs UniTask. It ships its own awaitable, `VelvetTask`, which allocates nothing
-  on a path that completes synchronously. Drag and drop gains dnd-kit's hooks and ranked collisions,
-  focus scopes follow React Aria, `V.Particles` draws VFX Graph effects and each particle system's
-  baked geometry, and the compiler transform caches a VNode-building call that reads only some of a
-  component's inputs on those inputs alone.
+- Data fetching is TanStack Query v5's. Each `QueryClient` holds a `QueryCache` and a `MutationCache` to find and
+  filter entries in; `UseSuspenseQuery`, `UseQueries`, `UseInfiniteQuery`, `UseIsFetching`, `UseMutationState` and
+  `UseIsMutating` join `UseQuery` and `UseMutation`; queries and mutations retry by a `RetryPolicy` and pause
+  offline under their `NetworkMode`, and a stale query refetches when the application is shown again or the device
+  reconnects. `UseQueries` gives a query that shares its entry with another an observer of its own, and hands
+  `combine` the other queries' results as it last committed or was notified of them.
 
-- **Breaking:** the minimum Unity is 6000.3.23f1, every public signature that named a UniTask type
-  names `VelvetTask`, and the sections below carry 520 breaking entries. Removed: `Router.Status`,
-  `Router.OnStatusChanged` and `RouterStatus`, `RouteActionContext.FormData`,
-  `FiberUpdatePriority.Deferred`, `Velvet.PureAttribute`, the `V.Outlet` node kind and the painted
-  skew layer. Changed signatures: `V.Portal` takes the target element and `V.Portal(null)` no longer
-  compiles; `Hooks.UseNavigate` returns a `NavigateFunction`; `Hooks.UseAnimationSequence` takes a
-  required `deps`; `V.DndContext` returns a `ComponentNode` and `DndCollisionDetection` a ranked
-  `DndCollision[]`; `QueryInfo` became `Query`, the shared options moved to `QueryOptionsBase`, query
-  functions take a `QueryFunctionContext`, `QueryState`'s failure fields gained a `Fetch` prefix,
-  `Retry` takes a `RetryRule`, and the `MutationOptions` callbacks return a `VelvetTask`;
-  `VelvetPreviewRegistry.RunSetupFor` returns a `VelvetPreviewEnvironment`; and six more `V.*` enum
-  arguments refuse a value naming no member. Changed behaviour: hook update queues, transitions,
-  Suspense, error boundaries, refs, effect timing, `V.Memoized` and `Memoize = true` comparisons, and
-  the components the compiler transform now memoizes; reconciler identity, `V.List` node reuse,
-  portals and their event path, and factory calls passing a literal `null`; the Tailwind v4 scales and the
-  palette, utility, variant and important ordering, the opacity modifier, `space-*` and `gap-*`,
-  `flex-1`, `z-*`, `@container` and the `sm:` prefixes, filters, rings, outlines, skew, text line
-  boxes, font weight matching, text transforms, `text-balance`, `pointer-events-*`, `StyleOverrides`
-  precedence, a `Label`'s default spacing, field controls' className paint, and a bracket CSS would
-  reject, now left inert; Motion's spring, tween and Bezier defaults, variants, exits, gestures,
-  `layoutId` and `AnimatePresence`; the router's initial location, matching, ranking, splat routes,
-  loaders and `LoaderMode.Await`, submissions, blockers, errors and search params; `UseQuery` and
-  `UseMutation` client lookup, offline pausing, unmount handling, cancellation logging and structural
-  sharing; drag activation and geometry; focus scopes that render no element; `V.Anchored`'s wrapper
-  and scale; `V.Particles`' drawing; the stylesheets panels Velvet creates carry, preview args and
-  `V.Mount`'s missing-stylesheet warning; and `V.Slider`, `V.SliderInt`, `V.TextField`'s
-  `maxLength:` and `V.VirtualList`.
+- Velvet no longer needs UniTask: it ships `VelvetTask`, an awaitable that allocates nothing on a path that
+  completes synchronously. Drag and drop gains dnd-kit's hooks, sensors and ranked collisions, focus scopes follow
+  React Aria, and `V.Particles` draws VFX Graph effects and each particle system's baked geometry. The compiler
+  transform caches a VNode-building call on only the values it reads, and a component its parent hands back as the
+  same element no longer renders again with it. Removing many rows at once, patching every row of an unkeyed list
+  and time-slicing a long one no longer take time growing with the square of the row count.
+
+- **Breaking:** the minimum Unity is 6000.3.23f1, the package depends on `com.unity.modules.accessibility`, and every
+  public signature that named a UniTask type names `VelvetTask`. Removed: `Router.Status`, `Router.OnStatusChanged`
+  and `RouterStatus`, `RouteActionContext.FormData`, `FiberUpdatePriority.Deferred`, `Velvet.PureAttribute`, the
+  `V.Outlet` node kind, the painted skew layer, the `QueryOptions` constructors over a `CancellationToken`, the
+  `NavigationAttempt` type and the asynchronous predicate overloads of `Hooks.UseBlocker` and
+  `RouteBlockerManager.Register`, and `V.FocusScope`'s element arguments. Changed signatures: `V.Portal` takes the
+  target element, so `V.Portal(null)` no longer compiles, nor do `V.Particles(null, …)` and a shorthand factory
+  given a literal `null` before its children; the factories that gained `events:` take it as their last parameter;
+  `MountOptions` takes its options as `init` properties; `V.Motion(variants:)` maps each label to a `MotionVariant`;
+  `V.DndContext`, `V.DragOverlay` and `V.FocusScope` return a `ComponentNode`, `V.DndContext` takes its new
+  arguments after `activation:`, `DndCollisionDetection` returns a ranked `DndCollision[]`, and `DragOverArgs` and
+  `DragEndArgs` take `Collisions`; `Hooks.UseNavigate` returns a `NavigateFunction`, `Hooks.UseBlocker` takes a
+  `bool` or a predicate over `BlockerFunctionArgs`, `RouteBlockerState.Location` replaces `Attempt` and its
+  `Proceed` and `Reset` are delegates, `SearchParams.Size` replaces `Count` and its enumeration yields entries, and
+  `NavigationState.FormData` is a `FormData`; `Hooks.UseAnimationSequence` takes a required `deps`; `QueryInfo`
+  became `Query`, the shared options moved to `QueryOptionsBase`, `QueryOptions.QueryFn` is a `QueryFunction<T>`,
+  query and mutation functions take a `QueryFunctionContext` and a `MutationFunctionContext`, `QueryState`'s
+  failure fields gained a `Fetch` prefix, `Retry` takes a `RetryRule` and `StaleTime` a `QueryStaleTime`,
+  `PlaceholderData`, `StructuralSharing` and `QueryFilters.Exact` changed type, and `InvalidateQueries` and the
+  `MutationOptions` callbacks return a `VelvetTask`; `VelvetPreviewRegistry.RunSetupFor` returns a
+  `VelvetPreviewEnvironment`; the box-shadow shader is named `Velvet/BoxShadow` and `drop-shadow` is a reserved
+  `VelvetFilters` name; a skewed `V.Div`, `V.Button` or label is a subclass of its UI Toolkit type; and six more
+  `V.*` enum arguments refuse a value naming no member. Behaviour that now follows React, CSS, Framer Motion, React
+  Router, TanStack Query and the other libraries Velvet mirrors is described in this version's entries.
 
 ### Added
 
@@ -630,8 +639,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   body as a whole is keyed, how many parts are cached on their own, and one line per thing left uncached with the
   reason. An assembly carrying `AssemblyMetadata` with `MemoizationReportAttribute.MetadataKey` and
   `MemoizationReportAttribute.WarnValue` has the same lines reported as build warnings.
-- `Hooks.ReserveScopes`, `Hooks.TryGetScope` and `Hooks.StoreScope`, the runtime half of the above, which the
-  build-time transform calls and nothing else should.
 
 - CSS custom properties as classes: `[--name:value]` declares one on an element and its descendants inherit it,
   `var(--name)` and `var(--name, fallback)` read it in a utility's bracket or its modifier's
@@ -913,9 +920,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `bg-primary/50` resolve, and `max-md:`, `min-3xl:`, `max-[600px]:` and `min-[600px]:` are variants ranked as
   Tailwind orders them. See `Documentation~/styling-colors.md`.
 
-- `Hooks.TryGetValueScope` and `Hooks.StoreValueScope`, the runtime half of the above for a part that caches a
-  value rather than a `VNode`, which the build-time transform calls and nothing else should.
-
 - `V.Motion(enterOnMount:)` and `MotionNode.EnterOnMount`.
 
 - A leading `-` negates a bracket `z-*` value as it does a bare one (`-z-[5]` is -5), as Tailwind v4 emits it.
@@ -1003,6 +1007,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `steps()`, `step-start` and `step-end` run as steps in `ease-[…]` and in a `--ease-*` token.
 - A custom property holding `cubic-bezier()` or `steps()` in a USS sheet is imported as the text it was written with,
   as one holding `rem` or a math function is.
+
+- `VelvetPreviewPanel.Render()` draws one frame into the panel's `Texture` before it returns. It first runs
+  `VelvetPreviewPanel.SettlePasses` update passes over the runtime panels drawing into the texture, each a simulated
+  frame that moves the panel's clock on by `VelvetPreviewPanel.SettlePassMilliseconds`, and the clock stays moved
+  afterwards. Work those panels time by their own clock advances as over that many frames, so the renders, effects
+  and state updates Velvet schedules there are drawn, so is what Velvet measures from their layout, and a transition
+  timed by that clock that ends within the passes is drawn finished. Motion that reads its mount's
+  `MotionClock` rather than the panel's time moves only as far as that clock has, and work the story resumes on a
+  later editor or player frame is drawn by a `Render()` after that frame. The panels are then repainted and
+  rendered, and an exception the frame does not catch reaches the caller as it was thrown. The headless screenshot capture the preview guide describes calls it
+  between mounting a story and reading the texture back; a mount alone does not draw its story into the texture in its
+  own frame.
 
 ### Changed
 
@@ -1111,6 +1127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weaver's allow-lists, or of a stable object a call may have changed is built on every render and its siblings
   are not, and neither is a child of `V.Portal` or `V.WorldSpace`. The memoization guide states what keeps a part
   from being cached.
+- `Hooks.ReserveScopes`, `Hooks.TryGetScope` and `Hooks.StoreScope`, the runtime half of the above, which the
+  build-time transform calls and nothing else should.
 - A call the build cannot see (an interface or virtual call, or one into an assembly it cannot load) ahead of the
   last hook, a hook outside the allow-lists, and a hook result used in a shape the weaver cannot key on no longer
   leave the whole component without memoization: the body as a whole is not keyed, and the parts that read none
@@ -2081,6 +2099,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier one, sees the same instance until its inputs change; a local the body writes into, or hands to any call
   other than a pure one, is still computed on every render. The memoization
   guide states which computations are cached.
+- `Hooks.TryGetValueScope` and `Hooks.StoreValueScope`, the runtime half of the above for a part that caches a
+  value rather than a `VNode`, which the build-time transform calls and nothing else should.
 
 - A `font-[…]` family is read as Tailwind reads a bracket: `_` is a space and `\_` an underscore. A family used to
   keep its underscores; write `\_` for one whose name holds an underscore. An `addr:` key keeps its underscores.
@@ -3165,7 +3185,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AnimateControls.Finished` never settles once `Stop()` or `Cancel()` ends the animation, as Framer Motion's
   `finished` promise does not; it was cancelled.
 
-- The ease-in-out every `transition-*` utility bundles runs along Tailwind v4's default curve, `cubic-bezier(0.4, 0, 0.2, 1)`.
+- The ease-in-out each `transition-*` utility but `transition-none` bundles runs along Tailwind v4's default curve,
+  `cubic-bezier(0.4, 0, 0.2, 1)`.
 - The bundled `ease-in`, `ease-out` and `ease-in-out` classes, behind a variant or not, run their transition along Tailwind v4's curves
   (`cubic-bezier(0.4, 0, 1, 1)`, `(0, 0, 0.2, 1)` and `(0.4, 0, 0.2, 1)`) in place of the UI Toolkit keywords of the
   same names that approximated them. A project's `--ease-in`, `--ease-out` or `--ease-in-out` replaces the curve.
@@ -3416,6 +3437,138 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   application's; an error that root raises itself, such as a node its reconcile refuses, now has an empty stack.
 - `MountOptions` takes every option as an `init` property, as React's `createRoot` takes them as properties of one
   object: `new MountOptions(handler)` is written `new MountOptions { OnCaughtError = handler }`.
+
+- Reading a keyword variant class with no relational name (`hover:`, `sm:`, `dark:`, `group-hover:` and the like)
+  no longer cuts its keyword out as a string, and asking only whether a class is one cuts out no payload either.
+  Outside a theme scope, asking it of a class behind a plain word that is no variant, such as `first:` or
+  `max-3xl:`, cuts out nothing.
+- The clip-path, filter, filter-transition, animate-hue and border-inset reads pass over a class that names none of
+  their utilities before peeling its variants, so they allocate nothing to peel such a class.
+- An arbitrary value with no type hint, such as `w-[120px]`, no longer has its prefix cut out as a string when it is
+  tried as a colour.
+- Mounting a `V.Div`, `V.Label` or `V.Button` no longer allocates to watch such an element for a radius its
+  stylesheet or code gives it: the element's type hands its size changes to the corner-radius fit, where a callback
+  was registered on each one before.
+
+- Callback refs that each write a colour to their element now share one computation of the panel's layout, within a
+  commit and across the rows a `V.VirtualList` renders together. A ref or a layout effect behind a write that resizes
+  an element still reads the element's new size.
+
+- A patch of an element carrying `gap-*`, `divide-*`, a grid, a box shadow or a gradient no longer builds a closure or
+  a delegate to keep a relative-length poll up when none of its lengths is a measured one.
+- A patch of a `divide-*` container whose width is in pixels, and a write of a bracketed pixel border width such as
+  `border-[3px]`, no longer allocates two objects to keep the element on the watch that snaps it again when the panel's
+  scale changes.
+- A patch of a shadowed element no longer cuts a preset's name out of its `shadow-*` or `inset-shadow-*` class as a
+  string, `shadow-inner` aside, copies the layers of a single family into a list and an array, or records the colours
+  its classes declare in a new object when they are the ones it recorded last time.
+- The shadow and clip-path reads pass over an important class of another family, such as `!bg-red-500`, before
+  copying it without its bang, and configuring an element's variant manipulators passes over an important class that
+  can be neither a theme class nor a custom-property reader, such as `!flex`, the same way.
+- Inside a theme scope, asking whether a class behind a plain word that is no variant, such as `first:`, or behind
+  `max-`/`min-` and a breakpoint no sheet declares, is a variant cuts out nothing. Reading a theme variable's length
+  no longer wraps its text in brackets first.
+- The readers configuring an element's state, responsive, container and group/peer variant manipulators cut a variant
+  class's payload out only where its kind is the one being read, where before each of them cut out the payload of
+  every variant class; and a class holding fewer than two `:` is skipped when looking for a stacked one.
+
+- On mount, a `V.Portal`'s children run their insertion, layout and passive effects and attach their refs where the
+  portal sits among its siblings, as React's commit reaches them; they used to run after those of every component
+  that follows the portal inside the component rendering it. A layout effect of a component after the portal
+  therefore finds the refs of the portal's elements set. The same holds for the effects of a commit in which a
+  portal's children and a component after the portal both re-render, where the later component's used to run
+  first.
+- A `V.Suspense` that hides children it has shown runs their components' layout cleanups and detaches their
+  elements' refs in one walk of the hidden tree before it hides the elements, as React runs
+  `disappearLayoutEffects` ahead of `hideOrUnhideAllChildren`: a component's layout cleanups run as the walk
+  reaches it, ahead of the refs of the elements it rendered, and a `V.Portal`'s children and an element Velvet
+  relocates to paint it in CSS's stacking order are reached where they are declared. A layout cleanup therefore
+  finds the refs of its own component's elements, and of every element after them, still set, those elements
+  still displayed and a focused one still focused; the hidden children's refs used to detach, their elements to
+  be hidden and a focused one to lose its focus before the first layout cleanup ran.
+
+- A Motion transition's `EaseIn`, `EaseOut` and `EaseInOut` now run on Framer Motion's `easeIn`, `easeOut` and
+  `easeInOut`, `cubic-bezier(0.42, 0, 1, 1)`, `cubic-bezier(0, 0, 0.58, 1)` and `cubic-bezier(0.42, 0, 0.58, 1)`,
+  where they ran on UI Toolkit's quadratics, up to 0.069 of the way apart for the first two. `EaseOutBack` and
+  `EaseInOutBack` run on Framer Motion's `backOut`, `cubic-bezier(0.33, 1.53, 0.69, 0.99)`, and `backInOut`, the
+  mirror of its `backIn`; `EaseInBack` runs on that `backIn`, `backOut` reversed, except on a value Framer hands the
+  Web Animations API, an opacity or a filter, which takes the `cubic-bezier(0.31, 0.01, 0.66, -0.59)` Framer gives
+  that API. They ran on UI Toolkit's own back curves, up to 0.024 of the way apart. On that API's path `EaseInCirc`
+  and `EaseOutCirc` now take the `cubic-bezier(0, 0.65, 0.55, 1)` and `cubic-bezier(0.55, 0, 1, 0.45)` Framer gives
+  it, up to 0.73 of the way from the circle curves they ran on, and a `UseAnimate` sequence segment's `Opacity` on
+  `EaseInOutBack` or `EaseInOutCirc` runs on `easeOut`, which Framer gives each easing of a keyframes array that API
+  has no curve for. That covers a `Tween` UI Toolkit's own transition plays, from its first frame, a driven `Tween`, a
+  `PropertyOverrides` entry, whose opacity stays on that path whatever the play repeats, a `layoutId` move
+  and the opacity a `layoutId` crossfade carries, `UseAnimate`, a timeline's step, the ease-out a transition naming
+  none takes, and the transitions Velvet runs in the engine's place while a Motion's tween holds the element's timing;
+  `EasingMode.EaseOut` is the default `StyleTransitionConfig.Easing`, so a Motion that names no easing is retimed too.
+- `UseAnimate`'s single call eases `Opacity` keyframes on a `Tween` or a `Bezier` along one easing over the whole
+  duration, as Framer Motion runs opacity through the Web Animations API, where it eased each pair of keyframes;
+  three keyframes with no transition now run 0.8 s on one ease-out. A `RepeatDelaySec` or a `Mirror` `RepeatType`,
+  or a `Bezier` with an x outside `[0, 1]`, which the browser refuses, keeps the pair-by-pair easing, as each keeps
+  Framer on its keyframes generator. `X`, `Y`, `Scale` and `RotateDeg`, and every value of a sequence segment, still
+  ease pair by pair.
+
+- A component that is not memoized no longer renders again with its parent when the parent hands it back the
+  element it last rendered from, as React with React Compiler bails such an element. A `[Component]` body's
+  automatic memoization hands back the element it built for a part whose inputs did not change, so a child built
+  there keeps its output on its parent's render: one that reads something no hook tracks, such as a static field
+  or `Time.time`, shows the value it last read until an update of its own. Its own state update, a change to a
+  context it reads, a read it is still waiting on and a render of its own that suspended still render it, inside
+  an element or a component the parent handed back as well. An `Outlet` handed back by its parent does not
+  render again at the same location either, so a route scope whose creation failed is asked for again only when
+  the Outlet next renders.
+- Automatic memoization now caches a call that builds a component from a static method, such as
+  `V.Component(Row.Render)`. It used to build every such call again on each render, and the method's
+  `MemoizationReportAttribute` listed it as writing a static: the field the C# compiler keeps that method's
+  delegate in.
+
+- An error boundary catching an error from a commit — a layout or passive effect, its cleanup, a ref callback — or
+  from the render of its own update or of a child's own update mounts its fallback afresh, as React's boundary
+  reconciles the fallback against none of the children it replaces. A component of the fallback with the type and
+  key of one the boundary showed starts from its initial state, an element of it with the key of one the boundary
+  showed is mounted again, the shown one's ref let go, and a `V.Suspense` or `V.AnimatePresence` of the fallback
+  starts with nothing the boundary's shown one recorded. That component's state and that element used to be kept,
+  and that `V.Suspense` or `V.AnimatePresence` went on from the shown one.
+
+- `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` keep an observer of its own for each query of a list that reads
+  the same entry as another, the observers held over an entry going to its queries in the list's order, as TanStack
+  Query v5 does since 5.90.11. Once the list committed again, such queries used to share the last observer held over
+  the entry, so `Query.GetObserversCount()` counted one for all of them, and that commit re-rendered the component.
+- `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` with a `combine` hand it, at a change to one query, each other
+  query's result as the hook last committed or notified it, as TanStack Query v5's `#onUpdate` does, where they used
+  to compute every result afresh. A change a query's `NotifyOnChangeProps` leaves out reaches `combine` once a commit
+  follows: two queries summed, the first listing only `Error`, whose data moves from 1 to 2 and then the second's
+  from 10 to 20, render 21 and then 22, where they rendered 22 alone.
+- A custom property in a USS file holding an `rgb()` of three numbers or an `rgba()` of at least four, whose arguments
+  are anything but three integers, all separated by commas or all by spaces, and in `rgba()` a number after them,
+  after a further comma where commas separate them and after a `/` where spaces do, is stored as the text it was
+  written with, where UI Toolkit's importer stored the colour of the first three or four of those numbers alone: one
+  with a percentage (`rgb(0 0 0 / 50%)`, stored as opaque black), a `var()`
+  (`rgb(59 130 246 / var(--tw-ring-opacity))`), a fraction in a channel (`rgb(0.5, 0, 0)`, stored unscaled), a word or
+  a hex colour among its numbers (`rgb(1, 2, 3, foo)`), a full stop no digit follows (`rgb(5., 0, 0)`), separators
+  mixed, missing or out of place (`rgb(1, 2 3)`, `rgba(0 0 0 0.5)`, `rgba(255 0 / 0 0.5)`), or more numbers than its
+  channels (`rgba(255, 0, 0, 1, 9)`). A stock USS `color: var(--x)` reads no colour from such a property.
+- A custom property in a USS file that UI Toolkit's importer used to store as other tokens than CSS reads is stored
+  as the text it was written with, as one holding a `rem` is, such as an integer a full stop follows with
+  no digit after it (`3.px`, stored as `3 px`, and `3.`, stored as `3`), a unit a `-` or `_` continues (`1px_a`,
+  stored as `1px _a`, and `1px-2px`, stored as `1px -2px`), a hex colour a name character follows (`#abcxyz`, stored
+  as `#aabbccff xyz`), a colon (`a:b`, stored as `a b`), and a comment opening the arguments of `none()` or
+  `filter()` (`filter(/* c */ a)`, stored with the comment's text as its first argument).
+
+- Each subtree a render takes out of the element tree is taken down in one walk, in the order React's deletion takes a
+  subtree in: a component's `UseInsertionEffect` and `UseLayoutEffect` cleanups run where the walk reaches the
+  component, ahead of the components it rendered, and an element's `refCallback:` cleanup runs where the walk reaches
+  the element, after the cleanups of the components above it and ahead of those inside it. A component's `UseEffect`
+  cleanups run right after its layout cleanups, so they too precede those of the components it rendered, the order
+  React's passive phase cleans a deleted subtree up in. The subtree's refs used to detach together, ahead of the
+  cleanups of the components inside it that are not a `V.Portal`'s children, and a component its parent stopped
+  rendering cleaned up after the components it rendered with no element between them.
+- On mount, an element with a `refCallback:` that a `V.Portal`'s child renders after a component attaches its ref
+  after that component's layout effects, as React's layout phase reaches it; it used to attach first.
+- A `V.VirtualList` row inside a `V.Portal` runs its effects ahead of a component after the portal when both
+  re-render in one commit, as React's commit reaches the portal's children where the portal sits; it used to run
+  them after.
 
 ### Removed
 
@@ -5664,6 +5817,247 @@ A suspend a `V.Suspense` above the host element catches is unchanged.
   where CSS gives 91), and in a Linear project the colour space conversion darkened a translucent colour.
 
 - Spring and Bezier target selection follows important declarations per longhand. Important shorthand and longhand targets match their applied values without depending on a class projection, while independent translate axes retain their own targets.
+
+- A component that the scheduled resume of a parked time-sliced render reaches reads the `V.Provider` values
+  above the component whose render parked, as the components the render reached before parking do, where no
+  `V.Portal` and no `V.VirtualList` item encloses the parked component. A `Hooks.UseContext` call there returned
+  the context's default value instead.
+
+- A time-sliced render parked inside the children of a `V.Suspense` that has hidden them to show its fallback
+  is not continued on its own while they are hidden; the next render that reaches it continues it under the
+  `V.Provider` values above it. Continued on its own while they were hidden, it rendered components that read a
+  context's default value in place of a `V.Provider` above them, and where the reveal did not render the parked
+  component again, they kept that value.
+
+- An error a component throws when the scheduled resume of a parked time-sliced render reaches it, or when an
+  update of the parked component itself completes the parked render first, and that an error boundary above the
+  parked component catches, is reported once, by that boundary. A `NullReferenceException` was logged beside
+  it; after the scheduled resume, the boundary's own report also waited for a later commit.
+
+- An error boundary's fallback reads the `V.Provider` values above the boundary when the error it catches is
+  thrown by a `Hooks.UseEffect`, or by a render that did not start at the boundary or above it, such as an
+  update of a component below the boundary, a time-sliced render resuming below it, or the first render of a
+  `V.Portal`'s child, where no Portal and no `V.VirtualList` item encloses the boundary. For an effect's error it
+  read each context's default value. For a render's, it read the values where the error was thrown: a Provider
+  below the boundary, one the boundary renders included, took precedence; under the scheduled resume a Provider
+  above the boundary read as its context's default; and for a Portal's child, a Provider that another boundary's
+  fallback had just placed above the boundary gave way to one of the same context above that other boundary.
+
+- A component that a `V.Portal` mounts reads, in that first render, the `V.Provider` value around the Portal
+  rather than one of the same context farther up, whether the Portal mounts with the component rendering it or
+  when that component updates, where no other Portal and no `V.VirtualList` item encloses the Portal. It read the
+  farther Provider's value on an update, and at the mount where a component above rendered it.
+
+- A component in a row of a keyed list whose time-sliced render parked reads the `V.Provider` value its own row
+  last committed when it renders again on its own before the render reaches that row. It read the value the
+  parked render gave the Provider of the first row holding a component at the same position.
+
+- The compiler no longer caches the value a local is given where the only cached scope reading that local sits
+  inside the computation of the value, which reads what the local held before. Such a value took a cache slot
+  and a key of its own on every render with nothing reading what it stored.
+
+- A rounded layoutId `V.Motion` that does not clip its content and whose background image is set inline keeps
+  painting that image while its move is drawn scaled differently on each axis, and has it back once the move
+  lands. A texture or sprite image used to be painted for one frame of the move, show none for the rest of it, and
+  be lost for good when the move landed. An inline `RenderTexture` image, on a Motion that clips its content or
+  not, is now painted for the whole move and handed back too, where it used to be painted on no frame of the move
+  and lost when it landed.
+
+- A bracket whose value opens on a parenthesis with no function name before it, such as `brightness-[(2)]`,
+  `hue-rotate-[(2deg)]` or `translate-x-[(10px)]`, is rejected as the browser rejects what Tailwind writes for it,
+  so the element draws none of that family's utilities; it used to be taken as a function that might come to
+  anything. A negated one, such as `-hue-rotate-[(2deg)]`, is still taken, since Tailwind writes it inside
+  `calc()`. A gradient stop position written that way, such as `from-[length:(10px)]`, puts the stop at its
+  initial position, as another position the browser rejects does.
+- An element with a border-width utility and a colour transition, such as `border transition-colors`, shows its
+  text colour on every side as soon as it mounts, where every side after the top used to fade in from
+  transparent. A border colour code writes inline and clears again transitions back to the text colour, where it
+  used to fade to transparent first.
+
+- A transition UI Toolkit runs on a function the element's classes give it now runs on that function from its first
+  frame: Tailwind's curve for an `ease-in`, `ease-out` or `ease-in-out` class or the `ease-in-out` a `transition-*`
+  utility bundles, or the function an `ease-[…]` class or a theme's `ease-<name>` names. The first frame was eased by
+  UI Toolkit's own curve for the keyword and the function took over from the second: 0.15 s into a 0.3 s
+  `transition-all`, a blur stood half way where Tailwind's curve puts it at about 78%, and a `steps(…, jump-start)`
+  had not yet taken its first step.
+- A transition already running on an element keeps the curve it started on when another transition starts there, as
+  a CSS transition keeps its timing function. Velvet moved every transition still running on UI Toolkit's own curve
+  onto the function the element's classes gave by then, mid-run: an opacity change running on `ease-linear` turned
+  onto Tailwind's ease-out part way through when an `ease-out` class arrived with a change of another property.
+
+- A radius a `V.Div`'s, `V.Label`'s or `V.Button`'s own `GeometryChangedBinding` writes when the element's size changes
+  is fitted on that change. On a label or button reused from the pool after an earlier mount as one, and on any of the
+  three given the binding on a later render, it kept its unfitted value until the size next changed.
+
+- A child whose `shadow-inherit` reads a colour its parent mixes with an opacity modifier outside 0..100%
+  (`shadow-lg/150 shadow-red-500`) draws no box-shadow, rings included. Tailwind mixes the colour through
+  `--tw-shadow-alpha`, so the browser finds it invalid, the child inherits that invalid value, and its box-shadow
+  computes to none; it used to draw the parent's colour at full strength. The same applies to
+  `inset-shadow-*`.
+- `shadow-initial` leaves each layer its own colour where it outranks the shadow colour class beside it, as it
+  does when important (`!shadow-initial`) or when Tailwind emits it after that class (`shadow-black`); it used to
+  be ignored.
+- `shadow-lg/150 shadow-inherit` draws its shadow. `shadow-inherit` reads no `--tw-shadow-alpha`, so the browser
+  keeps the box-shadow; it used to be discarded as an invalid colour would discard it.
+
+- The skew pass no longer cuts the sign off a class that opens with `-` and is not a skew utility, such as `-mt-2`
+  or `-translate-x-1/2`. It read each class of an element on every patch and allocated a string for each such class
+  before checking for `skew-`.
+
+- A `backdrop-*` change, a dashed or dotted divider's colour, and a background or border colour repainted under a
+  `shadow-*`, a `border-dashed` or `border-dotted`, or a layoutId Motion's per-axis corners now ease along the
+  function their transition's class gives, as the transition UI Toolkit runs for the same class does: Tailwind's curve
+  for `ease-in`, `ease-out` and `ease-in-out` (`transition-all` and `transition-colors` give `ease-in-out`), and the
+  function an `ease-[…]` class or a theme's `ease-<name>` names. Velvet runs each of these transitions itself and eased
+  them by UI Toolkit's own curve for the keyword the element resolves instead: half way through a
+  `transition-colors`, a dashed divider's colour stood half way where Tailwind's curve stands at about 78%. A change
+  back part way through is shortened by the curve it ran on.
+- An element whose classes give its transitions `ease-in`, `ease-out` or `ease-in-out`, and whose rules give them more
+  than one duration, delay or timing function, keeps Tailwind's curve while a Motion narrows its transitions around
+  the properties it drives. The timing lists the narrowing writes inline were read as the element's own, which left
+  those transitions on UI Toolkit's curve for the keyword.
+- A Motion's tween on an element carrying an `ease-[…]` class, or a theme's `ease-<name>`, now runs on the Motion's own
+  `Easing` where that is the keyword nearest the class's function. The class's function replaced it.
+- A `transition-filter` tween whose `ease-[…]` class runs `steps(…, jump-start)` or `steps(…, jump-both)` holds its
+  start through a positive `transition-delay`, as CSS does; it took its first step as the delay began.
+- A `transition-filter` tween whose filter is changed back to the one it shows, as when a hover ends inside the
+  delay, now stops there. It ran on to the filter it had been heading for and stayed on it.
+- A sortable item whose transition lists are written inline, by an `ease-[…]` class or by a Motion narrowing its
+  transitions, gets them back when a drag that shifted it ends, and a narrowing that ends afterwards hands back the
+  item's own. The drag's `translate` and `scale` over 200 ms on an ease stayed in their place.
+
+- A shadow size's `/N` keeps scaling the colour class beside it when another size without one holds the layers:
+  `shadow-lg/50 shadow-xl shadow-red-500` draws `shadow-xl` in red at 50%, and `shadow-lg/150 shadow-xl
+  shadow-red-500` draws no box-shadow, as the browser does with Tailwind's `--tw-shadow-alpha`. A later size used
+  to reset the scale to 100%. The same applies to `inset-shadow-*`.
+- A shadow size without a `/N` takes the layers from a plain size with one, whichever is written first, as
+  Tailwind emits the size with the `/N` first: `shadow-lg/150 shadow-lg` draws `shadow-lg`'s layers at their own
+  10%, and so does `hover:shadow-lg hover:shadow-lg/150` while hovered. The size with the `/N` used to win
+  wherever its name sorted after the other's. The same applies to `inset-shadow-*`.
+- A bracketed shadow, or a bracketed shadow colour beside a size, with a bracketed opacity modifier
+  (`shadow-[0_0_5px_red]/[50%]`, `shadow-lg shadow-[#f00]/[50%]`) is drawn at that alpha. It used to discard the
+  whole box-shadow, a ring beside it included. The same applies to `inset-shadow-*`.
+- A bracketed ring, inset ring, ring offset or outline colour with a bracketed opacity modifier
+  (`ring-[#f00]/[50%]`) is drawn at that alpha. It used to discard the whole box-shadow, or for an outline to be
+  ignored. A bracketed ring width with a modifier (`ring-[2px]/[50%]`), which Tailwind writes no rule for, no
+  longer discards it either.
+- A `-none` with an opacity modifier (`shadow-none/50`), which Tailwind writes no rule for, no longer stops the
+  size before it from reading a rejected colour: `shadow-lg shadow-none/50 shadow-[color:0_4px_8px]` draws no
+  box-shadow, as the browser does, where it used to draw `shadow-lg`. The same applies to `inset-shadow-*`.
+- `shadow-inherit` or `shadow-initial` with an opacity modifier (`shadow-inherit/50`), which Tailwind writes no
+  rule for, no longer replaces a rejected shadow colour beside it: `shadow-lg shadow-inherit/50
+  shadow-[color:0_4px_8px]` draws no box-shadow, as the browser does, where it used to draw `shadow-lg`. The same
+  applies to `inset-shadow-inherit` and `inset-shadow-initial`.
+- A rejected shadow colour class discards the box-shadow beside a bracketed shadow layer where Tailwind 4.3.3 writes
+  the colour variable into that layer. A layer whose offsets are `calc()`, `clamp()`, `min()` or `max()` takes it:
+  `ring-2 shadow-[calc(1px)_calc(2px)] shadow-[color:0_4px_8px]` draws no box-shadow, a ring included, where it used
+  to draw the ring. A layer with two lengths and two further parts that are no keyword, length or colour does not:
+  `ring-2 shadow-[0_0_hypot(1px)_hypot(2px)] shadow-[#ggg]` draws the ring and the shadow, where it used to draw
+  neither. A layer that also holds a `var()` (`calc(1px)_calc(2px)_var(--c)`) is read as before.
+- The bare `shadow` with an opacity modifier (`shadow/50`) draws its layers at that alpha. It used to draw
+  nothing.
+- The outer box-shadow of an element that clips its content (`overflow-hidden`) takes `shadow-current` and `em`
+  lengths from the element itself. It used to take them from its parent.
+
+- `VelvetFonts.DefaultFamily` reaches a label with no font class, as the `font-family` Tailwind's preflight gives
+  `html` reaches a `<p>` with no class: Velvet writes the family inline on the element a tree is mounted on, on each
+  element a portal renders into its target rather than on the target, whose other children keep their font, and on
+  the root of a layer or world-space panel, and what is under them inherits it. One of them inside another inherits
+  too. It used to reach an element with a weight, italic or width class and what was under it, so a label with no
+  font class elsewhere kept whatever font its stylesheets and ancestors gave it. A family an element names still
+  decides for what is under it, and where a font an author's stylesheet rule or inline style gives one of those
+  elements, or an element above it, is what would show there without the default family, it is inherited instead. A
+  change to the registry reaches the written elements with no render.
+
+- Patching every row of an unkeyed list checks that each row's slot is still occupied by walking on from the slot
+  it checked before, where nothing moved that one, rather than from the container's first child. That walk asked
+  every child it passed whether it was one of the children Velvet
+  hosts that hold no slot, so the cost grew with the square of the row count and with each kind of those children
+  Velvet added. In the editor, reordering a keyed list counted all of the container's children twice for each row
+  it kept from the first one out of place, and now checks that row's slot from the one checked before it.
+- A class change whose families of classes are already in the order Tailwind emits them no longer sorts the
+  element's classes, or copies its class list once for each family, to find that out.
+
+- A `VelvetPreviewPanel` built from `PanelSettings` that clear their own panel's colour no longer clears over a
+  `V.Portal(UILayer.Background)` drawn into its texture, so the texture is cleared to transparent below everything
+  drawn into it, as the class describes. The panel also takes its texture's size and scale when it is built rather
+  than on its first update.
+
+- A USS file holding a custom property with one of these, each of which UI Toolkit's importer fails the file on, is
+  imported, the value stored as the text it was written with, as one holding a `rem` is: a number with an exponent
+  (`1e3px`, `1e3`), one a `-`, a `_` or a non-ASCII character directly follows (`1-2`, `1_a`, `1-a`), most
+  delimiters, such as the `/` of Tailwind's `--aspect-video: 16 / 9` or a full stop no digit follows after a fraction
+  (`.5.p`), a hex colour of other than three, four, six or eight digits (`#zzz`, `#12345`), an `rgb()` of other
+  than three plain numbers or an `rgba()` of fewer than four, a percentage or a range such as `u+1` counting as none
+  (`rgb(100%, 0%, 0%)`, `rgba(0, 0, 0)`, `rgb(u+1 2 3)`), a function with nothing between its parentheses other than
+  `none()`, `filter()` and the URL functions `url()`, `url-prefix()` and `domain()` (`blur()`, `var()`), a `var()`
+  whose arguments the importer refuses (`var(--a,)`, which Tailwind v4 writes, `var(--a, 1px, 2px)`, `var(a)`,
+  `var(--a b)`), a comment among the arguments of a function such as `blur()`, `var()` or `linear-gradient()`
+  (`blur(/* x */ 4px)`, `var(--a /* c */)`), a range (`u+1`, `U+12`), and a URL function whose path the importer's
+  lexer cannot read (`url(a b)`, `url(a /* c */)`, `url("a" /* c */)`, stored as `url("a"  )`). The importer used to
+  leave the whole file empty.
+- A custom property stored as the text it was written with keeps a `/*` inside the unquoted path of a `url()`, which
+  CSS reads as part of the path (`url(a/*c*/) 1rem`), where it used to be taken out as a comment. A `/*` or a quote in
+  the unquoted path of a `url()`, in any declaration, used to leave the custom properties after it as written up to
+  the next `*/` or quote of its kind, a `rem` among them failing the file (`url(icons/*.svg)` or
+  `url(images/don't-panic.png)`, then `--gap: 1rem`), and with no `*/` after it the custom property holding a `/*` as
+  well (`url(icons/*.svg) 1rem`). Such a path now ends at its first `)` no backslash escapes, as CSS ends it.
+- A custom property stored as text whose value holds a form feed no longer fails the file. The form feed used to be
+  written inside the quotes as it was, which UI Toolkit's importer refuses.
+- `Hooks.UseQueries` and `Hooks.UseSuspenseQueries` run `combine` again once a commit changes only a query's
+  `Select`, as TanStack Query v5 does. The value from before the change used to stay until another change ran it
+  again.
+- A custom property whose `!important` is written in another case, which UI Toolkit's importer fails the file on,
+  has it written in lower case.
+- A custom property in a USS file calling a function UI Toolkit's importer does not know, such as `mysteps(3)` or
+  `rgb()` written in capitals, is stored as the text it was written with, as one calling `cubic-bezier()` is. The
+  importer used to drop the function with a warning.
+
+- A time-sliced update of a keyed list (a transition, for example) no longer leaves an extra, empty element among
+  the list's children when an `absolute` row stacked by `hover:z-*` stops being hovered while the update is paused
+  after reaching that row.
+
+- The end of a pass no longer looks through every child of each parent whose children it reconciled for one that
+  carries an `absolute`, `relative`, `z-*` or `order-*` class (behind a variant too), is a `V.Anchored` element or
+  is a pinned `AnimatePresenceMode.PopLayout` exit. It looks only under a parent such a child has stood in since a
+  look there last found none. A time-sliced render looked after every slice, which added a cost growing with the
+  square of the list's length.
+- An element an `AnimatePresenceMode.PopLayout` exit pinned out of flow gives the pin up when it is removed, so a
+  pooled `V.Label` or `V.Button` no longer brings one into its next mount.
+- An element wrapped for a `clip-path-*` class or by a `wrapElement`, which a time-sliced pass created and a fresh
+  pass discarded before placing it, no longer stays in the reconciler's stacking tables where its stacking classes
+  left it in its slot, such as `relative`, `absolute`, `z-0`, `z-auto`, `order-0` or `order-none` with no non-zero z
+  or order beside them, or a `z-*` or `order-*` reading a custom property that had not resolved.
+
+- A gradient's `from-`, `via-` or `to-` palette colour reads as its own mount's sheets give it. The reading of the
+  first mount to render the class was handed to later ones, so a mount whose sheets set `--color-*: initial` could
+  take the palette colour, or another mount lose it. A gradient re-measured after its font or the panel changed now
+  reads its stops under its mount's sheets too.
+
+- A `V.VirtualList` row that stacks by a `z-*` class is now placed in front of or behind the other rows as its z
+  says, in each of these cases where it was not. A row a render gave the class went on painting in its own slot, and
+  the reconciler kept holding it after it left the list; a row created with the class disappeared at the list's next
+  render of its range; and a row a scroll brought into view was not placed by that scroll. Such a row also takes the
+  list's item length, which went to the element standing in its slot.
+- A `V.VirtualList` row that is a `V.Portal` now mounts its children in the target before the scroll that brings it
+  into view returns, in the order a render mounts them, a Component row beside it in that range included.
+- A `V.VirtualList` row that a scroll mounts inside a `V.Provider` of its own now reads that Provider's value. Where a
+  Provider of the same context enclosed the component rendering the list, the row read that one's value instead.
+- A `V.Motion` holding a `layoutId` now runs a change of its own translate during its move, and after the move while
+  that translate still runs, on the curve the same change runs by on an element holding no id where a class gives
+  that one Tailwind's curve, as `ease-out` and `ease-in-out` do. It ran UI Toolkit's own curve for the keyword
+  instead, and on a one-second `ease-out` fell some 5px behind over a 40px translate.
+
+- A top-level element of a `V.Portal`'s children that Velvet relocates to paint it in CSS's stacking order, one
+  with a `z-*` class among them, is hidden and has its ref detached with the rest of the portal's children when a
+  `V.Suspense` hides them. It used to stay displayed, with its ref set, under the fallback.
+
+- `Hooks.UseQueries` with a `combine` now re-renders with what the combine makes of a result that changed with
+  no event from its entry, such as data turning stale as time passes, once the render that read it commits, as
+  TanStack Query v5's `setQueries` does. It used to keep returning the earlier combined value until the
+  component rendered again for another reason. Without a `combine`, such a commit re-renders the component as
+  v5's does, and so does a commit that changes which queries the hook holds — a key that changed, a query
+  added or removed — whether or not any result changed.
 
 ## [2.1.4] - 2026-08-30
 
