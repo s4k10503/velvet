@@ -183,9 +183,9 @@ namespace Velvet
     // consumer reads). DescendantNodes is the committed VNode subtree to walk to recover any Provider placed
     // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
     // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
-    // walk is needed). The snapshot reflects mount time; a host re-render that changes the enclosing context
-    // re-runs the detached mount with a correct cursor, so this stale copy only matters for the narrow case
-    // of an isolated re-render after such a change.
+    // walk is needed). The snapshot and DescendantNodes are what the mount saw, and a later patch leaves an
+    // existing child's as they were, so FiberContextSpine walks the anchor's current output instead and reads the
+    // two only where that walk does not find the node the child last rendered from.
     internal sealed class DetachedMountContext
     {
         internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;

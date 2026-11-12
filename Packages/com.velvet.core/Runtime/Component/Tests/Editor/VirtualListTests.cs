@@ -2049,8 +2049,7 @@ namespace Velvet.Tests
             return V.Label(text: $"{s_innerSeen}{count}");
         }
 
-        // The renderer's OWN top-level node is a Provider that encloses the consumer — mirroring Portal's drained
-        // subtree, which IS reconstructed via DetachedMountContext.DescendantNodes.
+        // The renderer's OWN top-level node is a Provider that encloses the consumer.
         [Component]
         private static VNode InnerProviderItemHostRender()
             => V.VirtualList(

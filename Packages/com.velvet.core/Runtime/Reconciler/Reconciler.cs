@@ -672,18 +672,27 @@ namespace Velvet
         }
 
         // What a detached item scope hands from Begin to Stamp and End: the host's children before the scope, which tells
-        // the item fibers it adds, and the spine Begin pushed.
+        // the item fibers it adds, the spine Begin pushed, and whether Begin read the context around the list off the
+        // host's output rather than off the snapshot.
         private sealed class DetachedItemScope
         {
             public readonly HashSet<ComponentFiber> Before = new();
             public FiberContextSpine Spine;
+            public bool ReadAroundList;
         }
 
         object? IReconcilerBridge.BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass)
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode list, bool outsidePass)
         {
+            // Outside a pass no walk has pushed the Providers that enclose the list, and the snapshot holds the values
+            // they had when the host last created or patched the list, which a memoized host need not have done since
+            // one changed. So they are read from the host's spine and the host's output around the list; where that
+            // walk does not find the list, the spine goes over the snapshot instead. Inside a pass, including a row's
+            // walk in a range rendered outside one, the walk around the list has pushed them.
+            var scope = new DetachedItemScope();
+            if (outsidePass && host != null) scope.Spine = FiberContextSpine.PushAround(host, list, out scope.ReadAroundList);
             var stack = _ctx.ComponentContextStack;
-            if (enclosingContext != null)
+            if (enclosingContext != null && !scope.ReadAroundList)
             {
                 for (var i = 0; i < enclosingContext.Count; i++)
                 {
@@ -691,13 +700,7 @@ namespace Velvet
                 }
             }
             if (host == null) return null;
-            var scope = new DetachedItemScope();
-            // Outside a pass no walk has pushed the Providers that enclose the host, and the snapshot holds the values
-            // they had when the host last created or patched the list, which a memoized host need not have done since
-            // one changed; their committed values go on top. Inside a pass, including a row's walk in a range rendered outside one, the
-            // walk around the list has pushed them, and a spine read there would give the committed values that walk
-            // may be replacing.
-            if (outsidePass) scope.Spine = FiberContextSpine.Push(host);
+            if (outsidePass && !scope.ReadAroundList) scope.Spine = FiberContextSpine.Push(host);
             // Item fibers created during the scope AppendChild onto FiberStack.Current; making it the host
             // links them under the host (so they share the host's ReconcilerContext / context cursor) and
             // lets the spine's parent-walk reach the host on an isolated re-render.
@@ -752,7 +755,7 @@ namespace Velvet
                 }
             }
             var stack = _ctx.ComponentContextStack;
-            if (enclosingContext != null)
+            if (enclosingContext != null && scopeToken is not DetachedItemScope { ReadAroundList: true })
             {
                 for (var i = enclosingContext.Count - 1; i >= 0; i--)
                 {

@@ -15,7 +15,9 @@ namespace Velvet.Tests
     /// resume reaches it or a render of the parked component drains the pass first, and the boundary's fallback reads
     /// the Providers above the boundary rather than those at the row. So does a fallback swapped in for an error an
     /// effect throws, or one thrown in a Portal's drain before the mount has committed its output, and the Providers
-    /// pushed for a fallback are off the cursor once it has rendered.
+    /// pushed for a fallback are off the cursor once it has rendered. Where a Portal holds the parked component or the
+    /// boundary, the resumed row and the fallback read the value the host's render last gave the Provider above the
+    /// Portal, and so does the child of a Portal that an update of another Portal's child mounts.
     /// </summary>
     [TestFixture]
     internal sealed class ParkedPassResumeTests
@@ -50,6 +52,8 @@ namespace Velvet.Tests
         private static ComponentFiber s_providerFiber;
         private static bool s_portalShown;
         private static int s_listLayoutEffects;
+        private static ComponentFiber s_throwerFiber;
+        private static VisualElement s_innerPortalTarget;
 
         private static readonly MountOptions s_recordingErrors = new()
         {
@@ -406,6 +410,68 @@ namespace Velvet.Tests
             Assert.That(s_outsiderReading, Is.EqualTo("inner"));
         }
 
+        [Test]
+        public void Given_APortalsChildWhoseTransitionPassParkedAfterTheHostChangedTheValueAboveThePortal_When_TheResumeReRendersALaterRow_Then_TheRowReadsTheNewValue()
+        {
+            // Arrange — the host's render changes the value above the Portal; the list then parks re-rendering its rows
+            // on the Transition lane under a budget too small for one row.
+            using var mounted = V.Mount(_root, V.Component(PortalListHostRender, key: "host"));
+            var mountedRow = s_rowFibers[LastRow];
+            s_providedValue = "second";
+            s_hostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_hostFiber);
+            s_generation = 1;
+            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_listFiber.FlushStateWithTinyBudgetForTest();
+            var parkedShortOfTheRow = s_listFiber.HasPendingReconcileWorkForTest()
+                && s_readings[LastRow].StartsWith("gen0:", StringComparison.Ordinal);
+
+            // Act
+            s_listFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — a first slice that reached the row read it whether or not a resume does, so that reading is a
+            // sentinel rather than the row's value.
+            var reading = parkedShortOfTheRow ? ReadingOf(LastRow, mountedRow) : "the first slice reached the row";
+            Assert.That(reading, Is.EqualTo("gen1:second"));
+        }
+
+        [Test]
+        public void Given_ABoundaryAPortalHoldsUnderAValueTheHostChanged_When_AnUpdateBelowItThrows_Then_ItsFallbackReadsTheNewValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PortalGuardHostRender, key: "host"), s_recordingErrors);
+            s_providedValue = "second";
+            s_hostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_hostFiber);
+            s_childThrows = true;
+
+            // Act
+            s_throwerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_throwerFiber);
+
+            // Assert
+            Assert.That(s_panelReading ?? "the fallback never rendered", Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_APortalsChildUnderAValueTheHostChanged_When_ItsUpdateMountsAPortalOfItsOwn_Then_ThatPortalsChildReadsTheNewValue()
+        {
+            // Arrange
+            s_innerPortalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(NestedPortalHostRender, key: "host"));
+            s_providedValue = "second";
+            s_hostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_hostFiber);
+            s_portalShown = true;
+
+            // Act
+            s_outerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            FiberWorkLoop.FlushState(s_outerFiber);
+
+            // Assert
+            Assert.That(s_outsiderReading, Is.EqualTo("second"));
+        }
+
         // GREEN_ON_BASE(characterization): the base commits a parked pass's effects only on its terminal slice too.
         // What this pins is that a resumed slice leaving work pending does not take the arm that completes the pass.
         [Test]
@@ -625,6 +691,62 @@ namespace Velvet.Tests
         {
             s_providerFiber = FiberAmbientStack.Current;
             return V.Provider(s_context, s_providedValue, new VNode[] { V.Component(OutsiderRender, key: "reader") });
+        }
+
+        // The value above the Portal is the host's to change.
+        [Component(Compiler = false)]
+        private static VNode PortalListHostRender()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            return V.Provider(s_context, s_providedValue, new VNode[]
+            {
+                V.Portal(s_portalTarget, children: new VNode[] { V.Component(ListRender, key: "list") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PortalGuardHostRender()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            return V.Provider(s_context, s_providedValue, new VNode[]
+            {
+                V.Portal(s_portalTarget, children: new VNode[] { V.Component(UpdateGuardRender, key: "guard") }),
+            });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UpdateGuardRender()
+        {
+            Hooks.UseFallback(_ => V.Component(ErrorPanelRender, key: "panel"));
+            return V.Component(SelfUpdatingThrowingRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SelfUpdatingThrowingRender()
+        {
+            s_throwerFiber = FiberAmbientStack.Current;
+            if (s_childThrows) throw new InvalidOperationException(RowError);
+            return V.Label(text: "child");
+        }
+
+        // The declaring component is the outer Portal's child and puts no Provider of its own around the inner one.
+        [Component(Compiler = false)]
+        private static VNode NestedPortalHostRender()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            return V.Provider(s_context, s_providedValue, new VNode[]
+            {
+                V.Portal(s_portalTarget, children: new VNode[] { V.Component(InnerPortalDeclaringRender, key: "declaring") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode InnerPortalDeclaringRender()
+        {
+            s_outerFiber = FiberAmbientStack.Current;
+            return s_portalShown
+                ? V.Portal(s_innerPortalTarget, children: new VNode[] { V.Component(OutsiderRender, key: "reader") })
+                : V.Label(text: "closed");
         }
 
         [Component(Compiler = false)]

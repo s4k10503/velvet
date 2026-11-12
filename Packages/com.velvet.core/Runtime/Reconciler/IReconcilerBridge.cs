@@ -47,12 +47,12 @@ namespace Velvet
         bool BeginRangeForController();
         void EndRangeForController(VisualElement container, bool opened);
 
-        // Brackets a controller's item create/patch loop so the items inherit the context that enclosed the
+        // Brackets a controller's item create/patch loop so the items inherit the context that encloses the
         // V.VirtualList. Items mount outside the reconcile pass (scroll / geometry callbacks), where the
         // context cursor is empty and FiberStack.Current is null — which would give each item fiber a null
         // parent and hence its own fresh, empty ReconcilerContext. Begin pushes the host fiber that rendered
-        // the list onto FiberStack (so item fibers parent under it and share its context) and restores the
-        // captured enclosing-context snapshot onto the live cursor; End unwinds both and stamps the item
+        // the list onto FiberStack (so item fibers parent under it and share its context) and puts the context
+        // around the list on the live cursor; End unwinds both and stamps the item
         // fibers created within the scope with a DetachedMountContext so an isolated re-render can rebuild
         // the same context via FiberContextSpine. host may be null (no enclosing host captured — e.g. a unit
         // test driving the controller directly); then the scope is context-only and no stamping occurs. The
@@ -60,12 +60,12 @@ namespace Velvet
         // nested VirtualLists).
         // outsidePass is whether the range opened its bracket (BeginRangeForController).
         object? BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass);
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode list, bool outsidePass);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
-        // DescendantNodes is THIS item's rendered vnode — so an isolated re-render can rebuild not just the
-        // list's enclosing context but also any Provider the renderer placed above the item's consumer (the
-        // VirtualList parallel to Portal's drained-children walk). Call once per item, after its create/patch;
+        // DescendantNodes is THIS item's rendered vnode — what FiberContextSpine falls back on to rebuild a Provider
+        // the renderer placed above the item's consumer where its walk through the list does not find the
+        // consumer. Call once per item, after its create/patch;
         // reused items add no fibers, so the per-item set diff stamps nothing for them. No-op when host is null.
         void StampDetachedItemFibers(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken);

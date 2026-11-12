@@ -709,10 +709,7 @@ namespace Velvet.Tests
         }
 
         // The sibling is an ordinary direct child fiber of the same declaring fiber the deferred mount
-        // anchors this portal's children on, so the mount's own "which of these did I just create" diff is
-        // the only thing keeping the portal's DetachedMountContext off it. Carrying that stamp would send
-        // the sibling's isolated re-render down the spine's detached arm, which rebuilds context from the
-        // snapshot taken at the portal's position — above the Provider written below it.
+        // anchors this portal's children on, and the portal's position is outside the Provider around it.
         [Component]
         private static VNode PortalAndProviderHost()
             => V.Div(name: "scope-host", children: new VNode?[]
@@ -721,11 +718,7 @@ namespace Velvet.Tests
                 V.Provider(ScopeContext, "inside", new VNode[] { V.Component(ContextReadingSibling, key: "s") }),
             });
 
-        // GREEN_ON_BASE(characterization): the base anchors a drained portal child on the reconcile root,
-        // where this declaring fiber's other children are not, so its stamp cannot reach them and the case
-        // is green there for want of the anchor rather than by the diff this pins. The anchor being the
-        // declaring fiber is what makes that diff load-bearing, and removing either half of it — the
-        // before-set add, or the skip that reads it — leaves every other case in this fixture green.
+        // GREEN_ON_BASE(characterization): the base reads the Provider around the sibling here.
         [Test]
         public void Given_APortalBesideAContextConsumingSibling_When_TheSiblingReRendersAlone_Then_ItStillReadsTheProviderAroundIt()
         {

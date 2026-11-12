@@ -1213,37 +1213,26 @@ namespace Velvet.Tests
             return V.Fragment(children: children);
         }
 
-        // GREEN_ON_BASE(characterization): the base reads the first row's value here too. The node comparison
-        // is off in this window because the row's recorded array is the one the host has moved off, so what is
-        // left is the key, which answers at every container holding this position, so a row reads whichever
-        // container the committed tree reaches first — reached through a park rather than through two
-        // sibling containers. The immediate drain after the call renders the pending state on the head and
-        // finds the tier empty on the base.
         [Test]
-        public void Given_AParkedKeyedListWhoseRowsCarryProviders_When_ARowPastTheParkPointReRendersAlone_Then_ItReadsTheFirstRowsProvider()
+        public void Given_AParkedKeyedListWhoseRowsCarryProviders_When_ARowPastTheParkPointReRendersAlone_Then_ItReadsItsOwnRowsCommittedProvider()
         {
-            // Arrange
+            // Arrange — a transition-lane flush under a budget too small for one node parks after the first row.
             ResetParkList();
             using var mounted = V.Mount(_root, V.Component(ParkListHost, key: "park-list"));
             const int target = ParkRowCount - 1;
-            var atMount = s_parkSeen[target];
-
-            // Act — a transition-lane flush under a budget too small for one node parks after the first row,
-            // then the last row re-renders on its own before the resume.
             s_parkStart.Invoke(() => s_parkSetGen.Invoke(1));
             mounted.GetSchedulerForTest().DrainImmediateForTest();
             s_parkListFiber.FlushStateWithTinyBudgetForTest();
             var parked = s_parkListFiber.HasPendingReconcileWorkForTest();
-            var beforeBump = s_parkSeen[target];
+
+            // Act — the last row re-renders on its own before the resume.
             s_parkBumps[target].Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the parked state and the pre-bump reading are folded in because they are what put the
-            // value below on the park rather than on the mount, and the row's own count because a row that did
-            // not re-render would still be holding whatever its last render read.
-            Assert.That(
-                (parked, atMount, beforeBump, s_parkSeen[target], s_parkCount[target]),
-                Is.EqualTo((true, "g0-7", "g0-7", "g1-0", 1)));
+            // Assert — a list that did not park, or a row that did not re-render and so still holds what its last
+            // render read, reads as null, which no row's Provider value equals.
+            var reading = parked && s_parkCount[target] == 1 ? s_parkSeen[target] : null;
+            Assert.That(reading, Is.EqualTo("g0-7"));
         }
 
         // A row the drain committed reads its own row's Provider afterwards rather than whichever row the
@@ -1338,6 +1327,88 @@ namespace Velvet.Tests
             Assert.That(
                 (afterDrain, s_parkSeen[target], s_parkCount[target]),
                 Is.EqualTo(("g1-7", "g1-7", 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base walks the parked render's output for every row it re-renders alone.
+        // What this pins is that a row the parked render reached keeps reading that output.
+        [Test]
+        public void Given_AListWhoseTransitionASiblingDeclaresParked_When_ARowThePassReachedReRendersAloneAndThePassCompletes_Then_ItReadsItsOwnRowsNewProvider()
+        {
+            // Arrange — the list parks after its first row.
+            ResetParkList();
+            using var mounted = V.Mount(_root, V.Component(SiblingTransitionHostRender, key: "sib-host"));
+            s_sibStart.Invoke(() => s_sibSetGen.Invoke(1));
+            s_sibListFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_sibListFiber.HasPendingReconcileWorkForTest();
+
+            // Act — the first row re-renders on its own before the resume, then the resume completes the pass.
+            s_parkBumps[0].Invoke(1);
+            mounted.FlushStateForTest();
+            s_sibListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — a list that did not park, or a row that did not re-render, reads as null, which no row's Provider
+            // value equals.
+            var reading = parked && s_parkCount[0] == 1 ? s_parkSeen[0] : null;
+            Assert.That(reading, Is.EqualTo("g1-0"));
+        }
+
+        private static StateUpdater<int> s_listParkSetGen;
+        private static TransitionStarter s_listParkStart;
+        private static ComponentFiber s_listParkFiber;
+
+        // Keyed Divs ahead of the list, so a transition render under the tiny budget parks before the list's own Div.
+        [Component]
+        private static VNode ParkingHostOfAVirtualList()
+        {
+            var (gen, setGen) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_listParkSetGen = setGen;
+            s_listParkStart = start;
+            s_listParkFiber = FiberAmbientStack.Current;
+            var children = new VNode[ParkRowCount];
+            for (var i = 0; i < ParkRowCount - 1; i++)
+            {
+                children[i] = V.Div(key: "lk" + i, children: new VNode?[] { V.Label(text: "cell-" + i) });
+            }
+            children[ParkRowCount - 1] = V.Div(key: "list-cell", children: new VNode?[]
+            {
+                V.Provider(RowCtx, $"g{gen}", new VNode[]
+                {
+                    V.VirtualList(
+                        items: new[] { 100, 101 },
+                        keySelector: item => "v" + item,
+                        itemHeight: 10f,
+                        renderer: item => V.Component(ParkRowBody, item, key: "v" + item),
+                        overscan: 0),
+                }),
+            });
+            return V.Fragment(children: children);
+        }
+
+        [Test]
+        public void Given_AParkedRenderThatHasNotReachedAVirtualList_When_ARowOfTheListReRendersAlone_Then_ItReadsTheProviderTheHostLastCommitted()
+        {
+            // Arrange — a scroll mounts the rows; a committed render changes the value around the list; a transition
+            // render that changes it again parks before it reaches the list's Div.
+            ResetParkList();
+            using var mounted = V.Mount(_root, V.Component(ParkingHostOfAVirtualList, key: "list-park"));
+            mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()]
+                .UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+            s_listParkSetGen.Invoke(1);
+            mounted.FlushStateForTest();
+            s_listParkStart.Invoke(() => s_listParkSetGen.Invoke(2));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            s_listParkFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_listParkFiber.HasPendingReconcileWorkForTest();
+
+            // Act
+            s_parkBumps[100].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — a host that did not park, or a row that did not re-render, reads as null, which no Provider value
+            // equals.
+            var reading = parked && s_parkCount[100] == 1 ? s_parkSeen[100] : null;
+            Assert.That(reading, Is.EqualTo("g1"));
         }
 
         #endregion

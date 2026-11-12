@@ -13,11 +13,10 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Covers both MOUNT-time inheritance and an ISOLATED re-render of a portal-hosted consumer (its own
-    /// setState, without the host re-rendering). The spine's parent-walk reaches the declaring component but
-    /// not the Provider inside it, because that component's committed tree carries the Portal as an opaque
-    /// leaf; instead the drain stamps each top-level portal child with the context that enclosed the Portal
-    /// (ComponentFiber.DetachedMountContext) and FiberContextSpine rebuilds it on the isolated re-render.
-    /// The VirtualList counterpart of the same mechanism is exercised by VirtualListTests.
+    /// setState, without the host re-rendering), which reads the Providers around it as the host's output holds
+    /// them then: a value the host's render changed after the mount, above the Portal, inside it, or around a Portal
+    /// a memo of the host's keeps. The VirtualList counterpart is exercised by VirtualListTests and
+    /// VirtualListRowScopeTests.
     /// </remarks>
     [TestFixture]
     internal sealed class PortalContextInheritanceTests
@@ -43,6 +42,7 @@ namespace Velvet.Tests
         private static string s_lastSeen;
         private static StateUpdater<int> s_setCount;
         private static StateUpdater<int> s_setHostTick;
+        private static StateUpdater<string> s_setHostValue;
 
         [Test]
         public void Given_ProviderAbovePortal_When_ChildMounts_Then_ReadsProvidedValue()
@@ -83,11 +83,8 @@ namespace Velvet.Tests
                 "An isolated re-render of a portal child reconstructs the context enclosing the Portal's tree position");
         }
 
-        // The Provider sits INSIDE the Portal's children, which is the layer the enclosing snapshot does
-        // not carry — FiberContextSpine recovers it by walking DetachedMountContext.DescendantNodes. The
-        // host re-renders between the mount and the child's own setState: a drain stamps only the fibers
-        // it newly created, so a child that survives that re-render keeps the DescendantNodes captured at
-        // its mount while the declaring body's next render builds fresh nodes for the same positions.
+        // The Provider sits INSIDE the Portal's children. The host re-renders between the mount and the
+        // child's own setState, which builds fresh nodes for the same positions.
         // GREEN_ON_BASE(characterization): the base reads the in-portal Provider here and this must keep
         // it. The node comparison this change adds is what an ungated form breaks: it would weigh a node
         // the drain stamped once against a record every patch rewrites, and read the context default
@@ -114,6 +111,57 @@ namespace Velvet.Tests
             Assert.That(
                 (atMount, afterHostRender, s_lastSeen),
                 Is.EqualTo(("inside", "inside", "inside")));
+        }
+
+        [Test]
+        public void Given_AProviderAboveThePortalWhoseValueTheHostChanged_When_TheChildReRendersAlone_Then_ItReadsTheNewValue()
+        {
+            // Arrange — the host's render changes the value, which its walk hands the child as it patches the Portal.
+            using var mounted = V.Mount(_root, V.Component(ValueAbovePortalHostRender, key: "host"));
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_lastSeen = null;
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_lastSeen, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_AProviderInsideThePortalWhoseValueTheHostChanged_When_TheChildReRendersAlone_Then_ItReadsTheNewValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ValueInsidePortalHostRender, key: "host"));
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_lastSeen = null;
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_lastSeen, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public void Given_APortalAMemoKeepsUnderAProviderWhoseValueTheHostChanged_When_TheChildReRendersAlone_Then_ItReadsTheNewValue()
+        {
+            // Arrange — the memo's dependencies do not change, so the host's render keeps the Portal it built first.
+            using var mounted = V.Mount(_root, V.Component(MemoizedPortalUnderValueHostRender, key: "host"));
+            s_setHostValue.Invoke("second");
+            mounted.FlushStateForTest();
+
+            // Act
+            s_lastSeen = null;
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_lastSeen, Is.EqualTo("second"));
         }
 
         [Test]
@@ -207,6 +255,45 @@ namespace Velvet.Tests
                 }),
             });
         }
+
+        [Component(Compiler = false)]
+        private static VNode ValueAbovePortalHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(ThemeContext, value, new VNode[]
+            {
+                V.Portal("ctx-portal-target", children: new VNode[]
+                {
+                    V.Component(RerenderConsumerRender, key: "consumer"),
+                }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ValueInsidePortalHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Portal("ctx-portal-target", children: new VNode[]
+            {
+                V.Provider(ThemeContext, value, new VNode[] { V.Component(RerenderConsumerRender, key: "consumer") }),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MemoizedPortalUnderValueHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("first");
+            s_setHostValue = setValue;
+            return V.Provider(ThemeContext, value, new VNode[] { V.Memoized(ConsumerPortal, Array.Empty<object>()) });
+        }
+
+        private static VNode ConsumerPortal()
+            => V.Portal("ctx-portal-target", children: new VNode[]
+            {
+                V.Component(RerenderConsumerRender, key: "consumer"),
+            });
 
         [Component]
         private static VNode RerenderMotionConsumerRender()

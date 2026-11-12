@@ -62,6 +62,10 @@ namespace Velvet
         private readonly Dictionary<int, (VNode node, VisualElement element)> _oldNodesByItemIndex = new();
         private readonly HashSet<string> _reusedKeys = new();
 
+        // What FiberContextSpine reads to walk to a row through the output that holds this list.
+        internal VirtualListNode Node => _node;
+        internal VNode[] RenderedRows => _renderedNodes;
+
         public FiberVirtualListController(
             ScrollView scrollView,
             VirtualListNode node,
@@ -409,10 +413,10 @@ namespace Velvet
             int newFirst, int newCount, VNode[] newNodes, string?[] newKeys, VisualElement[] newElements,
             bool outsidePass)
         {
-            // Render the items under the context that enclosed the V.VirtualList: the scope parents new item
-            // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
-            // cursor for the item bodies, then stamps the new fibers for isolated-re-render reconstruction.
-            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, outsidePass);
+            // Render the items under the context that encloses the V.VirtualList: the scope parents new item
+            // fibers under the host (so they share its context) and puts that context on the cursor for the item
+            // bodies (Reconciler.BeginDetachedItemScope says from where), then stamps the new fibers.
+            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, _node, outsidePass);
             try
             {
                 for (var i = 0; i < newCount; i++)

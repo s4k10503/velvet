@@ -19,8 +19,12 @@ namespace Velvet.Tests
     /// <item>A row a scroll mounts reads the value its enclosing Provider holds now, under a memoized host that has not
     /// rendered since that value changed; a row a render of the host mounts reads the value that render gave the
     /// Provider, a scroll having rendered a range before it; one inside a Provider of the row's own reads that
-    /// Provider's value over one of the same context above the list. A component outside the enclosing Provider
+    /// Provider's value over one of the same context above the list, and so does one inside a Provider the host puts
+    /// around the list, as does a Portal's child a row holds. A component outside the enclosing Provider
     /// reads the context's default after a scroll has mounted rows under that Provider.</item>
+    /// <item>A row that renders again on its own reads the value its enclosing Provider holds then, whether a render of
+    /// the host gave the Provider that value or a memoized host has not rendered since, and so does a Portal's child a
+    /// row holds under such a memoized host.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -219,6 +223,64 @@ namespace Velvet.Tests
                 V.Component(OutsideReader, key: "outside"),
             });
 
+        private static Func<string, VNode> s_providingHostRow;
+        private static StateUpdater<string> s_setListValue;
+        private static VisualElement s_portalTarget;
+
+        // A row whose component a Portal holds, with no component of the row's own around the Portal.
+        private static VNode PortalRow(string item)
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(ThemedRow, item, key: item) });
+
+        // Provides the context again around its list, with a value of its own state.
+        [Component(Compiler = false)]
+        private static VNode ProvidingListHost()
+        {
+            var (value, setValue) = Hooks.UseState("list");
+            s_setListValue = setValue;
+            return V.Provider(s_theme, value, children: new VNode[]
+            {
+                V.VirtualList(
+                    items: new[] { "a", "b", "c" },
+                    keySelector: item => item,
+                    itemHeight: 10f,
+                    renderer: item => s_providingHostRow(item),
+                    overscan: 0),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThemeRootAroundAProvidingHost()
+        {
+            var (theme, setTheme) = Hooks.UseState("light");
+            s_setTheme = setTheme;
+            return V.Provider(s_theme, theme, children: new VNode[] { V.Component(ProvidingListHost, key: "host") });
+        }
+
+        [Component(Memoize = true, Compiler = false)]
+        private static VNode MemoizedPortalRowsHost()
+            => V.VirtualList(
+                items: new[] { "a", "b", "c" },
+                keySelector: item => item,
+                itemHeight: 10f,
+                renderer: PortalRow,
+                overscan: 0);
+
+        [Component(Compiler = false)]
+        private static VNode ThemeRootAroundAPortalRowsHost()
+        {
+            var (theme, setTheme) = Hooks.UseState("light");
+            s_setTheme = setTheme;
+            return V.Provider(s_theme, theme, children: new VNode[] { V.Component(MemoizedPortalRowsHost, key: "host") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode AbortingHostUnderAProviderBesideAReader()
+            => V.Div(children: new VNode[]
+            {
+                V.Provider(s_theme, "light", children: new VNode[] { V.Component(ListBesideABoundaryHost, key: "host") }),
+                V.Component(OutsideReader, key: "outside"),
+            });
+
         private FiberVirtualListController Controller(MountedTree mounted)
             => mounted.Root.Reconciler.Context.VirtualListControllers[_root.Q<ScrollView>()];
 
@@ -406,6 +468,110 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.Q<Label>("b")?.text, Is.EqualTo("dark"));
+        }
+
+        [Test]
+        public void Given_AHostProvidingAroundItsListUnderAProviderOfTheSameContext_When_AScrollMountsARow_Then_TheRowReadsTheHostsProvider()
+        {
+            // Arrange — the list renders no range until a scroll asks for one.
+            s_providingHostRow = Row;
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundAProvidingHost, key: "root"));
+
+            // Act
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Assert
+            Assert.That(_root.Q<Label>("a")?.text, Is.EqualTo("list"));
+        }
+
+        [Test]
+        public void Given_AHostProvidingAroundItsListUnderAProviderOfTheSameContext_When_AScrollMountsARowsPortal_Then_ThePortalsChildReadsTheHostsProvider()
+        {
+            // Arrange
+            s_providingHostRow = PortalRow;
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundAProvidingHost, key: "root"));
+
+            // Act
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Assert
+            Assert.That(s_portalTarget.Q<Label>("a")?.text, Is.EqualTo("list"));
+        }
+
+        [Test]
+        public void Given_AMemoizedListHostUnderAProviderWhoseValueChanged_When_ARowAScrollMountedRendersAgain_Then_ItReadsTheCurrentValue()
+        {
+            // Arrange — "a" mounted by a scroll.
+            using var mounted = V.Mount(_root, V.Component(ThemeRoot, key: "root"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act — the Provider's value changes, which the memoized host does not render again for and the row,
+            // reading it, does.
+            s_setTheme.Invoke("dark");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("a")?.text, Is.EqualTo("dark"));
+        }
+
+        [Test]
+        public void Given_AMemoizedListHostUnderAProviderWhoseValueChanged_When_APortalsChildARowHoldsRendersAgain_Then_ItReadsTheCurrentValue()
+        {
+            // Arrange — "a" mounted into the Portal's target by a scroll.
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundAPortalRowsHost, key: "root"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act
+            s_setTheme.Invoke("dark");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_portalTarget.Q<Label>("a")?.text, Is.EqualTo("dark"));
+        }
+
+        [Test]
+        public void Given_AHostProvidingAroundItsList_When_ItsRenderChangesTheValueAndARowRendersAgainAlone_Then_TheRowReadsTheNewValue()
+        {
+            // Arrange — "a" mounted by a scroll.
+            s_providingHostRow = Row;
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundAProvidingHost, key: "root"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act — the host's render changes the value and patches the list, and the row, reading it, renders on its own.
+            s_setListValue.Invoke("list-2");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("a")?.text, Is.EqualTo("list-2"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's item scope pushes onto the context cursor only what it pops.
+        // What this pins is that a scope that does not find the list in its host's output leaves nothing behind either.
+        [Test]
+        public void Given_AHostWhoseAbortedRenderPatchedItsList_When_AScrollRendersARange_Then_AComponentOutsideTheProviderStillReadsTheDefault()
+        {
+            // Arrange — the host's render patches the list and its boundary then aborts that render, so the host keeps
+            // the output it had, which holds the list's earlier node.
+            using var mounted = V.Mount(
+                _root, V.Component(AbortingHostUnderAProviderBesideAReader, key: "root"), CaughtErrors.Unlogged);
+            s_setFlipped.Invoke(true);
+            mounted.FlushStateForTest();
+            var keptList = (s_hostFiber?.PreviousTree?[0] as BaseElementNode)?.Children?[0];
+            var listNode = typeof(FiberVirtualListController)
+                .GetField("_node", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(Controller(mounted));
+            var arranged = s_fallbackShown && !ReferenceEquals(keptList, listNode);
+
+            // Act — a scroll, then a render of the reader alone.
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 20f);
+            s_renderOutside.Invoke(previous => previous + 1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the boundary caught nothing or the list's node was still the one the host kept, which
+            // the label's text never equals.
+            Assert.That(arranged ? _root.Q<Label>("outside")?.text : null, Is.EqualTo("none"));
         }
     }
 }

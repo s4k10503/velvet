@@ -772,9 +772,9 @@ namespace Velvet
         /// <summary>
         /// Set on the top-level child fiber of a detached mount (a Portal's drained children, or a
         /// VirtualList's controller-rendered items). Those subtrees mount outside the normal parent-walked
-        /// reconcile, so an isolated re-render's spine parent-walk cannot reach the host's enclosing
-        /// Providers. This carries the context that enclosed the detached mount so
-        /// <see cref="FiberContextSpine"/> can rebuild it directly. Null for every non-detached-top fiber.
+        /// reconcile, so <see cref="FiberContextSpine"/> walks to such a child through the Portal or the list
+        /// rather than by its registry key, and falls back on the context captured here where that walk does not
+        /// find it. Null for every non-detached-top fiber.
         /// </summary>
         internal DetachedMountContext? DetachedMountContext { get; set; }
 
