@@ -178,8 +178,8 @@ namespace Velvet
             TakeDown(fiber);
         }
 
-        // The deleted row's place in React's tree: the outermost orphan holding it is the deletion's root, and an
-        // element the container's owner rendered is one where no orphan holds it.
+        // The deleted row's place in React's tree: the outermost orphan holding it is the deletion's root, and a row no
+        // orphan holds is a deletion of its own, under the component that emitted it.
         private DeletionAnchor AnchorOfRow(ComponentFiber? owner)
         {
             var outermost = OutermostOrphanAt(owner);
@@ -195,7 +195,6 @@ namespace Velvet
 
         protected override void TakeDown(ComponentFiber fiber)
         {
-            if (!fiber.IsMounted) return;
             var orphan = OutermostOrphanAt(fiber);
             var anchor = orphan != null ? DeletionAnchor.For(_container, orphan.Parent) : _rowAnchor;
             FiberEffects.CleanUpDeleted(fiber, anchor);
