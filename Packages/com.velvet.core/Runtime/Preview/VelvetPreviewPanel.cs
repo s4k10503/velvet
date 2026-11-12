@@ -30,6 +30,12 @@ namespace Velvet
         /// before it draws them.</summary>
         public const int SettlePasses = 100;
 
+        /// <summary>How far each of <see cref="Render"/>'s update passes moves a panel's clock on, in milliseconds.</summary>
+        public const int SettlePassMilliseconds = 16;
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IRuntimePanel, SimulatedClock> s_clocks =
+            new();
+
         // Below any sorting order a layer host takes, which sits a few hundred from its declaring panel's.
         private const float ClearSortingOrder = -1e6f;
 
@@ -128,12 +134,16 @@ namespace Velvet
         /// <summary>
         /// Draws one frame into <see cref="Texture"/> before it returns, so a capture reads the texture back without
         /// waiting for an editor frame. It first runs <see cref="SettlePasses"/> update passes over the runtime panels
-        /// drawing into the texture, each followed by a run of Velvet's relative-length polls on them, so the renders,
-        /// effects and state updates Velvet schedules on those panels are drawn, and so is a length measured from
-        /// their layout; work still scheduled after the passes is drawn without waiting for it. Work resumed on a later
-        /// editor or player frame, such as a <see cref="VelvetTask.Yield"/> continuation, is drawn by a call after that
-        /// frame. The panels are then repainted and rendered, each pass in the order the panels sort in. An exception
-        /// the frame does not catch reaches the caller as it was thrown.
+        /// drawing into the texture, each a simulated frame that moves the panel's clock on by
+        /// <see cref="SettlePassMilliseconds"/> before the panel updates; the clock does not move back afterwards. Work
+        /// those panels run on their own clock advances as over that many frames: the renders, effects and state
+        /// updates Velvet schedules on them are drawn, so is what Velvet measures from their layout, and a transition
+        /// timed by their clock that is shorter than the passes together is drawn finished. Motion that reads its
+        /// mount's <see cref="MotionClock"/> rather than the panel's time moves only as far as that clock has. Work
+        /// still scheduled after the passes is drawn without waiting for it, and work resumed on a later editor or
+        /// player frame, such as a <see cref="VelvetTask.Yield"/> continuation, is drawn by a call after that frame.
+        /// The panels are then repainted and rendered, each pass in the order the panels sort in. An exception the
+        /// frame does not catch reaches the caller as it was thrown.
         /// </summary>
         /// <exception cref="ObjectDisposedException">The panel is disposed.</exception>
         /// <exception cref="NotSupportedException">This editor lacks an engine member the frame calls, which the message
@@ -150,8 +160,11 @@ namespace Velvet
             {
                 for (var pass = 0; pass != SettlePasses; pass++)
                 {
-                    foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Update.Invoke(panel, null);
-                    foreach (var panel in frame.PanelsDrawingInto(Texture)) RelativeLengthPoll.RunUnder(panel.visualTree);
+                    foreach (var panel in frame.PanelsDrawingInto(Texture))
+                    {
+                        frame.Advance(panel);
+                        frame.Update.Invoke(panel, null);
+                    }
                 }
                 GL.PushMatrix();
                 try
@@ -211,16 +224,29 @@ namespace Velvet
 
         private static Vector2 OffPanel(Vector2 screen) => new(float.NaN, float.NaN);
 
+        // A panel's time as Render moves it: the function the panel read its time through before, plus the frames Render
+        // has simulated on it, which only grows, so Render never moves the panel's time back.
+        private sealed class SimulatedClock
+        {
+            // A sentinel rather than null: a panel without a function of its own holds null, and is wrapped all the same.
+            internal object Installed = new();
+            internal Func<double> Inner = null!;
+            internal long OffsetMilliseconds;
+
+            internal double Now() => Inner() + OffsetMilliseconds / 1000d;
+        }
+
         private sealed class FrameMembers
         {
             private static readonly EngineMember[] s_declared =
             {
                 EngineMember.SortedScreenOverlayPanels, EngineMember.RuntimePanelUpdate, EngineMember.RepaintRuntimePanel,
-                EngineMember.RuntimePanelRender, EngineMember.TextGenerationRepaintEnd,
+                EngineMember.RuntimePanelRender, EngineMember.TextGenerationRepaintEnd, EngineMember.PanelTimeFunction,
+                EngineMember.PanelDefaultTime,
             };
 
             internal static readonly string Missing =
-                string.Join(", ", s_declared.Where(member => member.ResolveMethod() == null));
+                string.Join(", ", s_declared.Where(member => member.Resolve() == null));
 
             internal static readonly FrameMembers? Resolved = Missing.Length == 0 ? new FrameMembers() : null;
 
@@ -229,6 +255,30 @@ namespace Velvet
             internal readonly MethodInfo Repaint = EngineMember.RepaintRuntimePanel.ResolveMethod()!;
             internal readonly MethodInfo Render = EngineMember.RuntimePanelRender.ResolveMethod()!;
             internal readonly MethodInfo RepaintEnd = EngineMember.TextGenerationRepaintEnd.ResolveMethod()!;
+            private readonly PropertyInfo _panelTime = EngineMember.PanelTimeFunction.ResolveProperty()!;
+            private readonly Func<double> _defaultTime = (Func<double>)Delegate.CreateDelegate(typeof(Func<double>),
+                EngineMember.PanelDefaultTime.ResolveMethod()!);
+
+            // Wraps the function the panel reads its time through the first time, and again once something else has
+            // replaced the wrap, keeping the offset either way.
+            internal void Advance(IRuntimePanel panel)
+            {
+                var clock = s_clocks.GetOrCreateValue(panel);
+                var current = (Delegate?)_panelTime.GetValue(panel);
+                if (!ReferenceEquals(current, clock.Installed))
+                {
+                    clock.Inner = current == null
+                        ? _defaultTime
+                        : (Func<double>)Delegate.CreateDelegate(typeof(Func<double>), current.Target, current.Method);
+                    Func<double> now = clock.Now;
+                    // Recorded in the same statement that installs it: a wrap the clock has not recorded is taken for
+                    // another function next pass and wrapped again, and a clock whose inner function is its own wrap
+                    // calls itself.
+                    _panelTime.SetValue(panel,
+                        clock.Installed = Delegate.CreateDelegate(_panelTime.PropertyType, clock, now.Method));
+                }
+                clock.OffsetMilliseconds += SettlePassMilliseconds;
+            }
 
             internal List<IRuntimePanel> PanelsDrawingInto(RenderTexture texture)
             {

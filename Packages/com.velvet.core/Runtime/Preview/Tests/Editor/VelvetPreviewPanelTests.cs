@@ -11,6 +11,9 @@ namespace Velvet.Tests
     {
         private const int Size = 64;
 
+        // Wider than sm:'s breakpoint.
+        private const int SmPanelWidth = 800;
+
         // The story paints the left half only, so the right half is a control that a whole-frame fill turns red too.
         private static readonly Vector2Int s_storySample = new(Size / 4, Size / 2);
         private static readonly Vector2Int s_controlSample = new(Size * 3 / 4, Size / 2);
@@ -113,6 +116,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(width, Is.EqualTo(Size - 16f - 8f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AnSmWidthOnAPanelWideEnoughForSmWhoseClockIsHeld_When_RenderedOnce_Then_ItIsLaidOutAtTheSmWidth()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render");
+            using var panel = new VelvetPreviewPanel(null, SmPanelWidth, Size);
+            EditorPanelTestHelpers.SetPanelTimeFunction(panel.Root.panel, () => 0d);
+            using var mounted = V.Mount(panel.Root, V.Div(className: "w-[20px] sm:w-[40px] h-[10px]", name: "responsive"));
+
+            // Act
+            panel.Render();
+            var width = panel.Root.Q<VisualElement>("responsive").layout.width;
+
+            // Assert
+            Assert.That(width, Is.EqualTo(40f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_APanelWhoseClockIsHeld_When_RenderedTwice_Then_ItsScheduledWorkHasSeenTwiceTheSettlePasses()
+        {
+            // Arrange
+            TestGraphics.IgnoreIfHeadless("an offscreen panel render");
+            using var panel = new VelvetPreviewPanel(null, Size, Size);
+            EditorPanelTestHelpers.SetPanelTimeFunction(panel.Root.panel, () => 0d);
+            var lastTickMs = -1L;
+            panel.Root.schedule.Execute((TimerState timer) => lastTickMs = timer.now).Every(0);
+
+            // Act
+            panel.Render();
+            panel.Render();
+
+            // Assert
+            Assert.That(lastTickMs,
+                Is.EqualTo(2L * VelvetPreviewPanel.SettlePasses * VelvetPreviewPanel.SettlePassMilliseconds).Within(1L));
         }
 
         [Test]

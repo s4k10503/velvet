@@ -124,8 +124,9 @@ depth the renderer draws an immediate-mode element under, which place a
 [backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element, and whether an element clips
 what it holds, with a panel's hierarchy version, which decide where an `outline-*` paints
 ([styling-variants.md](styling-variants.md)), and the screen-space runtime panels in their sorting order, the
-update, repaint and render `VelvetPreviewPanel.Render` calls on those of them drawing into its texture, and the end
-of the repaint pass, with which it draws a frame into that texture
+update, repaint and render `VelvetPreviewPanel.Render` calls on those of them drawing into its texture, the end of
+the repaint pass, and the function a panel reads its time through with the time it reads without one, with which it
+draws a frame into that texture
 ([preview-tooling.md](preview-tooling.md#headless-screenshot-capture)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate

@@ -396,11 +396,7 @@ namespace Velvet
         // The tick StyleAnimateDriver and AnchoredDriver poll at.
         private const long TickMs = 16;
 
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, List<RelativeLengthPoll>>
-            s_live = new();
-
         private readonly VisualElement _element;
-        private readonly Action _tick;
         private readonly IVisualElementScheduledItem _item;
         private StyleRelativeLengths.Snapshot? _last;
         private readonly Func<int>? _extra;
@@ -410,26 +406,7 @@ namespace Velvet
         {
             _element = element;
             _extra = extraReading;
-            _tick = () => reresolve(element);
-            _item = element.schedule.Execute(_tick).Every(TickMs);
-            s_live.GetOrCreateValue(element).Add(this);
-        }
-
-        // For VelvetPreviewPanel.Render, which runs the polls on its panels between its update passes rather than
-        // waiting for their tick.
-        public static void RunUnder(VisualElement root)
-        {
-            var pending = new Stack<VisualElement>();
-            pending.Push(root);
-            while (pending.Count > 0)
-            {
-                var element = pending.Pop();
-                if (s_live.TryGetValue(element, out var polls))
-                {
-                    foreach (var poll in polls.ToArray()) poll._tick();
-                }
-                for (var i = 0; i < element.hierarchy.childCount; i++) pending.Push(element.hierarchy[i]);
-            }
+            _item = element.schedule.Execute(() => reresolve(element)).Every(TickMs);
         }
 
         // Whether what the element's relative lengths measure has changed since the last call; true on the first.
@@ -446,10 +423,6 @@ namespace Velvet
             return moved;
         }
 
-        public void Stop()
-        {
-            _item.Pause();
-            if (s_live.TryGetValue(_element, out var polls)) polls.Remove(this);
-        }
+        public void Stop() => _item.Pause();
     }
 }

@@ -677,6 +677,16 @@ namespace Velvet
         internal static readonly EngineMember TextGenerationRepaintEnd =
             Method(TextCore, "UnityEngine.TextCore.Text.TextGenerationInfo", "OnRepaintEnd", "System.Void");
 
+        // The clock Render moves on by a frame per pass: the function a panel reads its time through, and the time it
+        // reads without one.
+        private const string BasePanelType = "UnityEngine.UIElements.BaseVisualElementPanel";
+
+        internal static readonly EngineMember PanelTimeFunction = WrittenProperty(UIElements, BasePanelType,
+            "TimeSinceStartupFunc", "UnityEngine.UIElements.TimeFunction");
+
+        internal static readonly EngineMember PanelDefaultTime =
+            Method(UIElements, BasePanelType, "DefaultTimeSinceStartup", "System.Double");
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
