@@ -304,6 +304,32 @@ namespace Velvet.Tests
             Assert.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1));
         }
 
+        // GREEN_ON_BASE(characterization): the base already takes the host out of the Tab order once its one appended portal re-renders as Isolated.
+        [UnityTest]
+        public IEnumerator Given_AnAppendedLayerPortalReRenderedAsIsolated_When_TabDispatchesFromTheDeclaringPanelsOnlyFocusable_Then_ItKeepsFocus()
+        {
+            // Arrange
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(SwitchableOrderPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            s_setSwitchableOrder.Invoke(PanelFocusOrder.Appended);
+            yield return null;
+            yield return null;
+            s_setSwitchableOrder.Invoke(PanelFocusOrder.Isolated);
+            yield return null;
+            yield return null;
+            var main1 = Main("main1");
+            main1.Focus();
+
+            // Act
+            SendMove(main1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+
+            // Assert
+            Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
+        }
+
         // An appended host with nothing focusable in it: the declaring panel is the only one with an element.
         [Component]
         private static VNode UnfocusableAppendedPortalHost() => V.Div(children: new VNode[]
