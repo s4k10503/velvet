@@ -2203,7 +2203,79 @@ namespace Velvet.Tests
                 Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelInElementOuterRender"));
         }
 
+        // GREEN_ON_BASE(characterization): the base marks a deletion before the first of its cleanups runs, as this does.
+        // The walk the change adds runs the layout cleanup ahead of the disposal that marked it on the base; leave its
+        // own marking out (DeletionCommit.TakeDownLeaving) and the removed boundary catches.
+        [Test]
+        public void Given_ABoundaryRemovedWithTheElementHoldingIt_When_ItsChildsLayoutCleanupThrows_Then_TheBoundaryAboveTheRemovalCatches()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DeletedLayoutPanelInElementOuterRender, key: "outer"),
+                new MountOptions { OnCaughtError = (_, info) => s_swapReports.Add(info.ErrorBoundary) });
+
+            // Act
+            s_setDeletedPanelTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_swapReports),
+                Is.EqualTo("BoundaryCatchScopeTests.DeletedLayoutPanelInElementOuterRender"));
+        }
+
+        // React cuts the return of a deletion's root as it removes it and keeps the returns below it until its passive
+        // phase, so the stack of an error a removed component's passive cleanup throws runs up to the removed root.
+        [Test]
+        public void Given_ARemovedBoundaryWhoseChildsPassiveCleanupThrows_When_TheBoundaryAboveCatchesIt_Then_ItsStackRunsUpToTheRemovedBoundary()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DeletedPanelOuterRender, key: "outer"),
+                new MountOptions { OnCaughtError = (_, info) => s_swapReports.Add(info.ComponentStack) });
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setDeletedPanelTick.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_swapReports), Is.EqualTo(
+                "    at BoundaryCatchScopeTests.DeletedPanelWidgetRender\n    at BoundaryCatchScopeTests.DeletedPanelRender"));
+        }
+
         private static Action<int> s_setDeletedPanelTick;
+
+        [Component(Compiler = false)]
+        private static VNode DeletedLayoutPanelWidgetRender()
+        {
+            Hooks.UseLayoutEffect(
+                (Func<Action>)(() => () => throw new InvalidOperationException("Deleted panel layout cleanup throw")),
+                Array.Empty<object>());
+            return V.Label(text: "widget");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DeletedLayoutPanelRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "panel-fallback"));
+            return V.Component(DeletedLayoutPanelWidgetRender, key: "widget");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DeletedLayoutPanelInElementHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setDeletedPanelTick = setTick;
+            return tick == 0
+                ? V.Div(name: "panel-holder", children: new VNode[] { V.Component(DeletedLayoutPanelRender, key: "panel") })
+                : V.Label(text: "removed");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode DeletedLayoutPanelInElementOuterRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
+            return V.Component(DeletedLayoutPanelInElementHostRender, key: "host");
+        }
 
         [Component(Compiler = false)]
         private static VNode DeletedPanelInElementHostRender()

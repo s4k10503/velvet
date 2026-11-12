@@ -70,8 +70,8 @@ namespace Velvet
                 ErrorBoundary = boundary.IsMountRoot ? string.Empty : Hooks.ComponentName(boundary),
             };
 
-        // Walks the throwing fiber's Parent chain to produce a component stack
-        // (one line per fiber, deepest first), honoring [Component(DisplayName)] overrides
+        // Walks the throwing fiber's Parent chain, an unmounted fiber's through ComponentFiber.ParentBeforeDetach, to
+        // produce a component stack (one line per fiber, deepest first), honoring [Component(DisplayName)] overrides
         // via Hooks.ComponentName. It stops below the fiber V.Mount made, as React's stack leaves out the HostRoot,
         // so an error the root itself raises has an empty stack.
         private const string StackLinePrefix = "    at ";
@@ -80,7 +80,8 @@ namespace Velvet
         {
             if (throwingFiber == null) return string.Empty;
             var sb = new System.Text.StringBuilder();
-            for (var current = throwingFiber; current is { IsMountRoot: false }; current = current.Parent)
+            for (var current = throwingFiber; current is { IsMountRoot: false };
+                 current = current.Parent ?? current.ParentBeforeDetach)
             {
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append(StackLinePrefix).Append(Hooks.ComponentName(current));

@@ -105,12 +105,20 @@ namespace Velvet.Tests
 
         private sealed record Dep(string Name, int Value);
 
+        // Its element keeps its ref callback, so a ref entry beside it says the commit took a kept element down.
         [Component]
         private static VNode Dependent(Dep props)
         {
             EventLog.UseRender(props.Name);
             EventLog.UseEffects(props.Name, new object[] { props.Value });
-            return V.Div();
+            return V.Div(refCallback: EventLog.UseRefCallback(props.Name));
+        }
+
+        [Component]
+        private static VNode SilentDependent(Dep props)
+        {
+            EventLog.UseEffects(props.Name, new object[] { props.Value });
+            return V.Fragment(Array.Empty<VNode>());
         }
 
         // The deleted child shares its element with a sibling the same render updates.
@@ -138,14 +146,15 @@ namespace Velvet.Tests
                 V.Div(children: new VNode[] { dep == 0 ? V.Component(Probed, new Named("D"), key: "d") : null }));
         }
 
-        // As above with an element holding the deleted child, so the deletion is the element's.
+        // As above with an element holding the deleted child, so the deletion is the element's, and a sibling that
+        // renders nothing.
         [Component]
         private static VNode ElementDeletedAfterASibling()
         {
             var (dep, _) = EventLog.UseState("P", 0);
             EventLog.UseEffects("P", new object[] { dep });
             return V.Fragment(
-                V.Component(Dependent, new Dep("S", dep), key: "s"),
+                V.Component(SilentDependent, new Dep("S", dep), key: "s"),
                 V.Div(children: new VNode[]
                 {
                     dep == 0 ? V.Div(children: new VNode[] { V.Component(Probed, new Named("D"), key: "d") }) : null,
@@ -180,6 +189,124 @@ namespace Velvet.Tests
             return V.Fragment(
                 V.Div(children: new VNode[] { shown ? V.Component(Probed, new Named("A"), key: "a") : null }),
                 shown ? V.Component(Probed, new Named("B"), key: "b") : null);
+        }
+
+        [Component]
+        private static VNode InnerEmpty()
+        {
+            EventLog.UseEffects("Y", Array.Empty<object>());
+            return V.Fragment(Array.Empty<VNode>());
+        }
+
+        [Component]
+        private static VNode OuterEmpty()
+        {
+            EventLog.UseEffects("X", Array.Empty<object>());
+            return V.Fragment(V.Component(InnerEmpty, key: "y"));
+        }
+
+        // Neither component holds a row, so the walk reaches no element for either.
+        [Component]
+        private static VNode EmptyHost()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            EventLog.UseRender("Root");
+            return V.Fragment(shown ? V.Component(OuterEmpty, key: "x") : null);
+        }
+
+        private sealed record Keys(string[] Shown, int Dep);
+
+        private static VNode[] KeyedRows(string[] keys, Func<VisualElement, Action> refA, Func<VisualElement, Action> refB)
+        {
+            var rows = new VNode[keys.Length];
+            for (var i = 0; i < keys.Length; i++)
+            {
+                rows[i] = V.Div(key: keys[i], refCallback: keys[i] == "A" ? refA : refB, children: new VNode[]
+                {
+                    V.Component(Probed, new Named("C" + keys[i]), key: "c"),
+                });
+            }
+            return rows;
+        }
+
+        // A flat list of keyed elements, each holding a component, so a removal takes the list's own diff.
+        [Component]
+        private static VNode KeyedElements()
+        {
+            var (keys, _) = EventLog.UseState("Keys", new[] { "A", "B" });
+            EventLog.UseRender("L");
+            var refA = EventLog.UseRefCallback("A");
+            var refB = EventLog.UseRefCallback("B");
+            return V.Div(children: KeyedRows(keys, refA, refB));
+        }
+
+        // As above, after a sibling the same render updates.
+        [Component]
+        private static VNode KeyedElementsAfterASibling()
+        {
+            var (keys, _) = EventLog.UseState("Keys", new Keys(new[] { "A", "B" }, 0));
+            EventLog.UseEffects("L", new object[] { keys.Dep });
+            var refA = EventLog.UseRefCallback("A");
+            var refB = EventLog.UseRefCallback("B");
+            return V.Fragment(
+                V.Component(Dependent, new Dep("S", keys.Dep), key: "s"),
+                V.Div(children: KeyedRows(keys.Shown, refA, refB)));
+        }
+
+        private sealed record Targets(VisualElement Removed, VisualElement Kept);
+
+        [Component]
+        private static VNode PortalChild(Named props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback(props.Name), children: new VNode[]
+            {
+                V.Component(Probed, new Named(props.Name + "C"), key: "c"),
+            });
+        }
+
+        // A portal inside the removed element, and one beside it into another target that stays.
+        [Component]
+        private static VNode PortalInARemovedElement(Targets targets)
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            EventLog.UseRender("Root");
+            var holderRef = EventLog.UseRefCallback("O");
+            return V.Fragment(
+                shown
+                    ? V.Div(refCallback: holderRef, children: new VNode[]
+                    {
+                        V.Portal(targets.Removed, new VNode[] { V.Component(PortalChild, new Named("PC"), key: "pc") },
+                            key: "portal"),
+                    })
+                    : null,
+                V.Portal(targets.Kept, new VNode[] { V.Component(PortalChild, new Named("K"), key: "k") }, key: "kept"));
+        }
+
+        // A deletion in an element, and one in an element inside it.
+        [Component]
+        private static VNode NestedElementDeletions()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Div(children: new VNode[]
+            {
+                shown ? V.Component(Probed, new Named("A"), key: "a") : null,
+                V.Div(children: new VNode[] { shown ? V.Component(Probed, new Named("B"), key: "b") : null }),
+            });
+        }
+
+        [Component]
+        private static VNode ElementDeleting(Dep props)
+            => V.Div(children: new VNode[] { props.Value == 0 ? V.Component(Probed, new Named("A"), key: "a") : null });
+
+        // A deletion inside a child component's element, and one in this component's own rows after the child.
+        [Component]
+        private static VNode DeletionsAtTwoLevels()
+        {
+            var (hidden, _) = EventLog.UseState("Hidden", 0);
+            return V.Fragment(
+                V.Component(ElementDeleting, new Dep("M", hidden), key: "m"),
+                hidden == 0 ? V.Component(Probed, new Named("B"), key: "b") : null);
         }
 
         private static MountedTree Mount(EventLog log, VNode root)
@@ -221,6 +348,104 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "render:Root ref-x:H ins-x:C1 lay-x:C1 ref-x:C1 ins-x:C2 lay-x:C2 ref-x:C2 eff-x:C1 eff-x:C2"));
+        }
+
+        [Test]
+        public void Given_NestedComponentsHoldingNoRow_When_TheirParentStopsRenderingThem_Then_TheOuterIsTakenDownFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(EmptyHost));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:Root ins-x:X lay-x:X ins-x:Y lay-x:Y eff-x:X eff-x:Y"));
+        }
+
+        [Test]
+        public void Given_AKeyedElementHoldingAComponent_When_ItLeavesAListOfElements_Then_ItsRefDetachesAheadOfTheComponentInside()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(KeyedElements));
+
+            // Act
+            log.Setter<string[]>("Keys").Invoke(new[] { "B" });
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("render:L ref-x:A ins-x:CA lay-x:CA ref-x:CA eff-x:CA"));
+        }
+
+        [Test]
+        public void Given_AKeyedElementLeavingAListAfterASiblingThatUpdates_When_ThePassivePhaseRuns_Then_TheSiblingsCleanupRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(KeyedElementsAfterASibling));
+            log.Setter<Keys>("Keys").Invoke(new Keys(new[] { "B" }, 1));
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:S eff-x:CA eff-x:L eff:S eff:L"));
+        }
+
+        [Test]
+        public void Given_APortalInsideARemovedElement_When_TheElementIsRemoved_Then_ThePortalsChildrenAreTakenDownWhereThePortalSits()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log,
+                V.Component(PortalInARemovedElement, new Targets(new VisualElement(), new VisualElement())));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "render:Root ref-x:O ins-x:PC lay-x:PC ref-x:PC ins-x:PCC lay-x:PCC ref-x:PCC eff-x:PC eff-x:PCC"));
+        }
+
+        [Test]
+        public void Given_ADeletionInAnElementAndOneInAnElementInsideIt_When_ThePassivePhaseRuns_Then_TheOuterOneRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(NestedElementDeletions));
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:A eff-x:B"));
+        }
+
+        [Test]
+        public void Given_ADeletionInAChildsElementAndOneInTheParentsRows_When_ThePassivePhaseRuns_Then_TheParentsRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(DeletionsAtTwoLevels));
+            log.Setter<int>("Hidden").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:B eff-x:A"));
         }
 
         [Test]

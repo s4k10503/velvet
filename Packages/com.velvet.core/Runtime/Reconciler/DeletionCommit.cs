@@ -22,7 +22,6 @@ namespace Velvet
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
         private DeletionAnchor _rowAnchor;
-        private bool _registeredRoots;
 
         // A container reconcile's deletion: Begin, a row for each old leaf in order, Run once the walk has decided
         // which of them it removes, and End once the removals have run.
@@ -65,16 +64,15 @@ namespace Velvet
                 else TakeDownStartingAt(Ctx.ZLayerPlaceholders.TryGetValue(row, out var real) ? real : row);
             }
             TakeDownTheRest();
+            // MUTANT_SURVIVES(equivalent): without the entries the removals walk these rows again
+            // (FiberElementCleaner.CleanupElement) and find no ref installed and no effect left to run on them.
             foreach (var root in _roots) Ctx.RemovalsTakenDown.Add(root);
-            _registeredRoots = true;
         }
 
+        // A row a walk registered and an abort kept from its removal would otherwise skip the walk of its next one.
         internal void End()
         {
-            if (_registeredRoots)
-            {
-                foreach (var root in _roots) Ctx.RemovalsTakenDown.Remove(root);
-            }
+            foreach (var root in _roots) Ctx.RemovalsTakenDown.Remove(root);
             Clear();
             s_pool.Push(this);
         }
@@ -137,6 +135,7 @@ namespace Velvet
         {
             List<ComponentFiber>? held = null;
             foreach (var root in _roots) Ctx.ComponentRegistry.CollectFibersIn(root, ref held);
+            // MUTANT_SURVIVES(equivalent, boundary): the loop visits no placeholder over an empty table.
             if (Ctx.PortalState.Count > 0)
             {
                 foreach (var placeholder in Ctx.PortalState.Keys)
@@ -196,7 +195,7 @@ namespace Velvet
 
         protected override void TakeDown(ComponentFiber fiber)
         {
-            if (!fiber.IsMounted || fiber.IsDisposed) return;
+            if (!fiber.IsMounted) return;
             var orphan = OutermostOrphanAt(fiber);
             var anchor = orphan != null ? DeletionAnchor.For(_container, orphan.Parent) : _rowAnchor;
             FiberEffects.CleanUpDeleted(fiber, anchor);
@@ -209,15 +208,19 @@ namespace Velvet
         protected override void Clear()
         {
             base.Clear();
+            // MUTANT_SURVIVES(equivalent): Begin assigns both before any read; the resets only let the pooled instance
+            // drop what it pointed at.
             _cleaner = null!;
+            // MUTANT_SURVIVES(equivalent): as above.
             _container = null;
             _rows.Clear();
             _roots.Clear();
             _orphans.Clear();
             _collected.Clear();
             _fibers.Clear();
+            // MUTANT_SURVIVES(equivalent): a walk assigns it before it takes down the first fiber that reads it, one held
+            // under a row.
             _rowAnchor = default;
-            _registeredRoots = false;
         }
     }
 
@@ -301,6 +304,8 @@ namespace Velvet
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent): a tree kept from its pool only makes the next Rent build a new one.
+                // That one reads the context the same way.
                 logical.Return();
             }
         }

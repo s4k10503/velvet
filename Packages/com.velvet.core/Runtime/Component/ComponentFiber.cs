@@ -1213,8 +1213,15 @@ namespace Velvet
 
         public void Detach()
         {
+            ParentBeforeDetach = Parent is { IsBeingDeleted: true } ? Parent : null;
             Parent?.RemoveChild(this);
         }
+
+        // The parent of a fiber its deletion unmounted along with it, which the component stack of an error its passive
+        // cleanup throws after the commit is read up through (FiberErrorBoundary.BuildComponentStack). Null for the
+        // deletion's root: React cuts a deleted root's return in the mutation phase and keeps the returns below it
+        // until the passive phase has run.
+        internal ComponentFiber? ParentBeforeDetach { get; private set; }
     }
 
     /// <summary>

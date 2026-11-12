@@ -589,33 +589,29 @@ namespace Velvet
         // What the walk deletes — the fibers its old side reached and its new side did not, and the old leaves it
         // removes — taken down in React's order ahead of the removals (DeletionCommit). A walk an abort stopped removes
         // no leaf, and still takes down the orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
+        // Marks the patched old leaves FinalizeGeneralCommit removes by, as no walk an abort stopped reaches it.
         private DeletionCommit? TakeDownTheDeletion(
             GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {
             var removes = !_ctx.IsAborted;
             var oldLength = commit.OldNodes!.Length;
+            // MUTANT_SURVIVES(equivalent): a deletion begun over nothing deleted returns from Run before it walks.
             var deletes = false;
             if (removes)
             {
                 MarkPatchedOldLeaves(commit);
+                // MUTANT_SURVIVES(equivalent, boundary): past the last old leaf Occupant reads null, so IsRemoved reads false.
                 for (var i = 0; i < oldLength && !deletes; i++) deletes = IsRemoved(commit, i);
             }
             for (var i = 0; i < oldFibers.Count && !deletes; i++) deletes = !newFibers.Contains(oldFibers[i]);
+            // MUTANT_SURVIVES(equivalent): as above, a deletion over nothing deleted walks nothing.
             if (!deletes) return null;
             var deletion = _ctx.HostCommit.BeginDeletion(commit.Parent);
-            try
+            for (var i = 0; i < oldLength; i++)
             {
-                for (var i = 0; i < oldLength; i++)
-                {
-                    deletion.AddRow(commit.OldOccupants.Occupant(i), removes && IsRemoved(commit, i), commit.OldOwners[i]);
-                }
-                deletion.Run(oldFibers, newFibers);
+                deletion.AddRow(commit.OldOccupants.Occupant(i), removes && IsRemoved(commit, i), commit.OldOwners[i]);
             }
-            catch
-            {
-                deletion.End();
-                throw;
-            }
+            deletion.Run(oldFibers, newFibers);
             return deletion;
         }
 
@@ -631,8 +627,7 @@ namespace Velvet
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            MarkPatchedOldLeaves(commit);
-            // Removal, from the last old leaf down.
+            // Removal, from the last old leaf down, of the leaves TakeDownTheDeletion found removed.
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 if (IsRemoved(commit, i))

@@ -12,6 +12,9 @@
   the cleanups of the components above it and ahead of those inside it. Every ref in the subtree used to detach
   before any component below the removed component or element cleaned up, and a component that renders another
   directly cleaned up after it.
+- The `ComponentStack` an error from a removed component's `UseEffect` cleanup is reported with runs from that
+  component up to the root of what the render removed, as React's stack stops at a deletion's root; it used to run up
+  to the mounted root.
 - On mount, an element with a `refCallback:` that a `V.Portal`'s child renders after a component attaches its ref
   after that component's layout effects, as React's layout phase reaches it; it used to attach first.
 - A `V.VirtualList` row inside a `V.Portal` runs its effects ahead of a component after the portal when both
