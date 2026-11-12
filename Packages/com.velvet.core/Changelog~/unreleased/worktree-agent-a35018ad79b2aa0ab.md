@@ -8,6 +8,12 @@
   their utilities before peeling its variants, so they allocate nothing to peel such a class.
 - An arbitrary value with no type hint, such as `w-[120px]`, no longer has its prefix cut out as a string when it is
   tried as a colour.
-- Mounting a `V.Div`, `V.Label` or `V.Button` no longer allocates for the corner-radius fit, which watches such an
-  element for a radius its stylesheet or code gives it: the element's type hands its size changes to the fit, where
-  a callback was registered on each one before.
+- Mounting a `V.Div`, `V.Label` or `V.Button` no longer allocates to watch such an element for a radius its
+  stylesheet or code gives it: the element's type hands its size changes to the corner-radius fit, where a callback
+  was registered on each one before.
+
+### Fixed
+
+- A radius a `V.Div`'s, `V.Label`'s or `V.Button`'s own `GeometryChangedBinding` writes when the element's size changes
+  is fitted on that change. On a label or button reused from the pool after an earlier mount as one, and on any of the
+  three given the binding on a later render, it kept its unfitted value until the size next changed.

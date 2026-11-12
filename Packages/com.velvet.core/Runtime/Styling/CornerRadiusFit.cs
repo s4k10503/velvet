@@ -288,6 +288,15 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
         }
 
+        // A host's size change once its own geometry binding has run (FiberEventBindingManager.FitAfter).
+        internal static void AfterHostHandler(VisualElement element, GeometryChangedEvent evt)
+        {
+            if (element is IRadiusFitHost { RadiusFitWatches: true })
+            {
+                OnGeometryChanged(element, evt);
+            }
+        }
+
         // The callback's handler, and a watched host's.
         internal static void OnGeometryChanged(VisualElement element, GeometryChangedEvent evt)
         {

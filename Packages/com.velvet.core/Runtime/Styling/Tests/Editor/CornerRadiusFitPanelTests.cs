@@ -319,6 +319,30 @@ namespace Velvet.Tests
             Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base fits a radius a box's own geometry binding writes, on that size change.
+        [Test]
+        public void Given_ABoxWhoseGeometryBindingWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — the box above, writing its radius in the size change that lays it out.
+            var events = new FiberEventBinding[] { new GeometryChangedBinding { Handler = WriteOverflowingRadius } };
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(className: WideBox, name: "box", events: events));
+
+            // Act
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        private static void WriteOverflowingRadius(GeometryChangedEvent evt)
+        {
+            var style = ((VisualElement)evt.target).style;
+            style.borderTopLeftRadius = 400f;
+            style.borderTopRightRadius = 400f;
+            style.borderBottomRightRadius = 400f;
+            style.borderBottomLeftRadius = 400f;
+        }
+
         // GREEN_ON_BASE(characterization): the base already fits a scroll view's code-written radius, which the change leaves to a callback.
         [Test]
         public void Given_AScrollViewWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
