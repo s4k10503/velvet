@@ -117,12 +117,14 @@ upright request of the family resolves to, and the write follows a change to the
 
 An element whose font classes resolve to an asset has that asset written inline
 ([How resolution works](#how-resolution-works)), and what is under it inherits that one instead; a font a
-stylesheet sets on an element below the root decides there in the same way. The value on the root is inline, so
-it outranks a font a stylesheet sets on that element or on an element above it. A font the app wrote inline on
-that element is left in place, and the value Velvet wrote is taken off when the tree is disposed or the last
-portal leaves the container. `DefaultFamilyScopePanelTests` pins where the family is written and taken off, on a
-panel with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font class on the runtime
-theme this project ships.
+stylesheet sets on an element below the root decides there in the same way. Where an author's stylesheet rule or
+inline font gives the root, or an element above it, a font, Velvet writes nothing on the root and that font is
+inherited; a rule of a panel's theme does not count, a theme being a default stylesheet. Velvet reads this again
+at each update of the root's panel after the classes, name, stylesheets or inline font of the root or of an
+element above it change. The value Velvet wrote is taken off when the tree is disposed or the last portal leaves
+the container. `DefaultFamilyScopePanelTests` pins where the family is written, left out and taken off, on a panel
+with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font class on the runtime theme
+this project ships.
 
 A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.

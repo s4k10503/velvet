@@ -1,0 +1,2 @@
+/* The rule DefaultFamilyScopePanelTests flags as a default stylesheet's, as a panel theme's are. */
+.theme-font { -unity-font-definition: initial; }

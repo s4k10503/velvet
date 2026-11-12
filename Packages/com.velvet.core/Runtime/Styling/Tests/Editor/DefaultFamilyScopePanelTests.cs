@@ -12,11 +12,15 @@ namespace Velvet.Tests
     /// <c>resolvedStyle</c> on a panel with no theme stylesheet so inheritance takes part:
     /// <see cref="VelvetFonts.DefaultFamily"/> reaches such a label under the element a tree is mounted on, under a
     /// portal's container and under a layer or world-space panel's root, and a family an element between them names
-    /// decides instead. GWT, one assert per case.
+    /// decides instead, as does a font an author's stylesheet or inline style gives that element or one above it.
+    /// GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class DefaultFamilyScopePanelTests
     {
+        private const string AuthorSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyAuthorFont.uss";
+        private const string ThemeSheet = "Packages/com.velvet.core/Runtime/Styling/Tests/Editor/DefaultFamilyThemeFont.uss";
+
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
         private MountedTree _second;
@@ -103,6 +107,15 @@ namespace Velvet.Tests
             .First(root => root?.Q<VisualElement>(name) != null);
 
         private static VNode Plain(string name) => V.Label(text: name, name: name);
+
+        // The author's sheet on the panel root, and a root for a tree under it carrying className.
+        private VisualElement NewRootUnderAuthorSheet(string className)
+        {
+            _host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(AuthorSheet));
+            var element = NewRootElement();
+            element.AddToClassList(className);
+            return element;
+        }
 
         [Test]
         public void Given_ADefaultFamily_When_ALabelWithNoFontClassMounts_Then_ItResolvesTheDefaultFamily()
@@ -219,9 +232,10 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): nothing of the default family stays on a root once its tree is gone.
-        // The base writes nothing there; this pins that the write the change adds goes with the tree.
+        // The base writes nothing there; this pins that the write the change adds goes with the tree, and that a
+        // restyle of the root after it, which a held root is read again for, writes nothing either.
         [Test]
-        public void Given_ADefaultFamilyOnAMountedTree_When_TheTreeIsDisposed_Then_ALabelAddedToItsRootDoesNotResolveIt()
+        public void Given_ADefaultFamilyOnAMountedTree_When_TheTreeIsDisposedAndItsRootRestyles_Then_ALabelAddedToItsRootDoesNotResolveIt()
         {
             // Arrange
             VelvetFonts.DefaultFamily = "sans";
@@ -231,6 +245,9 @@ namespace Velvet.Tests
             // Act
             _mounted.Dispose();
             _mounted = null;
+            mountRoot.AddToClassList("restyled");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             mountRoot.Add(new Label("later") { name = "later" });
 
             // Assert
@@ -300,6 +317,137 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(mountRoot.Q<Label>("plain").resolvedStyle.unityFontDefinition.font, Is.SameAs(legacy));
+        }
+
+        // GREEN_ON_BASE(characterization): an author's font rule on the mount root reaches the tree.
+        // The base writes nothing there; this pins that the default family does not replace it.
+        [Test]
+        public void Given_AnAuthorsRuleSettingAFontOnTheMountRoot_When_ATreeMountsWithADefaultFamily_Then_ItsLabelDoesNotResolveIt()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var mountRoot = NewRootUnderAuthorSheet("author-font");
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        // GREEN_ON_BASE(characterization): an author's font rule on an ancestor of the mount root reaches the tree.
+        // The base writes nothing there; this pins that the default family does not replace it.
+        [Test]
+        public void Given_AnAuthorsRuleSettingAFontOnAnAncestor_When_ATreeMountsWithADefaultFamily_Then_ItsLabelDoesNotResolveIt()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var ancestor = NewRootUnderAuthorSheet("author-font");
+            var mountRoot = new VisualElement();
+            ancestor.Add(mountRoot);
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        // GREEN_ON_BASE(characterization): an app's inline font on an ancestor of the mount root reaches the tree.
+        // The base writes nothing there; this pins that the default family does not replace it.
+        [Test]
+        public void Given_AnInlineFontTheAppWroteOnAnAncestor_When_ATreeMountsWithADefaultFamily_Then_ItsLabelResolvesTheAppsFont()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var ancestor = NewRootElement();
+            var legacy = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            ancestor.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(legacy));
+            var mountRoot = new VisualElement();
+            ancestor.Add(mountRoot);
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(mountRoot.Q<Label>("plain").resolvedStyle.unityFontDefinition.font, Is.SameAs(legacy));
+        }
+
+        // GREEN_ON_BASE(characterization): an app's legacy inline font on the mount root's ancestor reaches the tree.
+        // The base writes nothing there; this pins that the default family's definition does not stand over it.
+        [Test]
+        public void Given_ALegacyInlineFontTheAppWroteOnAnAncestor_When_ATreeMountsWithADefaultFamily_Then_ItsLabelDoesNotResolveIt()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var ancestor = NewRootElement();
+            ancestor.style.unityFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var mountRoot = new VisualElement();
+            ancestor.Add(mountRoot);
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        [Test]
+        public void Given_ADefaultStylesheetsRuleSettingAFontOnTheMountRoot_When_ATreeMountsWithADefaultFamily_Then_ItsLabelResolvesTheDefaultFamily()
+        {
+            // Arrange — flagged the way a panel's theme is.
+            VelvetFonts.DefaultFamily = "sans";
+            var theme = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(ThemeSheet);
+            EngineMember.StyleSheetIsDefault.ResolveProperty()!.SetValue(theme, true);
+            _host.Root.styleSheets.Add(theme);
+            var mountRoot = NewRootElement();
+            mountRoot.AddToClassList("theme-font");
+
+            // Act
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.SameAs(_sans));
+        }
+
+        // GREEN_ON_BASE(characterization): an author's font rule that comes to match the mount root reaches the tree.
+        // The base writes nothing there; this pins that the default family is taken off once the rule applies.
+        [Test]
+        public void Given_ATreeMountedWithADefaultFamily_When_AnAuthorsRuleSettingAFontComesToApplyToItsRoot_Then_ItsLabelDoesNotResolveIt()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var mountRoot = NewRootUnderAuthorSheet("unruled");
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Act — the restyle first, then the update of the panel that reads the root again.
+            mountRoot.AddToClassList("author-font");
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
+        }
+
+        // GREEN_ON_BASE(characterization): an author's sheet attached above the mount root reaches the tree.
+        // The base writes nothing there; this pins that the default family is taken off once the sheet is attached.
+        [Test]
+        public void Given_ATreeMountedWithADefaultFamily_When_AnAuthorsSheetSettingItsRootsFontIsAttachedAboveIt_Then_ItsLabelDoesNotResolveIt()
+        {
+            // Arrange
+            VelvetFonts.DefaultFamily = "sans";
+            var mountRoot = NewRootElement();
+            mountRoot.AddToClassList("author-font");
+            _mounted = V.Mount(mountRoot, V.Div(children: new[] { Plain("plain") }));
+
+            // Act — the restyle first, then the update of the panel that reads the root again.
+            _host.Root.styleSheets.Add(UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(AuthorSheet));
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(ResolvedFont(mountRoot, "plain"), Is.Not.SameAs(_sans));
         }
     }
 }
