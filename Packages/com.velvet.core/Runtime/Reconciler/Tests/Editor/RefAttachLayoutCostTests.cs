@@ -17,8 +17,8 @@ namespace Velvet.Tests
     /// behind the panel's own layout pass and a colour write computes nothing.</item>
     /// <item>A ref or a layout effect behind a ref that widened an element reads the widened box, and a ref behind one
     /// that moved a child of the panel's root reads where the move put its sibling.</item>
-    /// <item>A layout effect behind a resize of its editor window, and a ref behind one that widened the panel's root,
-    /// read the root's children at the new width.</item>
+    /// <item>A ref behind one that widened the panel's root reads the root's children at the new width, and a layout
+    /// effect behind a root the panel laid out wider and that was then narrowed back reads them at the old one.</item>
     /// <item>A pick a layout effect makes finds an element the commit widened in place, and one the commit added
     /// outside its parent's box.</item>
     /// </list>
@@ -191,24 +191,28 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base computes the layout again before a layout effect behind a resize.
-        // This pins that the panel's own write of its root's size sends a later read through the computation; the cut
-        // it answers is dropping the `TakeRootStyle` line from `PanelLayout.OnlyLeftDirty`.
+        // This pins that a root the panel laid out at another width since the last computation, and that was then
+        // put back at the width that computation read, sends a later read through the computation; the cut it
+        // answers is dropping the `HasNewLayout` line from `PanelLayout.OnlyLeftDirty`.
         [Test]
-        public void Given_AnEditorWindowWidenedAfterItsPanelWasLaidOut_When_AColourUpdateCommits_Then_ItsLayoutEffectReadsTheWidenedRoot()
+        public void Given_APanelRootThePanelLaidOutWiderThenNarrowedBack_When_AColourUpdateCommits_Then_ItsLayoutEffectReadsTheNarrowWidth()
         {
             // Arrange
             _mounted = V.Mount(_window.rootVisualElement, V.Component(TintedRootReaderRender, key: "tinted"));
-            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var panel = _window.rootVisualElement.panel;
+            ForcePanelUpdate(panel);
             var widthBefore = _window.rootVisualElement.layout.width;
-            var position = _window.position;
-            _window.position = new Rect(position.x, position.y, position.width + RootGrowth, position.height);
+            var rootWidth = panel.visualTree.layout.width;
+            panel.visualTree.style.width = rootWidth + RootGrowth;
+            ForcePanelUpdate(panel);
+            panel.visualTree.style.width = rootWidth;
             s_setTint.Invoke(1);
 
             // Act
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.That(s_widthRead - widthBefore, Is.EqualTo(RootGrowth).Within(0.01f));
+            Assert.That(s_widthRead - widthBefore, Is.EqualTo(0f).Within(0.01f));
         }
 
         // GREEN_ON_BASE(characterization): the base computes the layout again before a ref behind a write to the root.
@@ -329,7 +333,7 @@ namespace Velvet.Tests
             return null;
         };
 
-        // Reads the editor window's root width in a layout effect each time its colour changes.
+        // Reads the root element's width in a layout effect each time its colour changes.
         [Component]
         private static VNode TintedRootReaderRender()
         {
