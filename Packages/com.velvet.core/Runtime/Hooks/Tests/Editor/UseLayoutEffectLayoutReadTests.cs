@@ -525,9 +525,9 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base sends an element its GeometryChangedEvent on the panel's update.
-        // Here the mount's layout effect has computed the element's box already, and only the dirty flag the commit's
-        // reads leave as they end sends the event; dropping the write in `PanelLayout.LeaveDirty` leaves the panel's
-        // layout updater nothing to visit.
+        // Here the mount's layout effect has computed the element's box already, and only the dirty flag the
+        // computation leaves sends the event; dropping `_members.Dirty.SetValue(node, true)` from `FiberLayoutReflow`
+        // leaves the panel's layout updater nothing to visit.
         [Test]
         public void Given_AnElementALayoutEffectLaidOut_When_ThePanelUpdates_Then_TheElementReceivesItsGeometryChangedEvent()
         {

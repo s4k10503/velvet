@@ -2328,7 +2328,6 @@ namespace Velvet
             // Reconciler.Reconcile has no fiber on the stack and nothing after it.
             if (FiberStack.Current != null) return;
             _drainingRefAttaches = true;
-            FiberLayoutReflow.BeginReads();
             try
             {
                 var batchEnd = 0;
@@ -2360,7 +2359,6 @@ namespace Velvet
             {
                 CompactPendingRefAttaches();
                 _drainingRefAttaches = false;
-                FiberLayoutReflow.EndReads();
             }
         }
 

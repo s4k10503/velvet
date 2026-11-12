@@ -313,7 +313,6 @@ namespace Velvet
             ReconcilerContext ctx, List<(ComponentFiber Fiber, bool IsMount)> ordered,
             List<PendingRefAttach> refs, long reportCutoff)
         {
-            FiberLayoutReflow.BeginReads();
             try
             {
                 if (refs.Count == 0)
@@ -329,7 +328,6 @@ namespace Velvet
             finally
             {
                 ctx.CompactRefAttaches();
-                FiberLayoutReflow.EndReads();
             }
         }
 

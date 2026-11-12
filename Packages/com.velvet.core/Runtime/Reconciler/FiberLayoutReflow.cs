@@ -22,21 +22,6 @@ namespace Velvet
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPanel, PanelLayout?> s_panels =
             new();
 
-        private static int s_readDepth;
-        private static readonly System.Collections.Generic.List<PanelLayout> s_computedDuringReads = new();
-
-        // Held open across a batch of layout reads — a commit's layout effects, handles and callback refs, or the
-        // ref setups a pass drains — so the panels they compute are left dirty once, when the outermost read ends,
-        // rather than after each computation.
-        internal static void BeginReads() => s_readDepth++;
-
-        internal static void EndReads()
-        {
-            if (--s_readDepth > 0) return;
-            for (var i = 0; i < s_computedDuringReads.Count; i++) s_computedDuringReads[i].LeaveDirty();
-            s_computedDuringReads.Clear();
-        }
-
         // Lays out the panels a read by the fiber's layout effects or handles can reach.
         internal static void LayOutFor(ReconcilerContext ctx, ComponentFiber fiber)
             // MUTANT_SURVIVES(unreachable): the flag is read only in LayOut's catch, which no panel the suite mounts reaches.
@@ -65,7 +50,6 @@ namespace Velvet
         // which ReconcilerContext.ContainUserCallbackFailure gives a failing callback.
         private static void LayOut(ReconcilerContext ctx, IPanel? panel, ComponentFiber? owner, bool ownerIsLifecycle)
         {
-            BeginReads();
             try
             {
                 EnsureLaidOut(panel);
@@ -81,10 +65,6 @@ namespace Velvet
                 }
                 // MUTANT_SURVIVES(unreachable): no panel the suite mounts on holds a measure callback that throws.
                 ReconcilerContext.ContainUserCallbackFailure(owner, exception.InnerException!);
-            }
-            finally
-            {
-                EndReads();
             }
         }
 
@@ -170,20 +150,26 @@ namespace Velvet
             private object _styleUpdater = null!;
             private FieldInfo _applyingStyles = null!;
             private VisualElement _root = null!;
+            private System.Func<uint> _hierarchyVersion = null!;
             private bool _laidOut;
             private uint _laidOutVersion;
+
+            // The panel's hierarchy version when a computation last left the tree dirty, and -1 before one has.
+            private long _leftDirtyAt = -1;
 
             internal static PanelLayout? Resolve(IPanel panel)
             {
                 var getUpdater = EngineMember.PanelGetUpdater.ResolveMethod();
                 var version = EngineMember.PanelVersion.ResolveProperty()?.GetMethod;
+                var hierarchyVersion = EngineMember.PanelHierarchyVersion.ResolveProperty()?.GetMethod;
                 var duringLayout = EngineMember.PanelDuringLayoutPhase.ResolveProperty()?.GetMethod;
                 var stylesPhase = EngineMember.StylesUpdatePhase.ResolveField();
                 var stylesUpdate = EngineMember.StyleUpdaterUpdate.ResolveMethod();
                 var applyingStyles = EngineMember.StyleUpdaterApplying.ResolveField();
                 // MUTANT_SURVIVES(unreachable): EngineMemberResolutionTests holds that each of these resolves.
                 if (LayoutMembers.Resolved == null || getUpdater == null || version == null || duringLayout == null
-                    || stylesPhase == null || stylesUpdate == null || applyingStyles == null)
+                    || stylesPhase == null || stylesUpdate == null || applyingStyles == null
+                    || hierarchyVersion == null)
                 {
                     return null;
                 }
@@ -202,6 +188,8 @@ namespace Velvet
                     _styleUpdater = styles!,
                     _applyingStyles = applyingStyles,
                     _root = panel.visualTree,
+                    _hierarchyVersion = (System.Func<uint>)System.Delegate.CreateDelegate(
+                        typeof(System.Func<uint>), panel, hierarchyVersion),
                 };
             }
 
@@ -222,30 +210,41 @@ namespace Velvet
                 if ((bool)_applyingStyles.GetValue(_styleUpdater)) return;
                 _styles();
                 var node = _members.LayoutNode.GetValue(_root);
-                // The tree is left dirty for the layout updater only when the reads end (EndReads), so after this
-                // panel's first computation in them it reads as dirty here only where something has dirtied its layout
-                // since. Left dirty after each computation instead, it would read as dirty to the next read in them
-                // too, and a callback ref behind a write that moves the panel's version and no box would run the
-                // computation and the walk below again; RefAttachLayoutCostTests fails when refs that each write a
-                // colour compute the layout more than once.
-                if ((bool)_members.Dirty.GetValue(node))
+                if ((bool)_members.Dirty.GetValue(node) && !OnlyLeftDirty())
                 {
                     _members.Calculate.Invoke(node, s_unbounded);
                     MoveTransforms(_root);
-                    if (!s_computedDuringReads.Contains(this)) s_computedDuringReads.Add(this);
+                    // Left dirty for the layout updater, whose visit of the tree sends the GeometryChangedEvents for
+                    // the boxes computed above, and which a pick made from a callback runs before hit-testing.
+                    // UseLayoutEffectLayoutReadTests fails when the events stop arriving, and RefAttachLayoutCostTests
+                    // when such a pick misses an element the computation resized or added.
+                    _members.Dirty.SetValue(node, true);
+                    _leftDirtyAt = _hierarchyVersion();
                 }
                 // MUTANT_SURVIVES(equivalent): an unrecorded version only sends the next read past the check above.
-                // It computes again only where the tree reads as dirty, and that computation changes nothing for the
-                // reason the check above gives.
+                // A read that finds the version where this one left it finds the tree clean or dirty only from the
+                // last computation, which OnlyLeftDirty tells, so it computes nothing.
                 _laidOutVersion = _version();
                 // MUTANT_SURVIVES(equivalent): an unrecorded computation only sends each later read past that check.
-                // It computes again only where the tree reads as dirty, as an unrecorded version's read does.
+                // There it computes nothing where the version has not moved, for the reason the one above gives.
                 _laidOut = true;
             }
 
-            // For the layout updater, whose visit of the tree sends the GeometryChangedEvents for the boxes the reads
-            // computed; UseLayoutEffectLayoutReadTests fails when they stop arriving.
-            internal void LeaveDirty() => _members.Dirty.SetValue(_members.LayoutNode.GetValue(_root), true);
+            // Whether the tree reads as dirty only because the last computation left it so. While the root is dirty, a
+            // layout change below it marks the elements from it upward until one already marked, the root's child it
+            // sits under at the latest; adding, removing or moving one of the root's own children need mark none of
+            // them, and moves the panel's hierarchy version. RefAttachLayoutCostTests fails when refs that each write
+            // a colour compute the layout more than once, and when a later read misses either kind of change.
+            private bool OnlyLeftDirty()
+            {
+                if (_hierarchyVersion() != _leftDirtyAt) return false;
+                var children = _root.hierarchy;
+                for (var i = 0; i < children.childCount; i++)
+                {
+                    if ((bool)_members.Dirty.GetValue(_members.LayoutNode.GetValue(children[i]))) return false;
+                }
+                return true;
+            }
 
             // Bumps now, over the elements the computation laid out, the transform version the layout updater's visit
             // bumps later for an element whose position changed. The visit still compares against the same last
