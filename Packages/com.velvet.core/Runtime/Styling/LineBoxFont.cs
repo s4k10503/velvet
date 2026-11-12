@@ -397,7 +397,7 @@ namespace Velvet
         {
             if (!s_shown.TryGetValue(element, out var owner)) return false;
 
-            return owner._written != null && owner._underlying.keyword != StyleKeyword.Undefined
+            return owner._written != null && owner._underlying.keyword == StyleKeyword.Null
                 && element.style.unityFontDefinition.value.fontAsset == owner._written;
         }
 
