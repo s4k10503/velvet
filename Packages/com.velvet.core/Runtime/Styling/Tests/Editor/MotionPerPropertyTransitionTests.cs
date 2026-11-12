@@ -100,6 +100,29 @@ namespace Velvet.Tests
             Assert.That(durationsMs, Is.EqualTo(new[] { 400f, 150f, 300f }).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base gives each override's entry the easing it names.
+        [Test]
+        public void Given_PropertyOverridesNamingTheirOwnEasings_When_Resolved_Then_EachEntryRunsItsOwn()
+        {
+            // Arrange — each override's easing differs from the top-level one the "all" entry carries.
+            var element = MountOnRealPanel();
+            var scheduler = new StyleAnimationScheduler();
+            var overrides = new[]
+            {
+                new StylePropertyTransition("opacity", durationSec: 0.15f, easing: EasingMode.Linear),
+                new StylePropertyTransition("scale", durationSec: 0.5f, easing: EasingMode.EaseIn),
+            };
+
+            // Act
+            scheduler.PlayVariantEnter(element, System.Array.Empty<string>(), System.Array.Empty<string>(),
+                durationSec: 0.3f, easing: EasingMode.EaseOut, delaySec: 0f, propertyOverrides: overrides);
+            EditorPanelTestHelpers.ForcePanelUpdate(element.panel);
+
+            // Assert
+            var easings = string.Join(",", element.resolvedStyle.transitionTimingFunction.Select(e => e.mode.ToString()));
+            Assert.That(easings, Is.EqualTo("EaseOut,Linear,EaseIn"));
+        }
+
         // GREEN_ON_BASE(characterization): the native transition list this case reads, kept by naming a duration
         // on an entry that would otherwise run its value on Framer's default transition off that list.
         [Test]

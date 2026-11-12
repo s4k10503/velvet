@@ -42,6 +42,22 @@ namespace Velvet.Tests
                 + (dim ? "backdrop-brightness-50" : "backdrop-brightness-100"));
         }
 
+        [Component]
+        private static VNode DimmingOnEaseIn()
+        {
+            var dim = Hooks.UseStore(s_dim, x => x);
+            return V.Div(name: "glass", className: "w-[40px] h-[40px] transition-all duration-1000 ease-in "
+                + (dim ? "backdrop-brightness-50" : "backdrop-brightness-100"));
+        }
+
+        [Component]
+        private static VNode DimmingOnJumpStartSteps()
+        {
+            var dim = Hooks.UseStore(s_dim, x => x);
+            return V.Div(name: "glass", className: "w-[40px] h-[40px] transition-all duration-1000 ease-[steps(4,jump-start)] "
+                + (dim ? "backdrop-brightness-50" : "backdrop-brightness-100"));
+        }
+
         // The first function's amount the layer paints now, NaN where there is no layer.
         private static float ShownAmount(VisualElement element)
         {
@@ -207,6 +223,52 @@ namespace Velvet.Tests
 
             // Assert — brightness 1 to 0.5, linear.
             Assert.That(ShownAmount(glass), Is.EqualTo(0.75f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TransitionAllOnEaseIn_When_TheBackdropBrightnessChanges_Then_HalfTheDurationInItStandsWhereTailwindsEaseInDoes()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            s_dim = new Flag();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(DimmingOnEaseIn, key: "root"),
+                new MountOptions { MotionClock = clock });
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+            ForcePanelUpdate(glass.panel);
+            var easeIn = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 1f, 1f), 0.5f);
+            var expected = Mathf.LerpUnclamped(1f, 0.5f, easeIn);
+
+            // Act
+            s_dim.Set(true);
+            _mounted.FlushStateForTest();
+            clock.Now += 0.5;
+
+            // Assert
+            Assert.That(ShownAmount(glass), Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base eases the change by the keyword, which stands at its start at 0.
+        // Clamping BackdropTransition.Eased's progress at 0 asks the jump-start steps for their first step, which
+        // reddens this case.
+        [Test]
+        public void Given_TransitionAllOnJumpStartStepsAfterADelay_When_TheBackdropBrightnessChanges_Then_ItHasNotMovedInsideTheDelay()
+        {
+            // Arrange
+            var clock = new HeldMotionClock();
+            s_dim = new Flag();
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(DimmingOnJumpStartSteps, key: "root"),
+                new MountOptions { MotionClock = clock });
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+            glass.style.transitionDelay = new System.Collections.Generic.List<TimeValue> { new(0.5f) };
+            ForcePanelUpdate(glass.panel);
+
+            // Act
+            s_dim.Set(true);
+            _mounted.FlushStateForTest();
+            clock.Now += 0.25;
+
+            // Assert
+            Assert.That(ShownAmount(glass), Is.EqualTo(1f).Within(1e-3f));
         }
 
         // The window as it painted, read back through the editor's own capture of a window's pixels, and the scale from
@@ -418,6 +480,22 @@ namespace Velvet.Tests
             var glass = row.Q<VisualElement>("glass");
             Assert.That((row.childCount, LogicalChildSlots.Count(row), LayerBefore(glass) != null),
                 Is.EqualTo((4, 3, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base places a backdrop layer against its host's padding box.
+        [Test]
+        public void Given_ABackdropElementUnderAHostsTopBorder_When_Mounted_Then_ItsLayerTopResolvesAgainstThePaddingBox()
+        {
+            // Arrange — the margin keeps the expected top off zero, which is where a layer placed before layout sits.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "host", className: "w-[100px] h-[100px] border-t-[6px]",
+                children: new VNode[] { V.Div(name: "glass", className: "w-[40px] h-[40px] mt-[10px] backdrop-blur-sm") }));
+            var glass = _window.rootVisualElement.Q<VisualElement>("glass");
+
+            // Act
+            ForcePanelUpdate(glass.panel);
+
+            // Assert
+            Assert.That(LayerBefore(glass).style.top.value.value, Is.EqualTo(glass.layout.y - 6f).Within(1e-3f));
         }
 
         [Test]

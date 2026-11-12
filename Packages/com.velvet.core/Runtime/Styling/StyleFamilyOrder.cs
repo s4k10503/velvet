@@ -26,9 +26,10 @@ namespace Velvet
 
         // A token belongs to the first family that claims it. The families on s_byKey carry declarations the sort key counts
         // and are ordered by StyleRuleOrder.CompareUtilities: a slash size declares a line height beside its font size,
-        // a nine-slice inset writes as many longhands as the edges it names, and a skew-<n> declares --tw-skew-y, which
-        // property-order.ts lists ahead of the transform a skew-x-* declares next. The others are ordered by their
-        // lane, then by candidate name, where Tailwind's sort ends for two utilities that declare the same properties.
+        // a nine-slice inset writes as many longhands as the edges it names, a skew-<n> declares --tw-skew-y, which
+        // property-order.ts lists ahead of the transform a skew-x-* declares next, and a shadow size's /N declares its
+        // family's alpha variable. The others are ordered by their lane, then by candidate name, where Tailwind's sort
+        // ends for two utilities that declare the same properties.
         private static readonly (Func<string, bool> Claims, Func<string, int> Lane)[] s_families =
         {
             (IsTextToken, s_byKey),
@@ -39,8 +40,8 @@ namespace Velvet
             (StyleGapClass.IsGapToken, s_noLane),
             (StyleGridClass.IsGridToken, s_noLane),
             (StyleDivideClass.IsDivideToken, s_noLane),
-            (StyleShadowClass.IsShadowClass, s_noLane),
-            (StyleShadowClass.IsInsetBoxShadowClass, s_noLane),
+            (StyleShadowClass.IsShadowClass, s_byKey),
+            (StyleShadowClass.IsInsetBoxShadowClass, s_byKey),
             (StyleRingClass.IsRingClass, RingLane),
             (StyleBackdropClass.IsBackdropClass, s_noLane),
             (token => StyleClipPathClass.IsClipPathClass(token), s_noLane),
@@ -92,17 +93,30 @@ namespace Velvet
         // A token the class list does not hold (one resolved inline) takes no part. The set of classes on the element is
         // the same afterwards, and neither StyleClassProjection.Model nor ClipPathLayoutBox.SyncClasses reads the
         // order of the list, so nothing that mirrors it needs telling.
+        //
+        // DiffClassList calls this whenever a class list changes. Each token's family is read once up front, and a family
+        // whose live classes are already in order (InOrder) is passed over without sorting the tokens or copying the list;
+        // the loop's own comparison of the two lists decides for the rest.
         internal static void RestoreLiveOrder(VisualElement element, string[] tokens)
         {
-            var sorted = Sorted(tokens);
-            var groups = GroupsOf(sorted);
-            if (groups == null)
+            Span<int> slots = tokens.Length <= MaxSlotsOnStack ? stackalloc int[tokens.Length] : new int[tokens.Length];
+            var last = ReadSlots(tokens, slots);
+            string[]? sorted = null;
+            List<int>?[]? groups = null;
+            for (var slot = 0; slot <= last; slot++)
             {
-                return;
-            }
-            for (var slot = 0; slot < groups.Length; slot++)
-            {
-                if (groups[slot] is not { } members)
+                if (slots.IndexOf(slot) == -1)
+                {
+                    continue;
+                }
+                var current = element.GetClasses() as IReadOnlyList<string>;
+                if (current != null && InOrder(current, tokens, slots, slot))
+                {
+                    continue;
+                }
+                sorted ??= Sorted(tokens);
+                groups ??= GroupsOf(sorted);
+                if (groups?[slot] is not { } members)
                 {
                     continue;
                 }
@@ -140,6 +154,54 @@ namespace Velvet
                     element.AddToClassList(cls);
                 }
             }
+        }
+
+        private const int MaxSlotsOnStack = 256;
+
+        // The highest slot a token holds, -1 where no token belongs to a family.
+        private static int ReadSlots(string[] tokens, Span<int> slots)
+        {
+            var last = -1;
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                slots[i] = SlotOf(tokens[i]);
+                last = Math.Max(last, slots[i]);
+            }
+            return last;
+        }
+
+        // The loop's verdict on slot without its lists: fewer than two live classes belong to it, or the live list holds
+        // its tokens in the order Sorted puts them in, ahead of its other classes (payloads a variant appended). A token
+        // written twice makes the loop's wanted list longer than the live one, and two tokens that compare equal are
+        // ordered by where they were written, so either leaves the slot to the loop.
+        private static bool InOrder(IReadOnlyList<string> live, string[] tokens, ReadOnlySpan<int> slots, int slot)
+        {
+            var previous = -1;
+            var pastTokens = false;
+            for (var i = 0; i < live.Count; i++)
+            {
+                var cls = live[i];
+                var position = Array.IndexOf(tokens, cls);
+                if (position == -1)
+                {
+                    pastTokens |= SlotOf(cls) == slot;
+                    continue;
+                }
+                if (slots[position] != slot)
+                {
+                    continue;
+                }
+                // MUTANT_SURVIVES(unreachable, boundary): Compare is zero only for two equal Tailwind spellings, a repeated
+                // token is answered by the check before it, and the only names spelled as another utility
+                // (StyleRuleOrder's durations, and rotate-n<deg> as -rotate-<deg>) belong to no family here.
+                if (pastTokens || Array.IndexOf(tokens, cls, position + 1) != -1
+                    || (previous != -1 && Compare(tokens[previous], tokens[position], slot / 2) >= 0))
+                {
+                    return false;
+                }
+                previous = position;
+            }
+            return true;
         }
 
         // The family and importance of a variantless token, as the index of its group; -1 for any other.

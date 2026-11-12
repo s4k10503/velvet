@@ -23,3 +23,5 @@
 .pf-open .pf-item { border-bottom-width: 1px; }
 
 .pf-zero { border-width: 0; }
+
+.pf-initial { border-width: initial; }

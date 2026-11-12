@@ -29,6 +29,8 @@ namespace Velvet
         // Exclusive end of this fiber's slot range (the next inline sibling's MountSlotStart, or int.MaxValue when
         // last/only tenant). Bounds the Common-phase desync recovery so it cannot patch a following sibling's row.
         public readonly int SlotLimit;
+        // Rented from ReconcilerBufferPool when the pass began; the slice that finishes or discards the park returns it.
+        public readonly OldSlotOccupants OldOccupants;
 
         public IndexedReconcileState(
             VisualElement? parent,
@@ -36,6 +38,7 @@ namespace Velvet
             VNode?[] newNodes,
             IndexedReconcilePhase resumePhase,
             int resumeIndex,
+            OldSlotOccupants oldOccupants,
             int slotStart = 0,
             int slotLimit = int.MaxValue)
         {
@@ -44,6 +47,7 @@ namespace Velvet
             NewNodes = newNodes;
             ResumePhase = resumePhase;
             ResumeIndex = resumeIndex;
+            OldOccupants = oldOccupants;
             SlotStart = slotStart;
             SlotLimit = slotLimit;
         }
@@ -114,6 +118,13 @@ namespace Velvet
         public int LinearEnd;
         // Resume index within the current phase. Meaning differs per phase (Pass1: linear scan position, Pass2Remove: tail-remove position, etc.).
         public int ResumeIndex;
+
+        #endregion
+
+        #region Old instances — rented from ReconcilerBufferPool, released by ReleaseKeyedBuffers
+
+        // Rented once the fresh start has passed the desync recovery, whose rebuild leaves no old instance to name.
+        public OldSlotOccupants? OldOccupants;
 
         #endregion
 

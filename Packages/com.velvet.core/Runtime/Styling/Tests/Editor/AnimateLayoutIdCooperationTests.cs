@@ -153,6 +153,60 @@ namespace Velvet.Tests
             Assert.That((MoveRuns(element), atTheTop - atTheBottom < -5f), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base hands a loop the own translate a layoutId move ends on.
+        [Test]
+        public void Given_ABounceUnderALayoutIdMove_When_TheCardTakesAnOwnTranslateMidMoveAndTheMoveEnds_Then_TheNextBounceFrameIsAtThatTranslate()
+        {
+            // Arrange — the move starts, and the card takes a translate of its own while it runs.
+            const string before = "w-[40px] h-[40px] bg-red-500";
+            const string after = "w-[40px] h-[40px] bg-red-500 translate-x-[20px]";
+            var (element, binding) = MountRow(before, AnimateMode.Bounce);
+            Patch(200, before, before);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            Frame();
+            var started = MoveRuns(element);
+            _mounted!.Root.Reconciler.Reconcile(
+                _window.rootVisualElement, new VNode[] { Row(200, before) }, new VNode[] { Row(200, after) });
+            for (var i = 0; i < MaxFrames && MoveRuns(element); i++)
+            {
+                Frame();
+            }
+            var ended = !MoveRuns(element);
+
+            // Act — the bounce's frame at the bottom of its lift, where it adds nothing to the element's own.
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert — NaN where the move never ran or never ended, which 20 never equals.
+            Assert.That(started && ended ? element.style.translate.value.x.value : float.NaN, Is.EqualTo(20f).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets a ping on a card a correction wrapper moves scale it mid-move.
+        [Test]
+        public void Given_APingOnACardItsWrapperMoves_When_TheLoopGrowsMidMove_Then_TheCardGrowsWithIt()
+        {
+            // Arrange — the clip path draws the card through a wrapper, whose slots are the move's alone; the move
+            // resizes the card, so it scales the wrapper.
+            const string before = "w-[40px] h-[40px] bg-red-500 clip-path-[circle(50%)]";
+            const string after = "w-[80px] h-[40px] bg-red-500 clip-path-[circle(50%)]";
+            var (element, binding) = MountRow(before, AnimateMode.Ping);
+            Patch(200, before, after);
+            for (var i = 0; i < 3; i++) Frame();
+            var boxed = !ReferenceEquals(MotionLayoutIdDriver.Box(element), element);
+
+            // Act — the loop at the start of its growth, then half way through it.
+            binding.StartTime = Time.realtimeSinceStartupAsDouble;
+            Frame();
+            Frame();
+            var atTheStart = element.style.scale.value.value.x;
+            binding.StartTime = Time.realtimeSinceStartupAsDouble - 0.5;
+            Frame();
+            Frame();
+            var halfWay = element.style.scale.value.value.x;
+
+            // Assert — NaN where the card is not wrapped or not moving, which no growth exceeds.
+            Assert.That(boxed && MoveRuns(element) ? halfWay - atTheStart : float.NaN, Is.GreaterThan(0.05f));
+        }
+
         private void Frame()
         {
             _now += 0.02;

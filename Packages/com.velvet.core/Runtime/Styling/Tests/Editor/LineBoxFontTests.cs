@@ -244,6 +244,43 @@ namespace Velvet.Tests
             Assert.That(LineBoxFont.Count, Is.EqualTo(before + 1));
         }
 
+        // GREEN_ON_BASE(characterization): the base reuses a fallback's copy a relinked table gave up.
+        [Test]
+        public void Given_CopiesOfAFontWithAFallbackAtManyLineHeightsOneAtATime_When_EachIsReleased_Then_TheFallbackKeepsTwoCopies()
+        {
+            // Arrange — a relink copies the fallback at the new height before it gives up the one at the old, so two
+            // copies of it are held across each relink and the third height takes the first one back.
+            var label = Add(TextGeneratorType.Standard);
+            var source = Fresh(label);
+            source.fallbackFontAssetTable = new List<FontAsset> { Fresh(label) };
+            var before = LineBoxFont.Count;
+
+            // Act
+            for (var i = 0; i < 24; i++)
+            {
+                var copy = LineBoxFont.Acquire(_user, source, 20f + i, 16f);
+                LineBoxFont.Release(_user, copy);
+            }
+
+            // Assert — the source's one copy and the fallback's two.
+            Assert.That(LineBoxFont.Count, Is.EqualTo(before + 3));
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the copy of a font built from a font file an atlas of its own.
+        [Test]
+        public void Given_ADynamicFontBuiltFromAFontFile_When_ItIsCopied_Then_TheCopyHasAnAtlasOfItsOwn()
+        {
+            // Arrange
+            var label = Add(TextGeneratorType.Standard);
+            var source = Fresh(label);
+
+            // Act
+            var copy = Acquire(source);
+
+            // Assert
+            Assert.That(copy.atlasTextures[0], Is.Not.SameAs(source.atlasTextures[0]));
+        }
+
         [Test]
         public void Given_TwoFontsWhoseWeightTablesNameEachOtherAndWhichHaveFallbacks_When_OneIsCopied_Then_ItsTableNamesACopyOfTheOther()
         {
@@ -279,6 +316,31 @@ namespace Velvet.Tests
 
             // Assert — the other's copy alone remains of the two.
             Assert.That(LineBoxFont.Count, Is.EqualTo(before + 1));
+        }
+
+        // The copies LineBoxFont keeps an entry for, by source and line height, whether or not the copy still exists.
+        private static int Entries()
+            => ((System.Collections.ICollection)typeof(LineBoxFont)
+                .GetField("s_entries", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .GetValue(null)).Count;
+
+        // GREEN_ON_BASE(characterization): the base sweeps the entry of a copy whose source font was destroyed.
+        [Test]
+        public void Given_AnIdleCopyWhoseSourceIsDestroyed_When_AnotherCopyIsAskedFor_Then_NoEntryIsKeptForTheDestroyedSource()
+        {
+            // Arrange — a source no text was drawn in, so destroying it reaches nothing the text system holds.
+            var label = Add(TextGeneratorType.Standard);
+            var gone = Fresh(label);
+            var other = Fresh(label);
+            var before = Entries();
+            LineBoxFont.Release(_user, LineBoxFont.Acquire(_user, gone, 24f, 16f));
+            Object.DestroyImmediate(gone);
+
+            // Act
+            Acquire(other);
+
+            // Assert — the other's entry alone remains of the two.
+            Assert.That(Entries(), Is.EqualTo(before + 1));
         }
 
     }

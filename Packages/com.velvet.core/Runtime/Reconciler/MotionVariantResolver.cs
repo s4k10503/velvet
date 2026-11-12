@@ -16,7 +16,7 @@ namespace Velvet
         // tail that was concatenated on — Array.Empty when nothing merged. Callers use its Length both to
         // skip the per-element applied-class bookkeeping for the variant-less majority AND, as an explicit
         // value rather than something re-derived from the merged array's tail by POSITION, as the from/to
-        // input to a runtime variant swap (see FiberNodePatcher.PatchMotion) — deriving it positionally would
+        // input to a runtime variant swap (see FiberNodePatcher.PatchMotionPost) — deriving it positionally would
         // silently assume the base portion never changes length between renders.
         // poseTransition is what a swap INTO the resolved pose plays on: that pose's own
         // MotionVariant.Transition when it declares one, else the node's own — resolved here, off THIS
@@ -110,7 +110,7 @@ namespace Velvet
     // Per-Motion-element applied-class bookkeeping pair: the full merged array (base + variant classes, used
     // for the ordinary class-driven styling diff via PatchBaseElement) alongside the variant-only classes that
     // were concatenated onto it (used as the explicit from/to input to a runtime variant swap — see
-    // FiberNodePatcher.PatchMotion). Kept together so a caller never has to re-derive the variant tail from the
+    // FiberNodePatcher.PatchMotionPost). Kept together so a caller never has to re-derive the variant tail from the
     // merged array by POSITION, which would silently assume the base portion's length never changes.
     internal readonly struct MotionAppliedClassSet
     {

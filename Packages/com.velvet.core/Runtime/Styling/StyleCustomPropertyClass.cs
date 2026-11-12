@@ -75,6 +75,15 @@ namespace Velvet
             return true;
         }
 
+        // Whether Consumer or IsCustomPropertyToken could answer for the core StripImportant hands on for className, asked
+        // of className as written. The bracket, parenthesis or underscore both look for survives the bang's removal;
+        // without one they read a theme class or a cleared bundled one, whose shape MayBeFamilyShapedAsWritten answers for
+        // a class with no ':' (it reads past the last).
+        internal static bool MayBeCustomPropertyClassAsWritten(string className)
+            => className.IndexOfAny(s_readerChars) >= 0 || StyleThemeClass.MayBeFamilyShapedAsWritten(className);
+
+        private static readonly char[] s_readerChars = { '[', '(', '_', ':' };
+
         // The utility a consumer token is read as: the token with each parenthesised var() shorthand written as
         // the bracket it stands for, or the utility an arbitrary property maps to. Null for any other token, and
         // for an arbitrary property Velvet has no utility for.
@@ -228,7 +237,7 @@ namespace Velvet
             {
                 return false;
             }
-            var custom = core.Length > 3 && core[1] == '-' && core[2] == '-';
+            var custom = core[1] == '-' && core[2] == '-';
             for (var i = 1; i < colon; i++)
             {
                 var c = core[i];

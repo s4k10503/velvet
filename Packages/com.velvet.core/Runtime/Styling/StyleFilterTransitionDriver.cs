@@ -158,7 +158,13 @@ namespace Velvet
             }
             if (ChannelsAreNoOp(channels))
             {
-                // from == to: nothing to animate; let the resolver write the identical value.
+                // from == to: nothing to animate; let the resolver write the identical value. A running tween heading
+                // elsewhere stops here, or its tick runs on to that target over the resolver's write
+                // (Given_ABlurInsideItsDelay_When_ItIsTakenAwayAgain_Then_TheElementEndsUnblurred).
+                if (bound != null)
+                {
+                    Cancel(bound);
+                }
                 return false;
             }
 
@@ -182,7 +188,7 @@ namespace Velvet
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             b.DelaySec = delayMs < 0 ? delayMs / 1000f * factor : delayMs / 1000f;
             b.Easing = easing;
-            b.Curve = StyleEaseCurve.CurveFor(element, easing);
+            b.Curve = StyleEaseCurve.CurveFor(element, easing, "filter");
             b.Clock = clock;
             b.StartTime = clock.NowSec;
             // Write the start frame now so there is no one-frame flash of the pre-change value.
@@ -284,14 +290,14 @@ namespace Velvet
         // The eased output of the tween at pre-easing progress t: the element's cubic-bezier where it holds one for the
         // keyword the entry resolved, else that keyword's curve.
         private static float Eased(StyleFilterTransitionBinding b, float t)
-            => b.Curve is { } curve ? StyleEaseCurve.Evaluate(curve, Mathf.Clamp01(t)) : UssEasing.Evaluate(b.Easing, t);
+            => StyleEaseCurve.Evaluate(b.Curve, b.Easing, t);
 
-        // The pre-easing progress at this moment, 0 through the delay and 1 from the end of the run: a zero duration
-        // jumps to the end once the delay has passed, as a USS transition does.
+        // The pre-easing progress at this moment, below 0 through the delay and 1 from the end of the run: a zero
+        // duration jumps to the end once the delay has passed, as a USS transition does.
         private static float Progress(StyleFilterTransitionBinding b)
         {
             var active = b.Clock.NowSec - b.StartTime - b.DelaySec;
-            return Mathf.Clamp01((float)(active / Math.Max(b.DurationSec, 1e-6)));
+            return Mathf.Min((float)(active / Math.Max(b.DurationSec, 1e-6)), 1f);
         }
 
         // Applies one frame at progress t (pre-easing). Pure: builds a FRESH list every call (UI Toolkit's

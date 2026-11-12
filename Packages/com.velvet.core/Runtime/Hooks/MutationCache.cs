@@ -164,6 +164,8 @@ namespace Velvet
         private readonly Func<TimeSpan> _clock;
         private readonly List<MutationObserver> _observers = new();
         private VelvetTaskCompletionSource? _continue;
+        private VelvetTaskCompletionSource? _settled;
+        private bool _functionSettled;
 
         internal Mutation(MutationCache cache, int mutationId, MutationOptionsBase options, Func<TimeSpan> clock)
         {
@@ -176,8 +178,8 @@ namespace Velvet
         /// <summary>The mutation's number in its cache, counting from one.</summary>
         public int MutationId { get; }
 
-        /// <summary>The options record the hook was given; a later commit of a pending mutation's handle replaces
-        /// it.</summary>
+        /// <summary>The options record the hook was given; a later commit can replace it while the mutation is
+        /// pending.</summary>
         public MutationOptionsBase Options { get; private set; } = null!;
 
         /// <summary>The options' <see cref="MutationOptionsBase.Meta"/>.</summary>
@@ -205,9 +207,14 @@ namespace Velvet
         // as v5's mutation keeps the options object it was built with.
         internal object Invocation { get; set; } = null!;
 
-        // Completes when the call's function has settled, however it settled, as v5's retryer promise does, for
-        // ResumePausedMutations to wait on. A call that failed before its function was reached never completes it.
-        internal VelvetTaskCompletionSource Settled { get; } = new();
+        // v5's retryer promise settling, which completes what Continue hands ResumePausedMutations to wait on: the
+        // call's run of its function and its retries is over, however it ended. A call that failed before reaching
+        // that run never calls this.
+        internal void SettleFunction()
+        {
+            _functionSettled = true;
+            _settled?.TrySetResult();
+        }
 
         // TanStack's addObserver: an observer already watching is not added again.
         internal void AddObserver(MutationObserver observer)
@@ -215,7 +222,7 @@ namespace Velvet
             if (_observers.Contains(observer)) return;
             _observers.Add(observer);
             _cache.ClearGc(this);
-            _cache.Notify(new MutationCacheEvent(MutationCacheEventType.ObserverAdded, this, observer: observer));
+            _cache.Notify(MutationCacheEventType.ObserverAdded, this, observer: observer);
         }
 
         // TanStack's removeObserver, which reschedules the removal and announces it whether or not the observer was
@@ -224,7 +231,7 @@ namespace Velvet
         {
             _observers.Remove(observer);
             _cache.ScheduleGc(this);
-            _cache.Notify(new MutationCacheEvent(MutationCacheEventType.ObserverRemoved, this, observer: observer));
+            _cache.Notify(MutationCacheEventType.ObserverRemoved, this, observer: observer);
         }
 
         // TanStack's optionalRemove, which its gc timeout calls.
@@ -249,7 +256,8 @@ namespace Velvet
         internal VelvetTask Continue()
         {
             _continue?.TrySetResult();
-            return Settled.Task;
+            if (_functionSettled) return VelvetTask.CompletedTask;
+            return (_settled ??= new VelvetTaskCompletionSource()).Task;
         }
 
         private static async VelvetTask CompleteOnNextFrame(VelvetTaskCompletionSource source)
@@ -296,8 +304,7 @@ namespace Velvet
             Status = MutationStatus.Error,
         };
 
-        internal void Announce(MutationActionType action)
-            => _cache.Notify(new MutationCacheEvent(MutationCacheEventType.Updated, this, action));
+        internal void Announce(MutationActionType action) => _cache.Notify(MutationCacheEventType.Updated, this, action);
 
         private void Dispatch(MutationState next, MutationActionType action)
         {
@@ -406,7 +413,7 @@ namespace Velvet
                     if (scoped.Count == 0) _scopes.Remove(scope);
                 }
             }
-            Notify(new MutationCacheEvent(MutationCacheEventType.Removed, mutation));
+            Notify(MutationCacheEventType.Removed, mutation);
         }
 
         /// <summary>
@@ -417,10 +424,18 @@ namespace Velvet
         /// settled.</returns>
         public VelvetTask ResumePausedMutations()
         {
-            var runs = new List<VelvetTask>();
+            // The paused set is taken before any of it is continued, as v5 filters it first: a woken call whose run
+            // ends inside its Continue continues the next paused call of its scope, which is then no longer paused
+            // and is still one to wait for.
+            var paused = new List<Mutation>();
             foreach (var mutation in GetAll())
             {
-                if (mutation.State.IsPaused) runs.Add(mutation.Continue());
+                if (mutation.State.IsPaused) paused.Add(mutation);
+            }
+            var runs = new List<VelvetTask>(paused.Count);
+            foreach (var mutation in paused)
+            {
+                runs.Add(mutation.Continue());
             }
             return SettleAll(runs);
         }
@@ -443,7 +458,7 @@ namespace Velvet
             foreach (var mutation in mutations)
             {
                 mutation.GcDeadline = null;
-                Notify(new MutationCacheEvent(MutationCacheEventType.Removed, mutation));
+                Notify(MutationCacheEventType.Removed, mutation);
             }
         }
 
@@ -458,7 +473,7 @@ namespace Velvet
                 if (_scopes.TryGetValue(scope, out var scoped)) scoped.Add(mutation);
                 else _scopes.Add(scope, new List<Mutation> { mutation });
             }
-            Notify(new MutationCacheEvent(MutationCacheEventType.Added, mutation));
+            Notify(MutationCacheEventType.Added, mutation);
             return mutation;
         }
 
@@ -487,7 +502,14 @@ namespace Velvet
             }
         }
 
-        internal void Notify(MutationCacheEvent cacheEvent) => _listeners.Notify(cacheEvent);
+        internal void Notify(
+            MutationCacheEventType type,
+            Mutation? mutation,
+            MutationActionType? action = null,
+            MutationObserver? observer = null)
+        {
+            if (_listeners.HasListeners) _listeners.Notify(new MutationCacheEvent(type, mutation, action, observer));
+        }
 
         // TanStack's scheduleGc, read once a frame on the mutation's clock as QueryClient's entries are: the removal
         // lands on the first frame whose reading is at or past the deadline. An infinite gcTime sets none.

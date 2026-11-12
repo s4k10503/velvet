@@ -23,8 +23,8 @@ namespace Velvet
         public float BaseOrder;
         public bool DeclaringResolved;
 
-        // Lets go of the hold the host's root takes on FiberCrossPanelEventDispatcher's listeners, which
-        // the event manager keeps for as long as its reconciler lives.
+        // Lets go of the holds the host's root takes: on FiberCrossPanelEventDispatcher's listeners, which
+        // the event manager keeps for as long as its reconciler lives, and on DefaultFamilyRoots.
         public System.Action? ReleaseBridge;
 
         public GameObject? Host => Document != null ? Document.gameObject : null;
@@ -97,6 +97,7 @@ namespace Velvet
             AttachDocument(record.Document, settings);
             RecordDeclaringRoot(record, declaringPanel);
             record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
             FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             return record;
         }
@@ -128,6 +129,7 @@ namespace Velvet
             AttachDocument(record.Document, settings);
             RecordDeclaringRoot(record, declaringPanel);
             record.ReleaseBridge = FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
+            record.ReleaseBridge += DefaultFamilyRoots.Hold(record.Document.rootVisualElement).Dispose;
             FiberFocusNavigator.EnsureAttached(record.Document.rootVisualElement, ctx);
             // The document derives its root sizing from (settings, size mode, size) but only
             // re-derives on a VALUE change, and the attach itself never re-runs it — so both size
@@ -355,7 +357,7 @@ namespace Velvet
         // partially dead record (scene unload) still releases the rest.
         public static void Destroy(PanelHostRecord record)
         {
-            // Cleared once released, so the record gives up its hold at most once and never one a portal on
+            // Cleared once released, so the record gives up its holds at most once and never one a portal on
             // the same root holds.
             record.ReleaseBridge?.Invoke();
             record.ReleaseBridge = null;

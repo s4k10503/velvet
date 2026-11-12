@@ -6,8 +6,8 @@ using System.Threading;
 
 namespace Velvet
 {
-    // One query of a UseQueries render, whatever its data types: its options and settings, the observer it shares
-    // with the other queries of its entry, the observer that computes its own result, and the entry it read.
+    // One query of a UseQueries render, whatever its data types: its options and settings, the observer that holds
+    // its subscription, the observer that computes its own result, and the entry it read.
     internal abstract class QueriesItem
     {
         internal abstract QueryKey KeyId { get; }
@@ -20,6 +20,9 @@ namespace Velvet
         internal abstract void Match(QueryObserver? held, object? computer, Action<QueryObserver> onChange);
         internal abstract object Read(QueryClient client, QueryErrorResetBoundary boundary, IQueryResultSource source);
         internal abstract object Refresh(IQueryResultSource source);
+        internal abstract void RecordNotified();
+        internal abstract object Notified(IQueryResultSource source);
+        internal abstract bool ChangedSinceNotified { get; }
         // The query's own result computed afresh from its entry, and what differs from the one before.
         internal abstract QueryProperties RefreshChanges();
         internal abstract QueryProperties? NotifyOnChangeProps { get; }
@@ -32,9 +35,8 @@ namespace Velvet
         internal abstract Func<QueryErrorResetBoundary, CancellationToken, VelvetTask<Unit>>? Suspend(QueryClient client, out object request);
     }
 
-    // The shared observer holds the entry's own data under the options without a select, as v5's one observer for
-    // a queryHash does whatever each query selects; each query's TData comes from its computer, as v5's
-    // getOptimisticResult(options) runs for each query on that observer.
+    // The observer is matched by its entry alone, as v5 matches one by queryHash whatever each query selects, so it
+    // holds the entry's own data under the options without a select; the query's TData comes from its computer.
     internal sealed class QueriesItem<TQueryFnData, TData> : QueriesItem
     {
         private readonly QueryOptionsBase<TQueryFnData, TData> _options;
@@ -81,13 +83,23 @@ namespace Velvet
             _entry = _settings.ReadEntry(client);
             _settings = _settings.PreventingErrorBoundaryRetry(_entry, boundary);
             _shared = _shared.PreventingErrorBoundaryRetry(_entry, boundary);
-            // The shared observer's own reading is what its next update is compared with, as for UseQuery.
+            // The observer's own reading is what its next update is compared with, as for UseQuery.
             _observer.Read(_entry, _shared, source);
             return _computer.Read(_entry, _settings, source);
         }
 
         internal override object Refresh(IQueryResultSource source)
-            => _computer.Refresh(_observer.Entry ?? _entry, _settings, source);
+        {
+            var result = _computer.Refresh(_observer.Entry ?? _entry, _settings, source);
+            RecordNotified();
+            return result;
+        }
+
+        internal override void RecordNotified() => _computer.RecordNotified();
+
+        internal override object Notified(IQueryResultSource source) => _computer.Notified(source);
+
+        internal override bool ChangedSinceNotified => _computer.ChangedSinceNotified;
 
         internal override QueryProperties RefreshChanges() => _computer.RefreshChanges(_observer.Entry ?? _entry, _settings);
 
@@ -128,7 +140,7 @@ namespace Velvet
         }
     }
 
-    // A query's options without the select, for the observer the queries of one entry share.
+    // A query's options without the select, for the observer that holds a UseQueries query's subscription.
     internal sealed record RawQueryOptions<TQueryFnData> : QueryOptionsBase<TQueryFnData, TQueryFnData>
     {
         private RawQueryOptions(QueryOptionsBase origin, QueryFunction<TQueryFnData> function)
@@ -146,7 +158,7 @@ namespace Velvet
 
         internal override QueryFunction<TQueryFnData> Function => Fn;
 
-        // The shared observer tells the hook of every change to the entry, and each query decides from its own
+        // The observer tells the hook of every change to the entry, and each query decides from its own
         // result whether it re-renders, as v5's observer compares its selected result's tracked properties.
         internal static RawQueryOptions<TQueryFnData> Of<TData>(QueryOptionsBase<TQueryFnData, TData> source) => new(source, source.Function)
         {
@@ -243,6 +255,9 @@ namespace Velvet
         // of once they all have, as v5's setQueries notifies once at its end.
         private bool _syncing;
         private bool _changedWhileSyncing;
+        // The mount's commit, and a StrictMode replay of it after LeaveAll, records the results without telling of
+        // them, since the render it commits read them.
+        private bool _committed;
         private Delegate? _combine;
         private Func<object[], TCombined>? _invokeCombine;
         // TanStack's #lastCombine, #lastResult, #lastQueryHashes and #combinedResult.
@@ -280,16 +295,18 @@ namespace Velvet
             return read;
         }
 
-        // TanStack's #findMatchingObservers: a query takes the observer the last commit held over the same entry, the
-        // last of them where several did, as v5's Map keeps the last, and queries over one entry share it whatever
-        // their data types. Each query's computer is kept for the next query over the entry with the same types,
-        // in the order they come, so its select memo carries over.
+        // TanStack's #findMatchingObservers: a query is handed, whatever its data types, the first observer the last
+        // commit held over its entry that no query before it was handed, and a new one where none is left. Each
+        // query's computer is kept for the next query over the entry with the same types, in the order they come, so
+        // its select memo carries over.
         private void Match(QueriesRead read)
         {
-            var byKey = new Dictionary<QueryKey, QueryObserver>();
+            var byKey = new Dictionary<QueryKey, Queue<QueryObserver>>();
             foreach (var observer in _observers)
             {
-                if (observer.CommittedKeyId is { } id) byKey[id] = observer;
+                if (observer.CommittedKeyId is not { } id) continue;
+                if (!byKey.TryGetValue(id, out var held)) byKey.Add(id, held = new Queue<QueryObserver>());
+                held.Enqueue(observer);
             }
             var computers = new Dictionary<(QueryKey, Type), Queue<object>>();
             foreach (var item in _items)
@@ -302,7 +319,8 @@ namespace Velvet
             {
                 var item = read.Items[i];
                 var computer = computers.TryGetValue((item.KeyId, item.ResultType), out var queue) && queue.Count > 0 ? queue.Dequeue() : null;
-                item.Match(byKey.TryGetValue(item.KeyId, out var held) ? held : null, computer, OnObserverChanged);
+                var observer = byKey.TryGetValue(item.KeyId, out var held) && held.Count > 0 ? held.Dequeue() : null;
+                item.Match(observer, computer, OnObserverChanged);
                 read.Observers[i] = item.Observer;
             }
         }
@@ -342,15 +360,25 @@ namespace Velvet
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             WarnOnDuplicates(read.Keys);
 #endif
-            if (_changedWhileSyncing && AnyQueryNotifies()) Notify();
-            else if (structural || ResultsChanged()) RecordResults();
+            var committed = _committed;
+            _committed = true;
+            var notify = _changedWhileSyncing && AnyQueryNotifies();
+            if (!notify && !structural && !ResultsChanged()) return;
+            RecordResults();
+            if (notify || committed) Notify(refreshed: true);
         }
 
+        // TanStack's hasResultChange compares each query's selected result with #result[i]; the observers hold the
+        // entry's data under no select, so a commit that changes only a select changes no result of theirs.
         private bool ResultsChanged()
         {
             foreach (var observer in _observers)
             {
                 if (observer.ResultChangedSinceRecorded) return true;
+            }
+            foreach (var item in _items)
+            {
+                if (item.ChangedSinceNotified) return true;
             }
             return false;
         }
@@ -361,20 +389,30 @@ namespace Velvet
             {
                 observer.RecordResult();
             }
+            foreach (var item in _items)
+            {
+                item.RecordNotified();
+            }
             _resultVersion++;
         }
 
-        // TanStack's #onUpdate: an observer the hook holds changed, so the results are replaced and the listeners
-        // told.
+        // TanStack's #onUpdate, for an observer the hook holds that told of a change its own query notifies of: that
+        // observer's result alone is recorded and the listeners told. Recording every observer here would record one
+        // over the same entry that the entry has not yet told of the change.
         private void OnObserverChanged(QueryObserver observer)
         {
-            if (Array.IndexOf(_observers, observer) < 0) return;
+            var index = Array.IndexOf(_observers, observer);
+            if (index < 0) return;
             if (_syncing)
             {
                 _changedWhileSyncing = true;
                 return;
             }
-            if (AnyQueryNotifies()) Notify();
+            if (!Notifies(_items[index])) return;
+            observer.RecordResult();
+            _items[index].RecordNotified();
+            _resultVersion++;
+            Notify(refreshed: false);
         }
 
         // TanStack's trackResult: a property read from one result is tracked for them all, and a result whose query
@@ -383,30 +421,38 @@ namespace Velvet
 
         private Action<QueryProperties>? TrackOf(QueriesItem item) => item.ListsNotifyProps ? null : _trackProperty;
 
-        // TanStack's shouldNotifyListeners, asked of each query's own result: its listed properties, an empty list
-        // included, else the ones read from any result, else any change. Every query's result is computed afresh, so the next comparison starts from
-        // it.
+        // Every query is asked, not only those before the first that notifies, so every result is computed afresh.
         private bool AnyQueryNotifies()
         {
             var notifies = false;
             foreach (var item in _items)
             {
-                var changed = item.RefreshChanges();
-                if (changed == QueryProperties.None) continue;
-                item.AnnounceResultsUpdated();
-                var listed = item.NotifyOnChangeProps;
-                if (listed == null && _tracked == QueryProperties.None) notifies = true;
-                else if ((changed & ((listed ?? _tracked) | item.ErrorWatch)) != QueryProperties.None) notifies = true;
+                if (Notifies(item)) notifies = true;
             }
             return notifies;
         }
 
+        // TanStack's shouldNotifyListeners, asked of a query's own result: its listed properties, an empty list
+        // included, else the ones read from any result, else any change. The result is computed afresh, so the next
+        // comparison starts from it.
+        private bool Notifies(QueriesItem item)
+        {
+            var changed = item.RefreshChanges();
+            if (changed == QueryProperties.None) return false;
+            item.AnnounceResultsUpdated();
+            var listed = item.NotifyOnChangeProps;
+            if (listed == null && _tracked == QueryProperties.None) return true;
+            return (changed & ((listed ?? _tracked) | item.ErrorWatch)) != QueryProperties.None;
+        }
+
         // TanStack's #notify: without a combine the component re-renders; with one, while a suspending query holds no
         // data yet the combine is passed over and the component re-renders, and otherwise it re-renders only when
-        // what the combine returns changed.
-        private void Notify()
+        // what the combine returns changed. A commit hands combine every result computed afresh, as setQueries reads
+        // each observer's; one observer's change hands it the others as last recorded or notified of, as #onUpdate
+        // replaces its own alone, so no other query's result moves before its own observer is told and compares
+        // against it.
+        private void Notify(bool refreshed)
         {
-            RecordResults();
             var invokeCombine = _invokeCombine;
             if (_combine == null || invokeCombine == null || ShouldSkipCombine())
             {
@@ -415,7 +461,7 @@ namespace Velvet
             }
             var hadCombined = _hasCombined;
             var before = _combined;
-            var after = Combine(CommittedResults(), KeysOf(), _combine, invokeCombine);
+            var after = Combine(CommittedResults(refreshed), KeysOf(), _combine, invokeCombine);
             if (!hadCombined || !QueryData.Same(before, after)) _rerender();
         }
 
@@ -428,12 +474,13 @@ namespace Velvet
             return false;
         }
 
-        private object[] CommittedResults()
+        private object[] CommittedResults(bool refreshed)
         {
             var results = new object[_observers.Length];
             for (var i = 0; i < results.Length; i++)
             {
-                results[i] = _items[i].Refresh(new QueriesResultSource(_observers, i, TrackOf(_items[i])));
+                var source = new QueriesResultSource(_observers, i, TrackOf(_items[i]));
+                results[i] = refreshed ? _items[i].Refresh(source) : _items[i].Notified(source);
             }
             return results;
         }
@@ -480,6 +527,7 @@ namespace Velvet
             var observers = _observers;
             _observers = Array.Empty<QueryObserver>();
             _items = Array.Empty<QueriesItem>();
+            _committed = false;
             foreach (var observer in observers)
             {
                 observer.Leave();

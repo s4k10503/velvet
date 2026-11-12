@@ -22,6 +22,7 @@ namespace Velvet
         private ChildReconciler? _childReconciler;
         private FiberNodeFactory? _factory;
         private FiberNodePatcher? _patcher;
+        private NodePatchWalk? _patchWalk;
         private FiberElementCleaner? _cleaner;
 
         private ChildReconciler ChildPass
@@ -48,6 +49,15 @@ namespace Velvet
             {
                 if (_patcher == null) BuildParts();
                 return _patcher!;
+            }
+        }
+
+        private NodePatchWalk PatchWalk
+        {
+            get
+            {
+                if (_patchWalk == null) BuildParts();
+                return _patchWalk!;
             }
         }
 
@@ -146,17 +156,28 @@ namespace Velvet
             }
         }
 
+        // The fiber whose output this instance reconciles; FiberRenderer writes it when the fiber mounts.
+        internal ComponentFiber? Owner { get; set; }
+
+        private void MarkOwnerParked()
+        {
+            if (Owner != null) FiberPendingWork.MarkAncestors(Owner);
+        }
+
         private void BuildParts()
         {
             var cleaner = new FiberElementCleaner(_ctx);
             var patcher = new FiberNodePatcher(_ctx);
             var factory = new FiberNodeFactory(_ctx, patcher, cleaner);
-            var childReconciler = new ChildReconciler(_ctx, patcher, factory, cleaner);
+            var patchWalk = new NodePatchWalk(_ctx, patcher);
+            var childReconciler = new ChildReconciler(_ctx, patcher, patchWalk, factory, cleaner) { Parked = MarkOwnerParked };
 
             factory.SetHost(this);
             patcher.SetHost(this);
+            patchWalk.SetHost(this);
             _cleaner = cleaner;
             _patcher = patcher;
+            _patchWalk = patchWalk;
             _factory = factory;
             _childReconciler = childReconciler;
         }
@@ -279,6 +300,10 @@ namespace Velvet
                             profilerScope.Dispose();
                         }
                     }
+                    else
+                    {
+                        TakeAbortAtTheRangeBracket();
+                    }
                 }
                 finally
                 {
@@ -328,8 +353,29 @@ namespace Velvet
         // which: the drain follows a walk that returned, or one that threw and is still unwinding.
         private void FinishTopLevelPass(VisualElement? reconciledInto, bool walked)
         {
-            _ctx.PointerEventsWalkHeld++;
+            TakeAbort();
+            FinishPass(reconciledInto, walked);
+        }
+
+        private void TakeAbort()
+        {
             LastTopLevelWasAborted = _ctx.IsAborted;
+            _ctx.IsAborted = false;
+        }
+
+        // Called once a Reconcile or a resume that is not top-level has put its own depth back, which is then the depth
+        // it was entered at (ReconcilerContext.RangeBracketDepth).
+        private void TakeAbortAtTheRangeBracket()
+        {
+            if (_ctx.SharedReconcileDepth == _ctx.RangeBracketDepth) TakeAbort();
+        }
+
+        // FinishTopLevelPass less the aborted-pass reading its callers take of the pass they ran: a VirtualList range
+        // rendered outside a pass ends with this (EndRangeForController), and can end inside the end of one of those
+        // passes.
+        private void FinishPass(VisualElement? reconciledInto, bool walked)
+        {
+            _ctx.PointerEventsWalkHeld++;
             // The abort flag stops sibling work inside the pass that just ended; the deferred
             // host mounts below are commit work for placeholders that SURVIVED it. A boundary
             // rollback detaches its failed subtree's placeholders (the drain's per-entry
@@ -406,6 +452,7 @@ namespace Velvet
                 BackdropFilterLayer.DrainPendingPlacements(_ctx);
                 // Same reason: an inherited family is read off the final parent chain (FiberFontScope).
                 _ctx.FontScope.Drain(_ctx.BatchScheduler.Anchor);
+                _ctx.SyncPortalRowFamilies();
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
                 // this pass owed has already run — the portal drain above included, which reconciles a
                 // Portal's children through ChildReconciler directly and so reaches no boundary of its
@@ -502,7 +549,8 @@ namespace Velvet
                 _ctx.SharedReconcileDepth--;
                 // Mirrors Reconcile's own top-level finally (see FinishTopLevelPass for why IsAborted
                 // must be consumed before the drain it runs). Left unset (false) on a nested resume —
-                // the ancestor's own eventual top-level finally is what consumes it.
+                // the ancestor's own eventual top-level finally is what consumes it — except on one entered at a
+                // VirtualList range's bracket (ReconcilerContext.RangeBracketDepth).
                 try
                 {
                     if (isTopLevel)
@@ -510,6 +558,10 @@ namespace Velvet
                         // A resume keeps no record of the element its pass reconciles into; the tree's own
                         // mount target is above every element the resume can insert outside a Portal.
                         FinishTopLevelPass(_ctx.MainPanelRoot, resumed);
+                    }
+                    else
+                    {
+                        TakeAbortAtTheRangeBracket();
                     }
                 }
                 finally
@@ -541,9 +593,22 @@ namespace Velvet
 
         #region IReconcilerBridge
 
-        VisualElement IReconcilerBridge.CreateElementForController(VNode node) => NodeFactory.CreateElement(node);
+        // The row is what the controller keeps: the element a placeholder stands for where the creation relocated it.
+        VisualElement IReconcilerBridge.CreateElementForController(VNode node)
+        {
+            var created = NodeFactory.CreateElement(node);
+            return _ctx.ZLayerPlaceholders.TryGetValue(created, out var row) ? row : created;
+        }
 
-        void IReconcilerBridge.CleanupElementForController(VisualElement element) => ElementCleaner.CleanupElement(element);
+        void IReconcilerBridge.CleanupElementForController(VisualElement row)
+            => ElementCleaner.CleanupElement(SlotOccupantOf(row));
+
+        // What holds the row's slot now: its placeholder while FiberZLayerCoordinator relocates it, which a patch, the
+        // arrangement at the end of a range or pass, and a variant toggled outside any pass each decide afresh, so it
+        // is asked where the controller acts on the slot rather than kept.
+        VisualElement IReconcilerBridge.SlotOccupantForController(VisualElement row) => SlotOccupantOf(row);
+
+        private VisualElement SlotOccupantOf(VisualElement row) => FiberZLayerCoordinator.PlaceholderOf(_ctx, row) ?? row;
 
         void IReconcilerBridge.FlushPendingPassiveEffectsForController() => _ctx.BatchScheduler.FlushPendingPassiveEffects();
 
@@ -560,29 +625,65 @@ namespace Velvet
             FiberEffects.CommitHeldRowLayoutEffects(_ctx, held);
         }
 
-        // Every range render ends here, and one run from a geometry or scroll callback has no pass whose end would
-        // walk the pointer-events scopes; ahead of the layout work, which reads the rows it placed.
+        // Every range render ends here, ahead of the layout work, which reads the rows it placed.
         void IReconcilerBridge.CommitStrandedLayoutWorkForController()
         {
             PointerEventsScope.RequestSyncAll(_ctx);
             FiberEffects.CommitStrandedLayoutWork(_ctx);
         }
 
-        VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
+        VisualElement IReconcilerBridge.PatchNodeForController(VisualElement row, VNode oldNode, VNode newNode)
         {
-            // The controller stores the slot's top-level element, which for a shadow-*/clip-path-*
-            // item root is the structural WRAPPER; patch the real inner (the ChildReconciler does
-            // the same via ResolveWrapped before every PatchNode).
-            var inner = NodePatcher.ResolveWrapped(element);
-            NodePatcher.PatchNode(inner, oldNode, newNode);
-            // A class change can wrap/unwrap during the patch, swapping the slot's top-level
-            // element; return the current outermost so the controller re-mounts the right node
-            // (the parallel of ChildReconciler's post-patch re-fetch).
+            // Patched through the slot's occupant, as ChildReconciler patches it: a shadow-*/clip-path-* row's
+            // occupant is its structural WRAPPER, and a relocated one's its placeholder, through which a patch that
+            // wraps or unwraps it carries the relocation over.
+            var inner = NodePatcher.ResolveWrapped(row);
+            PatchWalk.PatchNode(NodePatcher.ResolveWrapped(SlotOccupantOf(row)), oldNode, newNode);
+            // A class change can wrap or unwrap the row during the patch; return its outermost element now.
             return NodePatcher.ResolveOuter(inner);
         }
 
+        // Ahead of a rewrite of the rows by index, as FiberZLayerCoordinator.NoteChildrenReconciled is ahead of a diff.
+        void IReconcilerBridge.BeginRowPlacementForController(VisualElement container)
+            => FiberZLayerCoordinator.NoteChildrenReconciled(_ctx, container);
+
+        // A range rendered inside a pass is that pass's to end. One rendered outside a pass is bracketed by
+        // SharedReconcileDepth, as an in-pass range already is: a Component row's mount is then no top-level pass of
+        // its own, whose end would drain the mounts the rows ahead of it deferred before the range has placed them,
+        // and the range's end drains them all, in the order they were queued, once the rows are in the list. Returns
+        // whether this range opened the bracket, which EndRangeForController closes.
+        bool IReconcilerBridge.BeginRangeForController()
+        {
+            if (_ctx.SharedReconcileDepth > 0) return false;
+            _ctx.SharedReconcileDepth++;
+            _ctx.RangeBracketDepth = _ctx.SharedReconcileDepth;
+            return true;
+        }
+
+        // Closes the bracket BeginRangeForController opened and ends the range with FinishPass: what the rows'
+        // creation deferred, a relocated element or a Portal's or WorldSpace's host, is placed here.
+        void IReconcilerBridge.EndRangeForController(VisualElement container, bool opened)
+        {
+            if (!opened) return;
+            _ctx.SharedReconcileDepth--;
+            _ctx.RangeBracketDepth = 0;
+            // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange is the only catch of what this
+            // throws, and it hands either signal to the list's host alike.
+            FinishPass(container, walked: true);
+        }
+
+        // What a detached item scope hands from Begin to Stamp and End: the host's children before the scope, which tells
+        // the item fibers it adds, and the spine Begin pushed.
+        private sealed class DetachedItemScope
+        {
+            public readonly HashSet<ComponentFiber> Before = new();
+            public FiberContextSpine Spine;
+            public VisualElement? EnclosingPortal;
+        }
+
         object? IReconcilerBridge.BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext)
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VisualElement? enclosingPortal,
+            bool outsidePass)
         {
             var stack = _ctx.ComponentContextStack;
             if (enclosingContext != null)
@@ -593,24 +694,35 @@ namespace Velvet
                 }
             }
             if (host == null) return null;
+            var scope = new DetachedItemScope();
+            // Outside a pass no walk names the Portal the list sits in, which the rows the loop creates or patches are
+            // stamped with (ComponentRegistry.ReconcileExistingFiber); inside one the walk reconciling the list has.
+            scope.EnclosingPortal = _ctx.CurrentPortalPlaceholder;
+            if (outsidePass) _ctx.CurrentPortalPlaceholder = enclosingPortal;
+            // Outside a pass no walk has pushed the Providers that enclose the host, and the snapshot holds the values
+            // they had when the host last created or patched the list, which a memoized host need not have done since
+            // one changed; their committed values go on top. Inside a pass, including a row's walk in a range rendered outside one, the
+            // walk around the list has pushed them, and a spine read there would give the committed values that walk
+            // may be replacing.
+            if (outsidePass) scope.Spine = FiberContextSpine.Push(host);
             // Item fibers created during the scope AppendChild onto FiberStack.Current; making it the host
             // links them under the host (so they share the host's ReconcilerContext / context cursor) and
             // lets the spine's parent-walk reach the host on an isolated re-render.
             _ctx.FiberStack.Push(host);
             // Snapshot the host's current children so End can identify the item fibers added by this scope.
             // A fresh set per call supports nested VirtualLists (an item that itself renders a VirtualList).
-            var before = new HashSet<ComponentFiber>();
             for (var f = host.Child; f != null; f = f.Sibling)
             {
-                before.Add(f);
+                scope.Before.Add(f);
             }
-            return before;
+            return scope;
         }
 
         void IReconcilerBridge.StampDetachedItemFibers(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken)
         {
-            if (host == null || scopeToken is not HashSet<ComponentFiber> seen) return;
+            if (host == null || scopeToken is not DetachedItemScope scope) return;
+            var seen = scope.Before;
             // Stamp each fiber newly added under host since the prior call (set diff via Add). DescendantNodes is
             // THIS item's rendered vnode so the spine can re-push a Provider the renderer placed above the item's
             // consumer; anchor is the host the item fibers parent under (the registry-lookup parent the walk
@@ -632,17 +744,19 @@ namespace Velvet
             if (host != null)
             {
                 _ctx.FiberStack.Pop();
-                if (scopeToken is HashSet<ComponentFiber> before)
+                if (scopeToken is DetachedItemScope scope)
                 {
                     // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers marks the ones it
-                    // handled in `before`): only the enclosing snapshot is replayed, with no item-vnode walk.
+                    // handled in Before): only the enclosing snapshot is replayed, with no item-vnode walk.
                     DetachedMountContext? detached = null;
                     for (var f = host.Child; f != null; f = f.Sibling)
                     {
-                        if (before.Contains(f)) continue;
+                        if (scope.Before.Contains(f)) continue;
                         detached ??= new DetachedMountContext(enclosingContext, descendantNodes: null, anchor: host);
                         f.DetachedMountContext = detached;
                     }
+                    scope.Spine.Unwind();
+                    _ctx.CurrentPortalPlaceholder = scope.EnclosingPortal;
                 }
             }
             var stack = _ctx.ComponentContextStack;
@@ -678,7 +792,9 @@ namespace Velvet
         public void Dispose()
         {
             // Per-Reconciler pending state always needs releasing — even non-owners may have
-            // suspended their own keyed run while sharing the root's registries.
+            // suspended their own run while sharing the root's registries, and a parked run's old instances stay
+            // on the shared pool's rented list until they go back (ReconcilerBufferPool.RentedOldSlotOccupants).
+            _childReconciler?.DiscardPendingIndexedState();
             _childReconciler?.DiscardPendingKeyedState();
 
             // Owner-only teardown: ctx-level state is the root's responsibility. Disposing it from
@@ -1028,6 +1144,9 @@ namespace Velvet
                 bridge.Release();
             }
             _ctx.SamePanelPortalBridges.Clear();
+            // MUTANT_SURVIVES(unreachable, line removed): no fixture leaves a row in the table by now, for the reason
+            // ReconcilerContext.ReleasePortalRowFamilies gives.
+            _ctx.ReleasePortalRowFamilies();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created
             // panel assets: destroy them so a disposed tree leaves no hidden panels behind. The
             // unmount reconcile already removed their children; a still-live layer host with zero

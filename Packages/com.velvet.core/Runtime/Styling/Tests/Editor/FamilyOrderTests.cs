@@ -108,6 +108,23 @@ namespace Velvet.Tests
             Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
         }
 
+        // A size's /N declares its family's alpha variable, so Tailwind emits it ahead of a size without one whatever
+        // their names.
+        [TestCase("shadow-lg shadow-lg/150", "shadow-lg/150 shadow-lg")]
+        [TestCase("shadow shadow/50", "shadow/50 shadow")]
+        [TestCase("shadow-[0_0_5px_#000] shadow-lg/50", "shadow-lg/50 shadow-[0_0_5px_#000]")]
+        [TestCase("inset-shadow-sm inset-shadow-xs/50", "inset-shadow-xs/50 inset-shadow-sm")]
+        [TestCase("shadow-2xl shadow-[0_0_5px_#000]/50", "shadow-[0_0_5px_#000]/50 shadow-2xl")]
+        public void Given_AShadowSizeWrittenBeforeOneWithAnOpacityModifier_When_ClassNamesAreParsed_Then_TheOneWithTheModifierIsPutFirst(
+            string className, string expected)
+        {
+            // Act
+            var tokens = V.ParseClassNames(className);
+
+            // Assert
+            Assert.That(string.Join(" ", tokens), Is.EqualTo(expected));
+        }
+
         // GREEN_ON_BASE(characterization): the base leaves every token of these lists as written.
         // Each is already in Tailwind's order, or ranked by another layer (a variant, the other importance), or in
         // a family no resolver folds, so putting every token of a prefix in one order reddens it.
@@ -213,6 +230,29 @@ namespace Velvet.Tests
             var secondTree = new VNode[] { V.Div(name: "t", className: "clip-path-[inset(10%)] clip-path-[circle(40%)]") };
             reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
             // What a lit hover:clip-path-none payload leaves on the live list: the bare token, appended after the base.
+            root.Q<VisualElement>("t").AddToClassList("clip-path-none");
+
+            // Act
+            reconciler.Reconcile(root, firstTree, secondTree);
+
+            // Assert
+            Assert.That(root.Q<VisualElement>("t").GetClasses().Last(cls => cls.StartsWith("clip-path-")),
+                Is.EqualTo("clip-path-none"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's restore moves a payload standing ahead of its family's token behind it.
+        // What this pins is that the payload is read as a member of that family where the token is the only one of
+        // its family on the list; passing over it as a class of no family is what reddens it.
+        [Test]
+        public void Given_AVariantPayloadOnTheLiveListAheadOfAClipAddedByALaterRender_When_Reconciled_Then_ThePayloadStaysLast()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var firstTree = new VNode[] { V.Div(name: "t", className: "flex") };
+            var secondTree = new VNode[] { V.Div(name: "t", className: "flex clip-path-[inset(10%)]") };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), firstTree);
+            // What a lit hover:clip-path-none payload leaves on the live list, here before any clip token is there.
             root.Q<VisualElement>("t").AddToClassList("clip-path-none");
 
             // Act

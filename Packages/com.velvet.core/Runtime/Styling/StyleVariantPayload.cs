@@ -299,6 +299,11 @@ namespace Velvet
                     variant = true;
                     payload = next ?? string.Empty;
                 }
+                // With no variant layer only the reader test below can pass.
+                if (!variant && !StyleCustomPropertyClass.MayBeCustomPropertyClassAsWritten(payload))
+                {
+                    continue;
+                }
                 var core = StyleArbitraryValueResolver.StripImportant(payload, out _);
                 if (variant && IsVariantGateToken(core))
                 {

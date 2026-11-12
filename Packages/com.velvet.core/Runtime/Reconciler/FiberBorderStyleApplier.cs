@@ -76,7 +76,6 @@ namespace Velvet
             {
                 var fresh = BorderStyleSilhouette.Attach(element, spec);
                 _ctx.BorderStyleBindings[element] = fresh;
-                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 return;
             }
             if (bound)

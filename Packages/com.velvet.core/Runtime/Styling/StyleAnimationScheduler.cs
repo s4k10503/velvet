@@ -113,7 +113,7 @@ namespace Velvet
             // A spring or bezier config carries no enter classes: they are settable only inside this assembly, and
             // only the tween presets set them. So the play moves nothing and completes at once, and it leaves a
             // pending enter running, as a zero-duration tween's does: cancelling it would drop the pose swap an
-            // inherited label change starts in the same render (FiberNodePatcher.PatchMotion).
+            // inherited label change starts in the same render (FiberNodePatcher.PatchMotionPost).
             if (config.Type == TransitionType.Spring)
             {
                 ValidateSpringParameters(config.Stiffness, config.Damping, config.Mass);
@@ -317,6 +317,7 @@ namespace Velvet
             {
                 DurationSec = durationSec, Easing = easing, DelaySec = play.DelaySec, DelayOffsetSec = delayOffsetSec,
                 AllProperties = variantMode, PropertyOverrides = propertyOverrides, OrchestrationSec = play.OrchestrationSec,
+                Repeat = play.Repeat,
             }, out var timing);
             if (variantMode)
             {
@@ -563,6 +564,7 @@ namespace Velvet
                 DurationSec = config.DurationSec, Easing = exitEasing, DelaySec = config.DelaySec,
                 DelayOffsetSec = delayOffsetSec, AllProperties = restoreFromOnCancel,
                 PropertyOverrides = restoreFromOnCancel ? config.PropertyOverrides : null, OrchestrationSec = additionalDelaySec - waitSec,
+                Repeat = config.PlayedRepeat,
             }, out var timing);
             StyleAnimationClassUtils.AddClasses(element, fromClasses, StyleLayerPriority.Exit, Context,
                 realiseInline: !restoreFromOnCancel);
@@ -903,7 +905,7 @@ namespace Velvet
 
         // A Tween that UI Toolkit's transition cannot play as asked: one on a mount whose clock is not the panel's,
         // one on a playback, one that repeats. The bezier path's driver runs it, eased by the curve the transition
-        // eases by (UssEasing) on the transition's own timing, PropertyOverrides included. removesToClasses: a
+        // eases by (MotionEasing) on the transition's own timing, PropertyOverrides included. removesToClasses: a
         // classic enter's, whose to-classes are a transient overlay its completion takes off, as PlayEnterInternal's
         // does.
         private void StartDrivenTween(in VariantPlay play, float durationSec, EasingMode easing,
@@ -2078,6 +2080,7 @@ namespace Velvet
             public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
             // The stagger the play waits, from which an entry's own delay counts.
             public float OrchestrationSec { get; init; }
+            public MotionRepeat Repeat { get; init; }
         }
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
@@ -2087,6 +2090,7 @@ namespace Velvet
                 (spec.DurationSec, spec.Easing, spec.DelaySec, spec.DelayOffsetSec);
             var (allProperties, propertyOverrides) = (spec.AllProperties, spec.PropertyOverrides);
             timing = MotionTweenTiming.Begin(element);
+            StyleEaseCurve.NoteTween(element, spec.Repeat, allProperties ? propertyOverrides : null);
             // Per-property overrides extend the "all" catch-all with an explicit property list — reachable only
             // where a variant swap would otherwise set transition-property: all (allProperties), matching the
             // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
@@ -2455,6 +2459,7 @@ namespace Velvet
         private void RestoreTransitionStyles(VisualElement element, MotionTweenTiming.Play? timing)
         {
             MotionTweenTiming.End(element, timing);
+            StyleEaseCurve.NoteTweenEnded(element);
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
             // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the

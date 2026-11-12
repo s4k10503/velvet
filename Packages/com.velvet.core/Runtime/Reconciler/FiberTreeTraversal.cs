@@ -41,7 +41,7 @@ namespace Velvet
         // This trades a bounded extra re-render in the masking case for correctness-by-construction and
         // the removal of the cross-render snapshot machinery (the divergence root cause). Skipping
         // masked consumers would be a pure optimization; dropping it changes performance, not behavior.
-        // Within one reconcile pass, the first PatchContextProvider / new-side Provider expansion
+        // Within one reconcile pass, the first Provider patch (NodePatchWalk) / new-side Provider expansion
         // that observes a value change bumps ReconcilerContext.ContextPropagationGeneration,
         // and Provider chains nested inside inherit the same generation. A consumer that depends on
         // multiple keys changed in the same pass is force-rendered once, deduped by comparing

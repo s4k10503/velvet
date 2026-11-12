@@ -26,6 +26,7 @@ namespace Velvet.Tests
         }
 
         // Step 0 holds for no time, so a frame that advances the cursor at all, by however little, crosses it.
+        // GREEN_ON_BASE(characterization): the base already keeps a restarted cursor on step 0 at speed zero.
         [Test]
         public void Given_ASequenceAtSpeedZero_When_RestartedOntoAStepWithNoHoldAndFramesRun_Then_TheCursorStaysOnIt()
         {
@@ -39,7 +40,7 @@ namespace Velvet.Tests
             Frames(3);
 
             // Assert
-            Assert.That((State.StepIndex, State.CurrentLabel), Is.EqualTo((0, "hidden")));
+            Assert.That(State.CurrentLabel == "hidden" ? State.StepIndex : -1, Is.EqualTo(0));
         }
 
         [Test]
@@ -73,6 +74,9 @@ namespace Velvet.Tests
             Assert.That(set, Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
+        // GREEN_ON_BASE(characterization): the base already holds a cancelled Bezier fade at the opacity it started from.
+        // Removing `Playback.CancelPlays();` from `SequenceWalker.Cancel` leaves the paused fade where it stood,
+        // which reddens this case.
         [Test]
         public void Given_ASequencePartWayThroughABezierFade_When_Cancelled_Then_TheMotionHoldsTheOpacityTheFadeStartedFrom()
         {
@@ -87,9 +91,11 @@ namespace Velvet.Tests
 
             // Assert
             var opacity = Opacity();
-            Assert.That((moving > 0f, opacity.keyword, opacity.value), Is.EqualTo((true, StyleKeyword.Undefined, 0f)));
+            Assert.That(moving > 0f && opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN,
+                Is.EqualTo(0f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already keeps a cancelled cursor on its step past that step's hold.
         [Test]
         public void Given_ASequenceOnAStepWithAShortHold_When_CancelledAndFramesRunPastTheHold_Then_TheCursorStays()
         {
@@ -109,11 +115,12 @@ namespace Velvet.Tests
             Frames(20);
 
             // Assert
-            Assert.That((cancelledAt, State.StepIndex), Is.EqualTo((1, 1)));
+            Assert.That(cancelledAt == 1 ? State.StepIndex : -1, Is.EqualTo(1));
         }
 
         // The cancelled fade to visible started from half, so its held opacity is 0.5, where the reseed's fade
         // back to half has to start rather than from visible's 1.
+        // GREEN_ON_BASE(characterization): the base already starts the reseed's fade from the opacity a cancel held.
         [Test]
         public void Given_ACancelledFade_When_RestartedOntoAStepFadingAnotherWay_Then_TheNewFadeStartsFromTheHeldOpacity()
         {
@@ -137,10 +144,11 @@ namespace Velvet.Tests
             Flush();
 
             // Assert
-            Assert.That((held, State.CurrentLabel, Opacity().value), Is.EqualTo((0.5f, "half", 0.5f)));
+            Assert.That(held == 0.5f && State.CurrentLabel == "half" ? Opacity().value : float.NaN, Is.EqualTo(0.5f));
         }
 
         // A reseed that leaves the label where it is starts no play, so nothing takes the held values over.
+        // GREEN_ON_BASE(characterization): the base already takes a held opacity off once a same-label reseed commits.
         [Test]
         public void Given_ACancelledFade_When_RestartedOntoTheSameLabel_Then_TheHeldOpacityComesOffAfterTheCommit()
         {
@@ -156,11 +164,13 @@ namespace Velvet.Tests
             Flush();
 
             // Assert
-            Assert.That((held, Opacity().keyword == StyleKeyword.Undefined), Is.EqualTo((StyleKeyword.Undefined, false)));
+            Assert.That(held == StyleKeyword.Undefined ? Opacity().keyword != StyleKeyword.Undefined : (bool?)null,
+                Is.EqualTo(true));
         }
 
         // The first reseed's commit releases what the first cancel held, and only that commit: what the second
         // cancel holds stays through a later render's commit.
+        // GREEN_ON_BASE(characterization): the base already keeps the second cancel's opacity held through a later render.
         [Test]
         public void Given_ASequenceCancelledRestartedAndCancelledAgain_When_ItRendersAgain_Then_TheSecondCancelsOpacityStaysHeld()
         {
@@ -180,11 +190,12 @@ namespace Velvet.Tests
 
             // Assert
             var opacity = Opacity();
-            Assert.That((opacity.keyword, opacity.value), Is.EqualTo((StyleKeyword.Undefined, 0f)));
+            Assert.That(opacity.keyword == StyleKeyword.Undefined ? opacity.value : float.NaN, Is.EqualTo(0f));
         }
 
         private static int s_stepZeroCalls;
 
+        // GREEN_ON_BASE(characterization): the base already renders step 0's label when a cancelled sequence plays.
         [Test]
         public void Given_ACancelledSequenceOnItsSecondStep_When_Played_Then_ItRendersStepZerosLabel()
         {
@@ -199,10 +210,11 @@ namespace Velvet.Tests
             Flush();
 
             // Assert
-            Assert.That((cancelledOn, State.CurrentLabel), Is.EqualTo(("visible", "hidden")));
+            Assert.That(cancelledOn == "visible" ? State.CurrentLabel : null, Is.EqualTo("hidden"));
         }
 
         // A restart reseeds the sequence, which ends the cancel, so Play only resumes it.
+        // GREEN_ON_BASE(characterization): the base already commits step 0 once for a restart and not again on play.
         [Test]
         public void Given_ACancelledSequenceThatWasRestarted_When_Played_Then_StepZeroIsNotCommittedAgain()
         {
@@ -223,9 +235,10 @@ namespace Velvet.Tests
             Controls.Play();
 
             // Assert
-            Assert.That((afterRestart - beforeRestart, s_stepZeroCalls - afterRestart), Is.EqualTo((1, 0)));
+            Assert.That(afterRestart - beforeRestart == 1 ? s_stepZeroCalls - afterRestart : -1, Is.EqualTo(0));
         }
 
+        // GREEN_ON_BASE(characterization): the base already starts a cancelled sequence's timeline again at zero on play.
         [Test]
         public void Given_ACancelledSequence_When_Played_Then_ItStartsAgainFromStepZero()
         {
@@ -239,7 +252,7 @@ namespace Velvet.Tests
             Controls.Play();
 
             // Assert
-            Assert.That((cancelledAt > 0f, Controls.TimeSec), Is.EqualTo((true, 0f)));
+            Assert.That(cancelledAt > 0f ? Controls.TimeSec : float.NaN, Is.EqualTo(0f));
         }
     }
 }

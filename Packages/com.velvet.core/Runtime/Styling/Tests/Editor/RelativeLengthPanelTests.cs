@@ -37,6 +37,7 @@ namespace Velvet.Tests
 
         private EditorPanelSimulator _sim;
         private MountedTree _mounted;
+        private Texture2D _texture;
 
         [SetUp]
         public void SetUp()
@@ -60,6 +61,11 @@ namespace Velvet.Tests
             _sim = null;
             s_parentClass?.Dispose();
             s_parentClass = null;
+            if (_texture != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_texture);
+                _texture = null;
+            }
         }
 
         // The frame keeps the parent off the panel root, whose size the panel decides.
@@ -927,6 +933,153 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(FilterLengths(Child), Is.EqualTo("0,12,0"));
+        }
+
+        private VisualElement Parent => _sim.rootVisualElement.Q<VisualElement>("parent");
+
+        // The poll the parent's gap, grid or divide manipulator keeps, or a non-null stand-in where there is no such
+        // manipulator or its poll cannot be read.
+        private object ManipulatorPollOf<T>(Func<ReconcilerContext, System.Collections.Generic.Dictionary<VisualElement, T>> table)
+            where T : Manipulator
+        {
+            if (!table(_mounted.Root.Reconciler.Context).TryGetValue(Parent, out var manipulator))
+            {
+                return "no manipulator";
+            }
+            var field = typeof(T).GetField("_poll", BindingFlags.NonPublic | BindingFlags.Instance);
+            return field == null ? "unreadable" : field.GetValue(manipulator);
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts the gap's poll when a patch turns its length into a measured one.
+        [Test]
+        public void Given_AGapInPixels_When_APatchMakesItAnEm_Then_ItsPollTicks()
+        {
+            // Arrange
+            Mount("text-[20px] w-[200px] h-[100px] gap-[10px]", "w-[10px] h-[10px]");
+
+            // Act
+            s_parentClass.Set("text-[20px] w-[200px] h-[100px] gap-[1em]");
+            Settle();
+
+            // Assert
+            Assert.That(IsTicking(ManipulatorPollOf(ctx => ctx.GapManipulators)), Is.EqualTo((bool?)true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts the grid's poll when a patch turns its gap into a measured one.
+        [Test]
+        public void Given_AGridGapInPixels_When_APatchMakesItAnEm_Then_ItsPollTicks()
+        {
+            // Arrange
+            Mount("text-[20px] w-[200px] h-[100px] grid grid-cols-2 gap-[10px]", "w-[10px] h-[10px]");
+
+            // Act
+            s_parentClass.Set("text-[20px] w-[200px] h-[100px] grid grid-cols-2 gap-[1em]");
+            Settle();
+
+            // Assert
+            Assert.That(IsTicking(ManipulatorPollOf(ctx => ctx.GridManipulators)), Is.EqualTo((bool?)true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts the divider's poll when a patch turns its width into a measured one.
+        [Test]
+        public void Given_ADivideWidthInPixels_When_APatchMakesItAnEm_Then_ItsPollTicks()
+        {
+            // Arrange
+            Mount("text-[20px] w-[200px] h-[100px] divide-y-[2px]", "w-[10px] h-[10px]");
+
+            // Act
+            s_parentClass.Set("text-[20px] w-[200px] h-[100px] divide-y-[0.1em]");
+            Settle();
+
+            // Assert
+            Assert.That(IsTicking(ManipulatorPollOf(ctx => ctx.DivideManipulators)), Is.EqualTo((bool?)true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base starts the grid's poll when it mounts with a measured gap.
+        [Test]
+        public void Given_AGridGapOfAnEm_When_Mounted_Then_ItsPollTicks()
+        {
+            // Act
+            Mount("text-[20px] w-[200px] h-[100px] grid grid-cols-2 gap-[1em]", "w-[10px] h-[10px]");
+
+            // Assert
+            Assert.That(IsTicking(ManipulatorPollOf(ctx => ctx.GridManipulators)), Is.EqualTo((bool?)true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops a gap's, a grid's and a divider's poll when a patch takes its class away.
+        [TestCase("gap-[1em]", 0)]
+        [TestCase("grid grid-cols-2 gap-[1em]", 1)]
+        [TestCase("divide-y-[0.1em]", 2)]
+        public void Given_AMeasuredLayoutClass_When_APatchTakesItAway_Then_ItsPollStopsTicking(string measured, int family)
+        {
+            // Arrange
+            Mount("text-[20px] w-[200px] h-[100px] " + measured, "w-[10px] h-[10px]");
+            var poll = family == 0 ? ManipulatorPollOf(ctx => ctx.GapManipulators)
+                : family == 1 ? ManipulatorPollOf(ctx => ctx.GridManipulators)
+                : ManipulatorPollOf(ctx => ctx.DivideManipulators);
+
+            // Act
+            s_parentClass.Set("text-[20px] w-[200px] h-[100px]");
+            Settle();
+
+            // Assert
+            Assert.That(IsTicking(poll), Is.EqualTo((bool?)false));
+        }
+
+        // GREEN_ON_BASE(characterization): the base sizes a filtered caster's shadow spacer again once the viewport its spread measures moves.
+        [Test]
+        public void Given_AFilteredCasterWithAViewportShadowSpread_When_ThePanelResizes_Then_ItsSpacerIsSizedAgain()
+        {
+            // Arrange
+            Mount("w-[500px] h-[200px]", "w-[10px] h-[10px] blur-sm shadow-[0_0_0_1vw_#ff0000]");
+            var spacer = BoxShadowSilhouette.TryGet(Child)?.BoundsSpacer;
+            var before = spacer?.style.width.value.value ?? float.NaN;
+            var viewportBefore = ViewportWidth;
+
+            // Act
+            _sim.panelSize = new Vector2(200, 300);
+            Settle();
+
+            // Assert — the spread is a hundredth of the panel's width on each side; NaN unless the panel's width moved, and
+            // -1 where the caster has no spacer, which neither that nor NaN equals.
+            var expected = ViewportWidth > 0f && ViewportWidth != viewportBefore
+                ? before - (2f * (viewportBefore - ViewportWidth) / 100f)
+                : float.NaN;
+            Assert.That(spacer != null ? spacer.style.width.value.value : -1f, Is.EqualTo(expected).Within(0.01f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves an image written over a gradient after its bind when a re-measure reads the same spec.
+        [Test]
+        public void Given_AnImageWrittenOverAnEmGradient_When_APanelResizeLeavesItsSpecAsItWas_Then_TheImageIsKept()
+        {
+            // Arrange — the radius is 2em under a 20px font, so the resize moves what the poll reads and not the spec.
+            Mount("text-[20px] w-[200px] h-[100px]", "w-[50px] h-[50px] bg-radial-[circle_2em_at_center,#ff0000,#0000ff]");
+            _texture = new Texture2D(2, 2);
+            Child.style.backgroundImage = new StyleBackground(_texture);
+
+            // Act
+            _sim.panelSize = new Vector2(200, 300);
+            Settle();
+
+            // Assert
+            Assert.That(Child.style.backgroundImage.value.texture, Is.SameAs(_texture));
+        }
+
+        // GREEN_ON_BASE(characterization): the base repaints a caster whose shadow spread measures the viewport once the panel resizes.
+        [Test]
+        public void Given_ACasterWithAViewportShadowSpread_When_ThePanelResizes_Then_ItRepaints()
+        {
+            // Arrange — counted from after the mount, whose own paints and the poll's first reading Mount settles.
+            Mount("w-[500px] h-[200px]", "w-[10px] h-[10px] shadow-[0_0_0_1vw_#ff0000]");
+            var repaints = 0;
+            Child.generateVisualContent += _ => repaints++;
+
+            // Act
+            _sim.panelSize = new Vector2(200, 300);
+            Settle();
+
+            // Assert
+            Assert.That(repaints, Is.GreaterThan(0));
         }
     }
 }

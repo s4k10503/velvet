@@ -22,6 +22,7 @@ namespace Velvet.Tests
     {
         private MountedTree? _mounted;
         private static StateUpdater<int> s_setCount;
+        private static StateUpdater<bool> s_setVariantKept;
         private static int s_initialCount;
         private static VisualElement? s_portalTarget;
         private static readonly ComponentContext<string> s_context = ComponentContext<string>.Create("light");
@@ -30,6 +31,7 @@ namespace Velvet.Tests
         public void SetUp()
         {
             s_setCount = default;
+            s_setVariantKept = default;
             s_initialCount = 2;
             s_portalTarget = null;
         }
@@ -102,6 +104,31 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Widths(host), Is.EqualTo("10|-|30"));
+        }
+
+        // The re-render leaves the row a plain class with no variant mark at all.
+        [Component]
+        private static VNode VariantDroppingRow()
+        {
+            var (kept, setKept) = Hooks.UseState(true);
+            s_setVariantKept = setKept;
+            return V.Div(name: "row0", className: kept ? "only:w-[20px]" : "flex");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already takes it off; deleting `|| _ctx.StructuralVariants.ContainsKey(element)` from the patcher's variant test reddens it.
+        [Test]
+        public void Given_AnAppliedOnlyVariant_When_ARerenderLeavesOnlyAPlainClass_Then_ItsPayloadIsTakenOff()
+        {
+            // Arrange
+            var host = new VisualElement();
+            _mounted = V.Mount(host, V.Component(VariantDroppingRow, key: "row"));
+
+            // Act
+            s_setVariantKept.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Widths(host), Is.EqualTo("-"));
         }
 
         [Test]

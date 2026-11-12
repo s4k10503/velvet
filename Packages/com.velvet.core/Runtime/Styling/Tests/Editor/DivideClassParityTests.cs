@@ -25,6 +25,17 @@ namespace Velvet.Tests
     {
         #region Parse
 
+        // GREEN_ON_BASE(characterization): the base reads no divide axis out of a bracket whose type hint holds no value.
+        [Test]
+        public void Given_ADivideWidthWithAnEmptyTypeHintValue_When_Extracted_Then_NoDivideIsRead()
+        {
+            // Act — Tailwind generates nothing for a hint with no value after it.
+            var ok = StyleDivideClass.TryExtract(new[] { "divide-x-[length:]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         [Test]
         public void Given_DivideX_When_Extracted_Then_HorizontalOnePixel()
         {
@@ -2650,6 +2661,45 @@ namespace Velvet.Tests
             var halfway = Color.LerpUnclamped(oldColor, newColor, 0.5f);
             Assert.That(oldColor != newColor ? Vector4.Distance(DashColorOf(child), halfway) : float.NaN,
                 Is.LessThan(1e-3f));
+        }
+
+        [Test]
+        public void Given_ADashOnAChildTransitioningItsColoursOnTheBundledEaseInOut_When_HalfItsDurationHasPassed_Then_ItStandsWhereTailwindsDefaultCurveDoes()
+        {
+            // Arrange
+            var (child, _) = MountColoredDashRow("border-default transition-colors duration-1000");
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            var binding = _mounted.Root.Reconciler.Context.DivideDashBindings[child];
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.5f);
+
+            // Act
+            var eased = DivideDashPainter.Eased(binding, binding.StartTime + 0.5, out _);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base eases the dash by the keyword, which stands at its start at 0.
+        // Clamping DivideDashPainter.Eased's progress at 0 asks the jump-start steps for their first step, which
+        // reddens this case.
+        [Test]
+        public void Given_ADashOnAChildTransitioningItsColoursOnJumpStartStepsAfterADelay_When_InsideTheDelay_Then_ItHasNotMoved()
+        {
+            // Arrange
+            var (child, _) = MountColoredDashRow("border-default transition-colors duration-1000 ease-[steps(4,jump-start)]");
+            child.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            StyleClassProjection.Remove(child, "border-default", StyleLayerPriority.Base);
+            StyleClassProjection.Add(child, "border-accent", StyleLayerPriority.Base);
+            ForcePanelUpdate(child.panel);
+            var binding = _mounted.Root.Reconciler.Context.DivideDashBindings[child];
+
+            // Act
+            var eased = DivideDashPainter.Eased(binding, binding.StartTime + 0.25, out _);
+
+            // Assert
+            Assert.That(eased, Is.EqualTo(0f));
         }
 
         // A dash on a child carrying border-default transition-colors, just after its class changed to

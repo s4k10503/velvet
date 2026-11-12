@@ -1,0 +1,4 @@
+/* The rules DefaultFamilyScopePanelTests flags as a default stylesheet's, as a panel theme's are. */
+.theme-font { -unity-font-definition: initial; }
+
+.theme-defined-font { -unity-font-definition: resource("UIPackageResources/Fonts/NotInter/NotInter-Regular.ttf"); }

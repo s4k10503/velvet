@@ -134,13 +134,17 @@ The other namespaces read are `--radius-*` (`rounded-pill`, and the per-corner a
 `jump-both`, or `start` or `end`; `step-start` and `step-end` too), or one of CSS's easing keywords, and
 `ease-[cubic-bezier(…)]` and `ease-[steps(…)]` take it in place. `ease-in`, `ease-out` and `ease-in-out`, behind a
 variant or not, run along Tailwind v4's curves (`cubic-bezier(0.4, 0, 1, 1)`, `(0, 0, 0.2, 1)` and `(0.4, 0, 0.2, 1)`),
-as does the `ease-in-out` every `transition-*` utility bundles (`--default-transition-timing-function`); a project's
-`--ease-in`, `--ease-out` or `--ease-in-out` replaces its curve. UI Toolkit's `transition-timing-function` takes an
+as does the `ease-in-out` each `transition-*` utility but `transition-none` bundles
+(`--default-transition-timing-function`); a project's `--ease-in`, `--ease-out` or `--ease-in-out` replaces its
+curve. UI Toolkit's `transition-timing-function` takes an
 `EasingMode` keyword and no cubic-bezier, so the element carries the keyword nearest the function, and Velvet has the
 transition the engine runs ease along the function once the engine reports it running. The engine keeps the duration,
-delay and reversal, per property, a transition running keeps the function it started on, and `transition-filter`'s tween
-eases by the same function. A timing function written inline, as a Motion's is, is the keyword it names. A
-name is a token of its namespace only where a sheet declares it.
+delay and reversal, per property, a transition running keeps the function it started on, and these transitions Velvet
+runs itself ease by the same function: `transition-filter`'s tween, a `backdrop-*` change, a dashed or dotted divider's
+colour, and a background or border colour repainted in the engine's place under a `shadow-*`, a `border-dashed` or
+`border-dotted`, or a layoutId Motion's per-axis corners. A timing function written inline is the keyword it names,
+and one a Motion's tween writes runs on the curve [motion.md](motion.md#named-eases) gives that keyword. A name is a
+token of its namespace only where a sheet declares it.
 
 A namespace is set to initial as Tailwind sets it, `--color-*: initial;` (`--*: initial;` for every one). The bundled
 utilities of that namespace (`bg-red-500`, `bg-primary`, `text-white`, `bg-red-500/50`, `border-b-primary`,
@@ -149,8 +153,19 @@ still generate theirs.
 
 A length in a token's value is read as Tailwind v4 reads it: `rem` is 16px (`--spacing: 0.25rem`,
 `--breakpoint-3xl: 120rem`), and `calc()`, `min()`, `max()` and `clamp()` are evaluated. UI Toolkit's own importer fails
-a whole file on a `rem` it meets in a custom property and drops a math function, `cubic-bezier()` or `steps()`, so `Velvet.Editor` imports such a file
-itself, storing those custom properties as the text they were written with. A new or edited file is imported first by
+a whole file on a `rem`, in most values a delimiter (the `/` of `16 / 9`), a hex colour it cannot parse (`#zzz`), a
+URL its lexer cannot read (`url(a b)`), a range (`u+1`), a `var()` whose arguments it refuses (`var(--a,)`), a
+comment among the arguments of most functions (`blur(/* x */ 4px)`) or a function with nothing between its
+parentheses other than `none()`, `filter()` and the URL functions it meets in a custom property, drops a function it
+does not know (a math function, `cubic-bezier()`, `steps()`, …), fails the file on or splits a number it reads
+otherwise than CSS does (`1e3px`, `1-2`, `3.px` stored as `3 px`, `1px_a` as `1px _a`), and fails the file on or
+stores as another colour than CSS reads an `rgb()` or `rgba()` holding anything besides three integers separated
+alike and, in `rgba()`, a number after them, after a further comma where commas separate them or after a `/` where
+spaces do (`rgb(100%, 0%, 0%)` fails it, `rgb(0 0 0 / 50%)` is stored as opaque
+black, `rgb(0.5, 0, 0)` unscaled). So `Velvet.Editor` imports such a file itself,
+storing those custom properties as the text they were written with, and writing an `!important` in another case,
+which the importer also fails the file on, in lower case. A colour stored as text is read by Velvet's theme tokens,
+not by a stock USS `color: var(--x)`. A new or edited file is imported first by
 the stock importer, which logs its error, and then again by Velvet's once the selection is written to the file's meta
 file; commit that meta file. The two settings of the stock importer's inspector, validation and unsupported selectors,
 start from their defaults on the file's new importer. The selection is not made for a file in a package the Package Manager installs, which

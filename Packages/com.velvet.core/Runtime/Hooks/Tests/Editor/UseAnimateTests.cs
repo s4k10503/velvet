@@ -87,6 +87,22 @@ namespace Velvet.Tests
             Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // GREEN_ON_BASE(characterization): the base already plays it on the animator's own tick; deleting `_running.Add(controls);` from Animator.Play reddens it.
+        [Test]
+        public void Given_AnAnimationTheAnimatorStarted_When_TheAnimatorTicksHalfASecond_Then_TheValueIsHalfway()
+        {
+            // Arrange
+            var element = new VisualElement();
+            var animator = NewAnimator();
+            animator.Animate(element, new AnimateValues { X = new[] { 0f, 100f } }, OneSecondLinear());
+
+            // Act — the mount's frame callback, not the controls.
+            animator.Tick(0.5f);
+
+            // Assert
+            Assert.That(element.style.translate.value.x.value, Is.EqualTo(50f));
+        }
+
         [Test]
         public void Given_AnAnimationBegun_When_ItIsCancelled_Then_TheValueIsBackAtItsFirstKeyframe()
         {

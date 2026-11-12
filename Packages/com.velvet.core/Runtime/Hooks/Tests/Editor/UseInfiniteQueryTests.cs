@@ -46,6 +46,7 @@ namespace Velvet.Tests
         private static int? s_maxPages;
         private static bool s_withPrevious;
         private static int s_retry;
+        private static bool s_withoutNext;
 
         [SetUp]
         public void SetUp()
@@ -61,6 +62,7 @@ namespace Velvet.Tests
             s_maxPages = null;
             s_withPrevious = true;
             s_retry = 0;
+            s_withoutNext = false;
         }
 
         #region Paging
@@ -391,6 +393,20 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("loading"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already refuses the options; deleting `ValidateInfiniteQueryOptions(options);` from UseSuspenseInfiniteQuery reddens it.
+        [Test]
+        public void Given_OptionsWithoutANextPageFunction_When_ASuspendingQueryRenders_Then_ItThrowsNamingTheFunction()
+        {
+            // Arrange
+            s_withoutNext = true;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SuspendingHost, key: "host"), CaughtErrors.Unlogged);
+
+            // Assert
+            Assert.That(Texts(), Does.StartWith("failed:InfiniteQueryOptions.GetNextPageParam must not be null."));
+        }
+
         [Test]
         public void Given_ASuspendedQuery_When_ItsFirstPageLands_Then_ItRendersThePage()
         {
@@ -455,7 +471,7 @@ namespace Velvet.Tests
         private static readonly Func<string, IReadOnlyList<string>, int, IReadOnlyList<int>, PageParam<int>> s_previous
             = (_, _, firstParam, _) => firstParam > s_firstPage ? firstParam - 1 : PageParam<int>.None;
 
-        private static InfiniteQueryOptions<string, int> Options() => new(Feed, FetchPage, 0, s_next)
+        private static InfiniteQueryOptions<string, int> Options() => new(Feed, FetchPage, 0, s_withoutNext ? null! : s_next)
         {
             GetPreviousPageParam = s_withPrevious ? s_previous : null,
             MaxPages = s_maxPages,

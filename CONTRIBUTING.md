@@ -625,7 +625,10 @@ A declaration for a method that is posed reads, above it:
 Both instruments above ask what happens when the production code is broken on purpose.
 `scripts/test_quality/base_red_check.py` asks the cheaper question first, and the one a pull request is
 actually claiming: was this case red before the change it says it pins? It checks out the merge base,
-copies the branch's changed test files onto it, and runs the cases the branch wrote there.
+copies the branch's test files onto it, and runs the cases the branch wrote there. What it copies is
+what the branch changed of its test files and of `TestUtilities/`, and each file it adds under a C#
+test directory other than an assembly definition, a compiler response file or a `.meta` — a style
+sheet a case loads, say — with, beside each copied file, the `.meta` the branch holds for it.
 
 ```bash
 python3 scripts/test_quality/base_red_check.py --base origin/main --plan   # what it would ask, no run
@@ -922,8 +925,11 @@ proves, and what the sources carry), `release/` (cutting a release and publishin
 suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
 contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request), `ci/`
 (which commit a workflow job reads its change against) and `unity/` (the Library seed, sample sync,
-and `asset_meta_check.py`, which `Test ▸ test-quality` runs to refuse an asset under `Assets` or
-the package and its `.meta` committed apart). Two rules keep
+`compile_check.py`, which compiles the assemblies the asmdefs declare with the editor's own Roslyn and
+the options it last used, so a compile error is found before a push rather than by the CI round, and
+`asset_meta_check.py`, which
+`Test ▸ test-quality` runs to refuse an asset under `Assets` or the package and its `.meta` committed
+apart). Two rules keep
 the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
@@ -1216,6 +1222,7 @@ on every platform.
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `Benchmarks ▸ benchmarks` (PlayMode) | push (filtered) to `main` / every PR labelled `benchmarks` / manual | **required** (skipped if absent) | no |
 | `Benchmarks ▸ trend-main` | push (filtered) to `main`, after `benchmarks` | not required | no |
+| `Benchmarks ▸ regressions` | push (filtered) to `main`, after `trend-main`; skipped when the workflow runs in a fork | not required | no |
 | `Benchmarks ▸ trend-pull-request` | every PR labelled `benchmarks`, after `benchmarks` | not required | no |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages; also carries the benchmark chart, as of its last deployment) | push (filtered) / release / manual | **required** (skipped if absent) | no |
@@ -1361,8 +1368,9 @@ operations that missed the memoized path.
 
 A run uploads the results XML as `Benchmark results`, writes the medians as a table to the job summary
 and uploads them as `Benchmark medians`, in the JSON shape `benchmark-action/github-action-benchmark`
-reads (`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
-benchmark that throws fails the run like any other test. The history is not gated on a number:
+reads, each value carrying in its `extra` the processor that Unity's run-info line names for the machine
+(`scripts/ci/benchmark_results.py` converts, `scripts/ci/test_benchmark_results.py` holds it). A
+benchmark that throws fails the run like any other test. No job fails on a number:
 
 - `trend-main` appends a push's run to the `benchmark-data` branch under `dev/bench`, one entry per commit
   and at most 200 in the chart. It first creates the branch as an orphan commit holding a README when
@@ -1371,27 +1379,97 @@ benchmark that throws fails the run like any other test. The history is not gate
   site it deploys, so the trend chart is at <https://s4k10503.github.io/velvet/dev/bench/>; it
   refreshes with the next docs deployment, so it can trail the newest entry by a merge, and the site
   lacks the page until `main` has recorded a first entry and a docs deployment has followed.
+- `regressions` runs after `trend-main`, on `main` in this repository alone, reads the whole history back
+  from the branch and files the steps up it finds (below) as issues labelled `performance` and `bug` and
+  assigned to s4k10503 (`scripts/ci/benchmark_steps.py`, held by `scripts/ci/test_benchmark_steps.py`).
+  Its concurrency group runs one at a time, and it lists the issues through the REST issues endpoint,
+  because `gh issue list --label` reads them through search.
 - `trend-pull-request` compares a labelled head with the latest entry on `main` in the job summary and
   writes nothing.
 
-The numbers are one consistent CI series, not absolute ones: the editor runs them with
+The numbers are for comparing runs with each other, not absolute ones: the editor runs them with
 `-debugCodeOptimization` and the code-coverage recorder on, because game-ci passes both whatever the
-workflow asks for (`test.yml` says so beside its coverage options), so the history is for comparing runs
-with each other.
+workflow asks for (`test.yml` says so beside its coverage options), and GitHub runs them on several
+processor models whose timings differ by more than the steps worth catching.
 
-Both flag a median above 150% of the previous entry in the summary and neither fails: CI runners'
-timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for the head
-like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled pull
-request, and a failed newest run blocks its merge.
+What `regressions` reads as a step up, over the runs in the order their commits landed rather than the
+order their entries were appended:
+
+- **A time** is compared only with times on the same processor model. It steps up at a run when the
+  fewest runs from it that make four on at least two models, counting models that ran at least three
+  times before it, each measured at least 1.2 times the slowest of the last five runs on its own model.
+  The decision is taken on those runs, so a run landing after them cannot withdraw a step once its issue
+  is open; where they are fewer than eight, the runs after them up to eight only add to the medians the
+  issue shows. The timing canary (`InstrumentCanary_TimingBaseline`) is no substitute for the model: it ranks the models
+  differently from the benchmarks.
+- **An allocation count** (a `.GC()` group and the other unit-less ones) does not depend on the model, so
+  counts are compared across all runs, by the same rule with one model, and must also rise by at least
+  two. Byte-valued groups are left out: the one `E2EBenchmarks.E2E_Mount_100Elements_WithLayoutAndPaint`
+  records reads anything from 0 to 12 KB from one run to the next.
+- Every step in a benchmark's history is found, not only its first. After a step, a model is judged again
+  only once it has run since, so the slowest of its last five runs includes one measured since.
+- The range a step names starts after the latest run at which its model was judged and measured no higher
+  than the slowest of that model's last five runs before it, or before the benchmark's first run where
+  there is none, so a run above that and short of the threshold, or one its model was not judged at,
+  stays inside the range.
+- An issue names each of its steps by a marker holding the benchmark and the first slow commit, and
+  nothing else ties a step to an issue. Only issues labelled `performance` are read, so removing that
+  label from one detaches it, and a step it names can be filed again. A step decided at one of the twelve latest entries that no issue
+  names, open or closed, is new; the new steps one run finds whose ranges share a commit go into one new
+  issue, and a new step goes into a new issue even where an open one holds a step in the same range.
+- The job rewrites an issue only if it opened it, and only while it is open, nobody has reopened it, and
+  the history holds every step it names; it never closes one. Closing an issue is how a step is accepted or answered: its
+  marker keeps naming the step, so the step is not filed again.
+- What this costs: a step whose first slow run moves, as when an entry for a commit among its runs is
+  appended late, no longer matches its marker; decided at one of the twelve latest entries, it is filed
+  again as a new issue, and the old one is left as it was either way. Steps one commit causes that are
+  found by different job runs get an issue each.
+- Entries written before the processor was recorded carry none, so times are read from the first runs
+  that do and counts from the whole history.
+
+Given a `data.js` and `--replay`, `scripts/ci/benchmark_steps.py` syncs every prefix of that history in
+turn against issues it keeps in memory and prints what it opened, which is how a change to the rule is
+measured before it ships.
+
+The two trend jobs flag a median above 150% of the previous entry in the summary and neither fails: CI
+runners' timings are noisy enough that a gate would be a coin flip. A run of this workflow is a run for
+the head like any other, so `scripts/pr/expected_checks.py` waits for an unfinished one on a labelled
+pull request, and a failed one blocks its merge.
 
 ### Merging a pull request
 
-A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once every check on
-its head has passed or been skipped; every other pull request is merged by hand after review, with
-`settle.py merge`. The label means *review has settled: merge when every check on the head has passed
-or been skipped*: add it once review has settled, and remove it to hold the pull request. Labelling
-takes triage access or above, so only an account holding that can opt a pull request in. The workflow
-does not create the label; it has to exist in the repository.
+A pull request labelled `automerge` is merged by `.github/workflows/automerge.yml` once
+`settle.py merge` finds nothing blocking it, and settle's docstring owns what blocks, which checks it
+leaves out included. Every other pull request is merged by hand after review, with `settle.py merge`.
+The label means *review has settled: merge once `settle.py merge` would*: add it once review has
+settled, and remove it to hold the pull request. Labelling takes triage access or above, so only an
+account holding that can opt a pull request in. The workflow does not create the label; it has to
+exist in the repository.
+
+A pull request in a stack is merged through GitHub's asynchronous merge endpoint, since GitHub refuses
+a stack member on the one `settle.py merge` uses for every other pull request. GitHub documents that
+endpoint as merging every member below the one asked for as well, so settle merges only the lowest
+member not yet merged, judges it against the stack's base, and refuses one above it, naming the member
+to merge first; `watch` records none above it as ready. GitHub also documents a linear history as a
+requirement for merging a stack, lost when the base moves ahead or a lower branch is pushed to, so
+settle refuses a member whose stack does not read linear on its base: the lowest open branch holding
+the base's head, and each one above holding the head of the one below it, each with no merge commit
+since what sits below it. The refusal names the way back: `gh stack rebase`, then `gh stack push`,
+which force-pushes each branch with a lease. The rebase moves the branch of each clean worktree
+holding a member, so every such worktree is left clean, or removed, first. `settle.py update` refuses
+a stack member, since the merge it makes is a merge commit, and a stack member is not held to its
+base's newest release commit, which a linear stack holds. The request carries what the other one
+does: the head the checks were read at, and the pull request's own title and body. Once a member has
+merged, settle deletes its local branch and leaves the remote one to `delete_branch_on_merge`, and
+it refuses a stack member unless that setting is on: the member above targets that branch until
+GitHub moves it onto the stack's base. GitHub merges after the request returns, and settle waits up
+to ten minutes for the answer. A request GitHub refuses, and an answer that the merge failed, stop
+settle with GitHub's message, as a refused merge of any other pull request does. A request that does
+not answer, one GitHub's own answer says it already holds (HTTP 409), and an answer that does not
+come in that time or is neither merged nor failed, are reported as a merge requested with its
+outcome unknown: settle leaves the branch where it is and exits 0, so read the pull request before
+asking again. `gh stack merge` typed by hand merges every member up to the one it is given and is
+held to none of this, so `refuse/stack_merge_by_hand.py` refuses it.
 
 No merge waits on a mutation campaign. A campaign dispatched onto a pull request's
 branch runs on its head like any other workflow, and `settle.py merge`, the automerge runs through it, and
@@ -1430,7 +1508,11 @@ carried would go unseen until some later push. The `upm` split would wait for th
 the secret, standalone merge and sweep jobs report an error and fail before reading or merging.
 It is a fine-grained personal access token
 for this repository alone, with Contents, Pull requests and Workflows read and write, and Actions,
-Checks and Commit statuses read. The merge is attributed to the token's account, and `protect-main`
+Checks and Commit statuses read. A stack member's merge also reads the stack, through
+`repos/{owner}/{repo}/stacks/{number}`, and the repository's `delete_branch_on_merge`, and sends a
+PUT to `repos/{owner}/{repo}/pulls/{number}/merge-async`, so the token has to be allowed each of
+those. Where that setting does not come back in the repository's payload, settle refuses every stack
+member, naming it as reading nothing. The merge is attributed to the token's account, and `protect-main`
 holds it as it holds anyone: it lists no bypass actor. The hand-off dispatches the merge run with the
 workflow's own token instead, granted Actions write.
 
@@ -1464,8 +1546,9 @@ drain question a major is held to passes over the breaks it exists to catch.
 
 The CHANGELOG holds two open sections, and which one an entry goes in is settled when the entry is
 written rather than when the version closes. `## [Unreleased]` is what a minor or a patch may ship.
-`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
-behaviour a working application would notice changing.
+`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around. A
+change that leaves the API as it was is a fix and goes in `## [Unreleased]`, even where a working
+application would notice the behaviour change.
 
 A change does not write either section in the file. It adds one fragment, a markdown file under
 `Packages/com.velvet.core/Changelog~/unreleased/` for `## [Unreleased]` or under

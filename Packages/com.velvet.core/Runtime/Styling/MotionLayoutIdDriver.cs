@@ -73,7 +73,7 @@ namespace Velvet
         // The panel no member is on, for SyncFollows while the lead is not moving from a box it took from another holder.
         private static readonly VisualElement s_nowhere = new();
 
-        // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the
+        // Called from FiberNodePatcher.PatchMotionPost for a MotionNode carrying a LayoutId, once the
         // patch's own class/style/children work is done. element.layout still holds the PRE-patch
         // resolved rect at this point (this frame's Yoga pass has not run yet) — capturing it now is the
         // same "read .layout synchronously before the mutation that invalidates it" pattern
@@ -875,8 +875,6 @@ namespace Velvet
             if (ctx.LayoutIdPendingSettles.Remove(element, out var pending))
             {
                 var target = pending.Target ?? element;
-                // MUTANT_SURVIVES(equivalent): a callback left registered finds its element's wait gone, or finds
-                // the wait that replaced it, which that wait's own callback settles on the same event.
                 target.UnregisterCallback(pending.Callback);
             }
         }
@@ -911,7 +909,7 @@ namespace Velvet
             if (box != null) SetEntry(ctx, layoutId, element, box);
         }
 
-        // Called from FiberNodePatcher.PatchMotion for a Motion patched with no layoutId: one that held an id stops
+        // Called from FiberNodePatcher.PatchMotionPost for a Motion patched with no layoutId: one that held an id stops
         // holding it, shown again, and its tween and its wait end.
         internal static void Forget(VisualElement element, ReconcilerContext ctx)
         {
@@ -1436,7 +1434,7 @@ namespace Velvet
 
         public float Ease(float t) => _config.Type == TransitionType.Bezier
             ? CubicBezierEvaluator.Evaluate(_config.BezierX1, _config.BezierY1, _config.BezierX2, _config.BezierY2, t)
-            : UssEasing.Evaluate(_config.Easing, t);
+            : MotionEasing.Evaluate(_config.Easing, t);
     }
 
     // How far a projection still has to go, from 1 at the old box to 0 at the layout.
@@ -1498,6 +1496,8 @@ namespace Velvet
         private float _delaySec;
         private float _durationSec;
         private EasingMode _easing;
+        // The function StyleEaseCurve.CurveFor gives _easing, which the carry eases by in place of UI Toolkit's curve for it.
+        private EaseFunction? _function;
         // The curve of a transition taken over from UI Toolkit (TakeOver), in place of _easing until the target changes.
         private System.Func<float, float>? _curve;
         private float _eased;
@@ -1604,6 +1604,7 @@ namespace Velvet
             (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
                 : float.IsNaN(_heldDurationSec) ? StyleCascade.Transition(element, property, shorthand)
                 : (_heldDurationSec, _heldDelaySec, _heldEasing);
+            _function = StyleEaseCurve.CurveFor(element, _easing, property);
             _durationSec *= _shortening;
             // MUTANT_SURVIVES(equivalent, boundary): a zero delay shortens to zero either way.
             if (_delaySec < 0f) _delaySec *= _shortening;
@@ -1614,7 +1615,8 @@ namespace Velvet
         {
             _elapsedSec += dtSec;
             var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
-            _eased = _curve?.Invoke(t) ?? UssEasing.Evaluate(_easing, t);
+            _eased = _curve?.Invoke(t)
+                ?? (_function is { } function ? StyleEaseCurve.Evaluate(function, t) : UssEasing.Evaluate(_easing, t));
             // Landed exactly, which the curve need not give at its end.
             Value = t < 1f ? Mathf.LerpUnclamped(_from, Target, _eased) : Target;
             return Value;

@@ -480,6 +480,44 @@ namespace Velvet.Tests
                 "A mixed add/remove/reorder park/resumes to the exact new order");
         }
 
+        // GREEN_ON_BASE(characterization): the base reports an old row whose slot a parked keyed pass finds gone.
+        // What this pins is that keyed Pass 2 asks that bound of each old row it takes; deleting the
+        // AssertDomIndexInvariant call in ProcessKeyedNode is what reddens it.
+        [Test]
+        public void Given_AKeyedReorderParkedPartWay_When_RowsAreTakenOutOfItsContainerBeforeItResumes_Then_ThePassReportsTheBrokenSlotInvariant()
+        {
+            // Arrange — a park after one node leaves most of Pass 2's old rows for the slices after the removal
+            var oldChildren = BuildKeyedLabelArray(50, "a");
+            var newChildren = ReversedKeyedLabelArray(50, "a");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+            _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
+            var parked = _reconciler.HasPendingWork;
+            while (_root.childCount > 1)
+            {
+                _root.RemoveAt(_root.childCount - 1);
+            }
+            var reports = 0;
+            void CountReport(string message, string stackTrace, UnityEngine.LogType type)
+            {
+                if (type == UnityEngine.LogType.Assert && message.Contains("DOM index invariant violated")) reports++;
+            }
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            UnityEngine.Application.logMessageReceived += CountReport;
+
+            // Act
+            try
+            {
+                DrainPendingWork();
+            }
+            finally
+            {
+                UnityEngine.Application.logMessageReceived -= CountReport;
+            }
+
+            // Assert — a pass that finished before the removal leaves nothing to report, which no count stands for
+            Assert.That(parked ? reports : -1, Is.GreaterThan(0));
+        }
+
         [Test]
         public void Given_ReversedKeyedList_When_ResumedWithSufficientBudget_Then_CompletesInOneStep()
         {
@@ -676,6 +714,23 @@ namespace Velvet.Tests
                 "Dispose clears the parked diff's pending work");
         }
 
+        // The indexed counterpart of the keyed case above: Dispose discards a parked indexed diff as well, which also
+        // returns the old instances it held to the pool.
+        [Test]
+        public void Given_IndexedDiffParked_When_Disposed_Then_PendingWorkIsCleared()
+        {
+            // Arrange
+            var newChildren = BuildLabelArray(100);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), newChildren, frameBudgetMs: 0.001);
+            var parkedBeforeDispose = _reconciler.HasPendingWork;
+
+            // Act
+            _reconciler.Dispose();
+
+            // Assert — null where nothing parked, which the expected value cannot equal.
+            Assert.That(parkedBeforeDispose ? _reconciler.HasPendingWork : (bool?)null, Is.False);
+        }
+
         [Test]
         public void Given_ReconcilerDisposedWhileParked_When_FreshReconcilerUsed_Then_ItWorks()
         {
@@ -821,6 +876,7 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
             ResetIndexedList();
             ResetKeyedList();
+            ResetProbeList();
         }
 
         [TearDown]
@@ -885,6 +941,28 @@ namespace Velvet.Tests
                 "The parked keyed pass survives the same-pass Portal drain, then resumes and commits every trailing row, with the Portal's content mounted exactly once");
         }
 
+        [Test]
+        public void Given_AGrowThatParksWithAPortalQueued_When_TheDrainMountsThePortal_Then_TheListsParentStillCountsAsParked()
+        {
+            // Arrange — the unkeyed grow above, with the Portal's content a component that records, as the drain
+            // mounts it, whether the list's own parent still counts as one a diff is parked over.
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("probe-park-target", target);
+            using var mounted = V.Mount(_root, V.Component(ProbeListRender, key: "list"));
+            var fiber = s_probeListFiber;
+            s_probeParent = _root;
+
+            // Act
+            s_probeTotalCount = 41;
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+            var parkedThroughThePortalDrain = fiber.HasPendingReconcileWorkForTest();
+            fiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert — null where nothing parked, which the expected value cannot equal.
+            Assert.That(parkedThroughThePortalDrain ? s_parentParkedWhileTheProbeMounted : null, Is.True);
+        }
+
         #region Indexed list component (unkeyed; Portal occupies index 0 once the count is nonzero)
 
         private static int s_indexedTotalCount;
@@ -911,6 +989,47 @@ namespace Velvet.Tests
                 }
             }
             return V.Fragment(children: children);
+        }
+
+        #endregion
+
+        #region Probe list component (the unkeyed list, its Portal's content a component reading the park)
+
+        private static int s_probeTotalCount;
+        private static ComponentFiber s_probeListFiber;
+        private static VisualElement s_probeParent;
+        private static bool? s_parentParkedWhileTheProbeMounted;
+
+        private static void ResetProbeList()
+        {
+            s_probeTotalCount = 0;
+            s_probeListFiber = null;
+            s_probeParent = null;
+            s_parentParkedWhileTheProbeMounted = null;
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ProbeListRender()
+        {
+            s_probeListFiber = FiberAmbientStack.Current;
+            var total = s_probeTotalCount;
+            var children = new VNode[total];
+            if (total > 0)
+            {
+                children[0] = V.Portal("probe-park-target", children: new VNode[] { V.Component(ParkProbe) });
+                for (var i = 1; i < total; i++)
+                {
+                    children[i] = V.Label(text: $"row-{i}");
+                }
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ParkProbe()
+        {
+            s_parentParkedWhileTheProbeMounted ??= s_probeListFiber.Reconciler!.Context.IsParkedParent(s_probeParent);
+            return V.Label(text: "probe");
         }
 
         #endregion

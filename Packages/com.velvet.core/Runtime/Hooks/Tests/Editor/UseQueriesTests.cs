@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// <c>useSuspenseQueries</c>.
     /// <list type="bullet">
     /// <item>Each query is read as <see cref="Hooks.UseQuery{TQueryFnData, TData}"/> reads it, the results in the
-    /// list's order; a query keeps its observer while some query reads its entry, whatever its position, and one
-    /// that leaves the list leaves its entry.</item>
+    /// list's order; the queries over one entry are handed the observers held over it in the list's order, whatever
+    /// their positions, and a query that leaves the list leaves its entry.</item>
     /// <item>A property read from one result is tracked for every result.</item>
     /// <item>Combine runs again only when a result changed, and its output keeps its instance where it is deeply
     /// equal, so the component does not re-render for a change the combine does not see.</item>
@@ -46,6 +46,7 @@ namespace Velvet.Tests
         private static int s_warnings;
         private static string s_typed = string.Empty;
         private static readonly List<VelvetTaskCompletionSource<string>> s_textSources = new();
+        private static TimeSpan s_now;
 
 
         [SetUp]
@@ -66,6 +67,13 @@ namespace Velvet.Tests
             s_events.Clear();
             s_throwOnError = false;
             s_setTick = default;
+            s_now = TimeSpan.Zero;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
         }
 
         #region Results
@@ -258,6 +266,62 @@ namespace Velvet.Tests
                 "What combine returns is shared with what it returned before, and an equal value re-renders nothing");
         }
 
+        // GREEN_ON_BASE(characterization): the base already shows it once a render has caught up with the mount; deleting `_observer.Read(_entry, _shared, source);` from QueriesItem.Read reddens it.
+        [Test]
+        public void Given_ACombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersTwice_Then_TheCombineSeesIt()
+        {
+            // Arrange — the render before the data turns stale runs the combine over the results the mount's commit
+            // recorded, so the first render after it has nothing new to combine.
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(StaleReader);
+            Rerender(mounted);
+            s_now = TimeSpan.FromSeconds(2);
+
+            // Act
+            Rerender(mounted);
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true));
+        }
+
+        // GREEN_ON_BASE(characterization): the base never notified from a commit; deleting `_committed = false;` from QueriesObserver.LeaveAll reddens it.
+        [Test]
+        public void Given_StrictModeAndCachedData_When_TheMountsEffectsReplay_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            using var mounted = Mount(Reader);
+            var renders = s_renders.Count;
+
+            // Act
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders), "v5's StrictMode replay hands setQueries the observers it kept, so nothing is replaced");
+        }
+
+        [Test]
+        public void Given_ARenderedCombineOfStaleness_When_TheDataTurnsStaleAndTheComponentRendersOnce_Then_ItsCommitRendersWhatTheCombineMakesOfIt()
+        {
+            // Arrange
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            using var mounted = Mount(StaleReader);
+            Rerender(mounted);
+            s_now = TimeSpan.FromSeconds(2);
+
+            // Act
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo(true), "v5's setQueries runs combine over the result it replaced and re-renders for what changed");
+        }
+
         #endregion
 
         #region Queries of their own types
@@ -415,7 +479,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_TheyShareOneObserver()
+        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_EachKeepsAnObserverOfItsOwn()
         {
             // Arrange
             s_keys = new[] { "a", "a" };
@@ -426,7 +490,171 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
-                Is.EqualTo(1), "v5's map of observers by hash keeps one for each entry");
+                Is.EqualTo(2), "v5 keeps a list of the observers of each hash and hands them out in order");
+        }
+
+        [Test]
+        public void Given_TwoQueriesOverOneEntry_When_TheListCommitsAgain_Then_TheComponentDoesNotRenderAgain()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(Reader);
+            var renders = s_renders.Count;
+
+            // Act
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders + 1),
+                "Each query takes the observer it held, so v5's setQueries finds no structural change to notify of");
+        }
+
+        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change there rendered once.
+        // An observer for each query must still render once, which recording every observer at the first one's change
+        // does not.
+        [Test]
+        public void Given_TwoQueriesOverOneEntry_When_ItsDataLands_Then_TheComponentRendersOnce()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(Reader);
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+            var renders = s_renders.Count;
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renders.Count, Is.EqualTo(renders + 1),
+                "v5's #onUpdate records each observer's own result, so the commit after the change finds nothing new");
+        }
+
+        // GREEN_ON_BASE(characterization): the base held one observer over the entry, so a change there rendered once.
+        // A combine whose output is never shared must still render once, which refreshing the second query's result
+        // at the first observer's change does not.
+        [Test]
+        public void Given_TwoQueriesOverOneEntryAndACombineOfANewSet_When_TheirDataLands_Then_TheComponentRendersOnce()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(SetReader);
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+            var renders = s_combined.Count;
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_combined.Count, Is.EqualTo(renders + 1),
+                "v5's #onUpdate runs combine over each observer's own result, so the commit after the change finds nothing new");
+        }
+
+        // GREEN_ON_BASE(characterization): the base announced each query's changed result from one observer's pass;
+        // with an observer each, refreshing the second query's result at the first observer's change announces it
+        // nowhere.
+        [Test]
+        public void Given_TwoQueriesOverOneEntryAndACombine_When_TheirDataLands_Then_TheCacheIsToldOfEachResult()
+        {
+            // Arrange
+            s_keys = new[] { "a", "a" };
+            using var mounted = Mount(SetReader);
+            Rerender(mounted);
+            mounted.FlushStateForTest();
+            s_client.GetQueryCache().Subscribe(s_events.Add);
+
+            // Act
+            Settle(mounted, () => Source("a").TrySetResult(1));
+
+            // Assert
+            Assert.That(s_events.Count(e => e.Type == QueryCacheEventType.ObserverResultsUpdated), Is.EqualTo(2),
+                "v5's observer tells the cache of its own result that changed");
+        }
+
+        [Test]
+        public void Given_AQueryListingOnlyError_When_ItsDataAndThenAnothersChange_Then_TheCombineSeesItsNotifiedDataFirst()
+        {
+            // Arrange
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 10);
+            using var mounted = Mount(ErrorListedSumReader);
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("a"), 2));
+            var renders = s_combined.Count;
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("b"), 20));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_combined.Skip(renders)), Is.EqualTo("21,22"),
+                "v5's #result keeps the result a query last notified of, and the commit after reads the one it holds");
+        }
+
+        [Test]
+        public void Given_ACommitChangingOnlyAQuerysSelect_When_AnotherQuerysDataChanges_Then_TheCombineReadsTheNewSelectAtEach()
+        {
+            // Arrange
+            s_client.SetQueryData(Lists, new[] { 1, 2, 3 });
+            s_client.SetQueryData(Firsts, new[] { 10 });
+            using var mounted = Mount(SelectSumReader);
+            Rerender(mounted);
+            s_select = data => data.Length * 100;
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+            var renders = s_combined.Count;
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+            Settle(mounted, () => s_client.SetQueryData(Firsts, new[] { 20 }));
+
+            // Assert
+            Assert.That(string.Join(",", s_combined.Skip(renders)), Is.EqualTo("310,320"),
+                "v5's setQueries replaces #result where a query's selected result changed, and notifies");
+        }
+
+        // GREEN_ON_BASE(characterization): the base computed every query afresh at another's change and saw it stale.
+        // This pins that the result a commit computes afresh is the one a later change hands combine.
+        [Test]
+        public void Given_AQueryTurningStaleBetweenARenderAndItsCommit_When_AnotherQuerysDataChanges_Then_TheCombineSeesItStale()
+        {
+            // Arrange — the render reads the query fresh, the commit computes it afresh once it is stale, and the
+            // combine's value at that commit is the one it had, so no render follows to read it again.
+            s_client = new QueryClient(new QueryClientOptions { GcTime = TimeSpan.MaxValue, Retry = 0, Clock = () => s_now });
+            s_client.SetQueryData(new QueryKey("a"), 1);
+            s_client.SetQueryData(new QueryKey("b"), 2);
+            using var mounted = Mount(StaleAfterReader);
+            s_keys = new[] { "b", "a" };
+            s_setTick.Invoke(tick => tick + 1);
+            mounted.FlushStateForTest();
+            s_now = TimeSpan.FromSeconds(2);
+            mounted.FlushEffectsForTest();
+
+            // Act
+            Settle(mounted, () => s_client.SetQueryData(new QueryKey("b"), 20));
+
+            // Assert
+            Assert.That(s_combined[s_combined.Count - 1], Is.EqualTo("stale"),
+                "v5's setQueries replaces #result with each observer's current result, which #onUpdate hands combine");
+        }
+
+        [Test]
+        public void Given_TwoQueries_When_TheSecondTurnsToTheFirstsEntry_Then_ItTakesAnObserverOfItsOwn()
+        {
+            // Arrange
+            using var mounted = Mount(Reader);
+            s_keys = new[] { "a", "a" };
+
+            // Act
+            Rerender(mounted);
+
+            // Assert
+            Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
+                Is.EqualTo(2), "v5 creates an observer for a query no observer held over its entry is left for");
         }
 
         [Test]
@@ -446,7 +674,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheListCommitsAgain_Then_TheyShareOneObserver()
+        public void Given_QueriesOfTwoDataTypesOverOneEntry_When_TheListCommitsAgain_Then_EachKeepsAnObserverOfItsOwn()
         {
             // Arrange
             using var mounted = Mount(MixedReader);
@@ -457,7 +685,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_client.GetQueryCache().Find(new QueryFilters { QueryKey = new QueryKey("a") })!.GetObserversCount(),
-                Is.EqualTo(1), "v5 keeps one observer for each queryHash, whatever each query selects");
+                Is.EqualTo(2), "v5 matches an observer by its queryHash alone, whatever each query selects");
         }
 
         [Test]
@@ -538,6 +766,17 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_combineCalls, Is.EqualTo(calls), "v5's shouldSkipCombine passes over combine while a suspense query has no data");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already suspends; passing `suspense: false` from the four-query combine overload reddens it.
+        [Test]
+        public void Given_FourSuspendingQueriesWithACombine_When_NoneHasLanded_Then_TheSuspenseShowsItsFallback()
+        {
+            // Act
+            using var mounted = Mount(FourSuspendingCombineReader);
+
+            // Assert
+            Assert.That(Texts(), Is.EqualTo("loading"));
         }
 
         [Test]
@@ -623,6 +862,58 @@ namespace Velvet.Tests
             return V.Label(text: "reader");
         }
 
+        // A new set every run, which structural sharing keeps only as the very instance it already holds.
+        private static readonly Func<IReadOnlyList<QueryResult<int>>, HashSet<int>> s_dataSet
+            = results => new HashSet<int>(results.Select(result => result.Data));
+
+        [Component]
+        private static VNode SetReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_combined.Add(Hooks.UseQueries(Queries(), s_dataSet, s_client));
+            return V.Label(text: "set");
+        }
+
+        private static readonly Func<QueryResult<int>, QueryResult<int>, int> s_pairSum = (a, b) => a.Data + b.Data;
+
+        // Reads IsStale only once some result holds 20, so a value read before that tracks only the data.
+        private static readonly Func<IReadOnlyList<QueryResult<int>>, string> s_staleWhenTwenty = results =>
+            results.Any(result => result.Data == 20) && results.Any(result => result.Data == 1 && result.IsStale) ? "stale" : "fresh";
+
+        [Component]
+        private static VNode StaleAfterReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var queries = s_keys.Select(key => key == "a" ? Options(key) with { StaleTime = TimeSpan.FromSeconds(1) } : Options(key)).ToArray();
+            s_combined.Add(Hooks.UseQueries(queries, s_staleWhenTwenty, s_client));
+            return V.Label(text: "stale-after");
+        }
+
+        private static readonly QueryKey Firsts = new("firsts");
+
+        [Component]
+        private static VNode SelectSumReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var first = new QueryOptions<int[], int>(Firsts, () => VelvetTask.FromResult(new[] { 9 }))
+            {
+                Select = data => data[0],
+                StaleTime = TimeSpan.MaxValue,
+            };
+            s_combined.Add(Hooks.UseQueries(new[] { LengthOptions(), first }, s_sum, s_client));
+            return V.Label(text: "select-sum");
+        }
+
+        [Component]
+        private static VNode ErrorListedSumReader()
+        {
+            s_combined.Add(Hooks.UseQueries(Options("a") with { NotifyOnChangeProps = QueryProperties.Error }, Options("b"), s_pairSum, s_client));
+            return V.Label(text: "sum");
+        }
+
         [Component]
         private static VNode FirstDataReader()
         {
@@ -638,6 +929,18 @@ namespace Velvet.Tests
             s_setTick = setTick;
             s_combined.Add(Hooks.UseQueries(Queries(), s_sum, s_client));
             return V.Label(text: "sum");
+        }
+
+        private static readonly Func<IReadOnlyList<QueryResult<int>>, bool> s_allStale
+            = results => results.All(result => result.IsStale);
+
+        [Component]
+        private static VNode StaleReader()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            s_combined.Add(Hooks.UseQueries(new[] { Options("a") with { StaleTime = TimeSpan.FromSeconds(1) } }, s_allStale, s_client));
+            return V.Label(text: "stale");
         }
 
         [Component]
@@ -716,6 +1019,16 @@ namespace Velvet.Tests
         private static VNode SuspendingSumReader()
         {
             var sum = Hooks.UseSuspenseQueries(Queries(), s_sum, s_client);
+            return V.Label(text: "sum:" + sum);
+        }
+
+        [Component]
+        private static VNode FourSuspendingCombineReader()
+        {
+            var sum = Hooks.UseSuspenseQueries(
+                Options("a"), Options("b"), Options("c"), Options("d"),
+                (QueryResult<int> a, QueryResult<int> b, QueryResult<int> c, QueryResult<int> d) => a.Data + b.Data + c.Data + d.Data,
+                s_client);
             return V.Label(text: "sum:" + sum);
         }
 

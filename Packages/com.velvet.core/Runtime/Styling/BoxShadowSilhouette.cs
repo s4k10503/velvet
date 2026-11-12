@@ -87,22 +87,37 @@ namespace Velvet
 
         // The shadow colours each element's classes declare, recorded whether or not it paints a shadow, for a
         // child's -inherit to take.
-        private static readonly ConditionalWeakTable<VisualElement, DeclaredShadowColours> s_declaredColours = new();
+        private static readonly ConditionalWeakTable<VisualElement, DeclaredColoursRecord> s_declaredColours = new();
+
+        // Written over in place, so an element holds one record while it carries a shadow class, however often its
+        // colours change.
+        private sealed class DeclaredColoursRecord
+        {
+            public DeclaredShadowColours Colours;
+        }
 
         // Records the colours classNames declares on element, or forgets them where it declares none, and repaints the
         // descendants that inherit them when they changed: a child's own classes did not change, and none of it is
         // otherwise told.
         internal static void RecordDeclaredColours(VisualElement element, string[]? classNames)
         {
-            var had = s_declaredColours.TryGetValue(element, out var before);
+            var had = s_declaredColours.TryGetValue(element, out var record);
             if (classNames != null && StyleShadowClass.HasShadowClass(classNames))
             {
                 var declared = StyleShadowClass.DeclaredColours(classNames);
-                s_declaredColours.AddOrUpdate(element, declared);
-                if (!had || !before!.SameAs(declared))
+                if (had && record!.Colours.SameAs(declared))
                 {
-                    RepaintInheritors(element);
+                    return;
                 }
+                if (had)
+                {
+                    record!.Colours = declared;
+                }
+                else
+                {
+                    s_declaredColours.Add(element, new DeclaredColoursRecord { Colours = declared });
+                }
+                RepaintInheritors(element);
             }
             else if (had)
             {
@@ -121,6 +136,12 @@ namespace Velvet
                 if (s_byElement.TryGetValue(child, out var binding) && InheritsColour(binding.Layers))
                 {
                     child.MarkDirtyRepaint();
+                    // The ring is part of the same box-shadow (DiscardedByInheritance), on bands of its own.
+                    if (RingOverlay.TryGet(child) is { } ring)
+                    {
+                        ring.RingElement.MarkDirtyRepaint();
+                        ring.OffsetElement.MarkDirtyRepaint();
+                    }
                 }
                 RepaintInheritors(child);
             }
@@ -141,20 +162,41 @@ namespace Velvet
         // The colour family takes on element through inherit: the parent's declared colour, the grandparent's where the
         // parent's is itself inherit, and so on up; null where the ancestor reached declares no colour for family.
         private static Color? InheritedColour(VisualElement element, ShadowColourFamily family)
+            => InheritedDeclaration(element, family).Colour;
+
+        private static DeclaredShadowColour InheritedDeclaration(VisualElement element, ShadowColourFamily family)
         {
             for (var parent = element.hierarchy.parent; parent != null; parent = parent.hierarchy.parent)
             {
                 if (!s_declaredColours.TryGetValue(parent, out var declared))
                 {
-                    return null;
+                    return default;
                 }
-                var colour = declared.Of(family);
+                var colour = declared.Colours.Of(family);
                 if (!colour.Inherit)
                 {
-                    return colour.Colour;
+                    return colour;
                 }
             }
-            return null;
+            return default;
+        }
+
+        // Whether a layer of element's box-shadow takes, through -inherit, a colour an ancestor leaves invalid: the
+        // whole box-shadow is then invalid where it is computed, and none of it is drawn, rings included.
+        internal static bool DiscardedByInheritance(VisualElement element)
+        {
+            if (!s_byElement.TryGetValue(element, out var binding))
+            {
+                return false;
+            }
+            foreach (var layer in binding.Layers)
+            {
+                if (layer.InheritFrom != ShadowColourFamily.None && InheritedDeclaration(element, layer.InheritFrom).Invalid)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Wires the paint + face-stash callbacks onto the element and returns the binding. The shadow is the
@@ -217,10 +259,11 @@ namespace Velvet
         // Starts the re-measuring poll while a layer holds a length the element measures, and stops it after.
         private static void SyncPoll(VisualElement element, BoxShadowBinding binding)
             => StyleRelativeLengths.SyncPoll(ref binding.Poll, element,
-                Array.Exists(binding.Layers, layer => layer.Measured != null), () =>
+                Array.Exists(binding.Layers, static layer => layer.Measured != null), (Element: element, Binding: binding),
+                static moved =>
                 {
-                    SyncBoundsSpacer(element, binding);
-                    element.MarkDirtyRepaint();
+                    SyncBoundsSpacer(moved.Element, moved.Binding);
+                    moved.Element.MarkDirtyRepaint();
                 });
 
         // Unregisters the callbacks, releases the face suppression (so a pooled / detached upright caster
@@ -291,6 +334,7 @@ namespace Velvet
             {
                 // Keep the face stash synced with this patch's styling (the shared inline bg/border slot is also
                 // written by the arbitrary-value resolver).
+                // MUTANT_SURVIVES(equivalent, literal): classesChanged gates only a MarkDirtyRepaint inside SyncOnPatch, and this method marks the element dirty below whatever it passes.
                 binding.Face.SyncOnPatch(element, classesChanged: true);
             }
 
@@ -381,15 +425,15 @@ namespace Velvet
             }
             if (!clips)
             {
-                DrawLayers(mgc, binding, box, inset: false, unscale);
+                DrawLayers(mgc, ve, binding, box, inset: false, unscale);
             }
             if (native && !binding.Face.SuppressionApplied)
             {
-                DrawLayers(mgc, binding, box, inset: true, unscale);
+                DrawLayers(mgc, ve, binding, box, inset: true, unscale);
                 return;
             }
             RepaintUprightFill(mgc, ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: true, unscale);
+            DrawLayers(mgc, ve, binding, box, inset: true, unscale);
             if (!clips)
             {
                 RepaintUprightBorder(mgc, ve, binding, w, h);
@@ -439,7 +483,7 @@ namespace Velvet
             float h)
         {
             var (box, unscale) = LayerBox(ve, binding, w, h);
-            DrawLayers(mgc, binding, box, inset: false, unscale);
+            DrawLayers(mgc, ve, binding, box, inset: false, unscale);
             var shearing = new SilhouetteFace.Shearing(w, h, 0f, 0f);
             if (binding.Face.SuppressionApplied)
             {
@@ -463,14 +507,18 @@ namespace Velvet
 
         // unscale maps the box the layers are baked against back onto the element's own: Vector2.one but while a
         // layoutId projection draws the element scaled differently on each axis (ProjectedBox).
-        private static void DrawLayers(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowBox box, bool inset,
-            Vector2 unscale)
+        private static void DrawLayers(MeshGenerationContext mgc, VisualElement ve, BoxShadowBinding binding, in ShadowBox box,
+            bool inset, Vector2 unscale)
         {
+            if (DiscardedByInheritance(ve))
+            {
+                return;
+            }
             for (var i = binding.Layers.Length - 1; i >= 0; i--)
             {
                 if (binding.Layers[i].Inset == inset)
                 {
-                    DrawShadowQuad(mgc, binding, binding.Layers[i].MeasuredOn(mgc.visualElement), box, unscale);
+                    DrawShadowQuad(mgc, ve, binding.Layers[i].MeasuredOn(ve), box, unscale);
                 }
             }
         }
@@ -505,17 +553,22 @@ namespace Velvet
         // renderer behaviour pinned by PaintOpacityParityPlaybackTests, with its consequence on this paint
         // pinned by ShadowFadeOpacityPlaybackTests — so restoring a multiplier means refuting those rather
         // than re-deriving a measurement.
-        private static void DrawShadowQuad(MeshGenerationContext mgc, BoxShadowBinding binding, in ShadowSpec layer,
+        private static void DrawShadowQuad(MeshGenerationContext mgc, VisualElement ve, in ShadowSpec layer,
             in ShadowBox box, Vector2 unscale)
         {
             var tint = layer.InheritFrom == ShadowColourFamily.None
                 ? layer.Color
-                : InheritedColour(mgc.visualElement, layer.InheritFrom) ?? layer.Color;
+                : InheritedColour(ve, layer.InheritFrom) ?? layer.Color;
             if (float.IsNaN(tint.r))
             {
-                var current = mgc.visualElement.resolvedStyle.color;
+                var current = ve.resolvedStyle.color;
                 current.a *= tint.a;
                 tint = current;
+            }
+            // A NaN alpha compares false against the bound below, so it is refused apart.
+            if (float.IsNaN(tint.a))
+            {
+                return;
             }
             if (tint.a <= 0.004f)
             {

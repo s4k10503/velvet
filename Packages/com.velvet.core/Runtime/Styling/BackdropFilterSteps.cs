@@ -152,11 +152,13 @@ namespace Velvet
         public float DelaySec;
         public float ReversingFactor = 1f;
         public EasingMode Easing;
+        public EaseFunction? Curve;
 
-        public float Progress
-            => Mathf.Clamp01((float)((Clock.NowSec - StartSec - DelaySec) / Math.Max(DurationSec, 1e-6)));
+        private float Active => (float)((Clock.NowSec - StartSec - DelaySec) / Math.Max(DurationSec, 1e-6));
 
-        public float Eased => UssEasing.Evaluate(Easing, Progress);
+        public float Progress => Mathf.Clamp01(Active);
+
+        public float Eased => StyleEaseCurve.Evaluate(Curve, Easing, Active);
 
         public BackdropStep[] Now => BackdropFilterSteps.Lerp(From, To, Eased);
     }

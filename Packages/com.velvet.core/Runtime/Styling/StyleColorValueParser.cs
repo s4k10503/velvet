@@ -26,8 +26,8 @@ namespace Velvet
             {
                 return null;
             }
-            var root = prefix.Substring(0, prefix.Length - 1);
-            if (HintSelectsNonColour(root, hint))
+            // The root is cut out only for a hint, the one case HintSelectsNonColour reads it.
+            if (hint != null && HintSelectsNonColour(prefix.Substring(0, prefix.Length - 1), hint))
             {
                 return prefix == "bg-" ? false : null;
             }
@@ -363,6 +363,7 @@ namespace Velvet
             }
             var colour = token.Substring(start, slash - start);
             return colour[0] == '['
+                // MUTANT_SURVIVES(equivalent, boundary): this arm is taken only where colour opens with '[', so var( never starts at index 0 and `> 0` accepts the same set.
                 ? colour.IndexOf("var(", StringComparison.OrdinalIgnoreCase) >= 0
                 : colour != "transparent" && VelvetPalette.TryResolveColorToken(colour, out _);
         }

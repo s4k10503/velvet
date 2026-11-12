@@ -838,6 +838,81 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionFilterUnderAMotionTweenEasingInBack_When_TheTweenIsSteppedThreeQuartersIn_Then_ItIsWhereTheWebAnimationsBackInStandsThere()
+        {
+            // Arrange — the tween's keyword over the class's; Framer runs filter on the Web Animations API, whose backIn
+            // supportedWaapiEasing names.
+            var element = MountResolved("transition-filter duration-1000");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseInBack) }, null);
+            ForcePanelUpdate(element.panel);
+            ApplyBlur(element, 12f);
+            var expected = 12f * CubicBezierEvaluator.Evaluate(0.31f, 0.01f, 0.66f, -0.59f, 0.75f);
+
+            // Act
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.75f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(expected).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_ABlurInsideItsDelay_When_ItIsTakenAwayAgain_Then_TheElementEndsUnblurred()
+        {
+            // Arrange — a second's tween after half a second's delay.
+            var element = MountResolved("transition-filter duration-1000");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            ForcePanelUpdate(element.panel);
+            ApplyBlur(element, 12f);
+
+            // Act — taken away, and then the tick runs past where the tween would have ended.
+            StyleArbitraryValueResolver.Clear(element, ArbitraryProperty.FilterBlur);
+            binding.StartTime -= 10.0;
+            EditorPanelTestHelpers.DriveSchedulerOnce(element.panel);
+
+            // Assert
+            var painted = element.style.filter.value is { Count: > 0 } list ? list[0].GetParameter(0).floatValue : 0f;
+            Assert.That(painted, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_TransitionFilterOnJumpStartStepsAfterADelay_When_ABlurStarts_Then_ItsStartFrameHasNotMoved()
+        {
+            // Arrange
+            var element = MountResolved("transition-filter duration-1000 ease-[steps(4,jump-start)]");
+            element.style.transitionDelay = new List<TimeValue> { new(0.5f) };
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base asks the steps for their value at 0, the first step. Holding
+        // StyleEaseCurve.Evaluate's start at `t <= 0f` rather than below 0 keeps the start frame unblurred, which
+        // reddens this case.
+        [Test]
+        public void Given_TransitionFilterOnJumpStartStepsWithNoDelay_When_ABlurStarts_Then_ItsStartFrameIsTheFirstStep()
+        {
+            // Arrange — a held clock, so the start frame is read at the very start.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "card", className: "transition-filter duration-1000 ease-[steps(4,jump-start)]"),
+                new MountOptions { MotionClock = new HeldMotionClock() });
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(element.panel);
+
+            // Act
+            ApplyBlur(element, 12f);
+
+            // Assert
+            Assert.That(element.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(3f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_RunningTweenAtMidFrame_When_DetachedWhileMounted_Then_SettlesToTarget()
         {
             // Arrange — a tween running to blur-12, advanced to a mid-frame so the inline value is neither end.
@@ -1261,6 +1336,9 @@ namespace Velvet.Tests
             }
             var wholeProperty = !element.resolvedStyle.transitionProperty
                 .Select(p => p.ToString()).Contains("filter");
+            // Half way along Tailwind's --default-transition-timing-function, on which transition-all's ease-in-out runs
+            // from its first frame (StyleEaseCurve).
+            var filterMidpoint = 12f * CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
 
             // Act — AddClass writes padding before changing duration. The ordered replay then writes
             // padding again under the new duration; skipping it retains the earlier one-second run.
@@ -1291,7 +1369,7 @@ namespace Velvet.Tests
 
             // Assert — paint distinguishes the two runs while their inline target and settled paint agree.
             Assert.That(actual, Is.EqualTo(classDiff ? new[] { 4f, 16f, 16f, 2f }
-                : new[] { 6f, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
+                : new[] { filterMidpoint, 12f, 12f, 0.3f }).Within(classDiff ? 0.02f : 0.5f));
         }
 
         [Test]
@@ -2386,6 +2464,35 @@ namespace Velvet.Tests
 
             // Assert — the change, not the 4 the filter transition was running to.
             Assert.That(PaintedFloat(element), Is.EqualTo(12f).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base cancels the running filter transition once, at the time it ran.
+        // Remove the unpaired list TryWritePastTransformOrigin writes before the list, and the one cancel is reported at `0`.
+        [Test]
+        public void Given_ATransformOriginAndAFilterTransitionRunning_When_AFilterChangeLandsAtOnce_Then_TheCancelCarriesTheTimeTheFilterRan()
+        {
+            // Arrange — background-size's entry animates the straight write of a blur of 4 for 0.05 s, and the filter
+            // change below is suspended past it.
+            var element = MountUnderTransitions("transform-origin", "background-size");
+            RunTransformOriginHalfWay(element);
+            element.style.filter = BlurList(4f);
+            AdvanceAndPaint(element.panel, 0.05);
+            var elapsed = new List<double>();
+            element.RegisterCallback<TransitionCancelEvent>(evt =>
+            {
+                if (evt.stylePropertyNames.Contains(new StylePropertyName("filter")))
+                {
+                    elapsed.Add(evt.elapsedTime);
+                }
+            });
+
+            // Act
+            ApplyBlur(element, 12f);
+            AdvanceAndPaint(element.panel, 0.0);
+            AdvanceAndPaint(element.panel, 0.05);
+
+            // Assert — one cancel, carrying the 0.05 s the transition ran.
+            Assert.That(elapsed.Count == 1 ? elapsed[0] : double.NaN, Is.EqualTo(0.05).Within(1e-3));
         }
 
         // GREEN_ON_BASE(characterization): a filter change landing at once started no filter transition on the base.

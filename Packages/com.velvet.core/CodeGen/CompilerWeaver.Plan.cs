@@ -250,10 +250,6 @@ namespace Velvet.CodeGen
             if (tuple == HookCaptureMatch.Bail) return "a hook result is a tuple the body hands on whole";
             if (tuple == HookCaptureMatch.Matched) return null;
 
-            // MUTANT_SURVIVES(equivalent, clause removed): `ReadsLaterElementOnly` holds only where the call returns a ValueTuple, which no container hook does, so `HoldsStableObject` is false wherever it is asked.
-            // ReactiveScopeHookScanTests.Given_TheContainerHooksTheWeaverNames_When_TheirReturnTypesAreRead_Then_NoneReturnsAValueTuple
-            // pins that no hook named in `ContainerHookNames` returns a ValueTuple.
-            if (ReadsLaterElementOnly(next) && !HoldsStableObject(instr, isDirect)) scan.UnreadValue ??= UnreadMessage;
             var capture = TryCaptureHookResult(next, body, isDirect, out var local, out var boundary);
             if (capture == HookCaptureMatch.Bail) return Unsupported;
             if (capture == HookCaptureMatch.Matched)
@@ -274,11 +270,6 @@ namespace Velvet.CodeGen
         // it already holds. Each scope is keyed on what it reads and so is not affected.
         private const string UnreadMessage =
             "a hook's value is never read, so the gate would serve the cached tree to a render that hook causes";
-
-        // `Hooks.UseState(0).Item2`: an element other than the first read straight off the returned tuple.
-        private static bool ReadsLaterElementOnly(Instruction next)
-            => next.OpCode.Code == Code.Ldfld && next.Operand is FieldReference field
-                && IsValueTupleType(field.DeclaringType) && field.Name != FirstTupleItem;
 
         private static bool HoldsStableObject(Instruction call, bool isDirect)
             => isDirect && call.Operand is MethodReference hook && ContainerHookNames.Contains(hook.Name);

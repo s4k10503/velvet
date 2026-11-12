@@ -161,6 +161,16 @@
       {
         "hooks": [
           {
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/stack_merge_by_hand.py\"",
+            "timeout": 10.0,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/shared_git_state.py\"",
             "timeout": 10.0,
             "type": "command"

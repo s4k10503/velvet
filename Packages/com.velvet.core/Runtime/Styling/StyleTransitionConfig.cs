@@ -46,7 +46,7 @@ namespace Velvet
 
         // What a variant play runs on this config: the config itself, or, where it is not IsDefined, the per-value
         // defaults after its delay, on its repeat and orchestrating its children by its knobs.
-        internal StyleTransitionConfig PlayedOnVariant => _defined || PerValueDefaults ? this : _played ??= new()
+        internal StyleTransitionConfig PlayedOnVariant => _defined ? this : _played ??= new()
         {
             Type = TransitionType.Spring,
             PerValueDefaults = true,
@@ -308,7 +308,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Easing mode. Applied as the inline transition-timing-function style.
+        /// Easing mode. Applied as the inline transition-timing-function style; <c>EaseIn</c>, <c>EaseOut</c>,
+        /// <c>EaseInOut</c> and the three back modes run on Framer Motion's curves (<c>Documentation~/motion.md</c>).
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
         /// A <see cref="TransitionType.Spring"/> play's own curve is its physics; it reads this only for a sequence
         /// segment <see cref="Animator"/> plays over more than two keyframes, which runs as a tween. Ignored when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>: the
@@ -390,13 +391,16 @@ namespace Velvet
 
         /// <summary>
         /// How each pass after the first runs — Framer Motion's <c>repeatType</c>. Defaults to
-        /// <see cref="TransitionRepeatType.Loop"/>. Read only when <see cref="Repeat"/> is above zero.
+        /// <see cref="TransitionRepeatType.Loop"/>. Read with no <see cref="Repeat"/> too wherever
+        /// <see cref="TransitionRepeatType.Mirror"/> keeps a value off Framer Motion's Web Animations path, as a
+        /// <see cref="RepeatDelaySec"/> above zero does; <c>Documentation~/motion.md</c> names where.
         /// </summary>
         public TransitionRepeatType RepeatType { get; init; } = TransitionRepeatType.Loop;
 
         /// <summary>
         /// Seconds a repeating play holds the value one pass ends on before the next pass starts — Framer Motion's
-        /// <c>repeatDelay</c>. No wait follows the last pass, so it never delays completion. 0 by default.
+        /// <c>repeatDelay</c>. No wait follows the last pass, so it never delays completion. 0 by default. Read with no
+        /// <see cref="Repeat"/> too, as <see cref="RepeatType"/> says.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative or not finite.</exception>
         public float RepeatDelaySec
@@ -670,8 +674,8 @@ namespace Velvet
     /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>. It
     /// replaces the enclosing config for its property, as Framer Motion's per-value transition does: a null
     /// <see cref="DelaySec"/> starts the value with the play, not after its <see cref="StyleTransitionConfig.DelaySec"/>
-    /// (a stagger the play waits still counts), and a null <see cref="DurationSec"/> or
-    /// <see cref="Easing"/> takes Framer's keyframes defaults of 0.3 s and an ease-out. An entry naming neither is no
+    /// (a stagger the play waits still counts), and a null <see cref="DurationSec"/> or <see cref="Easing"/> takes
+    /// 0.3 s and an ease-out, as Framer Motion's per-value transition takes them. An entry naming neither is no
     /// transition, and its value takes the default transition Framer Motion picks for it.
     /// </summary>
     public readonly struct StylePropertyTransition
@@ -723,12 +727,16 @@ namespace Velvet
         internal bool IsDefined => DurationSec != null || Easing != null;
 
         // The timing a channel of `kind` runs on, starting delaySec after its driver does and travelling from `from`
-        // to `to`.
-        internal TweenChannelTiming TimingFor(float delaySec, ValueDefault kind, float from, float to)
+        // to `to`; accelerated where Framer hands that value the Web Animations API (DrivenTweenTiming.Accelerated),
+        // which an entry, carrying no repeat of its own, leaves it on.
+        internal TweenChannelTiming TimingFor(float delaySec, ValueDefault kind, float from, float to, bool accelerated)
         {
             if (IsDefined)
             {
-                return new TweenChannelTiming(delaySec, Math.Max(0f, DurationOrDefaultSec), EasingOrDefault);
+                return new TweenChannelTiming(delaySec, Math.Max(0f, DurationOrDefaultSec), EasingOrDefault)
+                {
+                    Accelerated = accelerated,
+                };
             }
             if (kind == ValueDefault.Ease)
             {
@@ -759,7 +767,8 @@ namespace Velvet
                 {
                     if (named.Overlaps(StyleLonghandSet.Of(longhand)))
                     {
-                        durationSec = Math.Max(durationSec, TimingFor(0f, kind, 0f, UnknownTravel).DurationSec);
+                        durationSec = Math.Max(durationSec,
+                            TimingFor(0f, kind, 0f, UnknownTravel, DrivenTweenTiming.Accelerated(StyleLonghandSet.Of(longhand))).DurationSec);
                     }
                 }
                 if (!named.IsEmpty && named.Union(s_springLonghands) != s_springLonghands)

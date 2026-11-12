@@ -234,8 +234,8 @@ namespace Velvet
         // What a request runs, as v5 reads options.queryFn; an infinite query's runs its behavior instead.
         internal abstract QueryFunction<TQueryFnData> Function { get; }
 
-        // These options without their select, for the observer UseQueries shares among the queries of one entry,
-        // which holds the entry's own data whatever each query makes of it.
+        // These options without their select, for the observer that holds a UseQueries query's subscription,
+        // which holds the entry's own data whatever the query makes of it.
         internal QueryOptionsBase<TQueryFnData, TQueryFnData> Raw() => RawQueryOptions<TQueryFnData>.Of(this);
 
         /// <summary>
@@ -842,6 +842,7 @@ namespace Velvet
             {
                 return false;
             }
+            // MUTANT_SURVIVES(equivalent, clause removed): a suspending query has no placeholder and clears a select error once the entry has no data, so its result holds data only where the entry it was read from does.
             if (Suspense) return !result.HasData || !entry.HasData;
             return ThrowOnError.Throws(result.Error!, entry);
         }
@@ -1435,7 +1436,7 @@ namespace Velvet
                 _hasCurrent = true;
                 if (first || Notifies(changed)) OnChange();
                 // Whatever the component reads, as v5 tells the cache of every result that changed. The observer
-                // UseQueries shares holds no query's result, so each of its queries announces its own.
+                // holding a UseQueries query's subscription holds no query's result, so the query announces its own.
                 if (_settings.Options is not RawQueryOptions<TQueryFnData>)
                 {
                     entry.Client.QueryCache.Notify(new QueryCacheEvent(QueryCacheEventType.ObserverResultsUpdated, entry.Query));
@@ -1547,6 +1548,16 @@ namespace Velvet
         // property as read.
         internal QuerySnapshot<TData> Current => _current;
 
+        // UseQueries' record of the result its hook last committed or notified of, TanStack's #result[i], kept here
+        // because the computer outlives the queries a render builds.
+        private QuerySnapshot<TData> _notified;
+
+        internal void RecordNotified() => _notified = _current;
+
+        internal QueryResult<TData> Notified(IQueryResultSource source) => new(_notified, source);
+
+        internal bool ChangedSinceNotified => _current.DifferencesFrom(_notified) != QueryProperties.None;
+
         // TanStack's createResult: the entry's state, with the fetch a subscription is about to start, then the
         // selected data, then the placeholder data, then a failure of the select.
         // A function form a render asks throws from the render, as v5's does; one asked by an update outside a
@@ -1640,9 +1651,9 @@ namespace Velvet
                 && settings.Rules.ShouldFetchOptionally(entry, inRender);
         }
 
-        // UseQueries' result for one query over the observer the queries of its entry share, TanStack's
+        // UseQueries' result for one query over the observer that holds its subscription, TanStack's
         // getOptimisticResult(options) on that observer: this observer subscribes to nothing and computes the
-        // query's own result, its select and placeholder memo its own, while the shared one holds the subscription.
+        // query's own result, its select and placeholder memo its own.
         private QueryEntryObserver<TQueryFnData>? _host;
 
         internal void Host(QueryEntryObserver<TQueryFnData> host) => _host = host;
@@ -1661,7 +1672,7 @@ namespace Velvet
         }
 
         // A result computed outside a render from the entry as it stands, as v5 reads a query's result after its
-        // shared observer told of a change.
+        // observer told of a change.
         internal QueryResult<TData> Refresh(QueryEntry<TQueryFnData> entry, in QuerySettings<TQueryFnData, TData> settings, IQueryResultSource source)
         {
             if (entry.HasData) _lastWithData = entry;

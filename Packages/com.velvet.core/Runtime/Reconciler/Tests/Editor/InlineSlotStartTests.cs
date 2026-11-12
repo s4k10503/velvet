@@ -683,15 +683,15 @@ namespace Velvet.Tests
             return V.Label(name: "bomb", key: "bomb");
         }
 
-        [Component(IsErrorBoundary = true)]
-        private static VNode GuardRender()
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UncompiledGuardRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "guard-fallback", key: "fallback"));
             return V.Component(BombRender, key: "bomb");
         }
 
-        [Component]
-        private static VNode CatchingMoveHostRender()
+        [Component(Compiler = false)]
+        private static VNode UncompiledCatchingMoveHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
             s_setMoveOrder = setOrder;
@@ -700,22 +700,24 @@ namespace Velvet.Tests
                 {
                     V.Component(MoverRender, key: "mover"),
                     V.Label(name: "ahead", key: "ahead"),
-                    V.Component(GuardRender, key: "guard"),
+                    V.Component(UncompiledGuardRender, key: "guard"),
                 })
                 : V.Div(name: "box", children: new VNode[]
                 {
                     V.Label(name: "ahead", key: "ahead"),
                     V.Component(MoverRender, key: "mover"),
-                    V.Component(GuardRender, key: "guard"),
+                    V.Component(UncompiledGuardRender, key: "guard"),
                 });
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the bomb again with its boundary, as this still does.
+        // The host and the boundary are built without the compiler, so each render hands the bomb a new node.
         [Test]
         public void Given_APassThatMovedAComponentAndCaught_When_TheComponentRerenders_Then_ItRewritesTheRowThatPassGaveIt()
         {
             // Arrange — the pass puts the mover behind "ahead", and a catch later in the same pass leaves the rest
             // of it to commit.
-            using var mounted = V.Mount(_root, V.Component(CatchingMoveHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledCatchingMoveHostRender, key: "host"), CaughtErrors.Unlogged);
             s_bombThrows = true;
             s_setMoveOrder.Invoke(1);
             mounted.FlushStateForTest();
@@ -743,30 +745,32 @@ namespace Velvet.Tests
             return Rows("g", s_parkedRows);
         }
 
-        [Component(IsErrorBoundary = true)]
-        private static VNode ParkGuardRender()
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UncompiledParkGuardRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "s-fallback", key: "fallback"));
             return V.Component(BombRender, key: "bomb");
         }
 
-        [Component]
-        private static VNode ParkHostRender()
+        [Component(Compiler = false)]
+        private static VNode UncompiledParkHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
             s_setParkOrder = setOrder;
             return V.Div(name: "box", children: order == 1
-                ? new VNode[] { V.Component(ParkGuardRender, key: "s"), V.Component(ParkedRowsRender, key: "g") }
-                : new VNode[] { V.Component(ParkedRowsRender, key: "g"), V.Component(ParkGuardRender, key: "s") });
+                ? new VNode[] { V.Component(UncompiledParkGuardRender, key: "s"), V.Component(ParkedRowsRender, key: "g") }
+                : new VNode[] { V.Component(ParkedRowsRender, key: "g"), V.Component(UncompiledParkGuardRender, key: "s") });
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the bomb again with its boundary, as this still does.
+        // The host and the boundary are built without the compiler, so each render hands the bomb a new node.
         [Test]
         public void Given_AWalkDrainsAParkedComponentAheadOfABoundary_When_TheBoundaryCatches_Then_ItsFallbackReplacesItsOwnRow()
         {
             // Arrange — created as g then the boundary, reordered to the boundary first, and g parks growing on
             // the Transition lane. The pass below puts g first again, so the walk reaches g, drains it, and
             // only then reaches the boundary.
-            using var mounted = V.Mount(_root, V.Component(ParkHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledParkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_setParkOrder.Invoke(1);
             mounted.FlushStateForTest();
             s_parkedRows = 20;
@@ -919,8 +923,8 @@ namespace Velvet.Tests
             Assert.That(Names(_root.Q(name: "box")), Is.EqualTo("f0,f1,f2,tail0-1,tail1-1"));
         }
 
-        [Component(IsErrorBoundary = true)]
-        private static VNode SelfRenderingGuardRender()
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UncompiledSelfRenderingGuardRender()
         {
             var (_, setTick) = Hooks.UseState(0);
             s_setSelfGuardTick = setTick;
@@ -935,23 +939,24 @@ namespace Velvet.Tests
             return Rows("g", 3);
         }
 
-        [Component]
-        private static VNode SelfCatchHostRender()
+        [Component(Compiler = false)]
+        private static VNode UncompiledSelfCatchHostRender()
             => V.Div(name: "box", children: new VNode[]
             {
-                V.Component(SelfRenderingGuardRender, key: "guard"),
+                V.Component(UncompiledSelfRenderingGuardRender, key: "guard"),
                 V.Component(TailRender, key: "tail"),
             });
 
-        // GREEN_ON_BASE(characterization): the base's boundary re-render measures the swap it contains.
+        // GREEN_ON_BASE(characterization): the base's boundary re-render measures the swap it contains, as here.
         // There the swap itself moves nothing, and the change the boundary's own re-render measures around
         // it is what moves the component behind. It pins that a swap which moves what comes after it is not
-        // counted again by the re-render it happened inside.
+        // counted again by the re-render it happened inside. The boundary and its host are built without the
+        // compiler, so the boundary's render hands the bomb a new node.
         [Test]
         public void Given_ABoundaryCaughtInsideItsOwnRerender_When_TheComponentBehindRerenders_Then_ItRewritesItsOwnRows()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(SelfCatchHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledSelfCatchHostRender, key: "host"), CaughtErrors.Unlogged);
             s_bombThrows = true;
             s_setSelfGuardTick.Invoke(1);
             mounted.FlushStateForTest();
@@ -1862,8 +1867,8 @@ namespace Velvet.Tests
             return V.Label(name: "thrower", key: "thrower");
         }
 
-        [Component(IsErrorBoundary = true)]
-        private static VNode MidWalkGuardRender()
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UncompiledMidWalkGuardRender()
         {
             Hooks.UseFallback(_ => V.Label(name: "g-fallback", key: "fallback"));
             return V.Fragment(children: new VNode[]
@@ -1879,28 +1884,29 @@ namespace Velvet.Tests
         [Component]
         private static VNode MidWalkXRender() => V.Label(name: "x", key: "x");
 
-        [Component]
-        private static VNode MidWalkHostRender()
+        [Component(Compiler = false)]
+        private static VNode UncompiledMidWalkHostRender()
         {
             var (order, setOrder) = Hooks.UseState(0);
             s_setMidWalkOrder = setOrder;
             return V.Div(name: "box", children: order == 0
-                ? new VNode[] { V.Component(MidWalkGuardRender, key: "guard"), V.Component(MidWalkCRender, key: "c") }
+                ? new VNode[] { V.Component(UncompiledMidWalkGuardRender, key: "guard"), V.Component(MidWalkCRender, key: "c") }
                 : new VNode[]
                 {
                     V.Component(MidWalkCRender, key: "c"),
                     V.Component(MidWalkXRender, key: "x"),
-                    V.Component(MidWalkGuardRender, key: "guard"),
+                    V.Component(UncompiledMidWalkGuardRender, key: "guard"),
                 });
         }
 
-        // GREEN_ON_BASE(characterization): the base's fallback swap passes no slot limit and removes both rows.
+        // GREEN_ON_BASE(characterization): the base's fallback swap passes no slot limit and removes both rows, as here.
         // What it pins is that the limit the swap takes now is not cut short by a component no walk has placed.
+        // The boundary and its host are built without the compiler, so each render hands the thrower a new node.
         [Test]
         public void Given_AWalkThatCreatedAComponentAheadOfABoundary_When_TheBoundaryCatches_Then_ItsFallbackReplacesBothItsRows()
         {
             // Arrange — the walk emits c, creates x, and then reaches the boundary, whose own child throws.
-            using var mounted = V.Mount(_root, V.Component(MidWalkHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(UncompiledMidWalkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_midWalkThrows = true;
 
             // Act

@@ -5684,6 +5684,61 @@ namespace Velvet.Tests
         }
 
 
+        // GREEN_ON_BASE(characterization): the base hands a translate that landed as the move ended back to the engine.
+        // The engine then runs the later change on "b" as it runs it on the control. Leaving `projection.WritesTranslate`
+        // set in MotionLayoutIdDriver.End hands the change to the tail's carry instead, which an ease-out curve tells apart.
+        [Test]
+        public void Given_ALeadWhoseRotateRunsOnPastItsLanding_When_ItsTranslateChangesOnAnEaseOutCurve_Then_TheTranslateRunsAsTheControlsDoes()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything over a second
+            // on an ease-out curve; "b" takes the id from an unrotated "a" on a one-second tween, both turn 0.6 s in, and
+            // the move lands.
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = ("transition-all duration-1000 ease-out", "transition-all duration-1000 ease-out");
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = (s_bClasses + " rotate-90", s_controlClasses + " rotate-90");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — both move 40px right by a class while "b"'s turn runs on; some 0.2 s on.
+            (s_bClasses, s_controlClasses) = (s_bClasses + " translate-x-[40px]", s_controlClasses + " translate-x-[40px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 13; i++) Tick();
+
+            // Assert — "b" where the control is, part way along its second.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.x;
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.translate.x, Is.EqualTo(control > 2f && control < 38f ? control : float.NaN).Within(1f));
+        }
+
+
+        [Test]
+        public void Given_ALeadWhoseTranslateRunsOnPastItsLandingOnAnEaseOutCurve_When_ItsTranslateChangesAgain_Then_ItRunsAsTheControlsDoes()
+        {
+            // Arrange — the bundled sheet; "b", and a control holding no id, both transitioning everything over a second
+            // on an ease-out curve; "b" takes the id from "a" its size and top, so that the move writes "b"'s translate
+            // across alone, both take a translate down 0.6 s in, and the move lands with that translate still running.
+            const string transitioning = "transition-all duration-1000 ease-out";
+            VelvetStyleUtilities.AttachTo(Root);
+            (s_bClasses, s_controlClasses) = (transitioning, transitioning);
+            using var mounted = MountBOverA();
+            for (var i = 0; i < 36; i++) Tick();
+            (s_bClasses, s_controlClasses) = ($"{transitioning} translate-y-[40px]", $"{transitioning} translate-y-[40px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 30; i++) Tick();
+
+            // Act — both take the translate back while "b"'s runs on; some 0.2 s on.
+            (s_bClasses, s_controlClasses) = ($"{transitioning} translate-y-[0px]", $"{transitioning} translate-y-[0px]");
+            RenderShared(mounted);
+            for (var i = 0; i < 13; i++) Tick();
+
+            // Assert — "b" where the control is, part way back.
+            var control = Root.Q<VisualElement>("control").resolvedStyle.translate.y;
+            Assert.That(Root.Q<VisualElement>("b").resolvedStyle.translate.y,
+                Is.EqualTo(control > 8f && control < 30f ? control : float.NaN).Within(1f));
+        }
+
+
         // GREEN_ON_BASE(characterization): the base's driver writes no rotate, so the engine runs the element's own rotate
         // transition there as it runs the control's. A rotate the projection mixes must run on as the engine runs it.
         [Test]
@@ -8315,7 +8370,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)),
                 "Precondition: the enter completed and rests at variants[animate]");
 
-            // Act — an UNRELATED state change re-renders the same Motion node through PatchMotion (not
+            // Act — an UNRELATED state change re-renders the same Motion node through its patch (not
             // CreateElement again), which resolves the applied classes from Animate/ambient only.
             s_bump.Invoke(1);
             Tick();

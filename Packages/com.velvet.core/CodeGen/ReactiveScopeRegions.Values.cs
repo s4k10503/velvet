@@ -36,6 +36,9 @@ namespace Velvet.CodeGen
 
         private bool CachesAsValue(TypeReference type)
         {
+            // MUTANT_SURVIVES(equivalent, clause removed): a generic parameter reports that it contains one, so `ContainsGenericParameter` holds wherever this clause does.
+            // ReactiveScopeValueCandidateTests.Given_AGenericParameter_When_AskedWhetherItContainsOne_Then_ItSaysItDoes
+            // pins that for the Cecil the weaver is built against.
             if (type.IsValueType || type.IsGenericParameter || type.ContainsGenericParameter) return false;
             if (type.IsByReference || type.IsPointer || type.FullName == "System.String") return false;
             return type is ArrayType || !DerivesFromVNode(type);
@@ -44,6 +47,7 @@ namespace Velvet.CodeGen
         // The value stored at `store` is the result of a call or an allocation, not a variable or a field read as it is.
         private bool ComputesValue(int store)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): the instruction at `store` is the `stloc` that `FindValues` found, which is neither a `newarr` nor a call.
             for (var i = _flow.Popped[store][0].Start; i < store; i++)
             {
                 if (_flow.Instructions[i].OpCode.Code == Code.Newarr || ReactiveScopeVolatility.IsCall(_flow.Instructions[i])) return true;
@@ -119,6 +123,7 @@ namespace Velvet.CodeGen
             {
                 if (System.Array.IndexOf(_flow.Popped[j], value) >= 0) consumer = j;
             }
+            // MUTANT_SURVIVES(equivalent, boundary): the search starts after the read at `from`, so a consumer it finds is never the first instruction.
             if (consumer < 0) return $"local {origin} is left on the stack";
             var instruction = _flow.Instructions[consumer];
             if (ReadsMember.Contains(instruction.OpCode.Code))

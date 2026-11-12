@@ -152,6 +152,17 @@ namespace Velvet.Tests
             Assert.That(data, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the base already names the hook; deleting `_ = Resolve("UseRouteLoaderData");` reddens it.
+        [Test]
+        public void Given_NoRender_When_UseRouteLoaderDataIsCalled_Then_TheErrorNamesIt()
+        {
+            // Act
+            TestDelegate call = () => Hooks.UseRouteLoaderData<string>("root");
+
+            // Assert
+            Assert.That(call, Throws.InvalidOperationException.With.Message.Contains("UseRouteLoaderData()"));
+        }
+
         [Test]
         public void Given_ALeafRoute_When_UseResolvedPathRendersASearchAndHash_Then_ItKeepsTheCurrentPathname()
         {

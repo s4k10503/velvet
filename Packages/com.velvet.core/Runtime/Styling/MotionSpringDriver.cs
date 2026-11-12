@@ -345,6 +345,7 @@ namespace Velvet
             if (c.EaseSec > 0f)
             {
                 c.Scale = 1f;
+                // MUTANT_SURVIVES(equivalent, line removed): StartVelocity is read only by this method's spring path and SamplePass's spring branch, both behind EaseSec > 0 being false, and a channel's EaseSec is never set back to 0 once AssignFramerDefault gives it the ease.
                 c.StartVelocity = 0f;
                 c.Physics = null;
                 c.MirroredPhysics = null;
@@ -637,7 +638,7 @@ namespace Velvet
                 return channel.Target;
             }
             var progress = own.DurationSec > 0f ? Mathf.Clamp01((float)((elapsedSec - own.DelaySec) / own.DurationSec)) : 0f;
-            return Mathf.LerpUnclamped(channel.Origin, channel.Target, UssEasing.Evaluate(own.Easing, progress));
+            return Mathf.LerpUnclamped(channel.Origin, channel.Target, MotionEasing.Evaluate(own.Easing, progress, own.Accelerated));
         }
 
         /// <summary>
@@ -666,7 +667,8 @@ namespace Velvet
                 var delaySec = entry.DelayAfterSec(playDelaySec, orchestrationSec) - earliestSec;
                 if (entry.IsDefined)
                 {
-                    channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target);
+                    channel.Timing = entry.TimingFor(delaySec, kind, channel.Origin, channel.Target,
+                        DrivenTweenTiming.Accelerated(longhands));
                 }
                 else
                 {

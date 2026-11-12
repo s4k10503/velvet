@@ -417,6 +417,8 @@ namespace Velvet.CodeGen
         // Where the expression behind the first branch from ahead of `start` into (start, end] begins, or -1.
         private int EntryFromBefore(int start, int end)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): the instruction at `start` takes no value off the stack that begins before it.
+            // So an entry found at it is `start` itself, and `ExtendOverEntries` keeps the start it has.
             for (var i = 0; i < start; i++)
             {
                 foreach (var target in TargetsOf(_flow.Instructions[i]))
@@ -467,10 +469,14 @@ namespace Velvet.CodeGen
 
         private bool Covers(ExceptionHandler handler, int index)
         {
+            // MUTANT_SURVIVES(equivalent, boundary): a run that begins or ends on the try block's first instruction holds it, which `HoldsBeginning` declines before `Covers` is asked.
             var inTry = index >= _flow.IndexOf(handler.TryStart)
                 && (handler.TryEnd == null || index < _flow.IndexOf(handler.TryEnd));
+            // MUTANT_SURVIVES(equivalent, boundary): a run that begins or ends on the handler's first instruction holds it, which `HoldsBeginning` declines before `Covers` is asked.
             var inHandler = index >= _flow.IndexOf(handler.HandlerStart)
                 && (handler.HandlerEnd == null || index < _flow.IndexOf(handler.HandlerEnd));
+            // MUTANT_SURVIVES(equivalent, clause removed): a run with one end in the handler and the other outside it holds the handler's first instruction or the end of the handler.
+            // `HoldsBeginning` or `HoldsEnding` declines it before `Covers` is asked.
             return inTry || inHandler;
         }
 
@@ -508,7 +514,7 @@ namespace Velvet.CodeGen
             switch (code)
             {
                 case Code.Stsfld:
-                    return IsLambdaCache((FieldReference)instruction.Operand) ? null : "it writes a static";
+                    return IsDelegateCache((FieldReference)instruction.Operand) ? null : "it writes a static";
                 case Code.Starg:
                 case Code.Ldarga:
                     return "it writes a parameter or takes its address";
@@ -524,11 +530,10 @@ namespace Velvet.CodeGen
             return CompilerWeaver.IsHookKind(_volatility.KindAt(index)) ? "it calls a hook" : null;
         }
 
-        private static bool IsLambdaCache(FieldReference field)
+        private static bool IsDelegateCache(FieldReference field)
         {
             var definition = ScopeResolution.Field(field);
-            return definition != null
-                && (definition.DeclaringType.Name == "<>c" || definition.Name.StartsWith("<>9__", System.StringComparison.Ordinal));
+            return definition != null && ReactiveScopeVolatility.IsDelegateCache(definition);
         }
 
         private bool FlowsToReturn(int end)

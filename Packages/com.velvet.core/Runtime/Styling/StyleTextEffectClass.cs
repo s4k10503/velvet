@@ -511,8 +511,14 @@ namespace Velvet
         {
             leading = default;
             const string prefix = "leading-[";
-            if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls)
-                || !cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']')
+            // Tested before the type hint is dropped (TryDropTypeHint): Parse reaches this for the classes of a list on
+            // each patch (ClassReadAllocationTests).
+            if (!cls.StartsWith(prefix, StringComparison.Ordinal) || cls[cls.Length - 1] != ']')
+            {
+                return false;
+            }
+
+            if (!StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
             {
                 return false;
             }

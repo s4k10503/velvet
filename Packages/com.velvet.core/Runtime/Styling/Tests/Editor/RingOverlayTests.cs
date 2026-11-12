@@ -578,6 +578,29 @@ namespace Velvet.Tests
             Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 ? blocks : -1, Is.Zero);
         }
 
+        // GREEN_ON_BASE(characterization): the base re-hosts nothing on an idle tick under a single clipping ancestor.
+        [Test]
+        public void Given_AnOutlineInsideOneClippingParent_When_PlacedOnAnIdleTick_Then_NothingIsReHosted()
+        {
+            // Arrange — the one clip the placement read is the last one its check walks back to.
+            MountClippedOutline();
+            var clip = _window.rootVisualElement.Q<VisualElement>("clip");
+            ForcePanelUpdate(clip.panel);
+            ForcePanelUpdate(clip.panel);
+            var card = _window.rootVisualElement.Q<VisualElement>("a");
+            var binding = RingOverlay.TryGet(card);
+            System.Action place = () => OutlineHosting.Place(card, binding, force: false);
+            place();
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(place);
+
+            // Assert — a re-host allocates; the canary is the instrument's own control, and a placement that read no
+            // clip is not the one this case asks about.
+            Assert.That(GCAllocationCanary.BlocksForKnownArray() > 0 && binding.OutlineClipOwners.Count == 1 ? blocks : -1,
+                Is.Zero);
+        }
+
         [Test]
         public void Given_AnOutlineInsideAZStackedAncestor_When_LaidOut_Then_ThatAncestorHostsIt()
         {
@@ -1094,6 +1117,33 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ChildOrder(card), Is.EqualTo("band,late"));
+        }
+
+        private static StateUpdater<bool> s_setInset;
+
+        [Component]
+        private static VNode RenderTurningInset()
+        {
+            var (inset, setInset) = Hooks.UseState(false);
+            s_setInset = setInset;
+            return V.Div(name: "card", className: inset ? "w-[100px] h-[40px] ring-2 ring-inset" : "w-[100px] h-[40px] ring-2");
+        }
+
+        // GREEN_ON_BASE(characterization): the base clears an outset ring band's height when it turns inset.
+        [Test]
+        public void Given_AnOutsetRingLaidOut_When_ItTurnsInset_Then_ItsBandIsTheElementsHeight()
+        {
+            // Arrange — outset, the ring band was sized 44px tall, two pixels past each edge of the 40px box.
+            var card = MountCard(V.Component(RenderTurningInset));
+
+            // Act
+            s_setInset.Invoke(true);
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(card.panel);
+
+            // Assert
+            Assert.That(RingOverlay.TryGet(card).RingElement.resolvedStyle.height, Is.EqualTo(40f));
         }
 
         [Test]

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -199,6 +201,120 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(element.style.transitionTimingFunction.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        // GREEN_ON_BASE(refactor): the base notes both classes; the test that now passes over a class before its peel keeps them.
+        [TestCase("ease-in")]
+        [TestCase("transition-colors")]
+        public void Given_AnUnprefixedTimingClass_When_ItsCurveIsAskedFor_Then_ItHasOne(string className)
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { className });
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseIn);
+
+            // Assert
+            Assert.That(curve, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base forgets an ease curve once its class is removed.
+        [Test]
+        public void Given_AnElementWhoseEaseClassIsRemoved_When_ItsCurveIsAskedFor_Then_ItHasNone()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "ease-in" });
+            StyleEaseCurve.NoteClasses(element, Array.Empty<string>());
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseIn);
+
+            // Assert
+            Assert.That(curve, Is.Null);
+        }
+
+        [Test]
+        public void Given_AClassedElementWhoseNarrowingWritesItsCurveList_When_ItsCurveIsAskedFor_Then_ItIsTailwindsCurveForTheKeyword()
+        {
+            // Arrange
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+            MotionTweenTiming.Narrow(element, null, new List<EasingFunction> { new(EasingMode.EaseInOut) }, null);
+            var expected = StyleEaseCurve.Evaluate(new BezierCurve(0.4f, 0f, 0.2f, 1f), 0.5f);
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseInOut);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.5f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AnElementAMotionTweenWritesItsCurveListOn_When_ItsCurveIsAskedFor_Then_ItIsFramersCurveForTheKeyword()
+        {
+            // Arrange — Framer Motion's easeOut.
+            var element = new VisualElement();
+            MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseOut) }, null);
+            var expected = CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, 0.5f);
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseOut);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.5f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AnElementAMotionTweenWritesAnEaseInOutBackListOn_When_ItsCurveIsAskedForOnItsSecondHalf_Then_ItIsFramersBackInOut()
+        {
+            // Arrange — Framer Motion's backInOut at 0.75: backIn mirrored, backIn being backOut reversed.
+            var element = new VisualElement();
+            MotionTweenTiming.Begin(element);
+            MotionTweenTiming.Write(element, null, new List<EasingFunction> { new(EasingMode.EaseInOutBack) }, null);
+            var expected = (2f - (1f - CubicBezierEvaluator.Evaluate(0.33f, 1.53f, 0.69f, 0.99f, 0.5f))) / 2f;
+
+            // Act
+            var curve = StyleEaseCurve.CurveFor(element, EasingMode.EaseInOutBack);
+
+            // Assert — read as NaN where no function is given, which no curve's value equals.
+            Assert.That(curve is { } function ? StyleEaseCurve.Evaluate(function, 0.75f) : float.NaN,
+                Is.EqualTo(expected).Within(1e-4f));
+        }
+
+        // GREEN_ON_BASE(characterization): the probe already counts a list's allocation.
+        // The zero below would read the same from a probe stuck at zero.
+        [Test]
+        public void Given_TheAllocationProbe_When_ADelegateBuildsATimingList_Then_ItCountsBlocks()
+        {
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(() => _ = new List<EasingFunction> { new(EasingMode.Ease) });
+
+            // Assert
+            Assert.That(blocks, Is.GreaterThan(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's CurveFor reads no tween's timing state. Calling `Adopt` from
+        // MotionTweenTiming.PeekOwn copies the list code holds inline on every read, which reddens this case.
+        [Test]
+        public void Given_ATweenedClassedElementWhoseCodeHoldsATimingInline_When_ItsCurveIsAskedFor_Then_NothingIsAllocated()
+        {
+            // Arrange — asked once first, so a first call's own costs fall outside the windows.
+            var element = new VisualElement();
+            StyleEaseCurve.NoteClasses(element, new[] { "transition-colors" });
+            MotionTweenTiming.End(element, MotionTweenTiming.Begin(element));
+            element.style.transitionTimingFunction = new List<EasingFunction> { new(EasingMode.Ease) };
+            StyleEaseCurve.CurveFor(element, EasingMode.Ease);
+
+            // Act
+            var blocks = GCAllocationProbe.MedianBlocksDuring(() => StyleEaseCurve.CurveFor(element, EasingMode.Ease));
+
+            // Assert
+            Assert.That(blocks, Is.EqualTo(0));
         }
     }
 }

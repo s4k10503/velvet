@@ -24,6 +24,10 @@ namespace Velvet.Tests
     /// <item>A property read with a non-virtual call and a field holding a pointer are keyed as the weaver says, and a
     /// local holding a pointer is declined.</item>
     /// <item>A report is a build warning only for an assembly that asks for it.</item>
+    /// <item>A jump table with a target outside a run declines it, and so does a write into a parameter as the last
+    /// instruction of a value's run; a run that begins where a try block ends ahead of its handler is not declined.</item>
+    /// <item>A body is woven whose protected block runs to its end, whose branch skips code nothing reaches, or whose
+    /// last call is followed by nothing that returns.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -590,6 +594,314 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(woven.Notes.Any(note => note.Contains("it reads a local that holds a reference")), Is.True);
+        }
+
+        #endregion
+
+        #region Branches and code nothing reaches
+
+        // GREEN_ON_BASE(characterization): the base declines a run that holds a jump table with a target outside it.
+        // Removing the line of `TargetsOf` that reads a jump table's targets leaves the table without any, so nothing
+        // leaves the run and it is cached.
+        [Test]
+        public void Given_AJumpTableInsideARunWithATargetOutsideIt_When_Woven_Then_TheReportSaysABranchLeavesIt()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String, module.TypeSystem.Int32, module.TypeSystem.String);
+            AppendAFragmentOfTwoChildren(module, method, il =>
+            {
+                var outside = il.Create(OpCodes.Pop);
+                var join = il.Create(OpCodes.Nop);
+                il.Append(il.Create(OpCodes.Ldarg_0));
+                il.Append(il.Create(OpCodes.Ldarg_1));
+                il.Append(il.Create(OpCodes.Switch, new[] { outside }));
+                il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+                il.Append(il.Create(OpCodes.Br, join));
+                il.Append(outside);
+                il.Append(il.Create(OpCodes.Ldnull));
+                il.Append(join);
+            });
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Notes.Any(note => note.EndsWith("a branch leaves it", StringComparison.Ordinal)), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body whose branch skips a field read nothing reaches.
+        // Reading `>` as `>=` where `FieldKey` tests what the field read took off the stack reads a value it never
+        // took, throws, and leaves the method unwoven with no report.
+        [Test]
+        public void Given_ABranchOverAFieldReadNothingReaches_When_Woven_Then_TheMethodCarriesAReport()
+        {
+            // Arrange
+            var module = NewModule();
+            var box = new TypeDefinition("Synthetic", "Box", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class,
+                module.TypeSystem.Object);
+            var value = new FieldDefinition("Value", Mono.Cecil.FieldAttributes.Public, module.TypeSystem.String);
+            box.Fields.Add(value);
+            module.Types.Add(box);
+            var method = AddComponent(module, box, module.TypeSystem.String);
+            method.Body.Variables.Add(new VariableDefinition(box));
+            AppendAFragmentOfTwoChildren(module, method, il =>
+            {
+                var store = il.Create(OpCodes.Stloc_0);
+                il.Append(il.Create(OpCodes.Ldarg_0));
+                il.Append(il.Create(OpCodes.Br, store));
+                il.Append(il.Create(OpCodes.Ldfld, value));
+                il.Append(store);
+                il.Append(il.Create(OpCodes.Ldloc_0));
+                il.Append(il.Create(OpCodes.Ldfld, value));
+                il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            });
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Scopes, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body whose try block, placed after its catch block, runs to the end of the body.
+        // Such a block has no end. Reading `!=` as `==` where `HoldsEnding` tests for the end of the try block reads the
+        // end that is not there, throws, and leaves the method unwoven with no report.
+        [Test]
+        public void Given_ATryBlockThatRunsToTheEndOfTheBody_When_Woven_Then_TheMethodCarriesAReport()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String);
+            var il = method.Body.GetILProcessor();
+            var handler = il.Create(OpCodes.Pop);
+            var tryStart = il.Create(OpCodes.Nop);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Brtrue, tryStart));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Ret));
+            il.Append(handler);
+            il.Append(il.Create(OpCodes.Rethrow));
+            il.Append(tryStart);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Pop));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Newobj, module.ImportReference(typeof(Exception).GetConstructor(new[] { typeof(string) }))));
+            il.Append(il.Create(OpCodes.Throw));
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                CatchType = module.ImportReference(typeof(Exception)),
+                TryStart = tryStart,
+                TryEnd = null,
+                HandlerStart = handler,
+                HandlerEnd = tryStart,
+            });
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Scopes, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body whose catch block runs to the end of the body.
+        // Such a block has no end. Reading `!=` as `==` where `HoldsEnding` tests for the end of the handler reads the
+        // end that is not there, throws, and leaves the method unwoven with no report.
+        [Test]
+        public void Given_ACatchBlockThatRunsToTheEndOfTheBody_When_Woven_Then_TheMethodCarriesAReport()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String);
+            var il = method.Body.GetILProcessor();
+            var tryStart = il.Create(OpCodes.Nop);
+            var handler = il.Create(OpCodes.Pop);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Brtrue, tryStart));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Ret));
+            il.Append(tryStart);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Pop));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Newobj, module.ImportReference(typeof(Exception).GetConstructor(new[] { typeof(string) }))));
+            il.Append(il.Create(OpCodes.Throw));
+            il.Append(handler);
+            il.Append(il.Create(OpCodes.Rethrow));
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                CatchType = module.ImportReference(typeof(Exception)),
+                TryStart = tryStart,
+                TryEnd = handler,
+                HandlerStart = handler,
+                HandlerEnd = null,
+            });
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Scopes, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base lets a run begin where a try block ends ahead of code between the block and its handler.
+        // Reading `<` as `<=` where `Covers` bounds the try block takes the run's first instruction for one inside the
+        // block and declines the run.
+        [Test]
+        public void Given_ARunThatBeginsWhereATryBlockEndsAheadOfItsHandler_When_Woven_Then_NoProtectedRegionDeclinesIt()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String);
+            var il = method.Body.GetILProcessor();
+            var tryStart = il.Create(OpCodes.Nop);
+            var afterTry = il.Create(OpCodes.Ldarg_0);
+            var handler = il.Create(OpCodes.Pop);
+            il.Append(tryStart);
+            il.Append(il.Create(OpCodes.Leave, afterTry));
+            il.Append(afterTry);
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Ret));
+            il.Append(handler);
+            il.Append(il.Create(OpCodes.Rethrow));
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                CatchType = module.ImportReference(typeof(Exception)),
+                TryStart = tryStart,
+                TryEnd = afterTry,
+                HandlerStart = handler,
+                HandlerEnd = null,
+            });
+
+            // Act
+            using var woven = Weave(module, method);
+            bool? declined = woven.Scopes == null ? null : woven.Notes.Any(note => note.EndsWith("a protected region begins or ends inside it", StringComparison.Ordinal));
+
+            // Assert
+            Assert.That(declined, Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base declines a value whose run ends by writing into an object it did not create.
+        // Reading `<=` as `<` where `CheckEffects` walks the run leaves its last instruction unchecked and caches the value.
+        [Test]
+        public void Given_AValueWhoseRunEndsByWritingIntoAParameter_When_Woven_Then_TheReportSaysItWritesIntoAnObjectItDidNotCreate()
+        {
+            // Arrange
+            var module = NewModule();
+            var box = new TypeDefinition("Synthetic", "Box", Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class,
+                module.TypeSystem.Object);
+            var value = new FieldDefinition("Value", Mono.Cecil.FieldAttributes.Public, module.TypeSystem.String);
+            box.Fields.Add(value);
+            module.Types.Add(box);
+            var method = AddComponent(module, box, module.TypeSystem.String);
+            method.Body.Variables.Add(new VariableDefinition(new ArrayType(module.TypeSystem.Int32)));
+            AppendAFragmentOfTwoChildren(module, method, il =>
+            {
+                il.Append(il.Create(OpCodes.Ldc_I4_1));
+                il.Append(il.Create(OpCodes.Newarr, module.TypeSystem.Int32));
+                il.Append(il.Create(OpCodes.Ldarg_0));
+                il.Append(il.Create(OpCodes.Ldarg_1));
+                il.Append(il.Create(OpCodes.Stfld, value));
+                il.Append(il.Create(OpCodes.Stloc_0));
+                il.Append(il.Create(OpCodes.Ldloc_0));
+                il.Append(il.Create(OpCodes.Ldlen));
+                il.Append(il.Create(OpCodes.Conv_I4));
+                il.Append(il.Create(OpCodes.Call, module.ImportReference(s_toStringOfInt)));
+                il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            });
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Notes.Any(note => note.StartsWith("the value stored in local 0", StringComparison.Ordinal)
+                && note.EndsWith("it writes into an object it did not create", StringComparison.Ordinal)), Is.True);
+        }
+
+        // A body whose `ldarg.0; brtrue` leads to `tail`, and which returns null on the other path.
+        private static void AppendAReturnAheadOf(ILProcessor il, Instruction tail)
+        {
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Brtrue, tail));
+            il.Append(il.Create(OpCodes.Ldnull));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body whose last call is followed by nothing but a nop that falls off its end.
+        // Reading `>=` as `>` where `FlowsToReturn` tests for the end of the body, or `<` as `<=` where `SkipNops` does,
+        // reads past the last instruction, throws, and leaves the method unwoven with no report.
+        [Test]
+        public void Given_ACallFollowedByANopThatFallsOffTheEnd_When_Woven_Then_TheMethodCarriesAReport()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String);
+            var il = method.Body.GetILProcessor();
+            var tail = il.Create(OpCodes.Ldarg_0);
+            AppendAReturnAheadOf(il, tail);
+            il.Append(tail);
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Nop));
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Scopes, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body whose last call is stored and followed by nothing but a nop.
+        // Reading `<` as `<=` where `ReloadedThenReturned` tests for the end of the body before it looks for a branch
+        // reads past the last instruction, throws, and leaves the method unwoven with no report.
+        [Test]
+        public void Given_AStoredCallFollowedByANopThatFallsOffTheEnd_When_Woven_Then_TheMethodCarriesAReport()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String);
+            method.Body.Variables.Add(new VariableDefinition(module.ImportReference(typeof(VNode))));
+            var il = method.Body.GetILProcessor();
+            var tail = il.Create(OpCodes.Ldarg_0);
+            AppendAReturnAheadOf(il, tail);
+            il.Append(tail);
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Stloc_0));
+            il.Append(il.Create(OpCodes.Nop));
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Scopes, Is.Not.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a body whose last call is stored, loaded back and left at the end.
+        // Reading `>=` as `>` where `ReloadedThenReturned` tests that an instruction follows the load reads the load as
+        // the one before a return, looks past the last instruction, throws, and leaves the method unwoven with no report.
+        [Test]
+        public void Given_AStoredCallLoadedBackAsTheLastInstruction_When_Woven_Then_TheMethodCarriesAReport()
+        {
+            // Arrange
+            var module = NewModule();
+            var method = AddComponent(module, module.TypeSystem.String);
+            method.Body.Variables.Add(new VariableDefinition(module.ImportReference(typeof(VNode))));
+            var il = method.Body.GetILProcessor();
+            var tail = il.Create(OpCodes.Ldarg_0);
+            AppendAReturnAheadOf(il, tail);
+            il.Append(tail);
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(s_text)));
+            il.Append(il.Create(OpCodes.Stloc_0));
+            il.Append(il.Create(OpCodes.Ldloc_0));
+
+            // Act
+            using var woven = Weave(module, method);
+
+            // Assert
+            Assert.That(woven.Scopes, Is.Not.Null);
         }
 
         #endregion

@@ -32,7 +32,7 @@ follows a transform on the element, as a CSS box-shadow does. `drop-shadow-*` is
 | Utility | Colour |
 |---|---|
 | `shadow-<color>`, `inset-shadow-<color>`, `inset-ring-<color>` | a palette name, `transparent`, `current` (the element's text colour) or a bracketed colour (`shadow-[#f00]`), taking the place of the colour of every layer of its own family; `/N` scales its alpha (`shadow-red-500/40`) |
-| `shadow-<size>/N`, `inset-shadow-<size>/N` | sets the alpha of every layer of the size to N%, or, beside a colour class, scales that colour's alpha by it (`shadow-lg/50`) |
+| `shadow/N`, `shadow-<size>/N`, `inset-shadow-<size>/N` | sets the alpha of every layer of the size to N%, or, beside a colour class, scales that colour's alpha by it (`shadow-lg/50`) |
 | `shadow-inherit`, `inset-shadow-inherit`, `inset-ring-inherit` | the colour its family's classes declare on the parent element, with the parent's size `/N` folded in, or the grandparent's where the parent's is itself `-inherit`; each layer keeps its own colour where that element declares none. It takes no `/N` |
 
 An `inset-ring-*` with no colour class is drawn in the element's text colour, as CSS's `currentColor`.

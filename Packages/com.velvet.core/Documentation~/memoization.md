@@ -101,7 +101,7 @@ A computation that does not end in a `VNode` is cached when it computes a local 
 
 - Every later use of the local only reads it: a `V.*` factory, a property getter or a framework member of the pure list, and whatever those return is followed the same way, so an element taken out of the value is read, not written. A store into its elements or fields, or handing it to any other call — a helper you wrote, a delegate, a constructor, a method on another object — leaves the computation uncached, since that call may write into it; the report names the instruction.
 - A value that can hold nodes is cached only as an array or a `List<T>` of nodes. A dictionary, a tuple or a row type with a node in it is built on every render.
-- A local that nothing cached reads whole, or reads only through a field or an automatic property, is not cached on its own; the scopes that read it are keyed on the member.
+- A local that nothing cached reads whole, or reads only through a field or an automatic property, is not cached on its own; the scopes that read it are keyed on the member. A scope inside the computation does not count as reading what it computes, since it reads what the local held before.
 - A string, a number or a struct is not cached on its own, since a rebuilt one compares equal to the one it replaces; a `VNode` is a scope of its own.
 - A computation that sits in a loop, that a branch can skip, or that reads something outside its keys — a mutable static, a call to a hook, a call whose target the build cannot see — is built on every render, as a scope in the same place is.
 

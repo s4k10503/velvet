@@ -107,27 +107,27 @@ With the `Bold` entry registered, `font-bold` renders a **true** bold asset rath
 
 ### What `DefaultFamily` reaches
 
-`DefaultFamily` supplies the family to an element that has a weight, italic or width class (`font-normal`,
-`font-bold`, `italic`, `font-stretch-condensed`, …), no `font-<name>`, and no ancestor naming a family (below), and Velvet writes the resolved asset inline on that
-element. Its descendants inherit that asset like any other. **A label with no font class, and no
-ancestor carrying one, gets no font from Velvet**: it keeps whatever font its stylesheets, ancestors
-and the panel's text settings give it.
+`DefaultFamily` is the family the elements Velvet renders start from, as the `font-family` Tailwind's preflight
+gives `html` is. Velvet writes it inline on the element a tree is mounted on, on each element
+`V.Portal(container, …)` or `V.Portal(id, …)` renders into its container ([portals.md](portals.md)) rather than on
+the container, whose other children keep their font, and on the root of each layer or world-space panel it creates.
+What is under them inherits it, a label with no font class included, down to an element given a font of its own;
+one of them inside another is given nothing of its own and inherits too. The asset written is the one a
+normal-weight, upright request of the family resolves to, and the write follows a change to the registry at once,
+with no render.
 
-To have every label under the mounted root start from the registered family, put a font class on that
-root. Either kind works:
-
-```csharp
-VelvetFonts.Register(families, defaultFamily: "sans");
-V.Mount(root, V.Div("font-sans", app));    // names the family
-V.Mount(root, V.Div("font-normal", app));  // follows DefaultFamily
-```
-
-A label under that root inherits the root's asset unless the label, or an element between them, is
-assigned another one, or a stylesheet sets a font on the label itself. Content a portal renders
-(`V.Portal`, `V.WorldSpace`, see [portals.md](portals.md)) attaches under its target rather than
-under this root, so the target, layer root or world-space panel root needs the class too.
-`DefaultFamilyScopePanelTests` pins the scope and both kinds of root on a panel with no theme
-stylesheet.
+An element whose font classes resolve to an asset has that asset written inline
+([How resolution works](#how-resolution-works)), and what is under it inherits that one instead; a font a
+stylesheet sets on an element below them decides there in the same way. Where the font that would show on one of
+them without Velvet's write is one an author's stylesheet rule or inline style gives it or an element above it,
+Velvet writes nothing on it and that font is inherited. That is a `-unity-font-definition`, or a legacy `-unity-font`
+where no definition applies or is inherited, since UI Toolkit draws a definition ahead of a legacy font; a rule of a
+panel's theme does not count, a theme being a default stylesheet. While a default family is set, Velvet
+reads this again at each update of the element's panel after the element or one above it moves, or changes its
+classes, name, stylesheets, matched rules or inline font. The value Velvet wrote is taken off when the tree is
+disposed or the element leaves the portal. `DefaultFamilyScopePanelTests` pins where the family is written, left
+out and taken off, on a panel with no theme stylesheet; `DefaultFamilyThemePlaybackTests` pins a label with no font
+class on the runtime theme this project ships.
 
 A weight, italic or width class on an element with no `font-<name>` of its own keeps the family it inherits,
 as in CSS: `font-bold` inside a `font-serif` container selects the registered `Bold` entry of `serif`.
@@ -169,10 +169,12 @@ added and leaves a table you configured as it was. A list that starts with `addr
 
 ## Swapping fonts at runtime (e.g. per-locale)
 
-Velvet is React-style, so the idiomatic switch is to change state and re-render: register the new
-locale's families and bump the state that drives your tree. `VelvetFonts.FontsChanged` fires on
-every registry mutation if you want to hook it to a store/`UseState` setter to force that
-re-render. On re-render every element re-resolves its font intent against the new registry.
+Register the new locale's families, and set `DefaultFamily` if it changes. `VelvetFonts.FontsChanged` fires
+when a family is registered or unregistered, when `DefaultFamily` changes and when `Clear` empties the
+registry, and the family written on the roots ([What `DefaultFamily` reaches](#what-defaultfamily-reaches))
+follows it at once, with no render: a label that takes its font from there shows the new family straight away.
+An element created after the change, such as one a new `key` mounts afresh, resolves its font classes against the
+registry as it then is.
 
 ## Tailwind text-utility parity vs. UI Toolkit
 

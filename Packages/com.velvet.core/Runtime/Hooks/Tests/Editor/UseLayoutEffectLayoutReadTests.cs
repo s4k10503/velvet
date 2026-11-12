@@ -508,8 +508,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base runs a GeometryChangedEvent callback that mounts a tree once.
         // Here the mount computes the panel's layout from inside the callback; running the layout updater's
-        // `Update` there instead of `_calculate.Invoke(node, s_unbounded)` in `FiberLayoutReflow` dispatches the
-        // host's next GeometryChangedEvent while this one is still running, which reaches the callback again.
+        // `Update` there instead of `_members.Calculate.Invoke(node, s_unbounded)` in `FiberLayoutReflow` dispatches
+        // the host's next GeometryChangedEvent while this one is still running, which reaches the callback again.
         [Test]
         public void Given_AGeometryChangedCallbackThatUnregistersItselfAndMountsATree_When_ThePanelLaysItsHostOut_Then_TheCallbackRunsOnce()
         {
@@ -526,8 +526,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base sends an element its GeometryChangedEvent on the panel's update.
         // Here the mount's layout effect has computed the element's box already, and only the dirty flag the
-        // computation leaves sends the event; dropping `_dirty.SetValue(node, true)` from `FiberLayoutReflow` leaves
-        // the panel's layout updater nothing to visit.
+        // computation leaves sends the event; dropping `_members.Dirty.SetValue(node, true)` from `FiberLayoutReflow`
+        // leaves the panel's layout updater nothing to visit.
         [Test]
         public void Given_AnElementALayoutEffectLaidOut_When_ThePanelUpdates_Then_TheElementReceivesItsGeometryChangedEvent()
         {

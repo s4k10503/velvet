@@ -205,7 +205,6 @@ namespace Velvet
             face.descentLine -= spread;
             face.lineHeight = face.ascentLine - face.descentLine;
             copy.faceInfo = face;
-            copy.ReadFontAssetDefinition();
         }
 
         // Whether source rasterises glyphs it does not hold yet: from a font file, a font file's path, or the OS.
@@ -387,6 +386,21 @@ namespace Velvet
         private FontAsset? _written;
         private StyleFontDefinition _underlying;
 
+        // The owner that last wrote a copy on each element, which CopiesInherited asks whether the copy still shows.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, LineBoxFontOwner>
+            s_shown = new();
+
+        // Whether element shows a copy of the font its rules and parent give it, with no inline value of anybody's
+        // beneath the copy, which a writer of an inline font may then write over as it would over none
+        // (DefaultFamilyRoots).
+        internal static bool CopiesInherited(VisualElement element)
+        {
+            if (!s_shown.TryGetValue(element, out var owner)) return false;
+
+            return owner._written != null && owner._underlying.keyword == StyleKeyword.Null
+                && element.style.unityFontDefinition.value.fontAsset == owner._written;
+        }
+
         public void Settle(VisualElement element, float lineHeight)
         {
             var inline = element.style.unityFontDefinition;
@@ -423,6 +437,7 @@ namespace Velvet
             Drop();
             _written = variant;
             element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromSDFFont(variant));
+            s_shown.AddOrUpdate(element, this);
         }
 
         public void Release(VisualElement element)

@@ -23,6 +23,20 @@ namespace Velvet.Tests
             Assert.That(element.style.flexShrink.keyword, Is.EqualTo(StyleKeyword.Initial));
         }
 
+        // GREEN_ON_BASE(characterization): the base writes a keyword transform-origin layer as that keyword.
+        [Test]
+        public void Given_AKeywordTransformOriginLayer_When_Applied_Then_TheOriginTakesTheKeyword()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act
+            StyleArbitraryValueResolver.Apply(element, new ArbitraryStyle(ArbitraryProperty.TransformOrigin, StyleKeyword.Initial));
+
+            // Assert
+            Assert.That(element.style.transformOrigin.keyword, Is.EqualTo(StyleKeyword.Initial));
+        }
+
         [Test]
         public void Given_AKeywordDropShadowColourOverAColour_When_Composed_Then_TheShadowTakesItsOwnColour()
         {

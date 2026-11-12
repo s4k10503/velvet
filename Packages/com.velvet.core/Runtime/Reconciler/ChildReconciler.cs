@@ -28,8 +28,10 @@ namespace Velvet
 
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
+        private readonly NodePatchWalk _patchWalk;
         private readonly FiberNodeFactory _factory;
         private readonly FiberElementCleaner _cleaner;
+        private readonly HostCommitQueue _host;
         // LIS anchor computation + non-anchor re-placement for the keyed/general commit.
         private readonly ChildElementPlacement _placement;
         // Identity-key resolution shared with the general path.
@@ -47,7 +49,7 @@ namespace Velvet
         // null indicates no suspension (the normal state).
         internal IndexedReconcileState? PendingIndexedState
         {
-            get => _pendingIndexedState;
+            get => _parkSetAside ? null : _pendingIndexedState;
             private set
             {
                 _pendingIndexedState = value;
@@ -60,7 +62,7 @@ namespace Velvet
         // Pool while suspended).
         internal KeyedReconcileState? PendingKeyedState
         {
-            get => _pendingKeyedState;
+            get => _parkSetAside ? null : _pendingKeyedState;
             private set
             {
                 _pendingKeyedState = value;
@@ -70,6 +72,9 @@ namespace Velvet
 
         private IndexedReconcileState? _pendingIndexedState;
         private KeyedReconcileState? _pendingKeyedState;
+        // True while DrainPendingPortalMounts mounts a Portal over a parked state: the two properties above read
+        // null, and the fields keep the state, its ParkedDiffParents registration and the rows ReplaceParkedRow reaches.
+        private bool _parkSetAside;
 
         // Tells the context which parent this instance's diff is parked over, if any (ReconcilerContext.ParkedDiffParents).
         private void NoteParkedParent()
@@ -82,23 +87,30 @@ namespace Velvet
             else
             {
                 _ctx.ParkedDiffParents[this] = parent;
+                Parked?.Invoke();
             }
         }
+
+        // Told when this instance parks a diff, so the fiber owning it marks its ancestors (FiberPendingWork).
+        internal Action? Parked { get; init; }
 
         // The boundary reproductions the state above still owes a removal pass, carried until the slice
         // that resumes it runs them. Instance state rather than context state like the lists it feeds,
         // because the park it answers for is this instance's own while the context is shared.
         private readonly List<ReconcilerContext.BoundaryReproductionKey> _boundaryOwedByThisPark = new();
 
-        public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, FiberNodeFactory factory, FiberElementCleaner cleaner)
+        public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, NodePatchWalk patchWalk,
+            FiberNodeFactory factory, FiberElementCleaner cleaner)
         {
             _ctx = ctx;
             _patcher = patcher;
+            _patchWalk = patchWalk;
             _factory = factory;
             _cleaner = cleaner;
-            _placement = new ChildElementPlacement(ctx.BufferPool);
+            _host = ctx.HostCommit;
+            _placement = new ChildElementPlacement(ctx.BufferPool, _host);
             _keying = new ReconcileKeying();
-            _general = new GeneralPathReconciler(ctx, patcher, factory, cleaner, _placement, _keying);
+            _general = new GeneralPathReconciler(ctx, patchWalk, factory, cleaner, _placement, _keying);
         }
 
         // Applies the CanPatch-gated patch-or-replace decision at one DOM slot: patches the existing
@@ -112,19 +124,6 @@ namespace Velvet
         //     AnimatePresence overlap can leave the live range shorter than the baseline; the keyed
         //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
         //     of index i).
-        //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
-        //     create-then-remove: an inline-mounted component fiber is keyed by its tree position —
-        //     NOT by which VisualElement currently hosts it
-        //     (FiberRenderer.SetupMount's comment on the registry key; ComponentRegistry.cs). If the
-        //     OLD element (and the same-keyed nested fiber ComponentRegistry still has registered
-        //     under it) is still present when CreateElement builds the NEW element's same-keyed
-        //     child, the registry hands back the OLD, still-live fiber instead of mounting fresh —
-        //     confirmed by a regression in ComponentStateReparityTests
-        //     (Given_ANestedComponentWithAdvancedState_When_TheHostElementTypeChanges_...) when this
-        //     was tried. FiberElementCleaner.CleanupElement's own comment on DisposeFibersUnder
-        //     explains why: an inline fiber under a torn-down host is otherwise invisible to the
-        //     normal orphan sweep and "would survive to be re-paired as a zombie on a same-key
-        //     re-entry" — which is exactly what create-then-remove reintroduces.
         //   newElement is ALWAYS inserted, abort or not: _ctx.IsAborted only ever becomes true
         //     via FiberErrorBoundary.TryCatch -> SetAborted, which fires exclusively on TryShowFallback's
         //     SUCCESS path (fiber.Reconciler.Reconcile(fiber.MountPoint, ..., fallbackTree) returned
@@ -139,7 +138,8 @@ namespace Velvet
         // discarding anything: the boundary already resolved the failure, so any later slot's
         // patch/replace would be racing a reconcile the caller no longer owns end-to-end.
         private bool PatchOrReplaceAtSlot(
-            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists)
+            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists, OldSlotOccupants occupants,
+            ref LogicalSlotCursor slots)
         {
             var parent = slot.Parent;
             // LOGICAL, converted per DOM touch. It is deliberately not pre-converted into a physical index:
@@ -148,20 +148,18 @@ namespace Velvet
             var logicalIndex = slot.SlotStart + slot.Index;
             if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
             {
-                var domElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, logicalIndex));
-                var actualElement = _patcher.ResolveWrapped(domElement);
-                _patcher.PatchNode(actualElement, oldNode, newNode);
+                _patchWalk.PatchNode(occupants.Resolved(slot.Index)!, oldNode, newNode);
                 return false;
             }
 
             if (slotExists)
             {
-                _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, logicalIndex));
+                _host.Remove(parent, occupants.Occupant(slot.Index)!, occupants.PhysicalAtEntry(slot.Index));
             }
             var newElement = _factory.CreateElement(newNode);
             // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
             // position just after it — so the caller no longer chooses between two index formulas.
-            parent.Insert(LogicalChildSlots.ToPhysical(parent, logicalIndex), newElement);
+            slots.Insert(_host, parent, logicalIndex, newElement);
             return _ctx.IsAborted;
         }
 
@@ -175,9 +173,9 @@ namespace Velvet
             internal int Index { get; init; }
         }
 
-        // The old-key map, the two consumed-key sets and the result list that one keyed Pass 2 threads
-        // through every node it processes. Bundled because the per-node step is shared by the synchronous
-        // loop and by the time-sliced one, which restores the same four from its parked state — and a
+        // The old-key map, the two consumed-key sets, the result list and the old instances that one keyed Pass 2
+        // threads through every node it processes. Bundled because the per-node step is shared by the synchronous
+        // loop and by the time-sliced one, which restores the same five from its parked state — and a
         // combination mixing one pass's tables with another's would silently misplace a row.
         internal readonly struct KeyedPassTables
         {
@@ -185,6 +183,7 @@ namespace Velvet
             internal HashSet<ChildKey> UsedKeys { get; init; }
             internal HashSet<ChildKey> ReplacedKeys { get; init; }
             internal List<(VisualElement? element, bool isExisting)> NewElements { get; init; }
+            internal OldSlotOccupants OldOccupants { get; init; }
         }
 
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
@@ -231,7 +230,7 @@ namespace Velvet
                 _ctx.SettleBoundaryReproductionsOwedByAPark(
                     ReconcilerContext.BoundaryRemovalOutcome.Skipped, _boundaryOwedByThisPark);
             }
-            PendingIndexedState = null;
+            DiscardPendingIndexedState();
             DiscardPendingKeyedState();
 
             // ContextProviderNode / ComponentNode are expanded inline (no wrapper VE
@@ -298,7 +297,6 @@ namespace Velvet
                     // retains the time-sliced Indexed/Keyed diff state machine unchanged. The keyed
                     // path is selected if either side carries a key (unifying keyed/unkeyed transitions),
                     // or an old leaf's slot is not its flat index.
-                    _general.RunOrphanEffectCleanups(oldFibers, newFibers);
                     var newNodes = newChildren ?? Array.Empty<VNode>();
                     // Null where the old side needed no expansion; OldKey says what that stands for.
                     var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;
@@ -312,7 +310,7 @@ namespace Velvet
                     {
                         ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
                     }
-                    _general.SweepOrphans(oldFibers, newFibers);
+                    _host.DisposeOrphans(oldFibers, newFibers);
                     removals = FastPathRemovalOutcome();
                 }
             }
@@ -332,7 +330,7 @@ namespace Velvet
         // they join the same queue, drained FIFO until empty, so a Portal mounts at the logical slot
         // (LogicalChildSlots.Count) after every earlier-drained Portal's children in the same target.
         // Called only from Reconciler.FinishTopLevelPass, which Reconcile's and ContinueReconcile's top-level
-        // finally both reach, so the single-top-level-loop invariant holds across nested PatchPortal recursion.
+        // finally both reach, so the single-top-level-loop invariant holds across nested Portal-patch recursion.
         //
         // A child of a Portal that suspends does not stop the drain, since the entries behind it are the same pass's
         // and would be lost to the clear that follows it. The Portal is recorded with its children pending and the
@@ -436,7 +434,7 @@ namespace Velvet
                 }
                 // A Portal child registers in ComponentRegistry under whatever fiber is current
                 // while it mounts, and a later patch of the same Portal reaches
-                // FiberNodePatcher.PatchPortalChildren from the reconcile of the tree the declaring
+                // NodePatchWalk.ReconcilePortalRange from the reconcile of the tree the declaring
                 // component itself returned — with that component's own fiber current. So the declaring
                 // fiber is the half of the registry key a patch looks the child up by, and the mount has
                 // to agree or the first patch misses its own fiber and builds a second one. This drain
@@ -458,20 +456,19 @@ namespace Velvet
                 // so when that outer pass just parked (budget exhausted mid-list, with a Portal enqueued right
                 // before parking), the entry-clear below would destroy the park before the caller ever observes
                 // HasPendingWork — the continuation then never resumes and the remaining rows silently never
-                // commit. Move the parked state out of the instance fields first — never through
+                // commit. Set the parked state aside first (_parkSetAside) — never through
                 // DiscardPendingKeyedState, which returns PendingKeyedState's pooled buffers to the shared pool;
                 // a nested keyed Pass 2 below can rent the exact same pool types and would be handed back, and
-                // mutate, the very buffers this parked state still owns — so the nested entry-clear becomes a
-                // no-op, then restore both fields verbatim once this one nested call returns. Always safe to
-                // restore unconditionally: the call below never carries a frameBudgetMs argument (defaults to 0),
-                // and at budget 0 ReconcileIndexedFrom's `budgeted` gate is false while ReconcileKeyed routes to
-                // the fully synchronous ReconcileKeyedSync — neither can ever set new pending state of its own, so
-                // there is nothing legitimate from the nested call itself to preserve instead.
-                var parkedIndexed = PendingIndexedState;
-                var parkedKeyed = PendingKeyedState;
-                PendingIndexedState = null;
-                PendingKeyedState = null;
-                // Same set-and-restore as FiberNodePatcher.PatchPortalChildren, and for the same reason:
+                // mutate, the very buffers this parked state still owns — so the nested entry-clear finds nothing to
+                // discard. Moving the state out of the fields instead would also drop the parent from
+                // ParkedDiffParents for the length of the mount, which is what lets Arrange convert a parent's slots
+                // (FiberZLayerCoordinator.ResortLayers). Nothing the nested call does is lost by this: the call
+                // below never carries a frameBudgetMs argument (defaults to 0), and at budget 0
+                // ReconcileIndexedFrom's `budgeted` gate is false while ReconcileKeyed routes to the fully synchronous
+                // ReconcileKeyedSync — neither can ever set new pending state of its own.
+                var setAside = _parkSetAside;
+                _parkSetAside = true;
+                // Same set-and-restore as NodePatchWalk.ReconcilePortalRange, and for the same reason:
                 // this is the mount half of the pair that stamps the fibers a Portal's own children
                 // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
                 // with the field already restored, so its own entry sets its own placeholder.
@@ -494,7 +491,7 @@ namespace Velvet
                     PointerEventsScope.NoteReconciledInto(_ctx, resolvedTarget);
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), FiberKeying.UnwrapLoneFragment(children),
                         slotStart: slotStart);
-                    // The mount half of FiberNodePatcher.PatchPortalChildren's structural pass.
+                    // The mount half of the structural pass FiberNodePatcher.PatchSelfPost runs for a Portal.
                     _patcher.ApplyStructuralVariants(resolvedTarget);
                 }
                 catch (FiberSuspendSignal)
@@ -515,8 +512,7 @@ namespace Velvet
                             stack.PopRaw(contextSnapshot[s].Key);
                         }
                     }
-                    PendingIndexedState = parkedIndexed;
-                    PendingKeyedState = parkedKeyed;
+                    _parkSetAside = setAside;
                 }
                 StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
@@ -545,8 +541,11 @@ namespace Velvet
             {
                 if (LogicalChildSlots.TryGetPhysical(target, slot, out var physical))
                 {
-                    SuspenseHiddenElements.Hide(target[physical]);
-                    _ctx.DetachRefsWhileHidden(target[physical]);
+                    // A relocated row is hidden as the element it stands for, as
+                    // GeneralPathReconciler.AddWithPortalChildren hides it.
+                    var row = target[physical];
+                    if (_ctx.ZLayerPlaceholders.TryGetValue(row, out var relocated)) row = relocated;
+                    _host.Hide(row);
                 }
             }
             _general.HideFibersMountedUnder(placeholder, declaringFiber);
@@ -561,9 +560,19 @@ namespace Velvet
         // range's rows and no further, since the ranges of other Portals on the same target can follow it.
         internal void RemoveRows(VisualElement target, int slotStart, int count)
         {
-            for (var slot = slotStart + count - 1; slot >= slotStart; slot--)
+            var rows = _ctx.BufferPool.RentOldSlotOccupants();
+            try
             {
-                _cleaner.RemoveElement(target, LogicalChildSlots.ToPhysical(target, slot));
+                rows.Resolve(target, slotStart, count, int.MaxValue, _patcher);
+                for (var i = count - 1; i >= 0; i--)
+                {
+                    var row = rows.Occupant(i);
+                    if (row != null) _host.Remove(target, row, rows.PhysicalAtEntry(i));
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(rows);
             }
         }
 
@@ -688,7 +697,8 @@ namespace Velvet
             try
             {
                 ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
-                    state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
+                    state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit,
+                    state.OldOccupants);
                 removals = FastPathRemovalOutcome();
                 ApplyStructuralVariantsOnceSettled(state.Parent);
             }
@@ -731,7 +741,7 @@ namespace Velvet
             {
                 var s = PendingIndexedState.Value;
                 PendingIndexedState = new IndexedReconcileState(
-                    s.Parent, s.OldNodes, s.NewNodes, s.ResumePhase, s.ResumeIndex,
+                    s.Parent, s.OldNodes, s.NewNodes, s.ResumePhase, s.ResumeIndex, s.OldOccupants,
                     s.SlotStart + delta, ShiftSlotLimit(s.SlotLimit, delta));
             }
             else if (PendingKeyedState != null)
@@ -750,6 +760,26 @@ namespace Velvet
         private static int ShiftSlotLimit(int slotLimit, int delta)
             => slotLimit == int.MaxValue ? slotLimit : slotLimit + delta;
 
+
+        // Discards a suspended IndexedReconcile state and returns the old instances it held. Invoked on a new
+        // Reconcile or during Dispose.
+        internal void DiscardPendingIndexedState()
+        {
+            if (PendingIndexedState is not { } state) return;
+            PendingIndexedState = null;
+            _ctx.BufferPool.ReturnOldSlotOccupants(state.OldOccupants);
+        }
+
+        // ReconcilerContext.NoteSlotOccupantChanged, for the old rows a parked keyed Pass 2 already took.
+        internal void ReplaceParkedRow(VisualElement from, VisualElement to)
+        {
+            var rows = _pendingKeyedState?.NewElements;
+            if (rows == null) return;
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].isExisting && ReferenceEquals(rows[i].element, from)) rows[i] = (to, true);
+            }
+        }
 
         // Discards a suspended KeyedReconcile state and returns the held Pool buffers.
         // Invoked on a new Reconcile or during Dispose.
@@ -785,8 +815,8 @@ namespace Velvet
         // parent, so the rebuild must rebuild ONLY [slotStart, slotLimit) — deleting to parent.childCount would
         // destroy a following sibling's committed rows (its keyed range was over-deleted, then its elements pooled
         // and rented back into this fiber's rebuild). Bounding by slotLimit also makes the desync detection more
-        // precise: the diff over-indexes whenever the baseline exceeds THIS fiber's live rows (it would read
-        // parent.ElementAt past slotLimit, into a sibling), even when trailing siblings would otherwise pad the
+        // precise: the diff names an old leaf with no row whenever the baseline exceeds THIS fiber's live rows (the
+        // rows past slotLimit are a sibling's), even when trailing siblings would otherwise pad the
         // raw childCount past the baseline.
         private bool TryRebuildDesyncedSlotRange(
             VisualElement? parent, VNode?[]? oldNodes, VNode?[]? newNodes, int slotStart, int slotLimit)
@@ -800,14 +830,22 @@ namespace Velvet
             if (available < 0) available = 0;
             if (oldNodes.Length <= available) return false;
 
-            // Logical slots, converted per step: the walk is downward so each removal only shifts slots
-            // after the one just removed, and an invisible child interleaved in the range is skipped rather
-            // than torn out with the rendered ones.
-            var cursor = new DescendingSlotCursor();
-            for (var i = rangeEnd - 1; i >= slotStart; i--)
+            // The range's rows are read before any goes, past an invisible child interleaved in them, and removed
+            // from the last.
+            var rows = _ctx.BufferPool.RentOldSlotOccupants();
+            try
             {
-                _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, i));
-                if (_ctx.IsAborted) return true;
+                rows.Resolve(parent, slotStart, available, slotLimit, _patcher);
+                for (var i = available - 1; i >= 0; i--)
+                {
+                    var row = rows.Occupant(i);
+                    if (row != null) _host.Remove(parent, row, rows.PhysicalAtEntry(i));
+                    if (_ctx.IsAborted) return true;
+                }
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(rows);
             }
             var slots = new LogicalSlotCursor();
             for (var i = 0; i < newNodes.Length; i++)
@@ -815,7 +853,7 @@ namespace Velvet
                 var element = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) ReleaseUnplacedElement(element);
                 if (_ctx.IsAborted) return true;
-                slots.Insert(parent, slotStart + i, element);
+                slots.Insert(_host, parent, slotStart + i, element);
             }
             return true;
         }
@@ -835,15 +873,18 @@ namespace Velvet
             public readonly VNode?[] NewNodes;
             public readonly int SlotStart;
             public readonly int SlotLimit;
+            public readonly OldSlotOccupants OldOccupants;
 
             public IndexedPassInputs(
-                VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes, int slotStart, int slotLimit)
+                VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes, int slotStart, int slotLimit,
+                OldSlotOccupants oldOccupants)
             {
                 Parent = parent;
                 OldNodes = oldNodes;
                 NewNodes = newNodes;
                 SlotStart = slotStart;
                 SlotLimit = slotLimit;
+                OldOccupants = oldOccupants;
             }
 
             // Derived on demand rather than stored, so the shared-prefix length has exactly one definition
@@ -862,7 +903,8 @@ namespace Velvet
             int startIndex,
             double frameBudgetMs,
             int slotStart = 0,
-            int slotLimit = int.MaxValue)
+            int slotLimit = int.MaxValue,
+            OldSlotOccupants? resumedOccupants = null)
         {
             // Normally a no-op because `Reconcile()` already cleared the state on entry, but kept as
             // a safety net for future internal callers that invoke `ReconcileIndexedFrom` directly.
@@ -870,13 +912,19 @@ namespace Velvet
             // overwrite the saved state, so leave it untouched.
             if (startPhase == IndexedReconcilePhase.Common && startIndex == 0)
             {
-                PendingIndexedState = null;
+                DiscardPendingIndexedState();
                 DiscardPendingKeyedState();
             }
 
             if (parent == null) return;
 
-            var inputs = new IndexedPassInputs(parent, oldNodes, newNodes, slotStart, slotLimit);
+            var occupants = resumedOccupants;
+            if (occupants == null)
+            {
+                occupants = _ctx.BufferPool.RentOldSlotOccupants();
+                occupants.Defer(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
+            }
+            var inputs = new IndexedPassInputs(parent, oldNodes, newNodes, slotStart, slotLimit, occupants);
 
             if (frameBudgetMs > 0)
             {
@@ -884,34 +932,46 @@ namespace Velvet
                 _stopwatch.Restart();
             }
 
-            var phase = startPhase;
-            var index = startIndex;
-            while (phase != IndexedReconcilePhase.Done)
+            // A phase that parked handed the occupants to the parked state.
+            var parked = false;
+            try
             {
-                switch (phase)
+                var phase = startPhase;
+                var index = startIndex;
+                while (phase != IndexedReconcilePhase.Done)
                 {
-                    case IndexedReconcilePhase.Common:
-                        if (!CommonPhase(in inputs, index, frameBudgetMs)) return;
-                        phase = IndexedReconcilePhase.Remove;
-                        index = RemovePhaseStartSentinel;
-                        break;
-                    case IndexedReconcilePhase.Remove:
-                        if (!RemovePhase(in inputs, index, frameBudgetMs)) return;
-                        phase = IndexedReconcilePhase.Add;
-                        index = inputs.CommonLength;
-                        break;
-                    case IndexedReconcilePhase.Add:
-                        if (!AddPhase(in inputs, index, frameBudgetMs)) return;
-                        phase = IndexedReconcilePhase.Done;
-                        break;
-                    default:
-                        throw new InvalidOperationException(
-                            $"[ChildReconciler] Unhandled IndexedReconcilePhase: {phase}");
+                    switch (phase)
+                    {
+                        case IndexedReconcilePhase.Common:
+                            parked = !CommonPhase(in inputs, index, frameBudgetMs);
+                            if (parked) return;
+                            phase = IndexedReconcilePhase.Remove;
+                            index = RemovePhaseStartSentinel;
+                            break;
+                        case IndexedReconcilePhase.Remove:
+                            parked = !RemovePhase(in inputs, index, frameBudgetMs);
+                            if (parked) return;
+                            phase = IndexedReconcilePhase.Add;
+                            index = inputs.CommonLength;
+                            break;
+                        case IndexedReconcilePhase.Add:
+                            parked = !AddPhase(in inputs, index, frameBudgetMs);
+                            if (parked) return;
+                            phase = IndexedReconcilePhase.Done;
+                            break;
+                        default:
+                            throw new InvalidOperationException(
+                                $"[ChildReconciler] Unhandled IndexedReconcilePhase: {phase}");
+                    }
+                    // An error-boundary abort parks nothing and must end the pass here — unlike a yield, which
+                    // already parked its own resume point, an aborted phase reports completion so this is the
+                    // only place that can stop the machine before it advances into the next phase's work.
+                    if (_ctx.IsAborted) return;
                 }
-                // An error-boundary abort parks nothing and must end the pass here — unlike a yield, which
-                // already parked its own resume point, an aborted phase reports completion so this is the
-                // only place that can stop the machine before it advances into the next phase's work.
-                if (_ctx.IsAborted) return;
+            }
+            finally
+            {
+                if (!parked) _ctx.BufferPool.ReturnOldSlotOccupants(occupants);
             }
         }
 
@@ -920,11 +980,19 @@ namespace Velvet
         private void ParkIndexedResume(
             in IndexedPassInputs inputs, IndexedReconcilePhase resumePhase, int resumeIndex)
         {
+            inputs.OldOccupants.EnsureResolved();
             PendingIndexedState = new IndexedReconcileState(
                 inputs.Parent, inputs.OldNodes, inputs.NewNodes,
-                resumePhase, resumeIndex, slotStart: inputs.SlotStart, slotLimit: inputs.SlotLimit);
+                resumePhase, resumeIndex, inputs.OldOccupants, slotStart: inputs.SlotStart, slotLimit: inputs.SlotLimit);
             _stopwatch!.Stop();
         }
+
+        // Skipping a node the parent handed back by instance leaves every component in its subtree unreached, which
+        // drops the render this pass owes one with work pending. Where the reconciling fiber is marked
+        // (FiberPendingWork), this reconcile skips only a node nothing below can be rendered by a fiber, and patches
+        // every other.
+        private bool SkipsIdentical(VNode? node)
+            => _ctx.FiberStack.Current is not { PendingWorkBelow: true } || !FiberPendingWork.MayHoldFiber(node);
 
         // Returns false only on a yield (this phase parked its resume point); true when the phase is done
         // with the range — including when an abort cut it short, which the dispatcher detects separately.
@@ -937,6 +1005,7 @@ namespace Velvet
             var slotLimit = inputs.SlotLimit;
             var commonLength = inputs.CommonLength;
             var budgeted = frameBudgetMs > 0;
+            var slots = new LogicalSlotCursor();
 
             for (var i = startIndex; i < commonLength; i++)
             {
@@ -945,7 +1014,7 @@ namespace Velvet
                 // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
                 // lookup and DiffProps invocation suppresses outlier GC allocations on the
                 // no-change path.
-                if (ReferenceEquals(oldNodes[i], newNodes[i]))
+                if (ReferenceEquals(oldNodes[i], newNodes[i]) && SkipsIdentical(newNodes[i]))
                 {
                     if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                     {
@@ -958,7 +1027,7 @@ namespace Velvet
                 // DOM-desync recovery: the baseline (oldNodes) is a positional prefix of the live children,
                 // but a transient AnimatePresence overlap (an exit ghost whose VE was dropped, or a key
                 // re-entered mid-exit) can leave the live container SHORTER than the baseline claims, so the
-                // slot this index expects no longer exists. Rather than over-index parent.ElementAt, create the
+                // slot this index expects no longer exists. Rather than patch a slot that is not there, create the
                 // model's child to converge the DOM toward the (authoritative) new tree; the missing tail is
                 // built the same way and the Remove phase skips the absent slots.
                 // Bound by slotLimit (this fiber's range end), not just childCount: for a non-last inline
@@ -967,9 +1036,9 @@ namespace Velvet
                 // One walk answers both "is the slot occupied" and "where is it", where a Count bound
                 // check would scan the whole child list per element on a phase that mutates nothing.
                 var slotExists = slotStart + i < slotLimit
-                    && LogicalChildSlots.TryGetPhysical(parent, slotStart + i, out _);
+                    && slots.TryGetPhysical(parent, slotStart + i, out _);
                 var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i], slotExists))
+                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i], slotExists, inputs.OldOccupants, ref slots))
                 {
                     return true;
                 }
@@ -990,24 +1059,22 @@ namespace Velvet
         private bool RemovePhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
         {
             var parent = inputs.Parent;
-            var slotStart = inputs.SlotStart;
             var commonLength = inputs.CommonLength;
             var budgeted = frameBudgetMs > 0;
 
             var removeStart = startIndex == RemovePhaseStartSentinel ? inputs.OldNodes.Length - 1 : startIndex;
-            var removeCursor = new DescendingSlotCursor();
             for (var i = removeStart; i >= commonLength; i--)
             {
                 if (_ctx.IsAborted) return true;
 
-                // DOM-desync recovery (see the Common phase): when the live container is shorter than the
-                // baseline claims, the tail slot to remove may not exist — skip it instead of over-indexing.
-                // One walk resolves both the existence test and the physical index it removes at.
-                if (!removeCursor.TryGetPhysical(parent, slotStart + i, out var removeAt))
+                // DOM-desync recovery (see the Common phase): a tail slot that had no old instance when the
+                // container was entered — the live range was shorter than the baseline claims — is skipped.
+                var old = inputs.OldOccupants.Occupant(i);
+                if (old == null)
                 {
                     continue;
                 }
-                _cleaner.RemoveElement(parent, removeAt);
+                _host.Remove(parent, old, inputs.OldOccupants.PhysicalAtEntry(i));
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -1051,7 +1118,7 @@ namespace Velvet
                 // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
                 // DOM-desync resume directly into this phase (the live range shrank since the slice was parked)
                 // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
-                slots.Insert(parent, slotStart + i, newElement);
+                slots.Insert(_host, parent, slotStart + i, newElement);
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -1113,7 +1180,7 @@ namespace Velvet
             List<ChildKey>? oldKeys, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             // DOM-desync recovery: the keyed diff relies on "oldNodes index == live DOM index" (Pass 1 scans
-            // and Pass 2 looks up parent.ElementAt(slotStart + index)). A transient AnimatePresence ghost overlap
+            // and Pass 2 takes the element at slotStart + index). A transient AnimatePresence ghost overlap
             // can leave the live range SHORTER than the baseline, breaking that invariant. Per-site index guards
             // here would mis-patch by stale index, so instead rebuild this fiber's slot range from the
             // authoritative new tree (crash-free, immediately convergent; the next clean reconcile runs the normal
@@ -1121,9 +1188,38 @@ namespace Velvet
             if (TryRebuildDesyncedSlotRange(parent, oldNodes, newNodes, slotStart, slotLimit)) return;
             if (parent == null) return;
 
-            if (!RunLinearPrefixPass(parent, oldNodes, newNodes, oldKeys, slotStart, out var linearEnd)) return;
-            if (TrySuffixTrimFastPath(parent, oldNodes, newNodes, oldKeys, slotStart, linearEnd)) return;
-            ReconcileKeyedRemainder(parent, oldNodes, newNodes, oldKeys, slotStart, linearEnd);
+            var occupants = _ctx.BufferPool.RentOldSlotOccupants();
+            try
+            {
+                occupants.Defer(parent, slotStart, oldNodes.Length, slotLimit, _patcher);
+                var pass = new KeyedSyncPass
+                {
+                    Parent = parent,
+                    OldNodes = oldNodes,
+                    NewNodes = newNodes,
+                    OldKeys = oldKeys,
+                    SlotStart = slotStart,
+                    OldOccupants = occupants,
+                };
+                if (!RunLinearPrefixPass(in pass, out var linearEnd)) return;
+                if (TrySuffixTrimFastPath(in pass, linearEnd)) return;
+                ReconcileKeyedRemainder(in pass, linearEnd);
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnOldSlotOccupants(occupants);
+            }
+        }
+
+        // The inputs one synchronous keyed reconcile hands each of its passes.
+        private readonly struct KeyedSyncPass
+        {
+            internal VisualElement Parent { get; init; }
+            internal VNode?[] OldNodes { get; init; }
+            internal VNode?[] NewNodes { get; init; }
+            internal List<ChildKey>? OldKeys { get; init; }
+            internal int SlotStart { get; init; }
+            internal OldSlotOccupants OldOccupants { get; init; }
         }
 
         // False when this pass finished the whole reconcile on its own — aborted mid-patch, every entry
@@ -1141,11 +1237,17 @@ namespace Velvet
         //   so the invariant
         //     oldNodes[i].index == slotStart + i
         //   continues to hold in ReconcileKeyedRemainder (for i ≥ linearEnd).
-        private bool RunLinearPrefixPass(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            List<ChildKey>? oldKeys, int slotStart, out int linearEnd)
+        private bool RunLinearPrefixPass(in KeyedSyncPass pass, out int linearEnd)
         {
+            var parent = pass.Parent;
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var oldKeys = pass.OldKeys;
+            var slotStart = pass.SlotStart;
+            var occupants = pass.OldOccupants;
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
             linearEnd = 0;
+            var prefixSlots = new LogicalSlotCursor();
             for (var i = 0; i < commonLength; i++)
             {
                 // A scoped old key is compared even for the same node: the node may have been emitted under a
@@ -1156,13 +1258,13 @@ namespace Velvet
                     break;
                 }
                 // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
-                // back the cached instance). Skip the DOM lookup and PatchNode, so the prefix advances and
-                // the in-place DOM slot stays valid.
-                if (!ReferenceEquals(oldNodes[i], newNodes[i]))
+                // back the cached instance). Where SkipsIdentical allows, skip the DOM lookup and PatchNode, so
+                // the prefix advances and the in-place DOM slot stays valid.
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                            slotExists: true))
+                            slotExists: true, occupants, ref prefixSlots))
                     {
                         return false;
                     }
@@ -1179,16 +1281,15 @@ namespace Velvet
             {
                 var slots = new LogicalSlotCursor();
                 for (var i = linearEnd; i < newNodes.Length; i++)
-                    slots.Insert(parent, slotStart + i, _factory.CreateElement(newNodes[i]));
+                    slots.Insert(_host, parent, slotStart + i, _factory.CreateElement(newNodes[i]));
                 return false;
             }
 
             // Tail-remove only.
             if (linearEnd == newNodes.Length)
             {
-                var cursor = new DescendingSlotCursor();
                 for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
-                    _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
+                    _host.Remove(parent, occupants.Occupant(i)!, occupants.PhysicalAtEntry(i));
                 return false;
             }
 
@@ -1208,9 +1309,11 @@ namespace Velvet
         //   - patch-in-place only: a CanPatch=false tail would need remove+insert (shifting absolute DOM
         //     indices and stranding an AnimatePresence exit timer), so it stops the trim and defers to LIS.
         //   - the desync rebuild in the caller still runs first (this prepass never sees a short live range).
-        private bool TrySuffixTrimFastPath(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            List<ChildKey>? oldKeys, int slotStart, int linearEnd)
+        private bool TrySuffixTrimFastPath(in KeyedSyncPass pass, int linearEnd)
         {
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var oldKeys = pass.OldKeys;
             var suffix = CountTrimmableSuffix(oldNodes, newNodes, oldKeys, linearEnd);
             var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
             var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
@@ -1223,7 +1326,7 @@ namespace Velvet
                 return false;
             }
 
-            CommitSuffixTrim(parent, oldNodes, newNodes, slotStart, linearEnd, suffix);
+            CommitSuffixTrim(in pass, linearEnd, suffix);
             return true;
         }
 
@@ -1256,21 +1359,23 @@ namespace Velvet
 
         // Stops on abort mid-way like every other commit here: the caller has already reported the diff as
         // handled, and the aborted pass leaves the DOM for the next reconcile to converge.
-        private void CommitSuffixTrim(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            int slotStart, int linearEnd, int suffix)
+        private void CommitSuffixTrim(in KeyedSyncPass pass, int linearEnd, int suffix)
         {
+            var parent = pass.Parent;
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var slotStart = pass.SlotStart;
+            var occupants = pass.OldOccupants;
             var oldMidEnd = oldNodes.Length - suffix;
             var newMidEnd = newNodes.Length - suffix;
-            // Patch the matched suffix in place at its OLD DOM positions (Pass 1 left the tail untouched,
-            // so oldNodes[oldMidEnd + k] is still at slotStart + oldMidEnd + k). The middle insert/remove
+            // Patch the matched suffix in place (Pass 1 left the tail untouched). The middle insert/remove
             // below then shifts these elements to their final positions via UI Toolkit's auto-shift.
             for (var k = 0; k < suffix; k++)
             {
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
-                if (ReferenceEquals(oldNodes[oi], newNodes[ni])) continue;
-                var actualElement = _patcher.ResolveWrapped(parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oi)));
-                _patcher.PatchNode(actualElement, oldNodes[oi], newNodes[ni]);
+                if (ReferenceEquals(oldNodes[oi], newNodes[ni]) && SkipsIdentical(newNodes[ni])) continue;
+                _patchWalk.PatchNode(occupants.Resolved(oi)!, oldNodes[oi], newNodes[ni]);
                 if (_ctx.IsAborted) return;
             }
 
@@ -1280,7 +1385,7 @@ namespace Velvet
                 var slots = new LogicalSlotCursor();
                 for (var i = linearEnd; i < newMidEnd; i++)
                 {
-                    slots.Insert(parent, slotStart + i, _factory.CreateElement(newNodes[i]));
+                    slots.Insert(_host, parent, slotStart + i, _factory.CreateElement(newNodes[i]));
                     if (_ctx.IsAborted) return;
                 }
             }
@@ -1288,18 +1393,21 @@ namespace Velvet
             {
                 // New middle empty → pure remove of old[linearEnd, oldMidEnd). Reverse so each removal
                 // leaves the not-yet-removed indices intact.
-                var cursor = new DescendingSlotCursor();
                 for (var i = oldMidEnd - 1; i >= linearEnd; i--)
                 {
-                    _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
+                    _host.Remove(parent, occupants.Occupant(i)!, occupants.PhysicalAtEntry(i));
                     if (_ctx.IsAborted) return;
                 }
             }
         }
 
-        private void ReconcileKeyedRemainder(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            List<ChildKey>? oldKeys, int slotStart, int linearEnd)
+        private void ReconcileKeyedRemainder(in KeyedSyncPass pass, int linearEnd)
         {
+            var parent = pass.Parent;
+            var oldNodes = pass.OldNodes;
+            var newNodes = pass.NewNodes;
+            var oldKeys = pass.OldKeys;
+            var slotStart = pass.SlotStart;
             var pool = _ctx.BufferPool;
             var oldKeyMap = pool.RentOldKeyMap();
             var usedKeys = pool.RentKeySet();
@@ -1311,6 +1419,7 @@ namespace Velvet
                 UsedKeys = usedKeys,
                 ReplacedKeys = replacedKeys,
                 NewElements = newElements,
+                OldOccupants = pass.OldOccupants,
             };
             // Records indices of old elements overwritten by a duplicate key.
             // Normally empty; only used when a duplicate-key warning is triggered.
@@ -1329,21 +1438,21 @@ namespace Velvet
                     ReconcileKeying.RegisterOldKey(OldKey(oldKeys, oldNodes, i), oldNodes[i], i, oldKeyMap, orphanedOldIndices);
                 }
 
+                var slots = new LogicalSlotCursor();
                 for (var i = linearEnd; i < newNodes.Length; i++)
                 {
                     if (_ctx.IsAborted) return;
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                    if (ProcessKeyedNode(in slot, newNodes[i], in tables)) return;
+                    if (ProcessKeyedNode(in slot, newNodes[i], in tables, ref slots)) return;
                 }
 
                 // Reverse walk so each RemoveElement leaves not-yet-visited indices intact. An
                 // unkeyed node's key is its full sibling index i, the same value the build loop used.
-                var removeCursor = new DescendingSlotCursor();
                 for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
                 {
                     if (ShouldRemoveOldKeyedEntry(OldKey(oldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                     {
-                        _cleaner.RemoveElement(parent, removeCursor.ToPhysical(parent, slotStart + i));
+                        _host.Remove(parent, pass.OldOccupants.Occupant(i)!, pass.OldOccupants.PhysicalAtEntry(i));
                     }
                 }
 
@@ -1456,6 +1565,11 @@ namespace Velvet
             {
                 return;
             }
+            if (state.OldOccupants == null && state.Parent != null)
+            {
+                state.OldOccupants = _ctx.BufferPool.RentOldSlotOccupants();
+                state.OldOccupants.Defer(state.Parent, state.SlotStart, state.OldNodes.Length, state.SlotLimit, _patcher);
+            }
 
             if (frameBudgetMs > 0)
             {
@@ -1501,6 +1615,7 @@ namespace Velvet
             var newNodes = state.NewNodes!;
             var slotStart = state.SlotStart;
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
+            var slots = new LogicalSlotCursor();
 
             for (var i = state.ResumeIndex; i < commonLength; i++)
             {
@@ -1512,11 +1627,11 @@ namespace Velvet
                 {
                     break;
                 }
-                if (!ReferenceEquals(oldNodes[i], newNodes[i]))
+                if (!ReferenceEquals(oldNodes[i], newNodes[i]) || !SkipsIdentical(newNodes[i]))
                 {
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                            slotExists: true))
+                            slotExists: true, state.OldOccupants!, ref slots))
                     {
                         state.Phase = KeyedReconcilePhase.Done;
                         return true;
@@ -1567,7 +1682,7 @@ namespace Velvet
                 var newElement = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
                 if (AbortIfCanceled(state)) return true;
-                slots.Insert(parent, slotStart + i, newElement);
+                slots.Insert(_host, parent, slotStart + i, newElement);
 
                 var next = i + 1;
                 if (next < newNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
@@ -1579,14 +1694,12 @@ namespace Velvet
         private bool Pass1TailRemove(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;
-            var slotStart = state.SlotStart;
 
-            var cursor = new DescendingSlotCursor();
             for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
             {
                 if (AbortIfCanceled(state)) return true;
 
-                _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
+                _host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));
 
                 var next = i - 1;
                 if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
@@ -1634,8 +1747,10 @@ namespace Velvet
                 UsedKeys = usedKeys,
                 ReplacedKeys = replacedKeys,
                 NewElements = newElements,
+                OldOccupants = state.OldOccupants!,
             };
             var slotStart = state.SlotStart;
+            var slots = new LogicalSlotCursor();
 
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
             {
@@ -1645,7 +1760,7 @@ namespace Velvet
                 // time-sliced loop owns the state.Phase = Done transition (what AbortIfCanceled does for the
                 // loop-boundary checks).
                 var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                if (ProcessKeyedNode(in slot, newNodes[i], in tables))
+                if (ProcessKeyedNode(in slot, newNodes[i], in tables, ref slots))
                 {
                     state.Phase = KeyedReconcilePhase.Done;
                     return true;
@@ -1671,16 +1786,14 @@ namespace Velvet
             var orphanedOldIndices = state.OrphanedOldIndices!;
             var usedKeys = state.UsedKeys!;
             var replacedKeys = state.ReplacedKeys!;
-            var slotStart = state.SlotStart;
 
-            var cursor = new DescendingSlotCursor();
             for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
             {
                 if (AbortIfCanceled(state)) return true;
 
                 if (ShouldRemoveOldKeyedEntry(OldKey(state.OldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                 {
-                    _cleaner.RemoveElement(parent, cursor.ToPhysical(parent, slotStart + i));
+                    _host.Remove(parent, state.OldOccupants!.Occupant(i)!, state.OldOccupants.PhysicalAtEntry(i));
                 }
 
                 var next = i - 1;
@@ -1800,6 +1913,7 @@ namespace Velvet
             if (state.NewElements != null) { pool.Return(state.NewElements); state.NewElements = null; }
             if (state.OrphanedOldIndices != null) { pool.ReturnOrphanedIndexSet(state.OrphanedOldIndices); state.OrphanedOldIndices = null; }
             if (state.LisIndices != null) { pool.ReturnIntSet(state.LisIndices); state.LisIndices = null; }
+            if (state.OldOccupants != null) { pool.ReturnOldSlotOccupants(state.OldOccupants); state.OldOccupants = null; }
         }
 
         #endregion
@@ -1825,6 +1939,7 @@ namespace Velvet
             // Precondition: ReconcileKeyedFrom initialized _stopwatch when frameBudgetMs > 0.
             // The early return above ensures we only reach this point with frameBudgetMs > 0, so it is non-null.
             if (_stopwatch!.Elapsed.TotalMilliseconds <= frameBudgetMs) return false;
+            state.OldOccupants?.EnsureResolved();
             state.ResumeIndex = nextResumeIndex;
             PendingKeyedState = state;
             _stopwatch.Stop();
@@ -1853,17 +1968,21 @@ namespace Velvet
         // guaranteed because a same-key replacement (Pass 1 CanPatch=false) remove+inserts at the same index,
         // and a Pass-2 CanPatch=false routes through replacedKeys + CreateElement rather than patching the
         // stale element as the new type. Both the synchronous and time-sliced keyed paths gate on this.
-        private static void AssertDomIndexInvariant(int slotStart, int oldIndex, VisualElement parent)
+        // The bound asks whether a rendered child holds the slot, so an invisible child cannot loosen it and mask a real
+        // Pass-1 ordering violation. It is asked of the caller's cursor, which walks from the slot the row before asked:
+        // a LogicalChildSlots.Count of its own walked the whole child list twice for each row matched to an old key in
+        // the editor, since Debug.Assert's message was built before the bound was read. Conditional as Debug.Assert is,
+        // so a player build compiles the call out with the walk.
+        [Conditional("UNITY_ASSERTIONS")]
+        private static void AssertDomIndexInvariant(ref LogicalSlotCursor slots, int slotStart, int oldIndex, VisualElement parent)
         {
-            // The logical count, not a physical one, so an invisible child cannot loosen the bound and mask a
-            // real Pass-1 ordering violation. Computed INSIDE the Debug.Assert arguments rather than into a
-            // local: Debug.Assert is [Conditional("UNITY_ASSERTIONS")], so the whole O(childCount) walk is
-            // compiled out of a player build along with the call. A local would have run in every build.
-            UnityEngine.Debug.Assert(
-                slotStart + oldIndex < LogicalChildSlots.Count(parent),
-                $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
-                + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
-                + "Pass 1 may have modified parent's child order.");
+            if (!slots.TryGetPhysical(parent, slotStart + oldIndex, out _))
+            {
+                UnityEngine.Debug.LogAssertion(
+                    $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
+                    + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
+                    + "Pass 1 may have modified parent's child order.");
+            }
         }
 
         // Processes one new-side keyed node: matches it against oldKeyMap and patches the existing element in
@@ -1874,10 +1993,11 @@ namespace Velvet
         // its own abort-handling and TryYield scaffolding around this call.
         // NOT folded into PatchOrReplaceAtSlot despite the same CanPatch gate: Pass 2 defers old-element
         // removal (recorded in replacedKeys, actually removed by a later reverse pass) instead of removing
-        // eagerly, appends to a newElements list instead of inserting at a live DOM index, and re-fetches
-        // the patched element to observe a WrapElement swap — three real differences in shape, not just
+        // eagerly, appends to a newElements list instead of inserting at a live DOM index, and records what
+        // the patch left at the slot — three real differences in shape, not just
         // naming, so forcing this through the same helper would need as many bool flags as it has callers.
-        private bool ProcessKeyedNode(in ChildSlot slot, VNode? newNode, in KeyedPassTables tables)
+        private bool ProcessKeyedNode(in ChildSlot slot, VNode? newNode, in KeyedPassTables tables,
+            ref LogicalSlotCursor slots)
         {
             var parent = slot.Parent;
             var slotStart = slot.SlotStart;
@@ -1899,21 +2019,18 @@ namespace Velvet
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     return false;
                 }
-                AssertDomIndexInvariant(slotStart, old.index, parent);
-                var existingDomElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
+                AssertDomIndexInvariant(ref slots, slotStart, old.index, parent);
+                var occupants = tables.OldOccupants;
+                var existingDomElement = occupants.Occupant(old.index)!;
 
                 if (ReconcileKeying.CanPatch(old.node, newNode))
                 {
-                    // Reference-identical VNodes are diff-free; reuse the existing element without patching.
-                    // A same-instance node cannot trigger a WrapElement swap, so no re-fetch is needed.
-                    if (!ReferenceEquals(old.node, newNode))
+                    // Reference-identical VNodes are diff-free; where SkipsIdentical allows, reuse the existing
+                    // element without patching.
+                    if (!ReferenceEquals(old.node, newNode) || !SkipsIdentical(newNode))
                     {
-                        var actualElement = _patcher.ResolveWrapped(existingDomElement);
-                        _patcher.PatchNode(actualElement, old.node, newNode);
+                        existingDomElement = _patchWalk.PatchNode(occupants.Resolved(old.index)!, old.node, newNode);
                         if (_ctx.IsAborted) return true;
-                        // Re-fetch after PatchNode: a WrapElement wrapper swap may change the DOM element
-                        // reference at this index.
-                        existingDomElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
                     }
                     newElements.Add((existingDomElement, true));
                 }

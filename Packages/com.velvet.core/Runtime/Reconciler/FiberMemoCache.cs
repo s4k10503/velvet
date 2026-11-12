@@ -24,7 +24,7 @@ namespace Velvet
 
         private readonly Dictionary<(MemoPosition Position, VisualElement? Container), Entry> _cache = new();
 
-        // FiberContextSpine looks a committed Memo up here rather than by the key above: its descent restarts at
+        // FiberContextSpine looks a Memo up here rather than by the key above: its descent restarts at
         // every host container without naming one, so it cannot supply the Container member. A position holds
         // an entry for each container its component writes a memo into there.
         private readonly Dictionary<MemoPosition, List<Entry>> _entriesByPosition = new();

@@ -72,16 +72,6 @@ namespace Velvet.CodeGen
             return null;
         }
 
-        public bool RangeReads(int first, int last, HashSet<string> keys)
-        {
-            for (var i = first; i <= last; i++)
-            {
-                var read = ReadKey(i);
-                if (read != null && keys.Contains(read)) return true;
-            }
-            return false;
-        }
-
         public CompilerWeaver.CallKind KindAt(int index)
         {
             var instruction = _flow.Instructions[index];
@@ -137,9 +127,15 @@ namespace Velvet.CodeGen
         private static bool IsConstantStatic(FieldReference field)
         {
             var definition = ScopeResolution.Field(field);
-            if (definition == null) return false;
+            return definition != null && (definition.IsInitOnly || IsDelegateCache(definition));
+        }
+
+        // A field the C# compiler declares to hold the one delegate it builds, on first use, for a lambda that
+        // captures nothing (`<>c`, `<>9__`) or for a static method group (`<>O`): every write stores an equal value.
+        internal static bool IsDelegateCache(FieldDefinition definition)
+        {
             var holder = definition.DeclaringType.Name;
-            return definition.IsInitOnly || holder == "<>c" || definition.Name.StartsWith("<>9__", System.StringComparison.Ordinal);
+            return holder == "<>c" || holder == "<>O" || definition.Name.StartsWith("<>9__", System.StringComparison.Ordinal);
         }
 
         private bool Propagate(int index)

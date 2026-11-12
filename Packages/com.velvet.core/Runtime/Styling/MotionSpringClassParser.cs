@@ -621,6 +621,7 @@ namespace Velvet
                 var xLayer = _both.Key > _x.Key ? _both : _x;
                 var yLayer = _both.Key > _y.Key ? _both : _y;
                 var reading = new ScaleReading { PerAxis = PerAxis, Rejected = Rejected };
+                // MUTANT_SURVIVES(unreachable, boundary): _bracket is set only from an inline scale-[…] layer, keyed at AxisScaleRank or above, so its key is -1 or far above 0 and never 0.
                 if (_bracket.Key >= 0 && (xLayer.Key < 0 || _bracket.Key >= xLayer.Key)
                     && (yLayer.Key < 0 || _bracket.Key >= yLayer.Key))
                 {
@@ -631,6 +632,7 @@ namespace Velvet
                 var yHolder = yLayer.Key >= 0 ? yLayer : _sheet;
                 reading.X = xHolder.Key >= 0 ? xHolder.Value : 1f;
                 reading.Y = yHolder.Key >= 0 ? yHolder.Value : 1f;
+                // MUTANT_SURVIVES(unreachable, boundary): a holder is an inline axis layer, keyed at AxisScaleRank or above, or the sheet holder, keyed by a scale utility's cascade position, and position 0 is bg-amber-50's, which writes no scale; so no key is 0.
                 reading.Swapped = (xHolder.Key >= 0 && xHolder.Swapped) || (yHolder.Key >= 0 && yHolder.Swapped);
                 return reading;
             }

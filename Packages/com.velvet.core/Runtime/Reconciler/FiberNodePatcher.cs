@@ -30,8 +30,8 @@ namespace Velvet
         }
 
         // The className-driven effect appliers (skew/gradient/motion/shadow/ring/clip-path/gesture).
-        // Exposed so the node factory can run the create-time appliers; PatchElement/PatchMotion call
-        // the patch-time ones directly through _appliers.
+        // Exposed so the node factory can run the create-time appliers; the patch halves call the patch-time
+        // ones directly through _appliers.
         internal FiberWrapperElementAppliers Appliers => _appliers;
 
         internal void SetHost(IReconcilerHost host)
@@ -47,27 +47,89 @@ namespace Velvet
 
         #region Node Patching
 
-        // Applies the oldNode → newNode diff to the existing DOM element element.
-        // Contract (important):
-        // PatchNode must not modify the childCount or child order of element's
-        // parent. Reconciling the child container (children of element itself) is not subject
-        // to this constraint, but removing/inserting the element from its parent is forbidden.
-        // Violating this contract breaks the old.index == DOM index invariant in
-        // ChildReconciler.ReconcileKeyed Pass 2, causing the wrong element to be patched.
-        // New VNode types must preserve this contract.
-        // Exception: the MemoNode branch in PatchNode does replace the element itself, but it preserves
-        // childCount via parent.RemoveAt + Insert.
-        internal void PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
+        internal enum SelfPatchKind : byte
         {
-            switch (oldNode)
+            Leaf,
+            Element,
+            Motion,
+            VirtualList,
+            Portal,
+            Provider,
+            Component,
+        }
+
+        // One node's patch from PatchSelfPre to PatchSelfPost: the children the walk reconciles between the two,
+        // what the walk opens around them, and what the second half reads of the first.
+        internal struct SelfPatch
+        {
+            internal SelfPatch(VisualElement element, VNode? oldNode, VNode? newNode)
             {
-                case ElementNode oldElem when newNode is ElementNode newElem:
+                this = default;
+                Element = element;
+                OldNode = oldNode;
+                NewNode = newNode;
+                OldChildren = Array.Empty<VNode>();
+                NewChildren = Array.Empty<VNode>();
+            }
+
+            internal VisualElement Element { get; }
+            internal VNode? OldNode { get; }
+            internal VNode? NewNode { get; }
+            internal SelfPatchKind Kind;
+            // The element a z-layer slot stands for, and the element whose own classes and props are written.
+            internal VisualElement Slot;
+            internal VisualElement Self;
+            internal VisualElement? Container;
+            internal VNode?[] OldChildren;
+            internal VNode?[] NewChildren;
+            internal int SlotStart;
+            internal bool HostsChildVariant;
+            internal MotionSelfPatch Motion;
+            internal PortalSelfPatch Portal;
+            internal FiberVirtualListController? VirtualList;
+        }
+
+        internal struct MotionSelfPatch
+        {
+            internal string[] AppliedOld;
+            internal string[] AppliedNew;
+            internal string[] OldVariantClasses;
+            internal string[] NewVariantClasses;
+            internal StyleTransitionConfig? PlayedTransition;
+            internal Action? OnSwap;
+            internal float ExtraDelaySec;
+            internal float ClaimWaitSec;
+            internal MotionPlayback? Playback;
+            internal MotionOrchestrationFrame? Ambient;
+            internal MotionOrchestrationFrame? ChildOrchestration;
+            internal string? ChildLabel;
+            internal string? InitialLabel;
+        }
+
+        internal struct PortalSelfPatch
+        {
+            internal ComponentFiber? DeclaringFiber;
+            internal HashSet<ComponentFiber>? ChildFibersBefore;
+            internal PortalSlotInfo PrevState;
+            internal int BeforeTailCount;
+            internal InlineTenancy? Tenancy;
+            internal int ShiftedBefore;
+            internal VNode?[]? StampedChildren;
+        }
+
+        // The half of the oldNode → newNode diff that runs before the node's children are reconciled.
+        internal void PatchSelfPre(ref SelfPatch patch)
+        {
+            var element = patch.Element;
+            switch (patch.OldNode)
+            {
+                case ElementNode oldElem when patch.NewNode is ElementNode newElem:
                     // A relocated slot holds a PLACEHOLDER (FiberZLayerCoordinator), and whether a slot is
                     // relocated depends on the element's siblings as well as its own classes, so the patch
                     // always reads the slot through the registry rather than deciding from either class list.
-                    PatchZLayerElement(element, oldElem, newElem);
+                    PatchZLayerElementPre(ref patch, oldElem, newElem);
                     break;
-                case TextNode oldText when newNode is TextNode newText:
+                case TextNode oldText when patch.NewNode is TextNode newText:
                     // Invariant: TextNode is always mapped to Label by CreateElement.
                     // Assert (rather than silently ignore) if `element is Label` does not hold.
                     UnityEngine.Debug.Assert(
@@ -78,31 +140,24 @@ namespace Velvet
                         PatchText(label, oldText, newText);
                     }
                     break;
-                case MotionNode oldMotion when newNode is MotionNode newMotion:
-                    PatchMotionSlot(element, oldMotion, newMotion);
+                case MotionNode oldMotion when patch.NewNode is MotionNode newMotion:
+                    PatchMotionSlotPre(ref patch, oldMotion, newMotion);
                     break;
                 // AnimatePresence is DOM-less (inline-expanded by ChildReconciler), so it is never a
                 // patchable leaf — no case here.
-                case VirtualListNode oldVirtualList when newNode is VirtualListNode newVirtualList:
-                {
+                case VirtualListNode when patch.NewNode is VirtualListNode:
                     if (element is ScrollView scrollView && _ctx.VirtualListControllers.TryGetValue(scrollView, out var controller))
                     {
-                        controller.Update(newVirtualList);
-                        RebindEvents(scrollView, newVirtualList.Events);
-
-                        // The ScrollView persists across patches, so re-sync its class-driven styling the
-                        // same way ElementNode does. DiffClassList (inside the helper) is non-destructive —
-                        // delta only, never ClearClassList — so the ScrollView's built-in USS classes survive.
-                        SyncClassDrivenStyling(scrollView, oldVirtualList.ClassNames, newVirtualList.ClassNames);
+                        patch.Kind = SelfPatchKind.VirtualList;
+                        patch.VirtualList = controller;
                     }
                     else
                     {
                         FiberLogger.LogWarning("FiberNodePatcher", "Controller not found for ScrollView during patch. This should not happen.");
                     }
                     break;
-                }
                 default:
-                    PatchIndirectNode(element, oldNode, newNode);
+                    PatchIndirectPre(ref patch);
                     break;
             }
         }
@@ -110,33 +165,75 @@ namespace Velvet
         // The node kinds whose VisualElement is a placeholder (Portal / WorldSpace: the children live in
         // another panel) or a fiber anchor (Provider / Component), rather than the
         // node's own rendered surface.
-        private void PatchIndirectNode(VisualElement element, VNode? oldNode, VNode? newNode)
+        private void PatchIndirectPre(ref SelfPatch patch)
         {
-            switch (oldNode)
+            switch (patch.OldNode)
             {
-                case PortalNode oldPortal when newNode is PortalNode newPortal:
-                    PatchPortal(element, oldPortal, newPortal);
+                case PortalNode oldPortal when patch.NewNode is PortalNode newPortal:
+                    PatchPortalPre(ref patch, oldPortal, newPortal);
                     break;
-                case WorldSpaceNode oldWorldSpace when newNode is WorldSpaceNode newWorldSpace:
-                    PatchWorldSpace(element, oldWorldSpace, newWorldSpace);
+                case WorldSpaceNode oldWorldSpace when patch.NewNode is WorldSpaceNode newWorldSpace:
+                    PatchWorldSpacePre(ref patch, oldWorldSpace, newWorldSpace);
                     break;
-                case ContextProviderNode oldProvider when newNode is ContextProviderNode newProvider:
-                    PatchContextProvider(element, oldProvider, newProvider);
+                case ContextProviderNode oldProvider when patch.NewNode is ContextProviderNode newProvider:
+                    patch.Kind = SelfPatchKind.Provider;
+                    patch.Container = patch.Element;
+                    patch.OldChildren = oldProvider.Children ?? Array.Empty<VNode>();
+                    patch.NewChildren = newProvider.Children ?? Array.Empty<VNode>();
                     break;
-                case ComponentNode when newNode is ComponentNode newComp:
-                    HandleComponentMount(element, newComp);
+                case ComponentNode when patch.NewNode is ComponentNode:
+                    patch.Kind = SelfPatchKind.Component;
                     break;
             }
         }
 
-        private void PatchBaseElement(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
-            => PatchBaseElement(element, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
+        // The half of the diff that runs once the walk has reconciled the node's children. Returns what occupies the
+        // element's slot once the patch is done, which a wrapper added or removed and a z-layer relocation in either
+        // direction change; the diff names the old leaf by it from then on.
+        internal VisualElement PatchSelfPost(ref SelfPatch patch)
+        {
+            switch (patch.Kind)
+            {
+                case SelfPatchKind.Element:
+                    return SlotOccupantOf(PatchZLayerElementPost(ref patch,
+                        (ElementNode)patch.OldNode!, (ElementNode)patch.NewNode!));
+                case SelfPatchKind.Motion:
+                    return SlotOccupantOf(PatchMotionSlotPost(ref patch,
+                        (MotionNode)patch.OldNode!, (MotionNode)patch.NewNode!));
+                case SelfPatchKind.VirtualList:
+                {
+                    var scrollView = (ScrollView)patch.Element;
+                    var oldVirtualList = (VirtualListNode)patch.OldNode!;
+                    var newVirtualList = (VirtualListNode)patch.NewNode!;
+                    RebindEvents(scrollView, newVirtualList.Events);
+
+                    // The ScrollView persists across patches, so re-sync its class-driven styling the
+                    // same way ElementNode does. DiffClassList (inside the helper) is non-destructive —
+                    // delta only, never ClearClassList — so the ScrollView's built-in USS classes survive.
+                    SyncClassDrivenStyling(scrollView, oldVirtualList.ClassNames, newVirtualList.ClassNames);
+                    break;
+                }
+                case SelfPatchKind.Portal:
+                    // The target's other children count as siblings too, other portals' among them.
+                    ApplyStructuralVariants(patch.Container!);
+                    break;
+                case SelfPatchKind.Provider:
+                    ApplyStructuralVariants(patch.Element);
+                    break;
+            }
+            return ResolveOuter(patch.Element);
+        }
+
+        // The placeholder standing at real's slot while real is relocated, else real.
+        private VisualElement SlotOccupantOf(VisualElement real)
+            => FiberZLayerCoordinator.PlaceholderOf(_ctx, real) ?? real;
 
         // Base-element patch using explicit APPLIED class arrays for the class-driven styling diff (the Motion
         // path passes base + ancestor-propagated variant classes here; everything else passes raw ClassNames).
-        private void PatchBaseElement(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode,
+        private void PatchBaseElement(ref SelfPatch patch, BaseElementNode oldNode, BaseElementNode newNode,
             string[] appliedOldClasses, string[] appliedNewClasses)
         {
+            var element = patch.Self;
             SyncClassDrivenStyling(element, appliedOldClasses, appliedNewClasses);
             DiffProps(element, oldNode.Props, newNode.Props);
             // Track an element's own Text prop as raw so the text-effect pass (run post-children) transforms the
@@ -186,7 +283,27 @@ namespace Velvet
             // when the class list is unchanged (SyncClassDrivenStyling re-registers the rules when the class
             // list DID change, and this runs after, so the rules exist either way).
             ApplyAttributes(element, newNode.Props);
-            PatchCommon(element, oldNode, newNode);
+            RebindEvents(element, newNode.Events);
+
+            // Sync the name to the new value, INCLUDING clearing it when the prop is removed (null / empty) — an
+            // attribute that disappears from the VNode must disappear from the element (parity with className /
+            // text / etc.). On in-place reuse (esp. positional, no key) a stale name would otherwise make a later
+            // Q("old") mis-hit the reused element. Compare against the live element.name so the set is idempotent.
+            var resolvedName = newNode.Name ?? string.Empty;
+            if (element.name != resolvedName)
+            {
+                element.name = resolvedName;
+            }
+
+            patch.Container = GetChildContainer(element);
+            patch.OldChildren = oldNode.Children ?? Array.Empty<VNode>();
+            patch.NewChildren = newNode.Children ?? Array.Empty<VNode>();
+            patch.HostsChildVariant = StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames);
+        }
+
+        private void PatchBaseElementPost(in SelfPatch patch, BaseElementNode oldNode, BaseElementNode newNode)
+        {
+            var element = patch.Self;
             if (oldNode.WhileHoverClass != newNode.WhileHoverClass || oldNode.WhileTapClass != newNode.WhileTapClass
                 || oldNode.WhileFocusClass != newNode.WhileFocusClass)
             {
@@ -200,7 +317,7 @@ namespace Velvet
         // inline font layer. Both PatchBaseElement and the VirtualList patch path call this,
         // so the full set of class-driven mechanisms lives in one place and the two paths cannot drift.
         // Gap is intentionally excluded: it is re-applied separately by the per-node patch methods
-        // (PatchElement / PatchMotion) AFTER children reconcile, so it sees the
+        // (PatchElementPost / PatchMotionPost) AFTER the walk reconciles the children, so it sees the
         // final child list. The variant work is gated on DiffClassList's own verdict of whether the
         // class list actually changed CONTENT (not merely array identity) — every variant manipulator this
         // derives from (ApplyVariantManipulators and its callees) reads ONLY the classNames array, so a
@@ -244,43 +361,52 @@ namespace Velvet
                 && _ctx.VariantGateClasses.TryGetValue(element, out var state)
                 && state.Composes;
 
-        private void PatchElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
+        private void PatchElementPost(in SelfPatch patch, ElementNode oldNode, ElementNode newNode)
         {
-            PatchBaseElement(element, oldNode, newNode);
+            var element = patch.Self;
+            PatchBaseElementPost(patch, oldNode, newNode);
             DiffStyles(element, oldNode.Styles, newNode.Styles);
             // clip-path decides a structural WRAPPER, which is parent surgery, so only a reconcile pass may
             // run it — hence its place here rather than inside the shared, re-runnable pass sequence. It runs
             // BEFORE the shadow paint: a clip clips the box-shadow too (CSS), so the shadow reads this verdict
             // (clipActive) and suppresses the paint while a clip is active.
             var clipActive = _appliers.ApplyClipPathOnPatch(element, newNode.ClassNames);
-            // The shared post-children passes run after PatchCommon (which reconciles children) AND
-            // DiffStyles — keeping gap after DiffStyles preserves the ordering invariant that the
-            // manipulator's container-margin writes are never clobbered by a later inline-style diff on
-            // the same element. (No StyleOverrides member writes a margin today, but the invariant must
-            // hold if one is ever added.)
+            // The shared post-children passes run after the children are reconciled AND DiffStyles — keeping
+            // gap after DiffStyles preserves the ordering invariant that the manipulator's container-margin
+            // writes are never clobbered by a later inline-style diff on the same element. (No StyleOverrides
+            // member writes a margin today, but the invariant must hold if one is ever added.)
             _ctx.ExpectPlayGates(element, null);
             ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames, clipActive);
         }
 
         // Patches the element a slot stands for — the slot's element itself, or the real element its placeholder
         // stands for — and hands the result to FiberZLayerCoordinator, which relocates it or returns it to its slot
-        // when its own z or flex order says so. Contract-preserving, exactly like PatchElement: the net effect on
-        // the slot's parent's logical children is zero — a placeholder inserted at the element's physical index
-        // with the element turned invisible, or the two exchanged by a sort — so ProcessKeyedNode / CommitLeaf's
-        // post-patch re-fetch at the same slot picks up the new occupant without any change to those call sites.
-        private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
+        // when its own z or flex order says so. Contract-preserving, exactly like an ElementNode's own patch: the net
+        // effect on the slot's parent's logical children is zero — a placeholder inserted at the element's physical
+        // index with the element turned invisible, or the two exchanged by a sort — so what PatchSelfPost returns for
+        // it is what holds the slot.
+        private void PatchZLayerElementPre(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
         {
-            var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
-            var classElement = _wrappers.ResolveWrapped(slot);
-            PatchElement(classElement, oldNode, newNode);
-            var real = OuterOfPatched(slot, element, classElement);
+            var element = patch.Element;
+            patch.Kind = SelfPatchKind.Element;
+            patch.Slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
+            patch.Self = _wrappers.ResolveWrapped(patch.Slot);
+            PatchBaseElement(ref patch, oldNode, newNode, oldNode.ClassNames, newNode.ClassNames);
+        }
+
+        private VisualElement PatchZLayerElementPost(ref SelfPatch patch, ElementNode oldNode, ElementNode newNode)
+        {
+            var classElement = patch.Self;
+            PatchElementPost(patch, oldNode, newNode);
+            var real = OuterOfPatched(patch.Slot, patch.Element, classElement);
             var resolved = ResolveGateClasses(classElement, newNode.ClassNames);
             if (NoteHeldZ(classElement, resolved))
             {
-                return;
+                return real;
             }
             FiberZLayerCoordinator.OnPatched(_ctx, real, classElement, newNode.ClassNames, resolved,
                 newNode.Props?.Anchored != null);
+            return real;
         }
 
         // The element occupying the slot after a patch, which a clip-path wrapper added or removed by that patch
@@ -295,21 +421,31 @@ namespace Velvet
             return outer;
         }
 
-        // PatchZLayerElement's Motion counterpart. A Motion's applied classes depend on the label its patch
-        // resolves, so the new side is read once the patch ran.
-        private void PatchMotionSlot(VisualElement element, MotionNode oldNode, MotionNode newNode)
+        // PatchZLayerElementPre's Motion counterpart.
+        private void PatchMotionSlotPre(ref SelfPatch patch, MotionNode oldNode, MotionNode newNode)
         {
-            var slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
-            var motion = _wrappers.ResolveWrapped(slot);
-            PatchMotion(motion, oldNode, newNode);
+            var element = patch.Element;
+            patch.Kind = SelfPatchKind.Motion;
+            patch.Slot = _ctx.ZLayerPlaceholders.TryGetValue(element, out var placed) ? placed : element;
+            patch.Self = _wrappers.ResolveWrapped(patch.Slot);
+            PatchMotionPre(ref patch, oldNode, newNode);
+        }
+
+        // PatchZLayerElementPost's Motion counterpart. A Motion's applied classes depend on the label its patch
+        // resolves, so the new side is read once the patch ran.
+        private VisualElement PatchMotionSlotPost(ref SelfPatch patch, MotionNode oldNode, MotionNode newNode)
+        {
+            var motion = patch.Self;
+            PatchMotionPost(patch, oldNode, newNode);
             var applied = RestingClassSet(motion, newNode.ClassNames).Merged;
-            var real = OuterOfPatched(slot, element, motion);
+            var real = OuterOfPatched(patch.Slot, patch.Element, motion);
             var resolved = ResolveGateClasses(motion, applied);
             if (NoteHeldZ(motion, resolved))
             {
-                return;
+                return real;
             }
             FiberZLayerCoordinator.OnPatched(_ctx, real, motion, applied, resolved, newNode.Props?.Anchored != null);
+            return real;
         }
 
         // Whether a Motion play holds classElement's stack position, in which case the z this patch resolved is left
@@ -331,15 +467,15 @@ namespace Velvet
         internal string[] ResolveStackingClasses(VisualElement element, string[] classNames)
             => ResolveGateClasses(element, classNames);
 
-        // The ordered post-children effect-pass sequence shared by PatchElement and PatchMotion, kept in
+        // The ordered post-children effect-pass sequence shared by PatchElementPost and PatchMotionPost, kept in
         // one place so the two patch paths cannot drift (a pass added here reaches both). The ORDER is
         // load-bearing:
         // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
         //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
-        //   AFTER PatchCommon so it sees the final child set.
+        //   AFTER the children's reconcile so it sees the final child set.
         // - The layout manipulators (gap, divide and grid, with the pointer-events scope —
         //   ApplyResolvedLayoutManipulators owns the order among them) run next but still
-        //   AFTER PatchCommon (which reconciles children) so gap's margin writes are the final word on the
+        //   AFTER the children's reconcile so gap's margin writes are the final word on the
         //   element — the wrap path writes the container's OWN margins (-gap/2) — and so they re-apply
         //   against the current child set (a child add / remove re-spaces even when the className did not
         //   change).
@@ -457,49 +593,6 @@ namespace Velvet
             }
         }
 
-        // Shared logic for PatchElement / PatchMotion: rebind events, update name, recurse into
-        // children Reconcile, and replace the callback ref's cleanup → setup pair.
-        private void PatchCommon(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
-        {
-            RebindEvents(element, newNode.Events);
-
-            // Sync the name to the new value, INCLUDING clearing it when the prop is removed (null / empty) — an
-            // attribute that disappears from the VNode must disappear from the element (parity with className /
-            // text / etc.). On in-place reuse (esp. positional, no key) a stale name would otherwise make a later
-            // Q("old") mis-hit the reused element. Compare against the live element.name so the set is idempotent.
-            var resolvedName = newNode.Name ?? string.Empty;
-            if (element.name != resolvedName)
-            {
-                element.name = resolvedName;
-            }
-
-            var childContainer = GetChildContainer(element);
-            // BaseElementNode children are inline-expanded by both the initial CreateElement chain
-            // (which routes through ReconcileChildren) and this patch path. Keeping both passes on
-            // the same expansion strategy means ComponentNode siblings under an ElementNode appear
-            // as direct VE children — never wrapped in the container the wrapper-mount path uses, which
-            // would put an element between this container and each Component's output.
-            FiberCommitWork.OpenOwnRows(_ctx, childContainer);
-            int? rowsBehindRanges;
-            using var host = _ctx.OpenChildVariantHost(StyleChildVariantClass.HasChildVariantClass(newNode.ClassNames));
-            try
-            {
-                _host.ReconcileChildren(childContainer,
-                    oldNode.Children ?? Array.Empty<VNode>(),
-                    newNode.Children ?? Array.Empty<VNode>());
-            }
-            finally
-            {
-                rowsBehindRanges = FiberCommitWork.PopOwnRows(_ctx, childContainer);
-            }
-            if (rowsBehindRanges != null)
-            {
-                FiberCommitWork.FollowOwnRows(_ctx, childContainer, rowsBehindRanges.Value);
-            }
-
-            _ctx.SyncRefCallback(element, newNode.RefCallback);
-        }
-
         // Draws a rotated layoutId Motion inside another through a correction wrapper, and takes the wrapper off
         // again once it no longer is one. The Motion's layout and projection are read through the box its parent
         // lays out (MotionLayoutIdDriver.Box), so the swap hands them to the driver first.
@@ -518,17 +611,10 @@ namespace Velvet
             else _appliers.UnwrapLayoutIdCorrectionInPlace(element);
         }
 
-        private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
+        private void PatchMotionPre(ref SelfPatch patch, MotionNode oldNode, MotionNode newNode)
         {
+            var element = patch.Self;
             _ctx.MotionNodes[element] = newNode;
-            // Mirror the create path's anchor-element recording: a presence keyed child that REUSES its
-            // element (a ghost's old-side reproduction, a cancelled exit's re-entry) reaches its Motion
-            // through this patch, and the expansion still needs the Motion's own element to dispatch
-            // variant enter/exit against.
-            if (ReferenceEquals(newNode, _ctx.PresenceAnchorMotion))
-            {
-                _ctx.PresenceAnchorMotionElement = element;
-            }
             // Effective label = own Animate, else the inherited MotionContext label (read BEFORE we push this
             // node's label for its own children).
             var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
@@ -628,30 +714,46 @@ namespace Velvet
                 }
             }
 
-            var childOrchestration = ReconcileUnderMotion(
-                new MotionChildScope
-                {
-                    Node = newNode, Element = element, ChildLabel = childLabel,
-                    InitialLabel = MotionVariantResolver.InitialLabel(newNode,
-                        _ctx.ComponentContextStack.Get(MotionContext.InitialLabel)),
-                    Playback = playback, Transition = swapTransition, Resolved = childLabelChanged,
-                    Ambient = ambientOrchestration, DelaySec = extraDelaySec, WaitSec = claimWaitSec,
-                    From = oldVariantClasses, To = newVariantClasses,
-                },
-                (patcher: this, element, oldNode, newNode, syncOld, syncNew),
-                static s =>
-                {
-                    using var inside = new LayoutIdMotionScope(s.patcher._ctx, s.newNode.LayoutId != null);
-                    s.patcher.PatchBaseElement(s.element, s.oldNode, s.newNode, s.syncOld, s.syncNew);
-                });
+            var initialLabel = MotionVariantResolver.InitialLabel(newNode,
+                _ctx.ComponentContextStack.Get(MotionContext.InitialLabel));
+            // Resolved ahead of PatchBaseElement's class sync, which writes the class list the frame's span reads
+            // (MotionSlotContext.CarriesTarget).
+            var childOrchestration = childLabel != null
+                ? ResolveChildOrchestration(newNode, swapTransition, childLabelChanged, ambientOrchestration,
+                    extraDelaySec, oldVariantClasses, newVariantClasses, element, _ctx.StyleAnimationScheduler,
+                    claimWaitSec)
+                : null;
+            patch.Motion = new MotionSelfPatch
+            {
+                AppliedOld = appliedOld, AppliedNew = appliedNew,
+                OldVariantClasses = oldVariantClasses, NewVariantClasses = newVariantClasses,
+                PlayedTransition = playedTransition, OnSwap = onSwap,
+                ExtraDelaySec = extraDelaySec, ClaimWaitSec = claimWaitSec, Playback = playback,
+                Ambient = ambientOrchestration, ChildOrchestration = childOrchestration,
+                ChildLabel = childLabel, InitialLabel = initialLabel,
+            };
+            PatchBaseElement(ref patch, oldNode, newNode, syncOld, syncNew);
+        }
+
+        private void PatchMotionPost(in SelfPatch patch, MotionNode oldNode, MotionNode newNode)
+        {
+            var element = patch.Self;
+            var motion = patch.Motion;
+            var appliedOld = motion.AppliedOld;
+            var appliedNew = motion.AppliedNew;
+            var oldVariantClasses = motion.OldVariantClasses;
+            var newVariantClasses = motion.NewVariantClasses;
+            var playedTransition = motion.PlayedTransition;
+            var extraDelaySec = motion.ExtraDelaySec;
+            PatchBaseElementPost(patch, oldNode, newNode);
 
             // An AfterChildren Motion starts its swap when the plays below it have ended, which the children's
             // patches above have reported by now.
-            var playDelaySec = MotionOrchestrationWait.PlayStartSec(childOrchestration, extraDelaySec);
-            ReportPlayEnd(element, newNode, ambientOrchestration, childOrchestration, playedTransition, playDelaySec,
+            var playDelaySec = MotionOrchestrationWait.PlayStartSec(motion.ChildOrchestration, extraDelaySec);
+            ReportPlayEnd(element, newNode, motion.Ambient, motion.ChildOrchestration, playedTransition, playDelaySec,
                 oldVariantClasses, newVariantClasses);
 
-            // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
+            // Runtime variant swap: PatchBaseElement already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
             // holds for the swap to write. When the effective label actually changed WHICH
             // variant classes are applied, replay that same swap on the scheduler on the destination pose's
@@ -666,7 +768,7 @@ namespace Velvet
             // (the precondition above) while it carries Variants of its own — the shape whose enter/exit
             // GeneralPathReconciler dispatches explicitly against this very element (isVariantMotion; a
             // wrapped anchor Motion's dispatch also lands here, on the Motion's own element, not on its
-            // wrapper) — and that explicit dispatch either runs on a fresh CREATE (never reaches PatchMotion)
+            // wrapper) — and that explicit dispatch either runs on a fresh CREATE (never reaches a patch)
             // or, for a still-exiting / cancelled-exit reproduction, plays no competing animation of its own
             // (CancelExit's reversal, or no-op) — so the one real overlap is a GHOST re-patched on a LATER
             // render while still exiting (skipping the ghost dispatch's own CancelEnter, which only runs the
@@ -679,15 +781,15 @@ namespace Velvet
                 if (playedTransition != null)
                 {
                     _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
-                        playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: onSwap,
-                        appliedClasses: appliedNew, playback: playback,
-                        waitSec: claimWaitSec + playDelaySec - extraDelaySec);
+                        playedTransition, onComplete: null, additionalDelaySec: playDelaySec, onSwap: motion.OnSwap,
+                        appliedClasses: appliedNew, playback: motion.Playback,
+                        waitSec: motion.ClaimWaitSec + playDelaySec - extraDelaySec);
                 }
                 RemoveStaleInlineTokens(element, playedTransition, extraDelaySec, oldVariantClasses,
                     new MotionAppliedClassSet(appliedNew, newVariantClasses));
 
-                // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
-                // children) directly. A clip wrapper, where the classes call for one, suppresses the paints a clip clips.
+                // MotionNode has no Styles diff, so the shared passes follow the children's reconcile directly. A
+                // clip wrapper, where the classes call for one, suppresses the paints a clip clips.
                 var clipActive = _appliers.ApplyClipPathOnPatch(element, appliedNew);
                 _ctx.ExpectPlayGates(element, newNode);
                 ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, clipActive);
@@ -987,7 +1089,7 @@ namespace Velvet
 
         // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children, the way Framer
         // Motion orchestrates each variant node's own variant children rather than every descendant.
-        // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotion),
+        // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotionPre),
         // so a pose that carries its own transition orchestrates from the span it actually takes:
         // - A FRESH frame when this node's propagated label just changed AND swapTransition declares
         //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence.
@@ -1067,33 +1169,42 @@ namespace Velvet
         // Runs body, which reconciles a Motion's children, under the labels and the orchestration the Motion hands
         // them, and returns the frame its inheriting children claimed from. A Motion that plays no mount enter
         // withholds the enters of the Motions below it as well. The body is a static lambda over a value state so
-        // that neither caller allocates a closure.
+        // that the create path allocates no closure; a patch opens the same scope from the walk
+        // (EnterMotionChildren), around children whose frame its first half resolved.
         internal MotionOrchestrationFrame? ReconcileUnderMotion<TState>(in MotionChildScope scope, TState state,
             Action<TState> body)
         {
-            MotionOrchestrationFrame? childOrchestration = null;
-            var withholdsEnters = !scope.Node.EnterOnMount;
-            var pushedLabel = false;
+            var childOrchestration = scope.ChildLabel != null
+                ? ResolveChildOrchestration(scope.Node, scope.Transition, scope.Resolved, scope.Ambient, scope.DelaySec,
+                    scope.From, scope.To, scope.Element, _ctx.StyleAnimationScheduler, scope.WaitSec)
+                : null;
+            EnterMotionChildren(scope.Node, scope.ChildLabel, scope.InitialLabel, childOrchestration, scope.Playback);
             try
             {
-                if (withholdsEnters) _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
-                if (scope.ChildLabel != null)
-                {
-                    childOrchestration = ResolveChildOrchestration(scope.Node, scope.Transition, scope.Resolved,
-                        scope.Ambient, scope.DelaySec, scope.From, scope.To, scope.Element, _ctx.StyleAnimationScheduler,
-                        scope.WaitSec);
-                    MotionContext.PushForChildren(_ctx.ComponentContextStack, scope.ChildLabel, scope.InitialLabel,
-                        childOrchestration, scope.Playback);
-                    pushedLabel = true;
-                }
                 body(state);
             }
             finally
             {
-                if (pushedLabel) MotionContext.PopForChildren(_ctx.ComponentContextStack);
-                if (withholdsEnters) _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
+                ExitMotionChildren(scope.Node, scope.ChildLabel);
             }
             return childOrchestration;
+        }
+
+        internal void EnterMotionChildren(MotionNode node, string? childLabel, string? initialLabel,
+            MotionOrchestrationFrame? orchestration, MotionPlayback? playback)
+        {
+            if (!node.EnterOnMount) _ctx.ComponentContextStack.Push(MotionContext.EntersWithheld, true);
+            if (childLabel != null)
+            {
+                MotionContext.PushForChildren(_ctx.ComponentContextStack, childLabel, initialLabel, orchestration,
+                    playback);
+            }
+        }
+
+        internal void ExitMotionChildren(MotionNode node, string? childLabel)
+        {
+            if (childLabel != null) MotionContext.PopForChildren(_ctx.ComponentContextStack);
+            if (!node.EnterOnMount) _ctx.ComponentContextStack.Pop(MotionContext.EntersWithheld);
         }
 
         // Reports to the frame a variant child claimed from when the play it starts at playStartSec ends, read before
@@ -1112,7 +1223,7 @@ namespace Velvet
                 MotionOrchestrationWait.PlayEndSec(played, playStartSec, fromClasses, toClasses, context));
         }
 
-        // Applies the diff for a PortalNode. Reconciles only this Portal's own slot range
+        // A PortalNode's patch reconciles only this Portal's own slot range
         // (PortalState.slotStart .. slotStart + slotLength) against the target,
         // preserving children placed by other Portals sharing the same target. When the slot
         // range grows or shrinks, downstream Portals whose ranges sit after this one have their
@@ -1123,38 +1234,14 @@ namespace Velvet
         // element at its slot, which takes one row out and puts one in, so the rows ahead of a later Portal
         // keep their count and its range still addresses its children here. The reconcile's close follows
         // the rows it placed (FiberCommitWork.OpenOwnRows).
-        internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
+        private void PatchPortalPre(ref SelfPatch patch, PortalNode oldNode, PortalNode newNode)
         {
-            var target = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);
+            var target = ResolvePortalTarget(patch.Element, oldNode, newNode, out var describe);
             if (target == null)
             {
                 return;
             }
-
-            // Every patch stamps DetachedMountContext on the top-level children it creates, as
-            // DrainPendingPortalMounts stamps a mount's: a Portal can drain its first mount with ZERO top-level
-            // children (e.g. `V.Portal(id, children: isOpen ? real : Array.Empty<VNode>())`) and gain its first
-            // ones on a LATER patch, and a Portal that heals onto a target registered after it mounted creates
-            // them here. FiberStack.Current is the declaring fiber (RenderAndReconcile keeps it pushed for the
-            // whole patch of its own returned tree), the parent those children register under. The "before"
-            // snapshot is rented from the shared pool, since this runs on every patch of a mounted Portal.
-            var steadyStateDeclaringFiber = CaptureDeclaringChildFibers(out var steadyStateChildFibersBefore);
-            try
-            {
-                PatchPortalChildren(placeholder, target, oldNode.Children, newNode.Children, describe);
-
-                if (steadyStateDeclaringFiber != null)
-                {
-                    StampNewTopLevelChildren(steadyStateDeclaringFiber, steadyStateChildFibersBefore!, newNode.Children);
-                }
-            }
-            finally
-            {
-                if (steadyStateChildFibersBefore != null)
-                {
-                    _ctx.BufferPool.ReturnFiberSet(steadyStateChildFibersBefore);
-                }
-            }
+            PatchPortalChildrenPre(ref patch, target, oldNode.Children, newNode.Children, describe);
         }
 
         // Resolves the target VisualElement a Portal patch reconciles its slot range against, across the
@@ -1311,7 +1398,7 @@ namespace Velvet
         }
 
         // Stamps DetachedMountContext on every top-level child of declaringFiber NOT present in
-        // childFibersBefore — the fibers this specific PatchPortalChildren call just created — with what an
+        // childFibersBefore — the fibers this patch's reconcile of its children just created — with what an
         // isolated re-render of them needs to rebuild their enclosing Providers, as the drain's
         // StampDrainedChildren does for a mount. Shared by every patch of a mounted Portal and WorldSpace.
         private void StampNewTopLevelChildren(
@@ -1341,8 +1428,9 @@ namespace Velvet
         // Applies the diff for a WorldSpaceNode: the host transform and virtual panel size follow
         // the node, and the children reconcile through the same slot bookkeeping every portal
         // flavor uses (the world-space host root is the recorded target).
-        internal void PatchWorldSpace(VisualElement placeholder, WorldSpaceNode oldNode, WorldSpaceNode newNode)
+        private void PatchWorldSpacePre(ref SelfPatch patch, WorldSpaceNode oldNode, WorldSpaceNode newNode)
         {
+            var placeholder = patch.Element;
             if (!_ctx.WorldSpaceBindings.TryGetValue(placeholder, out var record))
             {
                 FiberLogger.LogError("WorldSpace", "Host record missing for a world-space placeholder. Patch skipped.");
@@ -1374,35 +1462,19 @@ namespace Velvet
                     newNode.FocusOrder, _ctx);
             }
 
-            // Stamped as PatchPortal stamps (see its comment): a world-space panel can likewise mount with
-            // zero children and gain its first ones on a later patch, after the drain's stamp ran with
-            // nothing to mark.
-            var declaringFiber = CaptureDeclaringChildFibers(out var childFibersBefore);
-            try
-            {
-                PatchPortalChildren(placeholder, record.Document.rootVisualElement, oldNode.Children, newNode.Children, "world-space");
-                if (declaringFiber != null)
-                {
-                    StampNewTopLevelChildren(declaringFiber, childFibersBefore!, newNode.Children);
-                }
-            }
-            finally
-            {
-                if (childFibersBefore != null)
-                {
-                    _ctx.BufferPool.ReturnFiberSet(childFibersBefore);
-                }
-            }
+            PatchPortalChildrenPre(ref patch, record.Document.rootVisualElement, oldNode.Children, newNode.Children,
+                "world-space");
         }
 
         // The shared slot-range child patch for every portal flavor (registry, held element, layer,
-        // world-space): reconciles only this placeholder's own slot range against the target and shifts
-        // the downstream ranges on the same target by the growth delta. describe names the target in
-        // diagnostics only.
-        private void PatchPortalChildren(
-            VisualElement placeholder, VisualElement target,
-            VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw, string describe)
+        // world-space): the walk reconciles only this placeholder's own slot range against the target, and
+        // ClosePortalRange shifts the downstream ranges on the same target by the growth delta. describe names the
+        // target in diagnostics only.
+        private void PatchPortalChildrenPre(
+            ref SelfPatch patch, VisualElement target, VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw,
+            string describe)
         {
+            var placeholder = patch.Element;
             if (!_ctx.PortalState.TryGetValue(placeholder, out var prevState))
             {
                 // PortalState missing means CreateElement never recorded this Portal's slot range
@@ -1412,52 +1484,76 @@ namespace Velvet
                 return;
             }
 
-            // The rows this patch is about to add, remove and replace are not read as the range until it records
-            // them again, since a row put ahead of the first one would otherwise move the start under the patch.
-            _ctx.PortalState.Unanchor(placeholder);
+            patch.Kind = SelfPatchKind.Portal;
+            patch.Container = target;
+            patch.SlotStart = prevState.SlotStart;
             // Children the drain of the mount suspended on are in the node the owner committed and nowhere on the
             // target, so there is nothing to diff them from.
-            var oldChildren = prevState.ChildrenPending ? Array.Empty<VNode>() : oldChildrenRaw ?? Array.Empty<VNode>();
-            var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
+            patch.OldChildren = prevState.ChildrenPending
+                ? Array.Empty<VNode>()
+                : oldChildrenRaw ?? Array.Empty<VNode>();
+            patch.NewChildren = newChildrenRaw ?? Array.Empty<VNode>();
+            patch.Portal.PrevState = prevState;
+            patch.Portal.StampedChildren = newChildrenRaw;
+        }
+
+        // Called by the walk rather than by the patch halves, so a mode deferring the halves' writes leaves here the
+        // parts that read the walk's state: the record rebases an own-row frame on the target only while a walk holds
+        // it open (FiberCommitWork.RebaseOwnRows), and the stamp reads the fiber and context stacks current at the
+        // call. The rows they shift and take back go through HostCommitQueue.
+        internal void OpenPortalRange(ref SelfPatch patch)
+        {
+            var target = patch.Container!;
+            // The rows this patch is about to add, remove and replace are not read as the range until it records
+            // them again, since a row put ahead of the first one would otherwise move the start under the patch.
+            _ctx.PortalState.Unanchor(patch.Element);
             // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
             // stored in. Measuring this physically let an invisible child arriving on the target — a portal
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
-            var beforeTailCount = LogicalChildSlots.Count(target);
+            patch.Portal.BeforeTailCount = LogicalChildSlots.Count(target);
             // What a reconcile nested in this one already moved the starts on target for is left out of the
             // shift below, for the reason FiberCommitWork.RowCountWindow gives.
-            var tenancy = _ctx.ComponentRegistry.TenancyOf(target);
-            var shiftedBefore = tenancy?.ShiftedRows ?? 0;
-            // Restored rather than cleared: a Portal declared inside another Portal's children patches from
-            // within this call, and what the outer one mounts after that returns is still the outer one's.
-            var enclosingPortal = _ctx.CurrentPortalPlaceholder;
-            _ctx.CurrentPortalPlaceholder = placeholder;
-            // The mount half sets the same scope for the same reason — DrainPendingPortalMounts owns it —
-            // and the two have to agree or a patch looks this Portal's children up under a key the mount
-            // did not register them by. No push here: this runs from the reconcile of the tree the
-            // declaring component returned, so its fiber is already current.
-            var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
-            var mounted = false;
+            patch.Portal.Tenancy = _ctx.ComponentRegistry.TenancyOf(target);
+            patch.Portal.ShiftedBefore = patch.Portal.Tenancy?.ShiftedRows ?? 0;
+            // Every patch stamps DetachedMountContext on the top-level children it creates, as
+            // DrainPendingPortalMounts stamps a mount's: a Portal or a world-space panel can drain its first mount
+            // with ZERO top-level children (e.g. `V.Portal(id, children: isOpen ? real : Array.Empty<VNode>())`) and
+            // gain its first ones on a LATER patch, and a Portal that heals onto a target registered after it
+            // mounted creates them here. FiberStack.Current is the declaring fiber (RenderAndReconcile keeps it
+            // pushed for the whole patch of its own returned tree), the parent those children register under. The
+            // "before" snapshot is rented from the shared pool, since this runs on every patch of a mounted Portal,
+            // and rented last: the walk calls this right before the try whose finally returns it (ClosePortalRange).
+            patch.Portal.DeclaringFiber = CaptureDeclaringChildFibers(out patch.Portal.ChildFibersBefore);
+        }
+
+        // Runs whether or not the children's reconcile returned: one that unwinds — a boundary above catching a
+        // render below, or a suspend — leaves on the target what it inserted before the throw, and the range recorded
+        // is what the Portal's cleanup removes.
+        internal void ClosePortalRange(ref SelfPatch patch, bool mounted)
+        {
+            var placeholder = patch.Element;
+            var target = patch.Container!;
+            var portal = patch.Portal;
             try
             {
-                PointerEventsScope.NoteReconciledInto(_ctx, target);
-                _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
-                // The target's other children count as siblings too, other portals' among them.
-                ApplyStructuralVariants(target);
-                mounted = true;
+                RecordPatchedPortalRange(placeholder, target,
+                    mounted ? portal.PrevState with { ChildrenPending = false } : portal.PrevState,
+                    portal.BeforeTailCount, portal.Tenancy, portal.ShiftedBefore);
+                if (!mounted && portal.PrevState.ChildrenPending)
+                {
+                    TakeBackPendingPortalRows(placeholder, target);
+                }
+                if (mounted && portal.DeclaringFiber != null)
+                {
+                    StampNewTopLevelChildren(portal.DeclaringFiber, portal.ChildFibersBefore!, portal.StampedChildren);
+                }
             }
             finally
             {
-                _ctx.ExitPortalChildKeyScope(enclosingChildScope);
-                _ctx.CurrentPortalPlaceholder = enclosingPortal;
-                // In the finally: a reconcile that unwinds — a boundary above catching a render below, or a
-                // suspend — leaves on the target what it inserted before the throw, and the range recorded is
-                // what the Portal's cleanup removes.
-                RecordPatchedPortalRange(placeholder, target, mounted ? prevState with { ChildrenPending = false } : prevState,
-                    beforeTailCount, tenancy, shiftedBefore);
-                if (!mounted && prevState.ChildrenPending)
+                if (portal.ChildFibersBefore != null)
                 {
-                    TakeBackPendingPortalRows(placeholder, target);
+                    _ctx.BufferPool.ReturnFiberSet(portal.ChildFibersBefore);
                 }
             }
         }
@@ -1497,58 +1593,8 @@ namespace Velvet
             _ctx.PortalState.Anchor(placeholder);
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            PortalSlotTracker.ShiftRangesBehind(_ctx.PortalState.Stored, target, placeholder, prevState, unshifted);
-            FiberCommitWork.ShiftTenantsAfterPortalRange(_ctx.ComponentRegistry, target, placeholder, prevState, unshifted);
+            _ctx.HostCommit.ShiftBehindPortalRange(target, placeholder, prevState, unshifted);
             FiberCommitWork.RebaseOwnRows(_ctx, target);
-        }
-
-        // Applies the diff for a ContextProviderNode.
-        // Pushes the new context value, fires IReconcilerHost.NotifyContextValueChange
-        // when the value changed since the previous render, then recursively reconciles the
-        // Provider's children against the wrapper emitted by
-        // FiberNodeFactory.CreateElement's ContextProviderNode case. Used when the
-        // Provider is reached as a node-typed keyed entry (e.g. inside an AnimatePresence subtree,
-        // or as a MemoNode's resolved inner) — paths where
-        // GeneralPathReconciler.ExpandInlineRecursive's inline Provider expansion does not apply.
-        internal void PatchContextProvider(VisualElement wrapper, ContextProviderNode oldNode, ContextProviderNode newNode)
-        {
-            newNode.PushContext(_ctx.ComponentContextStack);
-            try
-            {
-                if (newNode.HasValueChanged(oldNode))
-                {
-                    _host.NotifyContextValueChange(newNode);
-                    // A replaced VNode-valued provider value has no other retirement point: the sweep
-                    // deliberately never returns provider values (a consumer may hold the CURRENT one),
-                    // but a superseded value is out of distribution for good — every subscribed consumer
-                    // re-renders off the change notification above and commits the NEW value's nodes,
-                    // and the pass-scoped release staging keeps the old parts un-rentable until those
-                    // re-renders have run. A consumer that committed the old node retires it through its
-                    // own old tree too; pool returns are idempotent, so the overlap is harmless.
-                    var oldValueRoot = oldNode.BoxedValueForRecycleMark;
-                    if (oldValueRoot != null && !ReferenceEquals(oldValueRoot, newNode.BoxedValueForRecycleMark))
-                    {
-                        switch (oldValueRoot)
-                        {
-                            case VNode oldValueNode:
-                                FiberTreeReturn.ReturnRetiredTree(
-                                    FiberTreeReturn.NormalizeToArray(oldValueNode), _ctx.FiberStack.Current);
-                                break;
-                            case VNode?[] oldValueTree:
-                                FiberTreeReturn.ReturnRetiredTree(oldValueTree, _ctx.FiberStack.Current);
-                                break;
-                        }
-                    }
-                }
-                var oldChildren = oldNode.Children ?? Array.Empty<VNode>();
-                var newChildren = newNode.Children ?? Array.Empty<VNode>();
-                _host.ReconcileChildren(wrapper, oldChildren, newChildren);
-                ApplyStructuralVariants(wrapper);
-            }
-            finally
-            {
-                newNode.PopContext(_ctx.ComponentContextStack);
-            }
         }
 
         #endregion
@@ -1828,8 +1874,6 @@ namespace Velvet
             removedFilterFamily = false;
 
             // Rent from the pool to make this re-entrant-safe.
-            // Even along the path PatchElement → DiffClassList → PatchCommon → Reconcile (recursive)
-            // → PatchElement → DiffClassList, each level holds its own set, so they do not collide.
             var oldSet = _ctx.BufferPool.RentClassSet();
             var newSet = _ctx.BufferPool.RentClassSet();
             try
@@ -2584,6 +2628,12 @@ namespace Velvet
         {
             foreach (var className in classNames ?? Array.Empty<string>())
             {
+                // The outer layer ends at a ':' and the inner holds one of its own, so a class with fewer than two is
+                // passed over before either parse cuts out a payload.
+                if (className == null || className.IndexOf(':') == className.LastIndexOf(':'))
+                {
+                    continue;
+                }
                 string? rest = null;
                 if (!StyleVariantClass.TryParse(className, out _, out rest)
                     && !StyleHasVariantClass.TryParse(className, out _, out _, out rest))
@@ -2614,7 +2664,7 @@ namespace Velvet
             List<int>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (StyleVariantClass.TryParse(classNames[i], out var k, out var payload) && k == kind)
+                if (StyleVariantClass.TryParseFor(classNames[i], kind, out var k, out _, out var payload) && k == kind)
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
                     (positions ??= new List<int>()).Add(StyleRuleOrder.OrdinalOf(classNames, i));
@@ -2710,13 +2760,14 @@ namespace Velvet
             spelling = string.Empty;
             query = default;
             payload = string.Empty;
-            if (!StyleVariantClass.TryParse(token, out var kind, out var name, out var rest))
+            if (!StyleVariantClass.TryParseFor(token, StyleVariantKind.Container, out var kind, out var name, out var rest)
+                || kind != StyleVariantKind.Container)
             {
                 return false;
             }
             spelling = name ?? string.Empty;
             payload = rest ?? string.Empty;
-            return kind == StyleVariantKind.Container && StyleContainerQuery.TryParse(spelling, out query);
+            return StyleContainerQuery.TryParse(spelling, out query);
         }
 
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
@@ -2747,7 +2798,7 @@ namespace Velvet
             Dictionary<(bool IsPeer, string Name), List<int>[]>? positions = null;
             for (var i = 0; i < classNames.Length; i++)
             {
-                if (!StyleVariantClass.TryParse(classNames[i], out var kind, out var name, out var payload)
+                if (!StyleVariantClass.TryParseForRelational(classNames[i], out var kind, out var name, out var payload)
                     || StyleVariantClass.RelationalOf(kind) is not { } relational)
                 {
                     continue;
@@ -2808,8 +2859,8 @@ namespace Velvet
         {
             foreach (var className in classNames ?? Array.Empty<string>())
             {
-                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBecomeThemeClass(
-                    StyleArbitraryValueResolver.StripImportant(className, out _)))
+                if (!string.IsNullOrEmpty(className) && StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                    && StyleThemeClass.MayBecomeThemeClass(StyleArbitraryValueResolver.StripImportant(className, out _)))
                 {
                     StyleThemeTokens.Track(_ctx, element, classNames!);
                     return;
@@ -2859,7 +2910,8 @@ namespace Velvet
             foreach (var className in classNames)
             {
                 if (className != null && (className.IndexOfAny(s_variantStateChars) >= 0
-                    || StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null))
+                    || (StyleThemeClass.MayBeFamilyShapedAsWritten(className)
+                        && StyleThemeClass.Normalize(StyleArbitraryValueResolver.StripImportant(className, out _)) != null)))
                 {
                     return true;
                 }
@@ -2883,6 +2935,10 @@ namespace Velvet
                 || _ctx.SupportsVariants.ContainsKey(element)
                 || _ctx.CustomPropertyClasses.ContainsKey(element);
 
+        // A class of the element's own, no variant, that may be a custom-property token once StripImportant has copied it.
+        private static bool MayBeOwnCustomPropertyToken(string cls)
+            => !IsEmptyOrVariantToken(cls) && StyleCustomPropertyClass.MayBeCustomPropertyClassAsWritten(cls);
+
         // The element's own custom-property tokens (StyleCustomPropertyClass), applied as payloads at the base
         // layer, or the important one for a token with the bang. Only the tokens that changed are toggled, the
         // ones leaving first, since a declaration changing value leaves and arrives at the same layer.
@@ -2894,7 +2950,7 @@ namespace Velvet
                 for (var i = 0; i < classNames.Length; i++)
                 {
                     var cls = classNames[i];
-                    if (IsEmptyOrVariantToken(cls))
+                    if (!MayBeOwnCustomPropertyToken(cls))
                     {
                         continue;
                     }

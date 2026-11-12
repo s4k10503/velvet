@@ -132,6 +132,22 @@ namespace Velvet
         /// Primary use case: wrapping a button with a shadow container.
         /// </summary>
         public Func<VisualElement, VisualElement>? WrapElement { get; init; }
+
+        // Whether anything below this element can be rendered by a fiber: every node other than an ElementNode or a
+        // TextNode holds one or may, a Fragment, a Motion or a Portal included whatever it holds. Cached on the
+        // instance; ChildReconciler asks it of a node handed back by instance while the reconciling fiber is marked.
+        internal bool MayHoldFiber => _mayHoldFiber ??= AnyChildMayHoldFiber();
+
+        private bool? _mayHoldFiber;
+
+        private bool AnyChildMayHoldFiber()
+        {
+            foreach (var child in Children ?? Array.Empty<VNode>())
+            {
+                if (FiberPendingWork.MayHoldFiber(child)) return true;
+            }
+            return false;
+        }
     }
 
     /// <summary>
@@ -304,10 +320,9 @@ namespace Velvet
         /// <summary>
         /// Whether this component opted into the props-bail. <c>true</c> when the component method
         /// carries <c>[Component(Memoize = true)]</c>, or when the node was created via <c>V.Memoized</c>
-        /// (a custom <see cref="AreEqual"/> implies memoization). When <c>false</c> the component re-renders
-        /// on every parent re-render regardless of props equality: only an opted-in
-        /// component bails on shallow-equal props; a plain component always re-renders when its parent does.
-        /// The reconcile-boundary bail in <c>ComponentRegistry</c> is gated on
+        /// (a custom <see cref="AreEqual"/> implies memoization). When <c>false</c> props equality is not
+        /// consulted: a parent re-render renders the component again unless it hands back the node the component
+        /// last rendered from and the component has no work pending. The reconcile-boundary props bail in <c>ComponentRegistry</c> is gated on
         /// <c>Memoize || AreEqual != null</c>.
         /// </summary>
         internal bool Memoize { get; init; }

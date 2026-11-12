@@ -16,17 +16,17 @@ namespace Velvet.CodeGen
         public static List<ScopeRegion> Select(List<ScopeRegion> found, List<ScopeRegion> values, bool bodyGate,
             List<string> notes)
         {
+            // MUTANT_SURVIVES(equivalent): `AssignParents` gives each run the same parent in the order `Find` lists the runs, which is by their ends.
+            // That order puts two runs around a third in the order of their starts unless one holds the other, a nest
+            // yields its innermost run in any order, and nothing else reads this order before `kept` is sorted.
             found.Sort(CompareOuterFirst);
             AssignParents(found);
             var kept = new List<ScopeRegion>();
-            var reads = new HashSet<string>();
             foreach (var region in found)
             {
-                if (!Earns(region, bodyGate)) continue;
-                kept.Add(region);
-                AddKeys(reads, region);
+                if (Earns(region, bodyGate)) kept.Add(region);
             }
-            kept.AddRange(KeepValues(values, reads));
+            KeepValues(values, kept);
             kept.Sort(CompareOuterFirst);
             if (kept.Count > MaxScopes)
             {
@@ -37,25 +37,20 @@ namespace Velvet.CodeGen
         }
 
         // A value is cached where code that is itself cached reads it as a whole: that code would otherwise be keyed on
-        // an object rebuilt on every render. The last run is settled first: a value that is kept makes the values it
-        // reads worth keeping, and those come before it.
-        private static List<ScopeRegion> KeepValues(List<ScopeRegion> values, HashSet<string> reads)
+        // an object rebuilt on every render. The values arrive in the order of their stores, and the last is settled
+        // first: a value that is kept makes the values it reads worth keeping, and those are stored before it. Nothing
+        // inside the value's own run can observe the store at the run's end, so a scope there is no reader of the value.
+        private static void KeepValues(List<ScopeRegion> values, List<ScopeRegion> kept)
         {
-            var kept = new List<ScopeRegion>();
-            values.Sort(CompareOuterFirst);
             for (var i = values.Count - 1; i >= 0; i--)
             {
                 var value = values[i];
-                if (!reads.Contains("L" + value.ValueLocal!.Index)) continue;
-                kept.Add(value);
-                AddKeys(reads, value);
+                var key = "L" + value.ValueLocal!.Index;
+                if (kept.Exists(reader => !value.Contains(reader) && reader.Dependencies.Exists(each => each.Key == key)))
+                {
+                    kept.Add(value);
+                }
             }
-            return kept;
-        }
-
-        private static void AddKeys(HashSet<string> reads, ScopeRegion region)
-        {
-            foreach (var each in region.Dependencies) reads.Add(each.Key);
         }
 
         public static void Number(List<ScopeRegion> kept, int firstSlot)

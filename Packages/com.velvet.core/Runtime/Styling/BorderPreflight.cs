@@ -106,7 +106,7 @@ namespace Velvet
 
         // Without the matcher a rule that sets a border colour cannot be told from none, and a layer would then
         // outrank it; so nothing is written.
-        private static readonly object? s_extractor = CreateExtractor();
+        private static object? s_extractor = CreateExtractor();
 
         private static object? CreateExtractor()
         {
@@ -401,6 +401,10 @@ namespace Velvet
                 try
                 {
                     StyleArbitraryValueResolver.ClearInline(element, layer.Property);
+                    // MUTANT_SURVIVES(equivalent): the resolve placing the side records it or writes it again after this.
+                    // NoteWritten records it where the side's own property was resolved; elsewhere a connected layer of
+                    // Velvet's, keyed above preflight's, writes the inline value again. Left set, Seen keeps that value,
+                    // which decides whether preflight's layer stays under the inline value shown, not the colour shown.
                     state.Seen[side] = NoColour;
                     state.Rule.Show(element, side, colour);
                 }
@@ -777,6 +781,8 @@ namespace Velvet
                 {
                     SyncSide(element, state, i);
                 }
+                // Set after every side, so that the sides one pass shows first all land without a transition.
+                state.Landed |= state.Held != Sides.None;
                 state.Rule?.Reassert(element);
                 WatchOver(element, state);
             }
@@ -902,7 +908,6 @@ namespace Velvet
             {
                 hold?.Release();
             }
-            state.Landed = true;
             state.Held |= side;
             // A face that took the slot's colour before the layer was shown, or whose sentinel a colour of another layer
             // written over while the layer was applied, takes the colour the slot holds now.
@@ -929,26 +934,58 @@ namespace Velvet
         // a border width.
         private static Match Matches(VisualElement element)
         {
-            s_clear!.Invoke(s_extractor, null);
-            s_find!.Invoke(s_extractor, new object[] { element });
             var claimed = Sides.None;
             var width = false;
-            foreach (var record in (IList)s_records!.GetValue(s_extractor))
+            foreach (var (sheet, property, name) in AuthorProperties(element))
             {
-                if ((bool)s_isDefault!.GetValue(s_recordSheet!.GetValue(record)))
+                claimed |= SidesOf(name);
+                width |= IsWidth(name) && !IsZero(sheet, property);
+            }
+            return new Match(claimed, width);
+        }
+
+        // Whether a rule of a non-default stylesheet matching element sets a property named in names; null where the
+        // matcher cannot be built. DefaultFamilyRoots asks it of the font properties.
+        internal static bool? AuthorRuleSets(VisualElement element, string[] names)
+        {
+            if (s_extractor == null) return null;
+
+            foreach (var (_, _, name) in AuthorProperties(element))
+            {
+                if (Array.IndexOf(names, name) >= 0) return true;
+            }
+            return false;
+        }
+
+        // Each property of each rule of a non-default stylesheet matching element, with the sheet the rule sits in and
+        // the property's name. The matcher is cleared again however the walk ends.
+        private static System.Collections.Generic.IEnumerable<(object Sheet, object Property, string Name)>
+            AuthorProperties(VisualElement element)
+        {
+            s_clear!.Invoke(s_extractor, null);
+            s_find!.Invoke(s_extractor, new object[] { element });
+            try
+            {
+                foreach (var record in (IList)s_records!.GetValue(s_extractor))
                 {
-                    continue;
-                }
-                var rule = s_rule!.GetValue(s_recordSelector!.GetValue(record));
-                foreach (var property in (Array)s_properties!.GetValue(rule))
-                {
-                    var name = (string)s_propertyName!.GetValue(property);
-                    claimed |= SidesOf(name);
-                    width |= IsWidth(name) && !IsZero(s_recordSheet.GetValue(record), property);
+                    var sheet = s_recordSheet!.GetValue(record);
+                    if ((bool)s_isDefault!.GetValue(sheet))
+                    {
+                        continue;
+                    }
+                    var rule = s_rule!.GetValue(s_recordSelector!.GetValue(record));
+                    foreach (var property in (Array)s_properties!.GetValue(rule))
+                    {
+                        yield return (sheet, property, (string)s_propertyName!.GetValue(property));
+                    }
                 }
             }
-            s_clear.Invoke(s_extractor, null);
-            return new Match(claimed, width);
+            finally
+            {
+                // MUTANT_SURVIVES(equivalent, line removed): every walk clears the matcher before it asks, so one left
+                // holding records is cleared by the next; clearing it here only lets go of them sooner.
+                s_clear.Invoke(s_extractor, null);
+            }
         }
 
         // Whether every value of property reads as zero or initial, which draws no border.

@@ -273,6 +273,32 @@ namespace Velvet.Tests
             Assert.That(state != null ? (float?)element.style.opacity.value : null, Is.EqualTo(0.5f).Within(1e-5f));
         }
 
+        // GREEN_ON_BASE(characterization): the base holds a value at its origin through the delay of an entry that names
+        // no time to run, a negative zero among them.
+        [Test]
+        public void Given_ASpringPlayWithAnOpacityEntryOfNegativeZeroDurationAfterADelay_When_SteppedWithinTheDelay_Then_OpacityIsAtItsOrigin()
+        {
+            // Arrange — translate names no delay, so the play starts with it and opacity waits half a second.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0", "translate-x-[0px]" },
+                new[] { "opacity-100", "translate-x-[64px]" });
+            var state = MotionSpringDriver.WithOverrides(MotionSpringDriver.Create(plan, 100f, 10f, 1f), new[]
+            {
+                new StylePropertyTransition("translate", durationSec: 0.2f, easing: EasingMode.Linear, delaySec: 0f),
+                new StylePropertyTransition("opacity", durationSec: -0f, easing: EasingMode.Linear, delaySec: 0.5f),
+            }, 0f);
+
+            // Act
+            if (state != null)
+            {
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                MotionSpringDriver.Step(element, state, 0.25f);
+            }
+
+            // Assert
+            Assert.That(state != null ? (float?)element.style.opacity.value : null, Is.EqualTo(0f));
+        }
+
         [Test]
         public void Given_ASpringConfigWithExitPhysics_When_GivenItsExitClasses_Then_TheExitPhysicsAreKept()
         {

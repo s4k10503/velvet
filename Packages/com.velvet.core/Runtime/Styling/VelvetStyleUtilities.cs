@@ -380,14 +380,14 @@ namespace Velvet
             return HashCode.Combine(stamp, IsBoundAtOrAbove(declaringRoot));
         }
 
-        private static int ClassStamp(int stamp, VisualElement? element)
+        internal static int ClassStamp(int stamp, VisualElement? element)
         {
             if (element?.GetClasses() is not List<string> names) return stamp;
             foreach (var name in names) stamp = HashCode.Combine(stamp, name);
             return stamp;
         }
 
-        private static int SheetStamp(int stamp, StyleSheet sheet)
+        internal static int SheetStamp(int stamp, StyleSheet sheet)
         {
             stamp = HashCode.Combine(stamp, sheet, sheet.contentHash);
             foreach (var imported in Facts(sheet).Imports) stamp = SheetStamp(stamp, imported);

@@ -18,6 +18,7 @@ namespace Velvet
         private float _delaySec;
         private float _durationSec;
         private EasingMode _easing;
+        private EaseFunction? _function;
         private float _eased;
         private Color _reversingStart;
         private float _shortening = 1f;
@@ -37,8 +38,9 @@ namespace Velvet
         {
             if (!Same(target, Target)) Retarget(target, element, property, shorthand);
             _elapsedSec += dtSec;
-            var t = Mathf.Clamp01((_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec));
-            _eased = UssEasing.Evaluate(_easing, t);
+            var progress = (_elapsedSec - _delaySec + MinDurationSec) / Mathf.Max(_durationSec, MinDurationSec);
+            var t = Mathf.Clamp01(progress);
+            _eased = StyleEaseCurve.Evaluate(_function, _easing, progress);
             Value = t < 1f ? Color.LerpUnclamped(_from, Target, _eased) : Target;
             return Value;
         }
@@ -51,6 +53,7 @@ namespace Velvet
             (_from, Target, _elapsedSec) = (Value, target, 0f);
             (_durationSec, _delaySec, _easing) = MotionNativeTransitionGuard.Drives(element, property) ? (0f, 0f, EasingMode.Ease)
                 : StyleCascade.Transition(element, property, shorthand);
+            _function = StyleEaseCurve.CurveFor(element, _easing);
             _durationSec *= _shortening;
             if (_delaySec < 0f) _delaySec *= _shortening;
         }

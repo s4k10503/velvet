@@ -23,6 +23,8 @@ namespace Velvet
         private readonly ComponentFiber? _hostFiber;
         private readonly ComponentContextStack? _contextStack;
         private List<KeyValuePair<object, object>>? _enclosingContext;
+        // The Portal the list was created in, which its elements stay in for their life.
+        private readonly VisualElement? _enclosingPortal;
 
         private VirtualListNode _node;
         private VNode[] _renderedNodes;
@@ -67,13 +69,15 @@ namespace Velvet
             VirtualListNode node,
             IReconcilerBridge reconciler,
             ComponentFiber? hostFiber = null,
-            ComponentContextStack? contextStack = null)
+            ComponentContextStack? contextStack = null,
+            VisualElement? enclosingPortal = null)
         {
             _scrollView = scrollView ?? throw new ArgumentNullException(nameof(scrollView));
             _node = node ?? throw new ArgumentNullException(nameof(node));
             _reconciler = reconciler ?? throw new ArgumentNullException(nameof(reconciler));
             _hostFiber = hostFiber;
             _contextStack = contextStack;
+            _enclosingPortal = enclosingPortal;
             // Capture the enclosing context now (the cursor is correct mid-reconcile, where CreateElement
             // constructs this controller). The list's items render later, when the cursor is empty.
             _enclosingContext = MotionContext.OutlivingPass(contextStack?.SnapshotTops());
@@ -286,6 +290,33 @@ namespace Velvet
 
         private void PlaceRange(int newFirst, int newLast)
         {
+            var opened = _reconciler.BeginRangeForController();
+            try
+            {
+                PlaceRows(newFirst, newLast, opened);
+            }
+            finally
+            {
+                // Once the buffers name the rows placed, or the range has given them up.
+                try
+                {
+                    _reconciler.EndRangeForController(_visibleContainer, opened);
+                }
+                catch (FiberSuspendSignal)
+                {
+                    // A child of a Portal a row placed suspended as the range's end mounted it. The list's host owns a
+                    // range rendered outside a pass as a fiber owns its own pass, so the suspend goes where a pass
+                    // owner's does.
+                    if (_hostFiber != null)
+                    {
+                        FiberRenderer.SuspendPassOwner(_hostFiber, transitionPass: false);
+                    }
+                }
+            }
+        }
+
+        private void PlaceRows(int newFirst, int newLast, bool outsidePass)
+        {
             var newCount = newLast - newFirst + 1;
 
             IndexOldRenderedItems();
@@ -300,7 +331,7 @@ namespace Velvet
             // what its pass took and rethrows.
             try
             {
-                PatchOrReplaceVisibleItems(newFirst, newCount, newNodes, newKeys, newElements);
+                PatchOrReplaceVisibleItems(newFirst, newCount, newNodes, newKeys, newElements, outsidePass);
             }
             catch
             {
@@ -379,12 +410,13 @@ namespace Velvet
         // Renders each visible-range item and either patches its reused element or creates a replacement,
         // filling newNodes/newKeys/newElements in place.
         private void PatchOrReplaceVisibleItems(
-            int newFirst, int newCount, VNode[] newNodes, string?[] newKeys, VisualElement[] newElements)
+            int newFirst, int newCount, VNode[] newNodes, string?[] newKeys, VisualElement[] newElements,
+            bool outsidePass)
         {
             // Render the items under the context that enclosed the V.VirtualList: the scope parents new item
             // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
             // cursor for the item bodies, then stamps the new fibers for isolated-re-render reconstruction.
-            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext);
+            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, _enclosingPortal, outsidePass);
             try
             {
                 for (var i = 0; i < newCount; i++)
@@ -567,10 +599,22 @@ namespace Velvet
             _lastRenderedIndex = -1;
         }
 
-        // Repopulates _visibleContainer from newElements at its new scroll offset.
+        // Repopulates _visibleContainer from newElements at its new scroll offset. What holds each row's slot goes and
+        // comes back; what holds no slot of its own (LogicalChildSlots.IsInvisible) is left standing — a row
+        // FiberZLayerCoordinator relocated, whose placeholder holds its slot, an element retired for the end of the
+        // range or of the pass it renders in to release, and a band or layer hosted beside a row, which its attach
+        // callback puts beside the row again as the row comes back onto the panel. The coordinator arranges the
+        // relocated rows again at that same end.
         private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
         {
-            _visibleContainer.Clear();
+            _reconciler.BeginRowPlacementForController(_visibleContainer);
+            for (var i = _visibleContainer.childCount - 1; i >= 0; i--)
+            {
+                if (!LogicalChildSlots.IsInvisible(_visibleContainer[i]))
+                {
+                    _visibleContainer.RemoveAt(i);
+                }
+            }
             var offset = (float)OffsetOf(newFirst);
             var container = _visibleContainer.style;
             container.flexDirection = _horizontal ? FlexDirection.Row : StyleKeyword.Null;
@@ -586,7 +630,7 @@ namespace Velvet
                     var length = (float)(OffsetOf(newFirst + i + 1) - OffsetOf(newFirst + i));
                     if (_horizontal) newElements[i].style.width = length;
                     else newElements[i].style.height = length;
-                    _visibleContainer.Add(newElements[i]);
+                    _visibleContainer.Add(_reconciler.SlotOccupantForController(newElements[i]));
                 }
             }
         }

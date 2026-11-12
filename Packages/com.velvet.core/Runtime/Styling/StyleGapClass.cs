@@ -79,7 +79,13 @@ namespace Velvet
             measured = null;
             gap = 0f;
             axis = GapAxis.Auto;
-            if (string.IsNullOrEmpty(cls) || !StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls))
+            if (string.IsNullOrEmpty(cls) || !OpensGapOrSpace(cls))
+            {
+                return false;
+            }
+
+            var hintDropped = StyleArbitraryValueResolver.TryDropTypeHint(cls, out cls);
+            if (!hintDropped)
             {
                 return false;
             }
@@ -144,6 +150,12 @@ namespace Velvet
             }
             return true;
         }
+
+        // The prefixes TryParse reads, tested before the type hint is dropped (TryDropTypeHint): each patch of a gap or
+        // grid container hands TryParse every class of its list (ClassReadAllocationTests).
+        private static bool OpensGapOrSpace(string cls)
+            => cls.StartsWith("gap-", StringComparison.Ordinal) || cls.StartsWith("!gap-", StringComparison.Ordinal)
+                || IsSpaceToken(cls);
 
         // Single-token half of HasGapClass: true when cls belongs to the gap / space family the gap
         // manipulator is gated on. Its own predicate so the prefix set has ONE definition — both the array

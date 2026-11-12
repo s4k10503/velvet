@@ -2273,6 +2273,7 @@ namespace Velvet
                     throw resource.Error!;
                 default:
                     fiber.Reconciler!.Context.SuspendingReader = fiber;
+                    FiberPendingWork.MarkAncestors(fiber);
                     throw FiberSuspendSignal.Instance;
             }
         }
@@ -2682,10 +2683,12 @@ namespace Velvet
         }
 
         // TanStack's useMutation hands the observer its options in an effect keyed on the options object the caller
-        // passed, so a render passing the record the last commit applied queues nothing. Queued on the fiber's
-        // pending passive effects rather than through UseEffect, which would count a hook of another kind against
-        // the component. Then v5's render-time throw: a failure the handle shows that throwOnError accepts, judged
-        // by the options the observer holds, goes to the nearest error boundary.
+        // passed, so a render passing the record the last commit applied queues nothing. Nor does a record equal to
+        // the applied one once the client's defaults are filled in: compared as the commit compares them, it would be
+        // announced to no listener and reset nothing, and a pending mutation would trade its options for equal ones.
+        // Queued on the fiber's pending passive effects rather than through UseEffect, which would count a hook of
+        // another kind against the component. Then v5's render-time throw: a failure the handle shows that
+        // throwOnError accepts, judged by the options the observer holds, goes to the nearest error boundary.
         private static MutationResult<TVariables, TData> ObserveMutation<TVariables, TData, TContext>(
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData, TContext> slot,
@@ -2696,7 +2699,8 @@ namespace Velvet
             slot.Passed = passed;
             slot.Declared = defaulted;
             slot.Invocation = invocation;
-            if (!ReferenceEquals(passed, slot.CommittedPassed) && !IsStrictDiagnosticPass(fiber))
+            if (!ReferenceEquals(passed, slot.CommittedPassed) && !IsStrictDiagnosticPass(fiber)
+                && !Equals(defaulted, slot.CommittedDeclared))
             {
                 var pending = fiber.PendingEffects ??= new List<HookEffectSlot>();
                 if (!pending.Contains(slot.OptionsEffect!)) pending.Add(slot.OptionsEffect!);
@@ -2724,8 +2728,8 @@ namespace Velvet
             slot.Observer.Options = options;
             if (!Equals(options, previous))
             {
-                slot.Client.GetMutationCache().Notify(new MutationCacheEvent(
-                    MutationCacheEventType.ObserverOptionsUpdated, slot.Current, observer: slot.Observer));
+                slot.Client.GetMutationCache().Notify(
+                    MutationCacheEventType.ObserverOptionsUpdated, slot.Current, observer: slot.Observer);
             }
 
             if (previous?.MutationKey != null && options.MutationKey != null && !previous.MutationKey.Equals(options.MutationKey))
@@ -2809,13 +2813,23 @@ namespace Velvet
                         WaitToContinue = static run => run.Mutation.WaitToContinue(),
                     },
                     token);
-                mutation.Settled.TrySetResult();
+                mutation.SettleFunction();
                 // The handlers run before this call's outcome is committed, which is where TanStack
                 // dispatches it: what OnSuccess and OnSettled read is the handle as it stands rather than
                 // their own result. Any of them throwing leaves the call a failure with nothing of its own
                 // written, and the failure path below then runs OnError and OnSettled with that exception —
-                // a throwing OnSettled included, as TanStack's catch does.
-                await DeliverSuccess(slot, mutation, data, variables, context, functionContext);
+                // a throwing OnSettled included, as TanStack's catch does. The cache's callback of each name
+                // runs before the options' one, as on the failure path.
+                if (cache.OnSuccess is { } cacheOnSuccess)
+                {
+                    await cacheOnSuccess(data, variables, mutation.State.Context, mutation, functionContext);
+                }
+                await slot.InvokeOnSuccess(mutation.Invocation, data, variables, context, functionContext);
+                if (cache.OnSettled is { } cacheOnSettled)
+                {
+                    await cacheOnSettled(data, null, mutation.State.Variables, mutation.State.Context, mutation, functionContext);
+                }
+                await slot.InvokeOnSettled(mutation.Invocation, data, null, variables, context, functionContext);
                 mutation.SettleSuccess(data);
                 if (CommitOutcome(fiber, slot, mine, data, error: null))
                 {
@@ -2826,7 +2840,7 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                if (reachedFunction) mutation.Settled.TrySetResult();
+                if (reachedFunction) mutation.SettleFunction();
                 await DeliverFailure(slot, mutation, ex, variables, context, functionContext);
                 mutation.SettleError(ex);
                 // Committed after the handlers for the same reason as a success.
@@ -2881,29 +2895,6 @@ namespace Velvet
         {
             call.ShowIfOwned(static result => result.MarkContinued());
             call.Mutation.DispatchContinue();
-        }
-
-        // TanStack's order: each cache callback before the options' callback of the same name, every one waited
-        // for, and a throw from any of them failing the call.
-        private static async VelvetTask DeliverSuccess<TVariables, TData, TContext>(
-            HookMutationSlot<TVariables, TData, TContext> slot,
-            Mutation mutation,
-            TData data,
-            TVariables variables,
-            TContext context,
-            MutationFunctionContext functionContext)
-        {
-            var cache = slot.Client.GetMutationCache();
-            if (cache.OnSuccess is { } cacheOnSuccess)
-            {
-                await cacheOnSuccess(data, variables, mutation.State.Context, mutation, functionContext);
-            }
-            await slot.InvokeOnSuccess(mutation.Invocation, data, variables, context, functionContext);
-            if (cache.OnSettled is { } cacheOnSettled)
-            {
-                await cacheOnSettled(data, null, mutation.State.Variables, mutation.State.Context, mutation, functionContext);
-            }
-            await slot.InvokeOnSettled(mutation.Invocation, data, null, variables, context, functionContext);
         }
 
         // Contained one by one, as TanStack contains them: a throwing OnError must not cost the call its
@@ -3274,9 +3265,10 @@ namespace Velvet
         /// <summary>
         /// TanStack Query's <c>useQueries({ queries })</c> over a list of queries of one data type, so the number of
         /// queries can change from render to render: <see cref="UseQuery{TQueryFnData, TData}"/> over each of
-        /// <paramref name="queries"/> in one hook. Each query keeps its observer across renders while some query of the
-        /// list reads the same entry, whatever its position, and the component re-renders when a property of a result
-        /// it has read changes in any of them: a property read from one result is tracked for all of them. The first
+        /// <paramref name="queries"/> in one hook. Across renders the queries over one entry are handed the observers held
+        /// over it in the list's order, whatever their positions, and one none is left for gets a new one. The component
+        /// re-renders when a property of a result it has read changes in any of them: a
+        /// property read from one result is tracked for all of them. The first
         /// query whose error <see cref="QueryOptionsBase{TQueryFnData, TData}.ThrowOnError"/> throws is thrown from
         /// this call. The overloads taking each query as its own argument keep each query's data types.
         /// </summary>

@@ -91,6 +91,11 @@ namespace Velvet
         // it measures without moving the container.
         private int ChildReading() => _spec.Space.IsMeasured ? StyleRelativeLengths.ChildrenReading(ChildContainer) : 0;
 
+        // Static lambdas, as StyleGapManipulator's are.
+        private void SyncPoll(bool wanted)
+            => StyleRelativeLengths.SyncPoll(ref _poll, target, wanted, this, static self => self.Reapply(),
+                static self => self.ChildReading());
+
         public StyleGridManipulator(ReconcilerContext ctx, GridSpec spec)
         {
             _ctx = ctx;
@@ -101,7 +106,7 @@ namespace Velvet
         public void UpdateSpec(GridSpec spec)
         {
             _spec = spec;
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply, ChildReading);
+            SyncPoll(_spec.IsMeasured);
             _hasSignature = false;
             Apply();
         }
@@ -116,13 +121,13 @@ namespace Velvet
         {
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
-            StyleRelativeLengths.SyncPoll(ref _poll, target, _spec.IsMeasured, Reapply, ChildReading);
+            SyncPoll(_spec.IsMeasured);
             Apply();
         }
 
         protected override void UnregisterCallbacksFromTarget()
         {
-            StyleRelativeLengths.SyncPoll(ref _poll, target, false, Reapply);
+            SyncPoll(false);
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
