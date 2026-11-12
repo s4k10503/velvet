@@ -3207,6 +3207,15 @@ namespace Velvet
             VisualElement? portalScope, long position)
             => _suspensePrimariesReproduced.Remove(new(boundary, parent, portalScope, position, true));
 
+        // The records RecordsOf takes, and the primaries an old side of the boundary's rows reproduced for a new side
+        // to read. FiberErrorBoundary.UnmountShownRows owns why they go before the fallback mounts.
+        internal void ForgetRecordsOf(ComponentFiber boundary)
+        {
+            PruneSuspenseBoundaryState(boundary);
+            PrunePresenceBoundaryState(boundary);
+            _suspensePrimariesReproduced.RemoveWhere(key => ReferenceEquals(key.Boundary, boundary));
+        }
+
         // Opens the span of reproductions one container's reconcile takes, closed by
         // EndBoundaryReproductionScope. Nested containers reconcile inside that span and close their own
         // first, so the tail this returns is exactly the enclosing container's own.

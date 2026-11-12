@@ -30,6 +30,7 @@ namespace Velvet
         private readonly HashSet<VisualElement> _visited = new();
         private readonly List<List<VisualElement>> _childrenAtDepth = new();
         private int _depth;
+        private VisualElement? _root;
 
         internal static void Apply(ReconcilerContext ctx,
             List<(int Row, VisualElement Element, bool Hidden)>? displayChanges,
@@ -120,6 +121,7 @@ namespace Velvet
             foreach (var fiber in _hiddenFibers) Place(fiber);
             foreach (var root in _hidden)
             {
+                _root = root;
                 // Not a root that a commit nested in a cleanup above revealed, hid or returned to the pool, which drops
                 // its hold: that commit decided later.
                 if (SuspenseHiddenElements.IsHeldForHide(root)) Visit(root);
@@ -198,6 +200,10 @@ namespace Velvet
             // returns for a fiber it has hidden and DetachRefWhileHidden finds no ref left on the element.
             if (!_visited.Add(element)) return;
             TakeDown(_startingAt, element);
+            // Where a commit nested in the cleanup above took the root's hold, the rest of the root is left to it, as
+            // Disappear leaves a root whose hold such a commit took before the walk got there: what the walk has still
+            // to reach can be back in the pool, or rented again for an element that commit mounted.
+            if (!SuspenseHiddenElements.IsHeldForHide(_root!)) return;
             _ctx.DetachRefWhileHidden(element);
             if (_depth == _childrenAtDepth.Count) _childrenAtDepth.Add(new List<VisualElement>());
             var children = _childrenAtDepth[_depth++];
@@ -267,6 +273,8 @@ namespace Velvet
             ReturnLists(_endingInPortal);
             _rendered.Clear();
             _visited.Clear();
+            // MUTANT_SURVIVES(equivalent): Disappear writes the root ahead of every Visit that reads it.
+            _root = null;
         }
 
         private void ReturnLists(Dictionary<VisualElement, List<ComponentFiber>> lists)
