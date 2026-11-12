@@ -170,7 +170,6 @@ namespace Velvet
         internal static bool TryParse(string? token, out StyleVariantKind kind, out string? name, out string? payload)
             => Parse(token, wantPayload: true, out kind, out name, out payload);
 
-        // The utility under every variant layer cls carries; cls itself where it carries none.
         internal static string LeafOf(string cls) => TryParse(cls, out _, out var payload) ? LeafOf(payload!) : cls;
 
         // The keywords of s_kinds as an array, which a match walks without the string a dictionary lookup needs.
@@ -313,7 +312,6 @@ namespace Velvet
             return true;
         }
 
-        // The checks a keyword prefix still has to pass.
         private static bool Accepts(string prefix, StyleVariantKind kind, ref string? name)
         {
             // A default breakpoint a project sheet set to initial (`--breakpoint-*: initial`) is no variant.
