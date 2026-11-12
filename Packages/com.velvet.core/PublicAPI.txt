@@ -939,6 +939,7 @@
 [Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
 [Velvet] method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
 [Velvet] method Velvet.VelvetPreviewPanel.Dispose(): System.Void
+[Velvet] method Velvet.VelvetPreviewPanel.Render(): System.Void
 [Velvet] method Velvet.VelvetPreviewPanel.Resize(System.Int32, System.Int32): System.Void
 [Velvet] method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
 [Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): Velvet.VelvetPreviewEnvironment?

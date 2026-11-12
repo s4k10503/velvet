@@ -1,6 +1,10 @@
 #if UNITY_EDITOR
 #nullable enable
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -113,6 +117,27 @@ namespace Velvet
             Texture.Create();
         }
 
+        /// <summary>
+        /// Draws one frame into <see cref="Texture"/> before it returns, so a capture reads the texture back without
+        /// waiting for an editor frame. Every runtime panel drawing into the texture is updated, then repainted, then
+        /// rendered, each pass in the order the panels sort in.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">The panel is disposed.</exception>
+        /// <exception cref="NotSupportedException">This editor lacks an engine member the frame calls, which the message
+        /// names.</exception>
+        public void Render()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewPanel));
+            var frame = FrameMembers.Resolved ?? throw new NotSupportedException(
+                $"{nameof(VelvetPreviewPanel)}.{nameof(Render)} cannot draw a frame in this editor, which has no "
+                + FrameMembers.Missing);
+
+            foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Update.Invoke(panel, null);
+            foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Repaint.Invoke(null, new[] { panel });
+            frame.RepaintEnd.Invoke(null, null);
+            foreach (var panel in frame.PanelsDrawingInto(Texture)) frame.Render.Invoke(panel, null);
+        }
+
         // A scale the preview window resolved for a screen other than this texture, held at that value
         // whatever the texture's size; null restores the copied settings' own scaling.
         internal void PinScale(float? scale)
@@ -146,6 +171,36 @@ namespace Velvet
             };
 
         private static Vector2 OffPanel(Vector2 screen) => new(float.NaN, float.NaN);
+
+        private sealed class FrameMembers
+        {
+            private static readonly EngineMember[] s_declared =
+            {
+                EngineMember.SortedScreenOverlayPanels, EngineMember.RuntimePanelUpdate, EngineMember.RepaintRuntimePanel,
+                EngineMember.RuntimePanelRender, EngineMember.TextGenerationRepaintEnd,
+            };
+
+            internal static readonly string Missing =
+                string.Join(", ", s_declared.Where(member => member.ResolveMethod() == null));
+
+            internal static readonly FrameMembers? Resolved = Missing.Length == 0 ? new FrameMembers() : null;
+
+            private readonly MethodInfo _sortedPanels = EngineMember.SortedScreenOverlayPanels.ResolveMethod()!;
+            internal readonly MethodInfo Update = EngineMember.RuntimePanelUpdate.ResolveMethod()!;
+            internal readonly MethodInfo Repaint = EngineMember.RepaintRuntimePanel.ResolveMethod()!;
+            internal readonly MethodInfo Render = EngineMember.RuntimePanelRender.ResolveMethod()!;
+            internal readonly MethodInfo RepaintEnd = EngineMember.TextGenerationRepaintEnd.ResolveMethod()!;
+
+            internal List<object> PanelsDrawingInto(RenderTexture texture)
+            {
+                var drawing = new List<object>();
+                foreach (var panel in (IEnumerable)_sortedPanels.Invoke(null, null))
+                {
+                    if ((panel as IRuntimePanel)?.panelSettings.targetTexture == texture) drawing.Add(panel);
+                }
+                return drawing;
+            }
+        }
     }
 }
 #endif

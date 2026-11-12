@@ -659,6 +659,24 @@ namespace Velvet
         internal static readonly EngineMember BackgroundImagePropertyId =
             Field(UIElements, StylePropertyIdType, "BackgroundImage", StylePropertyIdShape);
 
+        // VelvetPreviewPanel.Render's frame: the screen-space runtime panels in sorting order, and the update, repaint
+        // and render it calls on those drawing into its texture, with the end of the repaint pass.
+        private const string RuntimeUtilityType = "UnityEngine.UIElements.UIElementsRuntimeUtility";
+        private const string RuntimePanelType = "UnityEngine.UIElements.BaseRuntimePanel";
+
+        internal static readonly EngineMember SortedScreenOverlayPanels = Method(UIElements, RuntimeUtilityType,
+            "GetSortedScreenOverlayPlayerPanels", "System.Collections.Generic.List`1[" + RuntimePanelType + "]");
+
+        internal static readonly EngineMember RuntimePanelUpdate = Method(UIElements, RuntimePanelType, "Update", "System.Void");
+
+        internal static readonly EngineMember RepaintRuntimePanel =
+            Method(UIElements, RuntimeUtilityType, "RepaintPanel", "System.Void", RuntimePanelType);
+
+        internal static readonly EngineMember RuntimePanelRender = Method(UIElements, RuntimePanelType, "Render", "System.Void");
+
+        internal static readonly EngineMember TextGenerationRepaintEnd =
+            Method(TextCore, "UnityEngine.TextCore.Text.TextGenerationInfo", "OnRepaintEnd", "System.Void");
+
         private const BindingFlags OwnMembers = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

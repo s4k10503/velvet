@@ -300,12 +300,13 @@ The same `[VelvetPreview]` registry also works as the data source for a headless
 building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, build a
 `new VelvetPreviewPanel(settings, width, height)` from the game's `PanelSettings`, mount each story
 onto its `Root` through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]`
-environment), and read its `Texture` back, writing one PNG per story. That is the panel the window
-shows a story through, so at the window's screen size a capture holds the window's pixels for a
-story without an explicit size. In Edit Mode the panel writes the texture on a later
-editor frame, not during `VelvetPreviewHost.Mount`, so a harness waits for frames before reading
-back — a `[UnityTest]` yields `null`; `EditModeStoryCaptureTests` holds that path.
-`StoryCaptureTests` captures every registered story in Play Mode, waiting frames the same way.
+environment), call the panel's `Render()`, and read its `Texture` back, writing one PNG per story.
+That is the panel the window shows a story through, so at the window's screen size a capture holds
+the window's pixels for a story without an explicit size. In Edit Mode a mount does not draw its story
+into the texture in its own frame; `Render()` draws a frame of every panel drawing into the texture
+before it returns, so a harness reads the texture back in the same call, with no editor frame between —
+`VelvetPreviewPanelTests` holds that path. `StoryCaptureTests` captures every registered story in Play
+Mode, waiting for frames instead.
 A harness built from `VelvetPreviewRegistry` and `VelvetPreviewHost` shares story discovery and mount
 lifecycle with the live window and the smoke test.
 

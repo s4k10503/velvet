@@ -123,7 +123,9 @@ clear and insert of its children, which lay a relocated `z-*` or `order-*` eleme
 depth the renderer draws an immediate-mode element under, which place a
 [backdrop filter](styling-filters.md#backdrop-filters) on the pixels beneath its element, and whether an element clips
 what it holds, with a panel's hierarchy version, which decide where an `outline-*` paints
-([styling-variants.md](styling-variants.md)).
+([styling-variants.md](styling-variants.md)), and the screen-space runtime panels in their sorting order with the
+update, repaint and render called on each and the end of the repaint pass, with which `VelvetPreviewPanel.Render`
+draws a frame into its texture ([preview-tooling.md](preview-tooling.md#headless-screenshot-capture)).
 `EngineMember` declares these members. `EngineMemberRegistryTests` checks direct `GetField` / `GetProperty` / `GetMethod`
 and related named-reflection calls, non-generic `Enum.Parse` / `Enum.TryParse`, literal-name delegate
 creation, and fluent member selections comparing `Name` to a literal outside the registry. Whole
