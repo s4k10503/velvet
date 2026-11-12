@@ -9,9 +9,9 @@
 - A removed subtree is taken down in one walk in the order React's deletion takes it: a component's
   `UseInsertionEffect` and `UseLayoutEffect` cleanups run where the walk reaches the component, ahead of the
   components it rendered, and an element's `refCallback:` cleanup runs where the walk reaches the element, after
-  the cleanups of the components above it and ahead of those inside it. Every ref in the subtree used to detach
-  before any component below the removed component or element cleaned up, and a component that renders another
-  directly cleaned up after it.
+  the cleanups of the components above it and ahead of those inside it. The subtree's refs used to detach
+  together, ahead of the cleanups of the components inside it that are not a `V.Portal`'s children, and a
+  component that renders another directly cleaned up after it.
 - The `ComponentStack` an error from a removed component's `UseEffect` cleanup is reported with runs from that
   component up to the root of what the render removed, as React's stack stops at a deletion's root; it used to run up
   to the mounted root.

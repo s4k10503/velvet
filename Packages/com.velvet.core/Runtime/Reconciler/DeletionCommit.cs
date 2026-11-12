@@ -130,7 +130,7 @@ namespace Velvet
         }
 
         // The components mounted inside the roots, and the top-level children of a Portal among them, which mount on
-        // the Portal's target rather than inside any root.
+        // the Portal's target.
         private void CollectHeldFibers()
         {
             List<ComponentFiber>? held = null;
