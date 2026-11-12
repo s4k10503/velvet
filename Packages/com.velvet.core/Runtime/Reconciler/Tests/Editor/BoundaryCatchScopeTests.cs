@@ -347,15 +347,14 @@ namespace Velvet.Tests
             Assert.That(s_innerCleanups, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
-        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
-        // Before that, as characterization: the merge base stops the pass before the observer renders again.
-        // The case pins that the catch taken inside the walk leaves the cleanup to the commit, as React does.
+        // GREEN_ON_BASE(characterization): the merge base shows a count the observer read before the cleanup ran.
+        // The case pins that the catch taken inside the walk leaves the cleanup to the commit, as React does. The
+        // count is of a layout cleanup, which a deletion runs where its walk reaches the component.
         [Test]
         public void Given_AComponentAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatchesOnAnUpdate_Then_ARenderLaterInThePassSeesNoCleanup()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(InnerHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(InnerLayoutHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_throws = true;
 
@@ -406,6 +405,36 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode CleanupObserverRender(int tick) => V.Label(text: "cleanups:" + s_innerCleanups);
+
+        [Component(Compiler = false)]
+        private static VNode InnerLayoutRender()
+        {
+            Hooks.UseLayoutEffect(() => () => s_innerCleanups++, Array.Empty<object>());
+            return V.Label(text: "inner");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InnerLayoutBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Fragment(new VNode[]
+            {
+                V.Component(InnerLayoutRender, key: "inner"),
+                V.Component(ThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode InnerLayoutHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(InnerLayoutBoundaryRender, key: "boundary"),
+                V.Component(CleanupObserverRender, tick, key: "observer"),
+            });
+        }
 
         [Component(Compiler = false)]
         private static VNode InnerHostRender()

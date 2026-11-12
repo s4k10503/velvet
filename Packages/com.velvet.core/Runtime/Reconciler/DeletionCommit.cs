@@ -16,82 +16,103 @@ namespace Velvet
 
         private FiberElementCleaner _cleaner = null!;
         private VisualElement? _container;
-        private readonly List<(VisualElement? Row, bool Removed, ComponentFiber? Owner)> _rows = new();
-        private readonly HashSet<VisualElement> _roots = new();
+        private int _slotStart;
+        private OldSlotOccupants? _occupants;
+        private readonly List<(int Index, VisualElement Row, ComponentFiber? Owner)> _removedRows = new();
+        // The old leaves an orphan's output starts at, each with the element the walk takes the orphan down at.
+        private readonly List<(int Index, VisualElement Start)> _orphanRows = new();
+        // Each root with the fibers mounted under it, which its removal disposes (FiberElementCleaner.CleanupElement).
+        private readonly Dictionary<VisualElement, List<ComponentFiber>?> _roots = new();
+        private readonly HashSet<VisualElement> _portalsUnderRoots = new();
         private readonly HashSet<ComponentFiber> _orphans = new();
         private readonly HashSet<ComponentFiber> _collected = new();
         private readonly List<ComponentFiber> _fibers = new();
+        private bool _startsInsideARow;
         private DeletionAnchor _rowAnchor;
 
-        // A container reconcile's deletion: Begin, a row for each old leaf in order, Run once the walk has decided
-        // which of them it removes, and End once the removals have run.
-        internal static DeletionCommit Begin(ReconcilerContext ctx, FiberElementCleaner cleaner, VisualElement? container)
+        // A container reconcile's deletion: Begin, each old leaf it removes in order, Run, and End after the removals,
+        // or where an abort skipped them. Occupants are the container's old leaves, the first at slotStart.
+        internal static DeletionCommit Begin(ReconcilerContext ctx, FiberElementCleaner cleaner, VisualElement? container,
+            int slotStart, OldSlotOccupants? occupants)
         {
             var commit = s_pool.Count > 0 ? s_pool.Pop() : new DeletionCommit();
             commit.Ctx = ctx;
             commit._cleaner = cleaner;
             commit._container = container;
+            commit._slotStart = slotStart;
+            commit._occupants = occupants;
             return commit;
         }
 
-        internal void AddRow(VisualElement? row, bool removed, ComponentFiber? owner) => _rows.Add((row, removed, owner));
+        internal void AddRemovedRow(int index, VisualElement row, ComponentFiber? owner)
+            => _removedRows.Add((index, row, owner));
+
+        // The old leaves AddRemovedRow named, in the order it named them.
+        internal List<(int Index, VisualElement Row, ComponentFiber? Owner)> RemovedRows => _removedRows;
 
         // React deletes a parent's children in the order it reconciled them, so the rows are taken in theirs, each
         // removed row as a subtree, and an orphan whose row stays where that row is.
-        internal void Run(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        internal void Run(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers, int oldLength)
         {
             foreach (var fiber in oldFibers)
             {
-                if (!newFibers.Contains(fiber)) _orphans.Add(fiber);
+                if (newFibers.Contains(fiber) || !_orphans.Add(fiber)) continue;
+                _collected.Add(fiber);
+                _fibers.Add(fiber);
             }
-            foreach (var (row, removed, _) in _rows)
-            {
-                if (removed && row != null) AddRowAsRoot(row);
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (_orphans.Contains(fiber) && _collected.Add(fiber)) _fibers.Add(fiber);
-            }
+            foreach (var (_, row, _) in _removedRows) AddRowAsRoot(row);
             CollectHeldFibers();
-            if (_fibers.Count == 0 && _roots.Count == 0) return;
             ComponentFiber.BeginDeletion(_fibers);
-            foreach (var fiber in _fibers) Place(fiber);
-            foreach (var (row, removed, owner) in _rows)
+            foreach (var fiber in _fibers) PlaceDeleted(fiber, oldLength);
+            _orphanRows.Sort(static (a, b) => a.Index.CompareTo(b.Index));
+            var walksRows = WalksRows();
+            var next = 0;
+            foreach (var (index, row, owner) in _removedRows)
             {
-                if (row == null) continue;
+                for (; next < _orphanRows.Count && _orphanRows[next].Index <= index; next++)
+                {
+                    if (_orphanRows[next].Index < index) TakeDownStartingAt(_orphanRows[next].Start);
+                }
                 _rowAnchor = AnchorOfRow(owner);
-                if (removed) VisitRow(row);
-                else TakeDownStartingAt(Ctx.ZLayerPlaceholders.TryGetValue(row, out var real) ? real : row);
+                if (walksRows) VisitRow(row);
+                else TakeDownStartingAt(row);
             }
+            for (; next < _orphanRows.Count; next++) TakeDownStartingAt(_orphanRows[next].Start);
             TakeDownTheRest();
             // MUTANT_SURVIVES(equivalent): without the entries the removals walk these rows again
-            // (FiberElementCleaner.CleanupElement) and find no ref installed and no effect left to run on them.
-            foreach (var root in _roots) Ctx.RemovalsTakenDown.Add(root);
+            // (FiberElementCleaner.CleanupElement), find no ref installed and no effect left to run on them, and
+            // collect the same fibers to dispose.
+            foreach (var (root, mounted) in _roots) Ctx.RemovalsTakenDown[root] = mounted;
         }
 
         // A row a walk registered and an abort kept from its removal would otherwise skip the walk of its next one.
         internal void End()
         {
-            foreach (var root in _roots) Ctx.RemovalsTakenDown.Remove(root);
+            foreach (var root in _roots.Keys) Ctx.RemovalsTakenDown.Remove(root);
             Clear();
+            // MUTANT_SURVIVES(equivalent): an instance not handed back only makes the next Begin build a new one.
             s_pool.Push(this);
         }
 
-        // An element leaving outside a container reconcile's deletion. Without a component held below it, the element
-        // teardown that follows (FiberElementCleaner.CleanupElementCore) reaches its refs in this walk's order.
-        internal static void TakeDownLeaving(ReconcilerContext ctx, FiberElementCleaner cleaner, VisualElement element)
+        // An element leaving outside a container reconcile's deletion, for which it returns the fibers mounted under
+        // the element. Without a component held below it, the element teardown that follows
+        // (FiberElementCleaner.CleanupElementCore) reaches its refs in this walk's order.
+        internal static List<ComponentFiber>? TakeDownLeaving(ReconcilerContext ctx, FiberElementCleaner cleaner,
+            VisualElement element)
         {
-            var commit = Begin(ctx, cleaner, element.hierarchy.parent);
+            var commit = Begin(ctx, cleaner, element.hierarchy.parent, slotStart: 0, occupants: null);
             try
             {
                 commit.AddRowAsRoot(element);
                 commit.CollectHeldFibers();
-                if (commit._fibers.Count == 0) return;
+                var mounted = commit._roots[element];
+                if (commit._fibers.Count == 0) return mounted;
                 ComponentFiber.BeginDeletion(commit._fibers);
                 foreach (var fiber in commit._fibers) commit.Place(fiber);
                 commit._rowAnchor = DeletionAnchor.For(commit._container, ctx.FiberStack.Current);
                 commit.VisitRow(element);
                 commit.TakeDownTheRest();
+                return mounted;
             }
             finally
             {
@@ -112,37 +133,45 @@ namespace Velvet
             if (Ctx.ZLayerPlaceholders.TryGetValue(row, out var real)) AddRoot(real);
         }
 
-        // A Portal's rows are reached at its placeholder, so a row whose target the deletion holds is passed over
-        // there (IsRoot), and the fibers inside the rows are collected with the rest.
         private void AddRoot(VisualElement element)
         {
-            if (!_roots.Add(element)) return;
-            if (Ctx.PortalState.Count == 0) return;
-            foreach (var (placeholder, portal) in Ctx.PortalState)
-            {
-                if (portal.Target == null || !IsAtOrUnder(placeholder, element)) continue;
-                var rows = RenderedChildrenOf(portal.Target);
-                for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength && slot < rows.Count; slot++)
-                {
-                    AddRowAsRoot(rows[slot]);
-                }
-            }
+            if (_roots.ContainsKey(element)) return;
+            List<ComponentFiber>? mounted = null;
+            Ctx.ComponentRegistry.CollectFibersIn(element, ref mounted);
+            _roots[element] = mounted;
         }
 
-        // The components mounted inside the roots, and the top-level children of a Portal among them, which mount on
-        // the Portal's target.
+        // The fibers mounted inside the roots, and a Portal's under them: its rows, which mount on its target and
+        // become roots too, reached at its placeholder (IsRoot), and its top-level children, which mount on the
+        // target among the rows. A Portal inside those rows is found by the next round.
         private void CollectHeldFibers()
         {
-            List<ComponentFiber>? held = null;
-            foreach (var root in _roots) Ctx.ComponentRegistry.CollectFibersIn(root, ref held);
-            // MUTANT_SURVIVES(equivalent, boundary): the loop visits no placeholder over an empty table.
-            if (Ctx.PortalState.Count > 0)
+            List<ComponentFiber>? owned = null;
+            // MUTANT_SURVIVES(equivalent, boundary): a round over an empty table reaches no placeholder and ends.
+            var reached = Ctx.PortalState.Count > 0;
+            while (reached)
             {
-                foreach (var placeholder in Ctx.PortalState.Keys)
+                reached = false;
+                foreach (var (placeholder, portal) in Ctx.PortalState)
                 {
-                    if (IsUnderARoot(placeholder)) Ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref held);
+                    if (_portalsUnderRoots.Contains(placeholder) || !IsUnderARoot(placeholder)) continue;
+                    _portalsUnderRoots.Add(placeholder);
+                    reached = true;
+                    Ctx.ComponentRegistry.CollectInlineFibersOwnedByPortal(placeholder, ref owned);
+                    if (portal.Target == null) continue;
+                    var rows = RenderedChildrenOf(portal.Target);
+                    for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength && slot < rows.Count; slot++)
+                    {
+                        AddRowAsRoot(rows[slot]);
+                    }
                 }
             }
+            foreach (var mounted in _roots.Values) AddHeld(mounted);
+            AddHeld(owned);
+        }
+
+        private void AddHeld(List<ComponentFiber>? held)
+        {
             if (held == null) return;
             foreach (var fiber in held)
             {
@@ -153,15 +182,36 @@ namespace Velvet
         private bool IsUnderARoot(VisualElement element)
         {
             var ve = element;
-            while (ve != null && !_roots.Contains(ve)) ve = ve.hierarchy.parent;
+            while (ve != null && !_roots.ContainsKey(ve)) ve = ve.hierarchy.parent;
             return ve != null;
         }
 
-        private static bool IsAtOrUnder(VisualElement element, VisualElement subtree)
+        // An orphan mounted in the container starts at the old leaf at its slot, and one whose slot holds none of the
+        // container's old leaves is taken down after the walk. Every other fiber is placed by its mount.
+        private void PlaceDeleted(ComponentFiber fiber, int oldLength)
         {
-            var ve = element;
-            while (ve != null && !ReferenceEquals(ve, subtree)) ve = ve.hierarchy.parent;
-            return ve != null;
+            if (_occupants == null || !ReferenceEquals(fiber.MountPoint, _container) || !_orphans.Contains(fiber))
+            {
+                _startsInsideARow = true;
+                Place(fiber);
+                return;
+            }
+            var index = fiber.MountSlotStart - _slotStart;
+            var row = index >= 0 && index < oldLength ? _occupants.Occupant(index) : null;
+            if (row == null) return;
+            var start = Ctx.ZLayerPlaceholders.TryGetValue(row, out var real) ? real : row;
+            if (PlaceAt(start, fiber)) _orphanRows.Add((index, start));
+        }
+
+        // A removed row goes unwalked only where nothing in it can be taken down after the fibers that start at the row
+        // itself: no fiber is placed inside a row, and the context holds no ref, no relocated element and no Portal.
+        private bool WalksRows()
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): walking a row that needs no walk takes down nothing more.
+            // It detaches no ref, and takes down only the fibers that start at the row, as the row's own takedown does.
+            if (_startsInsideARow || Ctx.RefCallbacks.Count > 0) return true;
+            // MUTANT_SURVIVES(equivalent, boundary): walking a row that needs no walk takes down nothing more.
+            return Ctx.ZLayerPlaceholders.Count > 0 || Ctx.PortalState.Count > 0;
         }
 
         // A fiber the walk reached no element for, an orphan holding no row behind the container's last one among them,
@@ -202,23 +252,28 @@ namespace Velvet
 
         protected override void TakeDown(VisualElement element) => _cleaner.DetachRef(element);
 
-        protected override bool IsRoot(VisualElement element) => _roots.Contains(element);
+        protected override bool IsRoot(VisualElement element) => _roots.ContainsKey(element);
 
         protected override void Clear()
         {
             base.Clear();
-            // MUTANT_SURVIVES(equivalent): Begin assigns both before any read; the resets only let the pooled instance
-            // drop what it pointed at.
+            // MUTANT_SURVIVES(equivalent): Begin assigns all three before any read.
+            // The resets only let the pooled instance drop what it pointed at.
             _cleaner = null!;
-            // MUTANT_SURVIVES(equivalent): as above.
+            // MUTANT_SURVIVES(equivalent): Begin assigns the container before any read.
             _container = null;
-            _rows.Clear();
-            _roots.Clear();
-            _orphans.Clear();
-            _collected.Clear();
+            // MUTANT_SURVIVES(equivalent): Begin assigns the occupants before any read.
+            _occupants = null;
+            _removedRows.Clear();
+            _orphanRows.Clear();
+            ClearAndTrim(_roots);
+            ClearAndTrim(_portalsUnderRoots);
+            ClearAndTrim(_orphans);
+            ClearAndTrim(_collected);
             _fibers.Clear();
-            // MUTANT_SURVIVES(equivalent): a walk assigns it before it takes down the first fiber that reads it, one held
-            // under a row.
+            // MUTANT_SURVIVES(equivalent): a walk left flagged walks rows that need no walk (WalksRows).
+            _startsInsideARow = false;
+            // MUTANT_SURVIVES(equivalent): a walk assigns it before it takes down any fiber that reads it.
             _rowAnchor = default;
         }
     }
@@ -240,12 +295,14 @@ namespace Velvet
     // for the passive drain. An error one throws starts its search at CatchFrom (ComponentBoundarySearch.PropagateFromDeletion).
     internal sealed class DeletedPassiveCleanup
     {
-        internal DeletedPassiveCleanup(ComponentFiber fiber, ComponentFiber? catchFrom, List<Action> cleanups, DeletionAnchor anchor)
+        internal DeletedPassiveCleanup(ComponentFiber fiber, ComponentFiber? catchFrom, List<Action> cleanups,
+            DeletionAnchor anchor, Reconciler? pass)
         {
             Fiber = fiber;
             CatchFrom = catchFrom;
             Cleanups = cleanups;
             Anchor = anchor;
+            Pass = pass;
         }
 
         internal ComponentFiber Fiber { get; }
@@ -255,6 +312,9 @@ namespace Velvet
         internal List<Action> Cleanups { get; }
 
         internal DeletionAnchor Anchor { get; }
+
+        // ReconcilerContext.CurrentPass as the fiber was deleted.
+        internal Reconciler? Pass { get; }
 
         internal void Run()
         {

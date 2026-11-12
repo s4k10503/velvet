@@ -155,6 +155,26 @@ namespace Velvet.Tests
                 }, key: "portal"),
                 V.Component(After, key: "after"));
 
+        // The list renders its row again in the pass that reconciles the Portal's children, ahead of a component after
+        // it in the same Portal.
+        [Component]
+        private static VNode ListThenLeafInAPortalThenSibling(ParentProps props)
+        {
+            var (value, _) = EventLog.UseState("Gen", 0);
+            return V.Fragment(
+                V.Portal(props.Target, new VNode[]
+                {
+                    V.VirtualList(
+                        items: new[] { "R" },
+                        keySelector: item => item,
+                        itemHeight: 50f,
+                        renderer: item => V.Component(Leaf, new Dep(item, value), key: item),
+                        overscan: 0),
+                    V.Component(Leaf, new Dep("Leaf", value), key: "leaf"),
+                }, key: "portal"),
+                V.Component(Leaf, new Dep("After", value), key: "after"));
+        }
+
         private static string MountAndLog(bool lastRendersNothing)
         {
             var log = new EventLog();
@@ -308,6 +328,29 @@ namespace Velvet.Tests
             Assert.That(unmet ?? log.ToString(), Is.EqualTo(
                 $"ins-x:{last} ins:{last} lay-x:{last} ins-x:After ins:After lay-x:After lay:{last} lay:After"
                 + $" eff-x:{last} eff-x:After eff:{last} eff:After"));
+        }
+
+        [Test]
+        public void Given_AListThenAComponentInAPortalAndASiblingAfterIt_When_ThePassThatRendersTheListsRowCommits_Then_ThePortalsComponentRunsAheadOfTheSibling()
+        {
+            // Arrange — the list holds its row once a range update has placed it
+            var log = new EventLog();
+            var target = new VisualElement();
+            using var mounted = V.Mount(new VisualElement(),
+                log.Provide(V.Component(ListThenLeafInAPortalThenSibling, new ParentProps(target, false))));
+            mounted.DrainForTest();
+            var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
+            log.Setter<int>("Gen").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:R eff-x:Leaf eff-x:After eff:R eff:Leaf eff:After"));
         }
     }
 }

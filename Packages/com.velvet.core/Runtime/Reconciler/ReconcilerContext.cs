@@ -2083,9 +2083,12 @@ namespace Velvet
         // drain (FiberEffects.CleanUpDeleted).
         internal readonly List<DeletedPassiveCleanup> PendingDeletedPassiveCleanups = new();
 
-        // The rows a container's deletion has walked and whose removal has not reached FiberElementCleaner yet
-        // (DeletionCommit.Run, ended by DeletionCommit.End).
-        internal readonly HashSet<VisualElement> RemovalsTakenDown = new();
+        // The poolable elements removed while a destroy above was pending (FiberElementCleaner.ReturnToPool).
+        internal readonly List<VisualElement> ElementsHeldFromThePool = new();
+
+        // The rows a container's deletion has taken down and whose removal has not reached FiberElementCleaner yet, each
+        // with the fibers mounted under it (DeletionCommit.Run, ended by DeletionCommit.End).
+        internal readonly Dictionary<VisualElement, List<ComponentFiber>?> RemovalsTakenDown = new();
 
         // True once a DrainPassiveEffects callback has been registered on the host scheduler for
         // the current batch of PendingPassiveEffectFibers. Prevents scheduling more than

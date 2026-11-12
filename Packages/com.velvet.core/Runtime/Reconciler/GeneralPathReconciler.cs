@@ -226,7 +226,7 @@ namespace Velvet
                 if (removalsRan)
                 {
                     if (commit.BeforeRemovals != null) foreach (var dispose in commit.BeforeRemovals) dispose();
-                    FinalizeGeneralCommit(commit);
+                    FinalizeGeneralCommit(commit, deletion);
                     ApplyOffscreenChanges(commit);
                     if (commit.AfterRemovals != null) foreach (var retire in commit.AfterRemovals) retire();
                 }
@@ -581,38 +581,43 @@ namespace Velvet
             }
         }
 
-        // After MarkPatchedOldLeaves. A leaf whose slot was empty when the walk read the old instances has none to
-        // remove.
-        private static bool IsRemoved(GeneralCommitState commit, int oldIndex)
-            => !commit.UsedOldIndices.Contains(oldIndex) && commit.OldOccupants.Occupant(oldIndex) != null;
-
-        // What the walk deletes — the fibers its old side reached and its new side did not, and the old leaves it
-        // removes — taken down in React's order ahead of the removals (DeletionCommit). A walk an abort stopped removes
-        // no leaf, and still takes down the orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
-        // Marks the patched old leaves FinalizeGeneralCommit removes by, as no walk an abort stopped reaches it.
+        // What the walk deletes — the old leaves it removes and the fibers its old side reached and its new side did
+        // not — taken down in React's order ahead of the removals (DeletionCommit), which FinalizeGeneralCommit runs
+        // over the leaves the deletion names. A walk an abort stopped removes no leaf, and still takes down the
+        // orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
         private DeletionCommit? TakeDownTheDeletion(
             GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {
-            var removes = !_ctx.IsAborted;
             var oldLength = commit.OldNodes!.Length;
-            // MUTANT_SURVIVES(equivalent): a deletion begun over nothing deleted returns from Run before it walks.
-            var deletes = false;
-            if (removes)
+            DeletionCommit? deletion = null;
+            if (!_ctx.IsAborted)
             {
                 MarkPatchedOldLeaves(commit);
-                // MUTANT_SURVIVES(equivalent, boundary): past the last old leaf Occupant reads null, so IsRemoved reads false.
-                for (var i = 0; i < oldLength && !deletes; i++) deletes = IsRemoved(commit, i);
+                // MUTANT_SURVIVES(equivalent, boundary): past the last old leaf Occupant reads null, which is skipped.
+                for (var i = 0; i < oldLength; i++)
+                {
+                    // A leaf whose slot was empty when the walk read the old instances has none to remove.
+                    var row = commit.OldOccupants.Occupant(i);
+                    if (row == null || commit.UsedOldIndices.Contains(i)) continue;
+                    (deletion ??= BeginDeletion(commit)).AddRemovedRow(i, row, commit.OldOwners[i]);
+                }
             }
-            for (var i = 0; i < oldFibers.Count && !deletes; i++) deletes = !newFibers.Contains(oldFibers[i]);
-            // MUTANT_SURVIVES(equivalent): as above, a deletion over nothing deleted walks nothing.
-            if (!deletes) return null;
-            var deletion = _ctx.HostCommit.BeginDeletion(commit.Parent);
-            for (var i = 0; i < oldLength; i++)
-            {
-                deletion.AddRow(commit.OldOccupants.Occupant(i), removes && IsRemoved(commit, i), commit.OldOwners[i]);
-            }
-            deletion.Run(oldFibers, newFibers);
+            if (deletion == null && !HasOrphan(oldFibers, newFibers)) return null;
+            deletion ??= BeginDeletion(commit);
+            deletion.Run(oldFibers, newFibers, oldLength);
             return deletion;
+        }
+
+        private DeletionCommit BeginDeletion(GeneralCommitState commit)
+            => _ctx.HostCommit.BeginDeletion(commit.Parent, commit.SlotStart, commit.OldOccupants);
+
+        private static bool HasOrphan(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
+            foreach (var fiber in oldFibers)
+            {
+                if (!newFibers.Contains(fiber)) return true;
+            }
+            return false;
         }
 
         // Removes old leaves not reused by the walk, then re-places the committed elements into
@@ -620,22 +625,21 @@ namespace Velvet
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
         // ReconcileKeyedSync with linearEnd == 0: all matching happened in CommitLeaf, and the leaves it
         // matched linearly are placed with the rest rather than ahead of them.
-        private void FinalizeGeneralCommit(GeneralCommitState commit)
+        private void FinalizeGeneralCommit(GeneralCommitState commit, DeletionCommit? deletion)
         {
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            // Removal, from the last old leaf down, of the leaves TakeDownTheDeletion found removed.
-            for (var i = oldNodes.Length - 1; i >= 0; i--)
+            // Removal, from the last old leaf down, of the leaves the deletion took down.
+            var removed = deletion?.RemovedRows;
+            for (var i = (removed?.Count ?? 0) - 1; i >= 0; i--)
             {
-                if (IsRemoved(commit, i))
-                {
-                    _ctx.HostCommit.Remove(parent, commit.OldOccupants.Occupant(i)!, commit.OldOccupants.PhysicalAtEntry(i));
-                }
+                var index = removed![i].Index;
+                var old = commit.OldOccupants.Occupant(index);
+                if (old != null) _ctx.HostCommit.Remove(parent, old, commit.OldOccupants.PhysicalAtEntry(index));
             }
-
             // LIS reorder over the post-removal DOM positions, from slotStart for the reason above.
             var range = new ChildElementPlacement.PlacementRange
             {

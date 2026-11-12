@@ -222,7 +222,10 @@ namespace Velvet
         // What one container's reconcile deletes, taken down before its removals (DeletionCommit): the fibers its
         // old side reached and its new side did not, whose disposal comes after them (DisposeOrphans), and the rows
         // it removes.
-        internal DeletionCommit BeginDeletion(VisualElement? container) => DeletionCommit.Begin(_ctx, _cleaner, container);
+        internal DeletionCommit BeginDeletion(VisualElement? container, int slotStart, OldSlotOccupants occupants)
+            => DeletionCommit.Begin(_ctx, _cleaner, container, slotStart, occupants);
+
+        internal void ReturnHeldElementsToPool() => _cleaner.ReturnHeldElementsToPool();
 
         internal void DisposeOrphans(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {

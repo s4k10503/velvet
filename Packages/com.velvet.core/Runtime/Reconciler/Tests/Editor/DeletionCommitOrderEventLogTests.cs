@@ -309,6 +309,180 @@ namespace Velvet.Tests
                 hidden == 0 ? V.Component(Probed, new Named("B"), key: "b") : null);
         }
 
+        // A deleted child ahead of a sibling that stays, for a disposal that follows the deletion.
+        [Component]
+        private static VNode DeletionBeforeASibling()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                shown ? V.Component(Probed, new Named("X"), key: "x") : null,
+                V.Component(Probed, new Named("Y"), key: "y"));
+        }
+
+        private sealed record Hider(int Dep, StateUpdater<bool> SetShown);
+
+        [Component]
+        private static VNode PassiveOnly(Named props)
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseEffect(() => () => log.Add("eff-x:" + props.Name), Array.Empty<object>());
+            return V.Div();
+        }
+
+        // Its layout effect deletes the sibling ahead of it once its dep changes, which is a second commit.
+        [Component]
+        private static VNode HidesItsSibling(Hider props)
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseEffect(() =>
+            {
+                log.Add("eff:S");
+                return () => log.Add("eff-x:S");
+            }, new object[] { props.Dep });
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (props.Dep == 1) props.SetShown.Invoke(false);
+                return default(Action);
+            }, new object[] { props.Dep });
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode SiblingDeletedByALayoutEffect()
+        {
+            var (shown, setShown) = EventLog.UseState("Shown", true);
+            var (dep, _) = EventLog.UseState("Dep", 0);
+            return V.Fragment(
+                shown ? V.Component(PassiveOnly, new Named("D"), key: "d") : null,
+                V.Component(HidesItsSibling, new Hider(dep, setShown), key: "s"));
+        }
+
+        private const int SlicedRows = 4;
+        private static ComponentFiber s_slicedList;
+        private static int s_slicedGeneration;
+
+        [SetUp]
+        public void SetUp()
+        {
+            s_slicedList = null;
+            s_slicedGeneration = 0;
+        }
+
+        // Keyed elements at the top level keep the list's own reconcile on the path that time-slices, as in
+        // ParkedPassResumeTests; the first row holds the child the list's transition deletes.
+        [Component(Compiler = false)]
+        private static VNode SlicedList()
+        {
+            s_slicedList = FiberAmbientStack.Current;
+            var generation = s_slicedGeneration;
+            EventLog.UseEffects("L", new object[] { generation });
+            var rows = new VNode[SlicedRows];
+            rows[0] = V.Div(key: "row0", children: new VNode[]
+            {
+                generation == 0 ? V.Component(Probed, new Named("D"), key: "d") : null,
+            });
+            for (var i = 1; i < SlicedRows; i++)
+            {
+                rows[i] = V.Div(key: "row" + i, children: new VNode[] { V.Label(text: "gen" + generation) });
+            }
+            return V.Fragment(children: rows);
+        }
+
+        // The first row swaps its element type, and the second row's element deletes its child.
+        [Component]
+        private static VNode TypeSwapThenAnElementDeletion()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Div(children: new VNode[]
+            {
+                shown
+                    ? V.Div(children: new VNode[] { V.Component(Probed, new Named("A"), key: "a") })
+                    : V.Label(text: "swapped"),
+                V.Div(children: new VNode[] { shown ? V.Component(Probed, new Named("B"), key: "b") : null }),
+            });
+        }
+
+        [Component]
+        private static VNode EmptiedBy(Dep props)
+            => V.Fragment(props.Value == 0 ? V.Component(Probed, new Named("A"), key: "a") : null);
+
+        // A child component deletes its own child, and an element after it deletes another.
+        [Component]
+        private static VNode DeletionsInAChildAndAnElementAfterIt()
+        {
+            var (dep, _) = EventLog.UseState("Dep", 0);
+            return V.Fragment(
+                V.Component(EmptiedBy, new Dep("M", dep), key: "m"),
+                V.Div(children: new VNode[] { dep == 0 ? V.Component(Probed, new Named("B"), key: "b") : null }));
+        }
+
+        // The deleted child sits in an element ahead of a sibling the same render updates.
+        [Component]
+        private static VNode ElementAheadOfASiblingThatUpdates()
+        {
+            var (dep, _) = EventLog.UseState("Dep", 0);
+            return V.Fragment(
+                V.Div(children: new VNode[] { dep == 0 ? V.Component(Probed, new Named("D"), key: "d") : null }),
+                V.Component(Dependent, new Dep("F", dep), key: "f"));
+        }
+
+        [Component]
+        private static VNode ListRow(Named props)
+        {
+            var (value, _) = EventLog.UseState(props.Name, 0);
+            EventLog.UseEffects(props.Name, new object[] { value });
+            return V.Label(text: props.Name);
+        }
+
+        // The deleted child sits in an element ahead of a list whose row is mounted on an element of its own.
+        [Component]
+        private static VNode ElementAheadOfAList()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                V.Div(children: new VNode[] { shown ? V.Component(Probed, new Named("D"), key: "d") : null }),
+                V.VirtualList(
+                    items: new[] { "R" },
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(ListRow, new Named(item), key: item),
+                    overscan: 0));
+        }
+
+        [Component]
+        private static VNode Unreffed(Named props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Label(text: props.Name);
+        }
+
+        [Component]
+        private static VNode UnreffedHolder(Named props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Div(children: new VNode[] { V.Component(Unreffed, new Named(props.Name + "i"), key: "i") });
+        }
+
+        // Two removed rows, each holding a component, in a tree with no ref anywhere.
+        [Component]
+        private static VNode UnreffedRows()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                shown ? V.Component(UnreffedHolder, new Named("A"), key: "a") : null,
+                shown ? V.Component(UnreffedHolder, new Named("B"), key: "b") : null);
+        }
+
+        // Two siblings removed together, each its own row with a ref and nothing inside it.
+        [Component]
+        private static VNode TwoRemovedSiblings()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Fragment(
+                shown ? V.Component(Probed, new Named("A"), key: "a") : null,
+                shown ? V.Component(Probed, new Named("B"), key: "b") : null);
+        }
+
         private static MountedTree Mount(EventLog log, VNode root)
         {
             var mounted = V.Mount(new VisualElement(), log.Provide(root));
@@ -564,6 +738,200 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(log.ToString(), Is.EqualTo("eff-x:B eff-x:A"));
+        }
+
+        [Test]
+        public void Given_ADeletionWhosePassiveCleanupIsStillQueued_When_TheTreeIsDisposed_Then_ItRunsAheadOfTheUnmount()
+        {
+            // Arrange
+            var log = new EventLog();
+            var mounted = Mount(log, V.Component(DeletionBeforeASibling));
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:X ins-x:Y lay-x:Y ref-x:Y eff-x:Y"));
+        }
+
+        [Test]
+        public void Given_ATransitionThatDeletesAChildAndParks_When_ItCommits_Then_TheChildsPassiveCleanupRunsAfterTheCommitsLayoutEffects()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(SlicedList));
+            s_slicedGeneration = 1;
+            s_slicedList.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_slicedList.FlushStateWithTinyBudgetForTest();
+            var parkedAfterTheDeletion = s_slicedList.HasPendingReconcileWorkForTest()
+                && log.ToString().Contains("ins-x:D");
+
+            // Act
+            s_slicedList.DrainTimeSlicedReconcileForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — a pass that deleted the child in the slice it committed in reads the same either way, so that
+            // reading is a sentinel.
+            Assert.That(parkedAfterTheDeletion ? log.ToString() : "the pass did not park after the deletion",
+                Is.EqualTo("ins-x:D lay-x:D ref-x:D ins-x:L ins:L lay-x:L lay:L eff-x:D eff-x:L eff:L"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the first commit's passive effects first, as React does.
+        // They run before the update the sibling's layout effect makes renders the deletion.
+        [Test]
+        public void Given_ALayoutEffectThatDeletesASiblingAheadOfIt_When_ItsUpdateCommits_Then_TheEarlierCommitsPassiveEffectsRunFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(SiblingDeletedByALayoutEffect));
+
+            // Act
+            log.Setter<int>("Dep").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:S eff:S eff-x:D"));
+        }
+
+        [Test]
+        public void Given_APortalInsideARemovedElementAndOneBesideItOnTheSameTarget_When_TheElementIsRemoved_Then_TheOtherPortalsChildrenStay()
+        {
+            // Arrange
+            var log = new EventLog();
+            var target = new VisualElement();
+            using var mounted = Mount(log, V.Component(PortalInARemovedElement, new Targets(target, target)));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "render:Root ref-x:O ins-x:PC lay-x:PC ref-x:PC ins-x:PCC lay-x:PCC ref-x:PCC eff-x:PC eff-x:PCC"));
+        }
+
+        [Test]
+        public void Given_AnElementRemovedByATypeSwapAheadOfAnElementThatDeletesAChild_When_ThePassivePhaseRuns_Then_TheSwappedOneRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(TypeSwapThenAnElementDeletion));
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:A eff-x:B"));
+        }
+
+        [Test]
+        public void Given_ADeletionInAChildComponentAndOneInAnElementAfterIt_When_ThePassivePhaseRuns_Then_TheChildsRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(DeletionsInAChildAndAnElementAfterIt));
+            log.Setter<int>("Dep").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:A eff-x:B"));
+        }
+
+        [Test]
+        public void Given_AChildDeletedFromAnElementAheadOfASiblingThatUpdates_When_ThePassivePhaseRuns_Then_TheDeletionRunsFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(ElementAheadOfASiblingThatUpdates));
+            log.Setter<int>("Dep").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:D eff-x:F eff:F"));
+        }
+
+        [Test]
+        public void Given_AChildDeletedFromAnElementAheadOfAListWhoseRowUpdates_When_ThePassivePhaseRuns_Then_TheDeletionRunsFirst()
+        {
+            // Arrange — the row renders from a range update outside any pass, the way a scroll renders one
+            var log = new EventLog();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, log.Provide(V.Component(ElementAheadOfAList)));
+            mounted.DrainForTest();
+            var list = mounted.Root.Reconciler!.Context.VirtualListControllers[root.Q<ScrollView>()];
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
+            log.Setter<bool>("Shown").Invoke(false);
+            log.Setter<int>("R").Invoke(1);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            log.Clear();
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("eff-x:D eff-x:R eff:R"));
+        }
+
+        [Test]
+        public void Given_RowsHoldingComponentsInATreeWithNoRef_When_TheirParentStopsRenderingThem_Then_EachRowIsTakenDownBeforeTheNext()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(UnreffedRows));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ins-x:A lay-x:A ins-x:Ai lay-x:Ai ins-x:B lay-x:B ins-x:Bi lay-x:Bi eff-x:A eff-x:Ai eff-x:B eff-x:Bi"));
+        }
+
+        [Test]
+        public void Given_AChildOfAComponentWhoseRowsFollowASiblings_When_ItsParentStopsRenderingIt_Then_ItIsTakenDownAheadOfItsElement()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(SiblingBeforeTheParent));
+
+            // Act
+            log.Setter<bool>("M").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:D lay-x:D ref-x:D eff-x:D"));
+        }
+
+        [Test]
+        public void Given_TwoSiblingsWithRefsRemovedTogether_When_TheirParentStopsRenderingThem_Then_EachIsTakenDownWithItsRefBeforeTheNext()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = Mount(log, V.Component(TwoRemovedSiblings));
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ins-x:A lay-x:A ref-x:A ins-x:B lay-x:B ref-x:B eff-x:A eff-x:B"));
         }
     }
 }

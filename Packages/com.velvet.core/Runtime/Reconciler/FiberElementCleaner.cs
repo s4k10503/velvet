@@ -165,8 +165,16 @@ namespace Velvet
         // unrelated mount.
         private void ReturnToPool(VisualElement element)
         {
+            var kind = PoolKindOf(element);
+            // A deleted component's queued passive destroy can reach an element its setup captured, which another
+            // mount would hold by then if it were pooled now.
+            if (kind != PoolKind.None && _ctx.PendingDeletedPassiveCleanups.Count > 0)
+            {
+                _ctx.ElementsHeldFromThePool.Add(element);
+                return;
+            }
             FiberPropApplier.ForgetRecordedDefaults(element);
-            switch (PoolKindOf(element))
+            switch (kind)
             {
                 case PoolKind.TextField:
                     VNodePool.ReturnTextField((TextField)element);
@@ -192,6 +200,14 @@ namespace Velvet
             MotionLayoutIdDriver.ForgetParent(element, _ctx);
         }
 
+        internal void ReturnHeldElementsToPool()
+        {
+            var held = _ctx.ElementsHeldFromThePool;
+            if (held.Count == 0 || _ctx.PendingDeletedPassiveCleanups.Count > 0) return;
+            for (var i = 0; i < held.Count; i++) ReturnToPool(held[i]);
+            held.Clear();
+        }
+
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.
         public void CleanupElement(VisualElement element) => CleanupElement(element, element.panel, discardedRoot: null);
 
@@ -201,7 +217,10 @@ namespace Velvet
         private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot)
         {
             // A row a container's deletion took down already has nothing of it left to reach.
-            if (!_ctx.RemovalsTakenDown.Remove(element)) DeletionCommit.TakeDownLeaving(_ctx, this, element);
+            if (!_ctx.RemovalsTakenDown.Remove(element, out var mounted))
+            {
+                mounted = DeletionCommit.TakeDownLeaving(_ctx, this, element);
+            }
             var enclosingRoot = _ctx.DiscardedSubtreeRoot;
             _ctx.DiscardedSubtreeRoot = discardedRoot;
             try
@@ -224,7 +243,8 @@ namespace Velvet
             // Dispose by subtree containment here so its effect cleanups fire and a re-entry mounts fresh. This
             // set is disjoint from the orphan sweep's (top-level inline fibers anchor on the parent, outside any
             // removed child), so the disposal does not overlap; FiberRenderer.Dispose is idempotent regardless.
-            _ctx.ComponentRegistry.DisposeFibersUnder(element);
+            // The selection is the one DeletionCommit made above.
+            if (mounted != null) _ctx.ComponentRegistry.DisposeTogether(mounted);
         }
 
         // Detaches an element-keyed manipulator: removes it from the element and drops its side-table entry.
@@ -811,7 +831,7 @@ namespace Velvet
 
                 // A relocated element has a placeholder in this SAME child list, through which
                 // CleanupZLayerPlaceholder reaches and fully cleans it in this very loop; cleaning it here too
-                // would run the full CleanupElementResources + DisposeFibersUnder sequence on it a second time.
+                // would run the full CleanupElement sequence on it a second time.
                 // A retired one was cleaned when it was retired, and an anchor is internal.
                 if (FiberZLayerCoordinator.IsRelocatedReal(child) || FiberZLayerCoordinator.IsInternal(child))
                 {

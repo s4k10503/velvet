@@ -1296,13 +1296,14 @@ namespace Velvet.Tests
         private static int s_throwingCleanupRuns;
         private static Action<int> s_throwingSetValue;
 
-        // GREEN_ON_BASE(characterization): the merge base already disposes an orphan whose cleanup raised the abort.
-        // That abort comes after a walk that reached every fiber, so nothing is kept back from the sweep.
+        // GREEN_ON_BASE(characterization): the merge base disposes an orphan whose layout cleanup raised the abort.
+        // That abort comes after a walk that reached every fiber, so nothing is kept back from the sweep. The
+        // cleanup is a layout one so the abort is raised in the deletion's walk, ahead of the sweep.
         [Test]
         public void Given_AnOrphanWhoseCleanupThrowsIntoABoundary_When_TheRenderDropsIt_Then_ItIsDisposed()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(CleanupThrowHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(LayoutCleanupThrowHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_throwingSetValue.Invoke(5);
             mounted.FlushStateForTest();
@@ -1328,7 +1329,7 @@ namespace Velvet.Tests
             s_throwingFiber = FiberAmbientStack.Current;
             var (value, setValue) = Hooks.UseState(0);
             s_throwingSetValue = setValue;
-            Hooks.UseEffect(() => () =>
+            Hooks.UseLayoutEffect(() => () =>
             {
                 s_throwingCleanupRuns++;
                 throw new InvalidOperationException("Cleanup throw");
@@ -1346,7 +1347,7 @@ namespace Velvet.Tests
         }
 
         [Component(Compiler = false)]
-        private static VNode CleanupThrowHostRender()
+        private static VNode LayoutCleanupThrowHostRender()
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_unreachedSetHostTick = setTick;

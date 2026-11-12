@@ -578,40 +578,65 @@ namespace Velvet
             fiber.PendingEffects?.Clear();
             fiber.EffectFlushScheduled = false;
             if (cleanups == null) return;
-            var queued = new DeletedPassiveCleanup(fiber,
-                fiber.IsBeingDeleted ? fiber.NearestAncestorOutsideTheDeletion : fiber.Parent, cleanups, anchor);
             var context = fiber.Reconciler?.Context;
             // Run at once where no drain is armed for them: a context with no scheduler anchor, a bare Reconciler, as
             // StagePassiveCompletion completes at once there, and one its root's disposal has marked.
             if (context == null || context.IsDisposed || context.BatchScheduler.Anchor == null)
             {
-                queued.Run();
+                new DeletedPassiveCleanup(fiber, CatchFromOf(fiber), cleanups, anchor, pass: null).Run();
                 return;
             }
-            context.PendingDeletedPassiveCleanups.Add(queued);
+            context.PendingDeletedPassiveCleanups.Add(
+                new DeletedPassiveCleanup(fiber, CatchFromOf(fiber), cleanups, anchor, context.CurrentPass));
             ArmPassiveDrain(context);
         }
 
-        // React flushes the passive effects of a root's unmount before root.unmount() returns, so MountedTree.Dispose
-        // runs what the unmount queued while the root can still take an error they throw.
+        private static ComponentFiber? CatchFromOf(ComponentFiber fiber)
+            => fiber.IsBeingDeleted ? fiber.NearestAncestorOutsideTheDeletion : fiber.Parent;
+
+        // Every destroy queued, a parked pass's included. React flushes a root's pending passive effects before the
+        // render that unmounts it, and the unmount's own before root.unmount() returns, so MountedTree.Dispose runs
+        // this on both sides of the unmount, while the root can still take an error they throw.
         internal static void RunDeletedPassiveCleanups(ReconcilerContext context)
         {
             while (context.PendingDeletedPassiveCleanups.Count > 0)
             {
-                foreach (var (cleanup, _) in TakeDeletedPassiveCleanups(context, s_noFibers)) cleanup.Run();
+                foreach (var (cleanup, _) in TakeDeletedPassiveCleanups(context, s_noFibers, includeHeld: true))
+                {
+                    cleanup.Run();
+                }
             }
+            context.HostCommit.ReturnHeldElementsToPool();
         }
 
         private static readonly List<ComponentFiber> s_noFibers = new();
 
+        // A destroy a parked pass queued is held while the pass is parked (IsHeld), as HoldWhileParked holds the
+        // passive work of the fibers it rendered; a disposal takes it whatever holds it.
         private static List<(DeletedPassiveCleanup Cleanup, int Before)> TakeDeletedPassiveCleanups(
-            ReconcilerContext context, List<ComponentFiber> staged)
+            ReconcilerContext context, List<ComponentFiber> staged, bool includeHeld)
         {
             var pending = context.PendingDeletedPassiveCleanups;
             if (pending.Count == 0) return s_noDeletedCleanups;
-            var taken = new List<DeletedPassiveCleanup>(pending);
-            pending.Clear();
-            return DeletedPassivePlacement.Place(context, taken, staged);
+            List<DeletedPassiveCleanup>? taken = null;
+            var kept = 0;
+            for (var i = 0; i < pending.Count; i++)
+            {
+                var cleanup = pending[i];
+                if (!includeHeld && IsHeld(cleanup.Pass)) pending[kept++] = cleanup;
+                else (taken ??= new List<DeletedPassiveCleanup>(pending.Count)).Add(cleanup);
+            }
+            pending.RemoveRange(kept, pending.Count - kept);
+            return taken == null ? s_noDeletedCleanups : DeletedPassivePlacement.Place(context, taken, staged);
+        }
+
+        private static bool HasRunnableDeletedPassiveCleanup(ReconcilerContext context)
+        {
+            foreach (var cleanup in context.PendingDeletedPassiveCleanups)
+            {
+                if (!IsHeld(cleanup.Pass)) return true;
+            }
+            return false;
         }
 
         private static readonly List<(DeletedPassiveCleanup Cleanup, int Before)> s_noDeletedCleanups = new();
@@ -746,7 +771,7 @@ namespace Velvet
 
         private static bool HasPassiveWork(ReconcilerContext context)
             => context.PendingPassiveEffectFibers.Count > 0 || context.PendingPassiveCompletions.Count > 0
-                || context.PendingDeletedPassiveCleanups.Count > 0;
+                || HasRunnableDeletedPassiveCleanup(context);
 
         private static void RunPassivePhases(ReconcilerContext context)
         {
@@ -757,7 +782,7 @@ namespace Velvet
             // that render; ShowLayoutEffects schedules what is held for the reveal.
             ordered.RemoveAll(HoldWhileHidden);
             ordered.RemoveAll(candidate => HoldWhileParked(context, candidate));
-            var deleted = TakeDeletedPassiveCleanups(context, ordered);
+            var deleted = TakeDeletedPassiveCleanups(context, ordered, includeHeld: false);
 
             // Phase 1: all cleanups, post-order, a deleted fiber's where DeletedPassivePlacement puts them. Clear
             // EffectFlushScheduled here so a cleanup that re-stages the same fiber re-arms scheduling cleanly.
@@ -773,6 +798,7 @@ namespace Velvet
                 if (fiber.IsMounted) HookEffectExecutor.RunCleanups(fiber, fiber.PendingEffects);
             }
             for (; nextDeleted < deleted.Count; nextDeleted++) deleted[nextDeleted].Cleanup.Run();
+            context.HostCommit.ReturnHeldElementsToPool();
 
             // Phase 2: all setups, post-order. Factories + the Editor-only mount double-invoke run
             // here, after every cleanup, matching the cleanup-before-setup ordering.
@@ -852,6 +878,9 @@ namespace Velvet
                 ArmPassiveDrain(ctx);
             }
             held.RemoveRange(kept, held.Count - kept);
+            // A destroy a parked pass queued is due once the pass has committed (TakeDeletedPassiveCleanups), which
+            // this commit can be, after a drain that found it held.
+            if (ctx.PendingDeletedPassiveCleanups.Count > 0) ArmPassiveDrain(ctx);
         }
 
         // Reconstructs a post-order (child-before-parent, left-to-right) sequence over an arbitrary

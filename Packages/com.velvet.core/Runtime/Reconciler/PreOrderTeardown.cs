@@ -56,8 +56,11 @@ namespace Velvet
             // At the element a placeholder stands for, which is what the walk reaches: as a root, as a Portal's row,
             // or right after the placeholder.
             var start = rendered[slot];
-            AddInTreeOrder(_startingAt, Ctx.ZLayerPlaceholders.TryGetValue(start, out var real) ? real : start, fiber);
+            PlaceAt(Ctx.ZLayerPlaceholders.TryGetValue(start, out var real) ? real : start, fiber);
         }
+
+        // Whether fiber is the first placed at start.
+        protected bool PlaceAt(VisualElement start, ComponentFiber fiber) => AddInTreeOrder(_startingAt, start, fiber);
 
         private bool IsAnotherPortalsRow(VisualElement? owning, VisualElement container, int slot)
         {
@@ -71,17 +74,19 @@ namespace Velvet
         }
 
         // The fibers taken down at one place, enclosing ones ahead of those inside them and siblings in their order.
-        private void AddInTreeOrder(Dictionary<VisualElement, List<ComponentFiber>> lists, VisualElement at,
+        private bool AddInTreeOrder(Dictionary<VisualElement, List<ComponentFiber>> lists, VisualElement at,
             ComponentFiber fiber)
         {
-            if (!lists.TryGetValue(at, out var list))
+            var first = !lists.TryGetValue(at, out var list);
+            if (first)
             {
                 list = _spareFiberLists.Count > 0 ? _spareFiberLists.Pop() : new List<ComponentFiber>();
                 lists[at] = list;
             }
-            var slot = list.Count;
+            var slot = list!.Count;
             while (slot > 0 && PrecedesInPreOrder(fiber, list[slot - 1])) slot--;
             list.Insert(slot, fiber);
+            return first;
         }
 
         private static bool PrecedesInPreOrder(ComponentFiber a, ComponentFiber b)
@@ -166,7 +171,7 @@ namespace Velvet
             ReturnLists(_endingIn);
             ReturnLists(_endingInPortal);
             _rendered.Clear();
-            _visited.Clear();
+            ClearAndTrim(_visited);
         }
 
         private void ReturnLists(Dictionary<VisualElement, List<ComponentFiber>> lists)
@@ -174,9 +179,32 @@ namespace Velvet
             foreach (var list in lists.Values)
             {
                 list.Clear();
-                _spareFiberLists.Push(list);
+                // MUTANT_SURVIVES(equivalent, boundary): a list not kept spare only makes a later walk allocate one.
+                if (_spareFiberLists.Count < SparesKept) _spareFiberLists.Push(list);
             }
-            lists.Clear();
+            ClearAndTrim(lists);
+        }
+
+        // An instance is pooled for the rest of the domain, so a walk far larger than the usual one gives back what
+        // it grew to rather than leaving the pool holding it.
+        private const int SparesKept = 64;
+
+        protected static void ClearAndTrim<T>(HashSet<T> set)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
+            var trim = set.Count > SparesKept;
+            set.Clear();
+            // MUTANT_SURVIVES(equivalent): TrimExcess changes the capacity, which no walk reads.
+            if (trim) set.TrimExcess();
+        }
+
+        protected static void ClearAndTrim<TKey, TValue>(Dictionary<TKey, TValue> table)
+        {
+            // MUTANT_SURVIVES(equivalent, boundary): TrimExcess changes the capacity, which no walk reads.
+            var trim = table.Count > SparesKept;
+            table.Clear();
+            // MUTANT_SURVIVES(equivalent): TrimExcess changes the capacity, which no walk reads.
+            if (trim) table.TrimExcess();
         }
     }
 }

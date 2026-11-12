@@ -656,7 +656,7 @@ namespace Velvet
 
         // One deletion: begun on every fiber of it before the first is disposed (ComponentFiber.BeginDeletion). A
         // fiber disposed by an earlier one's cascade is skipped.
-        private void DisposeTogether(List<ComponentFiber> doomed)
+        internal void DisposeTogether(List<ComponentFiber> doomed)
         {
             ComponentFiber.BeginDeletion(doomed);
             for (var i = 0; i < doomed.Count; i++)
@@ -688,7 +688,8 @@ namespace Velvet
         }
 
         // Single-root form of DisposeFibersUnder(HashSet), selecting through CollectFibersInSubtree. Element teardown
-        // (FiberElementCleaner.CleanupElement) calls this when a subtree leaves the DOM: an inline-mounted
+        // disposes this selection when a subtree leaves the DOM (FiberElementCleaner.CleanupElement, which
+        // DeletionCommit hands it to): an inline-mounted
         // fiber nested under a host element anchors on its PARENT FIBER (not the host VE), so Remove(VE) —
         // which only knows wrapper-mounted fibers — never reaches it, and the host's owning reconcile emits
         // that host as an opaque leaf, so the orphan sweep does not collect it either. When the host is torn
