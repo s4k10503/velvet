@@ -398,6 +398,9 @@ namespace Velvet
         internal static readonly EngineMember LayoutNodeHasNewLayout =
             ReadProperty(UIElements, LayoutNodeType, "HasNewLayout", "System.Boolean");
 
+        internal static readonly EngineMember LayoutNodeCopyStyle =
+            Method(UIElements, LayoutNodeType, "CopyStyle", "System.Void", LayoutNodeType);
+
         // ChildLayoutOrder's rebuild of a parent's layout children in an order other than its paint order.
         internal static readonly EngineMember LayoutNodeClear = Method(UIElements, LayoutNodeType, "Clear", "System.Void");
 

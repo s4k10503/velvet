@@ -109,6 +109,7 @@ namespace Velvet
             internal FieldInfo LastLayout = null!;
             internal MethodInfo IncrementVersion = null!;
             internal object[] Transform = null!;
+            internal MethodInfo CopyStyle = null!;
 
             private static LayoutMembers? Resolve()
             {
@@ -119,9 +120,10 @@ namespace Velvet
                 var lastLayout = EngineMember.ElementLastLayout.ResolveField();
                 var incrementVersion = EngineMember.ElementIncrementVersion.ResolveMethod();
                 var transform = EngineMember.TransformVersionChange.ResolveField();
+                var copyStyle = EngineMember.LayoutNodeCopyStyle.ResolveMethod();
                 // MUTANT_SURVIVES(unreachable): EngineMemberResolutionTests holds that each of these resolves.
                 if (layoutNode == null || calculate == null || dirty == null || hasNewLayout == null
-                    || lastLayout == null || incrementVersion == null || transform == null)
+                    || lastLayout == null || incrementVersion == null || transform == null || copyStyle == null)
                 {
                     return null;
                 }
@@ -134,6 +136,7 @@ namespace Velvet
                     LastLayout = lastLayout,
                     IncrementVersion = incrementVersion,
                     Transform = new[] { transform.GetValue(null) },
+                    CopyStyle = copyStyle,
                 };
             }
         }
@@ -156,6 +159,12 @@ namespace Velvet
 
             // The panel's hierarchy version when a computation last left the tree dirty, and -1 before one has.
             private long _leftDirtyAt = -1;
+
+            // A detached element whose layout node keeps the root node's layout style as the last computation found
+            // it, for LayoutNode.CopyStyle to compare with the root's.
+            private readonly VisualElement _styleHolder = new();
+            private object? _styleHolderNode;
+            private readonly object[] _rootNodeArgument = new object[1];
 
             internal static PanelLayout? Resolve(IPanel panel)
             {
@@ -210,7 +219,7 @@ namespace Velvet
                 if ((bool)_applyingStyles.GetValue(_styleUpdater)) return;
                 _styles();
                 var node = _members.LayoutNode.GetValue(_root);
-                if ((bool)_members.Dirty.GetValue(node) && !OnlyLeftDirty())
+                if ((bool)_members.Dirty.GetValue(node) && !OnlyLeftDirty(node))
                 {
                     _members.Calculate.Invoke(node, s_unbounded);
                     MoveTransforms(_root);
@@ -220,29 +229,47 @@ namespace Velvet
                     // when such a pick misses an element the computation resized or added.
                     _members.Dirty.SetValue(node, true);
                     _leftDirtyAt = _hierarchyVersion();
+                    TakeRootStyle(node);
                 }
                 // MUTANT_SURVIVES(equivalent): an unrecorded version only sends the next read past the check above.
-                // A read that finds the version where this one left it finds the tree clean or dirty only from the
-                // last computation, which OnlyLeftDirty tells, so it computes nothing.
+                // A read that finds the version where this one left it finds nothing OnlyLeftDirty compares changed
+                // since, so it computes nothing.
                 _laidOutVersion = _version();
                 // MUTANT_SURVIVES(equivalent): an unrecorded computation only sends each later read past that check.
                 // There it computes nothing where the version has not moved, for the reason the one above gives.
                 _laidOut = true;
             }
 
-            // Whether the tree reads as dirty only because the last computation left it so. While the root is dirty, a
-            // layout change below it marks the elements from it upward until one already marked, the root's child it
-            // sits under at the latest; adding, removing or moving one of the root's own children need mark none of
-            // them, and moves the panel's hierarchy version. RefAttachLayoutCostTests fails when refs that each write
-            // a colour compute the layout more than once, and when a later read misses either kind of change.
-            private bool OnlyLeftDirty()
+            // Whether a dirty root can be read as the mark the last computation left: the panel's hierarchy version,
+            // the root node's own layout style and the dirty flags of the root's children are as that computation
+            // left them. While the root is dirty, a layout change below it marks the elements from it upward until
+            // one already marked, the root's child it sits under at the latest; adding, removing or moving one of the
+            // root's own children need mark none of them, and moves the hierarchy version; and a write to the root's
+            // own size or style, as an editor window's panel makes when the window is resized, marks the root alone.
+            // RefAttachLayoutCostTests fails when refs that each write a colour compute the layout more than once,
+            // and when a later read misses any of those three changes.
+            private bool OnlyLeftDirty(object rootNode)
             {
                 if (_hierarchyVersion() != _leftDirtyAt) return false;
+                if (TakeRootStyle(rootNode)) return false;
                 var children = _root.hierarchy;
                 for (var i = 0; i < children.childCount; i++)
                 {
                     if ((bool)_members.Dirty.GetValue(_members.LayoutNode.GetValue(children[i]))) return false;
                 }
+                return true;
+            }
+
+            // True where the root node's layout style differs from the one the holder kept, which LayoutNode.CopyStyle
+            // copies over and marks the holder dirty for; the resize cases of RefAttachLayoutCostTests fail when the
+            // two stop being told apart.
+            private bool TakeRootStyle(object rootNode)
+            {
+                var holderNode = _styleHolderNode ??= _members.LayoutNode.GetValue(_styleHolder);
+                _rootNodeArgument[0] = rootNode;
+                _members.CopyStyle.Invoke(holderNode, _rootNodeArgument);
+                if (!(bool)_members.Dirty.GetValue(holderNode)) return false;
+                _members.Dirty.SetValue(holderNode, false);
                 return true;
             }
 

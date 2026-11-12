@@ -111,9 +111,10 @@ inherited velocity and the opacity, rotate, translate and scale a layoutId move 
 to write a filter change past a running transform-origin transition ([styling-filters.md](styling-filters.md#transitions)),
 the border colors an element's matching style
 rules give it, which a [dashed divider](styling-flexbox-and-gap.md) paints in,
-and a panel's version, layout-phase flag, style updater and that updater's traversal flag, an element's layout
-node, last layout and version increment, and the node's layout computation, dirty flag and new-layout flag, which
-a commit uses to lay the panel out before its layout effects and callback refs read it
+and a panel's version, hierarchy version, layout-phase flag, style updater and that updater's traversal flag, an
+element's layout node, last layout and version increment, and the node's layout computation, dirty flag, new-layout
+flag and copy of another node's style, which a commit uses to lay the panel out before its layout effects and
+callback refs read it
 ([react-migration.md](react-migration.md)), the custom properties a stylesheet declares on an element, with
 the stylesheet reads that spell their values ([styling-custom-properties.md](styling-custom-properties.md)), a
 panel's hierarchy-change event with the kinds of change it announces, on which a `group-*:` or `peer-*:` consumer
