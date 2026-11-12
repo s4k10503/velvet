@@ -29,33 +29,6 @@ namespace Velvet
             ReturnOccupantToPool(element, poolable);
         }
 
-        // A pass, and a VirtualList range rendered outside one, holds the poolable elements it removes until it
-        // ends: a deleted component's destroy it queues later can reach an element that component's setup captured,
-        // which another mount would hold by then. Where it queued none they go to the pool as it ends, and otherwise
-        // once those destroys have all run (DeletionBatch).
-        internal void BeginPoolHold() => _ctx.PoolHoldDepth++;
-
-        internal void EndPoolHold()
-        {
-            if (--_ctx.PoolHoldDepth > 0) return;
-            var batch = _ctx.OpenDeletionBatch;
-            _ctx.OpenDeletionBatch = null;
-            var removed = _ctx.ElementsRemovedInTheHold;
-            try
-            {
-                for (var i = 0; i < removed.Count; i++)
-                {
-                    if (batch == null) Pool(removed[i]);
-                    else batch.Hold(removed[i]);
-                }
-            }
-            finally
-            {
-                removed.Clear();
-                batch?.Close();
-            }
-        }
-
         // Whether nothing outside the subtree keeps element or anything below it once its removal returns: the
         // slot's poolable occupant is left to the collector, and no Portal range inside the subtree is torn out
         // through CleanupPortal, which returns the children it holds to the pools after they were cleaned as
@@ -183,8 +156,8 @@ namespace Velvet
             return PoolKind.None;
         }
 
-        // Returns the element to the VNodePool when the type supports pooling, as the hold it is removed in
-        // allows (EndPoolHold). Called after the element has been detached from the DOM hierarchy and Velvet-managed
+        // Returns the element to the VNodePool when the type supports pooling.
+        // Called after the element has been detached from the DOM hierarchy and Velvet-managed
         // resources have been released. Dispatches on the EXACT runtime type, mirroring the
         // factory's exact-type rent checks: a user subclass of a poolable primitive (mounted via
         // V.Custom<T>) must never enter the shared pool — its own fields and constructor-registered
@@ -193,16 +166,6 @@ namespace Velvet
         private void ReturnToPool(VisualElement element)
         {
             FiberPropApplier.ForgetRecordedDefaults(element);
-            if (PoolKindOf(element) == PoolKind.None) return;
-            MotionLayoutIdDriver.ForgetParent(element, _ctx);
-            // MUTANT_SURVIVES(equivalent, boundary): an element listed outside every hold goes with the next hold's.
-            // Only a rent made in between takes a new element where it could have had this one.
-            if (_ctx.PoolHoldDepth > 0) _ctx.ElementsRemovedInTheHold.Add(element);
-            else Pool(element);
-        }
-
-        internal static void Pool(VisualElement element)
-        {
             switch (PoolKindOf(element))
             {
                 case PoolKind.TextField:
@@ -223,7 +186,10 @@ namespace Velvet
                 case PoolKind.Label:
                     VNodePool.ReturnLabel((Label)element);
                     break;
+                default:
+                    return;
             }
+            MotionLayoutIdDriver.ForgetParent(element, _ctx);
         }
 
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.

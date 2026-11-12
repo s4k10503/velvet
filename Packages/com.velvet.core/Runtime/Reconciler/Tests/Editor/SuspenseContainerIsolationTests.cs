@@ -726,11 +726,10 @@ namespace Velvet.Tests
                 Is.EqualTo(("okay:0|primary:1|loaded:0:initial", "okay:1|loading", "error|loading", "error|primary:1|loaded:3:value")));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base keeps this effect, which a wrong disposal would clean up.
+        // GREEN_ON_BASE(characterization): the merge base keeps this effect and removes the primary.
         // The catch taken in the walk keeps it by rendering the Suspense again, still pending, which this pins.
         // Read as every label rather than the displayed ones, this reddens on SetPrimaryHidden keeping the
-        // primary's labels in the tree, hidden. The flush after the act reaches the passive phase, where a disposed
-        // component's cleanup runs.
+        // primary's labels in the tree, hidden.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_ItsSiblingCatches_Then_ItsPassiveEffectStaysSubscribed()
         {
@@ -748,7 +747,6 @@ namespace Velvet.Tests
             s_abortThrows = true;
             s_setAbortTick.Invoke(2);
             _mounted.FlushStateForTest();
-            _mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That((before, _root.DisplayedLabelTexts("|"),

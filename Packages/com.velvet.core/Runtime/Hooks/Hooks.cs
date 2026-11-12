@@ -1390,7 +1390,7 @@ namespace Velvet
                             // the nearest error boundary must receive user-callback failures either way.
                             ComponentBoundarySearch.PropagateException(fiber, ex);
                         }
-                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock, owner: fiber);
+                    }, fiber.Reconciler?.Context.StyleAnimationScheduler.Clock);
                     subscriptionRef.Set(subscription);
                 }
 

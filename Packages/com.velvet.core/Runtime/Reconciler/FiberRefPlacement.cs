@@ -241,15 +241,6 @@ namespace Velvet
             return ReferenceEquals(info.Target, mount) ? placeholder : mount;
         }
 
-        internal bool IsAtOrUnder(VisualElement element, VisualElement subtree)
-        {
-            for (VisualElement? e = element; e != null; e = ParentOf(e))
-            {
-                if (ReferenceEquals(e, subtree)) return true;
-            }
-            return false;
-        }
-
         // Whether the rows of parent that end at the logical slot end all lie before element: the element is parent
         // or holds it, or sits in a row at or past end, or comes after parent in the tree.
         internal bool RowsBefore(VisualElement parent, int end, VisualElement element)

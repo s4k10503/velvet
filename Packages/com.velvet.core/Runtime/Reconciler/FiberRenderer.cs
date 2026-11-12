@@ -294,11 +294,10 @@ namespace Velvet
             // those protections; outside a pass the queue is simply empty.
             ReclaimDeferredInlineEntries(fiber);
 
-            // React's deletion reaches a component ahead of what it rendered: this fiber's insertion and layout
-            // destroys run, and its passive ones are queued, before its rows are reconciled away below, whose
-            // components are taken down the same way. The rest of what this fiber holds — DI scopes,
-            // subscriptions, CTS — is released after them.
-            FiberEffects.CleanUpDeleted(fiber, DeletionAnchor.For(fiber.MountPoint, fiber.Parent));
+            // React's deletion reaches a component ahead of what it rendered: this fiber's cleanups run before its
+            // rows are reconciled away below, whose components are taken down the same way. The rest of what this
+            // fiber holds — DI scopes, subscriptions, CTS — is released after them.
+            FiberEffects.CleanUpDeleted(fiber);
 
             // While a time-sliced reconcile is pending, PreviousTree diverges
             // from the actual DOM contents; FiberElementCleaner.RemoveElement silently skips
@@ -390,10 +389,6 @@ namespace Velvet
             var parkedTree = fiber.PendingOldTree;
             fiber.PendingOldTree = null;
             FiberTreeReturn.ReturnRetiredTreesForUnmount(fiber, retiredTree, parkedTree, slotRoots);
-            if (fiber.Reconciler is { OwnsContext: true } root)
-            {
-                FiberEffects.RunDeletedPassiveCleanups(root.Context, includeHeld: true);
-            }
             fiber.Reconciler?.Dispose();
             fiber.Reconciler = null;
 
@@ -412,13 +407,9 @@ namespace Velvet
                 return;
             }
 
-            // React flushes a root's pending passive effects before the render that unmounts it, so an earlier
-            // commit's deletion runs its destroys, and an exit settling in that flush completes, before the tree goes.
-            if (fiber.Reconciler is { OwnsContext: true } root)
-            {
-                FiberEffects.RunDeletedPassiveCleanups(root.Context, includeHeld: false);
-                FiberEffects.RunPassiveCompletions(root.Context);
-            }
+            // React flushes a root's pending passive effects before the render that unmounts it, so an exit settling
+            // in that flush completes before the tree goes.
+            if (fiber.Reconciler is { OwnsContext: true } root) FiberEffects.RunPassiveCompletions(root.Context);
 
             // Make remaining setters / store subscriptions / async OnCompleted into no-ops.
             // Closures captured by Hooks.UseXxx are gated through this flag.

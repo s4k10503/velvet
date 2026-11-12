@@ -599,7 +599,7 @@ namespace Velvet
                     // A leaf whose slot was empty when the walk read the old instances has none to remove.
                     var row = commit.OldOccupants.Occupant(i);
                     if (row == null || commit.UsedOldIndices.Contains(i)) continue;
-                    (deletion ??= BeginDeletion(commit)).AddRemovedRow(i, row, commit.OldOwners[i]);
+                    (deletion ??= BeginDeletion(commit)).AddRemovedRow(i, row);
                 }
             }
             if (deletion == null && !HasOrphan(oldFibers, newFibers)) return null;

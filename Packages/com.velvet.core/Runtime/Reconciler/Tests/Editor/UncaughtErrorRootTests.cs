@@ -12,8 +12,8 @@ namespace Velvet.Tests
     /// mounted. <see cref="UncaughtErrorHandlerTests"/> holds what it reports.
     /// <list type="bullet">
     /// <item>A render error on mount and a passive effect's error unmount the whole tree: the target is left without
-    /// its elements. <see cref="UncaughtErrorHandlerTests"/> holds the update render error, which is reported ahead
-    /// of the passive cleanups of the components its unmount takes down.</item>
+    /// its elements. <see cref="UncaughtErrorHandlerTests"/> holds the update render error, whose unmount has
+    /// cleaned up the effects of the components it unmounts by the time it is reported.</item>
     /// <item>So does an error the reconcile of the tree the root was handed raises below no component.</item>
     /// <item>Without a handler, the error is logged and followed by a warning naming the component that threw, or
     /// naming none where the root itself threw.</item>

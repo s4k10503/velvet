@@ -319,16 +319,15 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base's inner fallback reads the outer fallback's Provider here.
-        // The child's cleanup is now a layout one, which a deletion still runs inside the update that removes it, so
-        // this still pins that once the boundary's own update has swapped the fallback in, a spine through the
+        // What this pins is that once the boundary's own update has swapped the fallback in, a spine through the
         // boundary walks the fallback rather than the output that update was reconciling.
         [Test]
         public void Given_AFallbackProvidingAroundABoundaryWithAPortal_When_ItsBoundarysOwnUpdateRemovesAChildWhoseCleanupThrows_Then_TheInnerFallbackReadsTheOuterFallbacksProvider()
         {
-            // Arrange — the child's layout effect ran in the mount's commit, so its cleanup runs when the update
-            // removes it.
+            // Arrange — the child's effect has run, so its cleanup runs when the update removes it.
             var tree = V.Provider(s_context, "app", new VNode[] { V.Component(RemovingGuardProvidingFallbackRender, key: "outer") });
             using var mounted = V.Mount(_root, tree, s_recordingErrors);
+            mounted.FlushEffectsForTest();
             s_childShown = false;
 
             // Act
@@ -589,12 +588,10 @@ namespace Velvet.Tests
             return s_childShown ? V.Component(CleanupThrowingRender, key: "thrower") : V.Label(text: "removed");
         }
 
-        // A layout cleanup, so that it throws inside the reconcile that removes the component: a deletion queues a
-        // passive cleanup for after the commit.
         [Component(Compiler = false)]
         private static VNode CleanupThrowingRender()
         {
-            Hooks.UseLayoutEffect(CleanupThatThrows, Array.Empty<object>());
+            Hooks.UseEffect(CleanupThatThrows, Array.Empty<object>());
             return V.Label(text: "cleanup thrower");
         }
 

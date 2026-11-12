@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
@@ -52,10 +53,20 @@ namespace Velvet.Tests
         private static VNode PortalKid() => V.Label(text: "kid");
 
         [Component(Compiler = false)]
+        private static VNode Nothing() => V.Fragment(Array.Empty<VNode>());
+
+        // A component rendering nothing last among the Portal's children and last in the element, so the walk holds
+        // one where the Portal's rows end and one where the element's children end.
+        [Component(Compiler = false)]
         private static VNode PortalHolder(Target target)
             => V.Div(children: new VNode[]
             {
-                V.Portal(target.Element, new VNode[] { V.Component(PortalKid, key: "kid") }, key: "portal"),
+                V.Portal(target.Element, new VNode[]
+                {
+                    V.Component(PortalKid, key: "kid"),
+                    V.Component(Nothing, key: "nothing"),
+                }, key: "portal"),
+                V.Component(Nothing, key: "after"),
             });
 
         [Component(Compiler = false)]
@@ -66,20 +77,45 @@ namespace Velvet.Tests
             return V.Fragment(shown ? V.Component(PortalHolder, target, key: "holder") : null);
         }
 
-        // What the walks the pool holds still keep in one of their fields.
-        private static int EntriesLeftInPooledWalks(string field)
+        // What the walks the pool holds still keep in one of their fields, or in a field of one ("outer.inner").
+        private static int EntriesLeftInPooledWalks(string path)
         {
-            var info = typeof(DeletionCommit).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)
-                ?? typeof(PreOrderTeardown).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var pool = (Stack<DeletionCommit>)typeof(DeletionCommit)
-                .GetField("s_pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
             var entries = 0;
-            foreach (var walk in pool)
+            foreach (var walk in PooledWalks())
             {
-                var value = info.GetValue(walk);
+                var value = FieldPathValue(walk, path);
                 entries += (int)value.GetType().GetProperty("Count")!.GetValue(value);
             }
             return entries;
+        }
+
+        // What the lists one of their fields keeps for reuse still hold, over the walks the pool holds.
+        private static int EntriesLeftInListsOfPooledWalks(string field)
+        {
+            var entries = 0;
+            foreach (var walk in PooledWalks())
+            {
+                foreach (ICollection list in (IEnumerable)FieldPathValue(walk, field)) entries += list.Count;
+            }
+            return entries;
+        }
+
+        private static Stack<DeletionCommit> PooledWalks()
+            => (Stack<DeletionCommit>)typeof(DeletionCommit)
+                .GetField("s_pool", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+
+        private static object FieldPathValue(object target, string path)
+        {
+            foreach (var name in path.Split('.'))
+            {
+                FieldInfo info = null;
+                for (var type = target.GetType(); info == null && type != null; type = type.BaseType)
+                {
+                    info = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
+                }
+                target = info!.GetValue(target);
+            }
+            return target;
         }
 
         [Test]
@@ -107,6 +143,9 @@ namespace Velvet.Tests
         [TestCase("_collected")]
         [TestCase("_fibers")]
         [TestCase("_startingAt")]
+        [TestCase("_endingIn")]
+        [TestCase("_endingInPortal")]
+        [TestCase("_rendered._of")]
         public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoPooledWalkKeepsWhatItHeld(string field)
         {
             // Arrange
@@ -119,6 +158,22 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(EntriesLeftInPooledWalks(field), Is.EqualTo(0));
+        }
+
+        [TestCase("_spareFiberLists")]
+        [TestCase("_childrenAtDepth")]
+        public void Given_ADeletionOfAComponentHoldingAPortal_When_ItHasEnded_Then_NoListAPooledWalkKeepsHoldsAnEntry(string field)
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(PortalHolderHost, new Target(new VisualElement())));
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(EntriesLeftInListsOfPooledWalks(field), Is.EqualTo(0));
         }
     }
 }

@@ -347,14 +347,15 @@ namespace Velvet.Tests
             Assert.That(s_innerCleanups, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base shows a count the observer read before the cleanup ran.
-        // The case pins that the catch taken inside the walk leaves the cleanup to the commit, as React does. The
-        // count is of a layout cleanup, which a deletion runs where its walk reaches the component.
+        // GREEN_ON_BASE(refactor): only how this fixture reads the pool's rented-out counts changed.
+        // VNodePoolTestAccess now finds the event-array sets by their type rather than by the old name.
+        // Before that, as characterization: the merge base stops the pass before the observer renders again.
+        // The case pins that the catch taken inside the walk leaves the cleanup to the commit, as React does.
         [Test]
         public void Given_AComponentAheadOfTheThrowInsideTheBoundary_When_TheBoundaryCatchesOnAnUpdate_Then_ARenderLaterInThePassSeesNoCleanup()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(InnerLayoutHostRender, key: "host"), CaughtErrors.Unlogged);
+            using var mounted = V.Mount(_root, V.Component(InnerHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_throws = true;
 
@@ -405,36 +406,6 @@ namespace Velvet.Tests
 
         [Component(Compiler = false)]
         private static VNode CleanupObserverRender(int tick) => V.Label(text: "cleanups:" + s_innerCleanups);
-
-        [Component(Compiler = false)]
-        private static VNode InnerLayoutRender()
-        {
-            Hooks.UseLayoutEffect(() => () => s_innerCleanups++, Array.Empty<object>());
-            return V.Label(text: "inner");
-        }
-
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode InnerLayoutBoundaryRender()
-        {
-            Hooks.UseFallback(_ => V.Label(text: "fallback"));
-            return V.Fragment(new VNode[]
-            {
-                V.Component(InnerLayoutRender, key: "inner"),
-                V.Component(ThrowerRender, key: "thrower"),
-            });
-        }
-
-        [Component(Compiler = false)]
-        private static VNode InnerLayoutHostRender()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            return V.Div(children: new VNode[]
-            {
-                V.Component(InnerLayoutBoundaryRender, key: "boundary"),
-                V.Component(CleanupObserverRender, tick, key: "observer"),
-            });
-        }
 
         [Component(Compiler = false)]
         private static VNode InnerHostRender()
@@ -2088,8 +2059,6 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("fallback"));
         }
 
-        // GREEN_ON_BASE(characterization): the base runs the removed child's cleanup inside the fallback swap, reported second.
-        // The flush added is the passive phase the branch runs that cleanup in, after the swap's commit.
         [Test]
         public void Given_ABoundaryWhoseCommittedChildsCleanupThrows_When_ASiblingsUpdateThrows_Then_TheBoundaryReportsTheCleanupErrorAfterTheRenderError()
         {
@@ -2098,10 +2067,9 @@ namespace Velvet.Tests
                 new MountOptions { OnCaughtError = (exception, _) => s_swapReports.Add(exception.Message) });
             mounted.FlushEffectsForTest();
 
-            // Act — the catch swaps the fallback in, which unmounts the child whose cleanup throws in the passive phase
+            // Act — the catch swaps the fallback in, which unmounts the child whose cleanup throws
             s_setSwapThrowerTick.Invoke(1);
             mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("Swap render throw,Swap cleanup throw"));
@@ -2109,8 +2077,6 @@ namespace Velvet.Tests
 
         // The list's row is mounted on an anchor of its own and is disposed before it unmounts what it rendered, so the
         // walk from the child whose cleanup throws starts at a fiber already torn down.
-        // GREEN_ON_BASE(characterization): the base runs the row child's cleanup in the render that removes the list.
-        // The flush added is the passive phase the branch runs that cleanup in, after the render's commit.
         [Test]
         public void Given_AListRowWhoseChildsCleanupThrows_When_TheListLeavesBelowABoundary_Then_TheBoundaryCatchesIt()
         {
@@ -2127,7 +2093,6 @@ namespace Velvet.Tests
             // Act
             s_setListTick.Invoke(2);
             mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("List row child cleanup throw"));
@@ -2191,8 +2156,6 @@ namespace Velvet.Tests
 
         // React's commit-phase capture of a deletion's error starts at the nearest ancestor outside the deletion,
         // so a boundary removed with the component whose cleanup throws does not catch it.
-        // GREEN_ON_BASE(characterization): the base runs the removed child's cleanup in the render that removes it.
-        // The flush added is the passive phase the branch runs that cleanup in, after the render's commit.
         [Test]
         public void Given_ABoundaryRemovedWithAChildWhoseCleanupThrows_When_ARenderRemovesIt_Then_TheBoundaryAboveTheRemovalCatches()
         {
@@ -2204,7 +2167,6 @@ namespace Velvet.Tests
             // Act
             s_setDeletedPanelTick.Invoke(1);
             mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelOuterRender"));
@@ -2212,8 +2174,6 @@ namespace Velvet.Tests
 
         // The element holding the boundary leaves with it, so the deletion disposes the fibers mounted under that
         // element together rather than through the orphan sweep of a component's rows.
-        // GREEN_ON_BASE(characterization): the base runs the removed child's cleanup in the render that removes it.
-        // The flush added is the passive phase the branch runs that cleanup in, after the render's commit.
         [Test]
         public void Given_ABoundaryRemovedWithTheElementHoldingIt_When_ItsChildsCleanupThrows_Then_TheBoundaryAboveTheRemovalCatches()
         {
@@ -2225,86 +2185,13 @@ namespace Velvet.Tests
             // Act
             s_setDeletedPanelTick.Invoke(1);
             mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports),
                 Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelInElementOuterRender"));
         }
 
-        // GREEN_ON_BASE(characterization): the base marks a deletion before the first of its cleanups runs, as this does.
-        // The walk the change adds runs the layout cleanup ahead of the disposal that marked it on the base; leave its
-        // own marking out (DeletionCommit.TakeDownLeaving) and the removed boundary catches.
-        [Test]
-        public void Given_ABoundaryRemovedWithTheElementHoldingIt_When_ItsChildsLayoutCleanupThrows_Then_TheBoundaryAboveTheRemovalCatches()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(DeletedLayoutPanelInElementOuterRender, key: "outer"),
-                new MountOptions { OnCaughtError = (_, info) => s_swapReports.Add(info.ErrorBoundary) });
-
-            // Act
-            s_setDeletedPanelTick.Invoke(1);
-            mounted.FlushStateForTest();
-
-            // Assert
-            Assert.That(string.Join(",", s_swapReports),
-                Is.EqualTo("BoundaryCatchScopeTests.DeletedLayoutPanelInElementOuterRender"));
-        }
-
-        // React cuts the return of a deletion's root as it removes it and keeps the returns below it until its passive
-        // phase, so the stack of an error a removed component's passive cleanup throws runs up to the removed root.
-        [Test]
-        public void Given_ARemovedBoundaryWhoseChildsPassiveCleanupThrows_When_TheBoundaryAboveCatchesIt_Then_ItsStackRunsUpToTheRemovedBoundary()
-        {
-            // Arrange
-            using var mounted = V.Mount(_root, V.Component(DeletedPanelOuterRender, key: "outer"),
-                new MountOptions { OnCaughtError = (_, info) => s_swapReports.Add(info.ComponentStack) });
-            mounted.FlushEffectsForTest();
-
-            // Act
-            s_setDeletedPanelTick.Invoke(1);
-            mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
-
-            // Assert
-            Assert.That(string.Join(",", s_swapReports), Is.EqualTo(
-                "    at BoundaryCatchScopeTests.DeletedPanelWidgetRender\n    at BoundaryCatchScopeTests.DeletedPanelRender"));
-        }
-
         private static Action<int> s_setDeletedPanelTick;
-
-        [Component(Compiler = false)]
-        private static VNode DeletedLayoutPanelWidgetRender()
-        {
-            Hooks.UseLayoutEffect(
-                (Func<Action>)(() => () => throw new InvalidOperationException("Deleted panel layout cleanup throw")),
-                Array.Empty<object>());
-            return V.Label(text: "widget");
-        }
-
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode DeletedLayoutPanelRender()
-        {
-            Hooks.UseFallback(_ => V.Label(text: "panel-fallback"));
-            return V.Component(DeletedLayoutPanelWidgetRender, key: "widget");
-        }
-
-        [Component(Compiler = false)]
-        private static VNode DeletedLayoutPanelInElementHostRender()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setDeletedPanelTick = setTick;
-            return tick == 0
-                ? V.Div(name: "panel-holder", children: new VNode[] { V.Component(DeletedLayoutPanelRender, key: "panel") })
-                : V.Label(text: "removed");
-        }
-
-        [Component(Compiler = false, IsErrorBoundary = true)]
-        private static VNode DeletedLayoutPanelInElementOuterRender()
-        {
-            Hooks.UseFallback(_ => V.Label(text: "outer-fallback"));
-            return V.Component(DeletedLayoutPanelInElementHostRender, key: "host");
-        }
 
         [Component(Compiler = false)]
         private static VNode DeletedPanelInElementHostRender()
@@ -2457,8 +2344,6 @@ namespace Velvet.Tests
         }
 
         // A component under the ghost's element stands with the leaves the abort left on screen.
-        // GREEN_ON_BASE(characterization): the base keeps that component, whose cleanup has not run when this reads it.
-        // The flush added reaches the passive phase, where the branch runs the cleanup of a component it disposes.
         [Test]
         public void Given_AGhostWhoseDropAnAbortedRenderSkipped_When_ThatRenderEnds_Then_AComponentUnderItIsNotDisposed()
         {
@@ -2470,10 +2355,9 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
 
-            // Act — the passive phase too, where a disposal's cleanup would run
+            // Act
             s_setAbortedExitTick.Invoke(2);
             mounted.FlushStateForTest();
-            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(s_ghostCleanups, Is.EqualTo(0));

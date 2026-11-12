@@ -41,21 +41,15 @@ namespace Velvet
             // own taken the way LastTimeMs is.
             internal readonly MotionClock Clock;
             internal double? LastClockSec;
-            private readonly ComponentFiber? _owner;
 
-            internal Subscription(long sequence, int priority, Action<float> callback, MotionClock clock, ComponentFiber? owner)
+            internal Subscription(long sequence, int priority, Action<float> callback, MotionClock clock)
             {
                 Sequence = sequence;
                 Priority = priority;
                 Callback = callback;
                 Clock = clock;
-                _owner = owner;
                 Active = true;
             }
-
-            // A subscriber whose component a commit deleted stops at that commit, ahead of the passive cleanup that
-            // unsubscribes it after the commit.
-            internal bool IsLive => Active && _owner is not { IsMounted: false };
         }
 
         // Keyed by the panel itself (not the caller) and weak on that key so a destroyed panel's
@@ -97,7 +91,7 @@ namespace Velvet
             }
             foreach (var subscription in dispatcher._subscriptions)
             {
-                if (subscription.IsLive && subscription.Priority > 0)
+                if (subscription.Active && subscription.Priority > 0)
                 {
                     return true;
                 }
@@ -105,10 +99,9 @@ namespace Velvet
             return false;
         }
 
-        internal Subscription Subscribe(
-            int priority, Action<float> callback, MotionClock? clock = null, ComponentFiber? owner = null)
+        internal Subscription Subscribe(int priority, Action<float> callback, MotionClock? clock = null)
         {
-            var subscription = new Subscription(_nextSequence++, priority, callback, clock ?? MotionClock.Realtime, owner);
+            var subscription = new Subscription(_nextSequence++, priority, callback, clock ?? MotionClock.Realtime);
             _subscriptions.Add(subscription);
             // Every(0): fires once per panel scheduler update (not a wall-clock interval) — the
             // per-update cadence Hooks.UseFrame documents. One shared item drives every subscriber's own
@@ -224,7 +217,7 @@ namespace Velvet
                     // is a same-frame keyed-reorder detach+reattach (zero elapsed time either way), so this
                     // choice is unobserved today; it is deliberate, not an oversight, should a future pause
                     // ever span real time.
-                    if (!subscription.IsLive) continue;
+                    if (!subscription.Active) continue;
 
                     // Per-subscription delta (see Subscription.LastTimeMs) rather than one dt shared by the
                     // whole panel: a subscription with no baseline yet only records one here and skips

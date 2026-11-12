@@ -120,6 +120,9 @@ namespace Velvet
                     if (Ctx.ZLayerPlaceholders.TryGetValue(child, out var real))
                     {
                         if (IsRoot(real)) continue;
+                        // MUTANT_SURVIVES(equivalent): a z-layer placeholder takes nothing down when visited.
+                        // It is created empty and holds no ref (FiberZLayerCoordinator.CreatePlaceholder), and a fiber
+                        // starting at it is placed at the element it stands for (Place, DeletionCommit.PlaceDeleted).
                         Visit(child);
                         Visit(real);
                         continue;
@@ -130,6 +133,8 @@ namespace Velvet
             finally
             {
                 children.Clear();
+                // MUTANT_SURVIVES(equivalent): an unbalanced depth hands each later visit a list of its own.
+                // Each is cleared as this one is, so the walk differs only in the lists it holds.
                 _depth--;
             }
             VisitPortalRows(element);
@@ -166,6 +171,8 @@ namespace Velvet
 
         protected virtual void Clear()
         {
+            // MUTANT_SURVIVES(equivalent): DeletionCommit.Begin and SuspenseOffscreenCommit.Apply assign it first.
+            // The reset only lets the pooled instance drop the context it pointed at.
             Ctx = null!;
             ReturnLists(_startingAt);
             ReturnLists(_endingIn);
