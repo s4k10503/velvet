@@ -677,10 +677,12 @@ namespace Velvet
         {
             public readonly HashSet<ComponentFiber> Before = new();
             public FiberContextSpine Spine;
+            public VisualElement? EnclosingPortal;
         }
 
         object? IReconcilerBridge.BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass)
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VisualElement? enclosingPortal,
+            bool outsidePass)
         {
             var stack = _ctx.ComponentContextStack;
             if (enclosingContext != null)
@@ -692,6 +694,10 @@ namespace Velvet
             }
             if (host == null) return null;
             var scope = new DetachedItemScope();
+            // Outside a pass no walk names the Portal the list sits in, which the rows the loop creates or patches are
+            // stamped with (ComponentRegistry.ReconcileExistingFiber); inside one the walk reconciling the list has.
+            scope.EnclosingPortal = _ctx.CurrentPortalPlaceholder;
+            if (outsidePass) _ctx.CurrentPortalPlaceholder = enclosingPortal;
             // Outside a pass no walk has pushed the Providers that enclose the host, and the snapshot holds the values
             // they had when the host last created or patched the list, which a memoized host need not have done since
             // one changed; their committed values go on top. Inside a pass, including a row's walk in a range rendered outside one, the
@@ -749,6 +755,7 @@ namespace Velvet
                         f.DetachedMountContext = detached;
                     }
                     scope.Spine.Unwind();
+                    _ctx.CurrentPortalPlaceholder = scope.EnclosingPortal;
                 }
             }
             var stack = _ctx.ComponentContextStack;

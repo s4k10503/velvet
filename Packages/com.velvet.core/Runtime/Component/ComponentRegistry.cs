@@ -197,6 +197,14 @@ namespace Velvet
             }
 
             reusedAsIs = !(propsChanged || existingFiber.IsDirty || existingFiber.RenderOwed || refChanged);
+            // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the stamp it
+            // was given at creation. A reconcile of a fiber's own rows names the Portal they sit in
+            // (FiberCommitWork.ReconcileRows), so an isolated re-render or a fallback swap inside a Portal keeps
+            // the stamps below it, and a VirtualList's item loop names the Portal the list sits in
+            // (Reconciler.BeginDetachedItemScope). An inline fiber left without one is the same fiber
+            // DisposeInlineFibersOwnedByPortal already reaches through the parent index, and FiberCommitWork reads
+            // the nearest stamp up its chain.
+            existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             if (site.IsInline)
             {
                 // Synchronously re-render when props changed or the fiber is dirty
@@ -207,12 +215,6 @@ namespace Velvet
                 // makes the later traversal short-circuit while the rendered output is already committed.
                 // MountSlotStart is deliberately not written here; ComponentFiber.MountSlotStart owns where it
                 // is written instead.
-                // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the stamp it
-                // was given at creation. A reconcile of a fiber's own rows names the Portal they sit in
-                // (FiberCommitWork.ReconcileRows), so an isolated re-render or a fallback swap inside a Portal keeps
-                // the stamps below it. A fiber left without one is the same fiber DisposeInlineFibersOwnedByPortal
-                // already reaches through the parent index, and FiberCommitWork reads the nearest stamp up its chain.
-                existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (!reusedAsIs)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the
@@ -334,6 +336,9 @@ namespace Velvet
         private void RegisterFiber(in FiberMountSite site, object identity, ComponentFiber fiber)
         {
             var anchor = site.Anchor;
+            // Written from the same source on both halves of GetOrCreate — see the carry half in
+            // ReconcileExistingFiber for why one write cannot serve.
+            fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             if (site.IsInline)
             {
                 var parentFiber = (ComponentFiber)anchor!;
@@ -350,9 +355,6 @@ namespace Velvet
                     }
                     tenancy.Fibers.Add(fiber);
                 }
-                // Written from the same source on both halves of GetOrCreate — see the carry half in
-                // ReconcileExistingFiber for why one write cannot serve.
-                fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 // Top-level inline fibers (root components mounted with no enclosing component fiber)
                 // have parentFiber == null. They are disposed via the reconcile orphan sweep and the
                 // registry's full Dispose, not via parent-fiber cascade, so they are not grouped here.
@@ -696,11 +698,17 @@ namespace Velvet
         internal void DisposeFibersUnder(VisualElement root)
         {
             if (root == null) return;
-            if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
             List<ComponentFiber>? snapshot = null;
-            CollectFibersInSubtree(root, ref snapshot);
+            CollectFibersIn(root, ref snapshot);
             if (snapshot == null) return;
             DisposeTogether(snapshot);
+        }
+
+        // The selection DisposeFibersUnder(VisualElement) disposes, appended to into, which the first match creates.
+        internal void CollectFibersIn(VisualElement root, ref List<ComponentFiber>? into)
+        {
+            if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
+            CollectFibersInSubtree(root, ref into);
         }
 
         // The selection CollectFibersUnder makes for one root, read off the registry's indexes by container

@@ -595,7 +595,8 @@ namespace Velvet
             // this commit walk) so the controller can mount items under the host's shared context — its
             // items render later, outside any reconcile pass, where the cursor is empty.
             var controller = new FiberVirtualListController(
-                scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack);
+                scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack,
+                _ctx.CurrentPortalPlaceholder);
             _ctx.VirtualListControllers[scrollView] = controller;
             _ctx.FiberElementFactory.ApplyEvents(scrollView, virtualListNode.Events);
 

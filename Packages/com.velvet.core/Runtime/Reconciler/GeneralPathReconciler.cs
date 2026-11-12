@@ -165,6 +165,7 @@ namespace Velvet
             };
             var owner = _ctx.FiberStack.Current;
             var removalsRan = false;
+            DeletionCommit? deletion = null;
             try
             {
                 if (parent != null) commit.OldOccupants.Resolve(parent, slotStart, oldNodes.Length, int.MaxValue, _patcher);
@@ -220,10 +221,7 @@ namespace Velvet
                     KeepFibersTheStoppedWalkLeft(
                         oldFibers, newFibers, commit.SkippedByAbort, OwnerKeepsItsNewTree(owner) ? owner : null);
                 }
-                // Orphan effect cleanups run BEFORE the DOM-removal pass (Finalize → RemoveElement),
-                // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
-                // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
-                _ctx.HostCommit.CleanUpOrphans(oldFibers, newFibers);
+                deletion = TakeDownTheDeletion(commit, oldFibers, newFibers);
                 removalsRan = !_ctx.IsAborted;
                 if (removalsRan)
                 {
@@ -244,6 +242,7 @@ namespace Velvet
             }
             finally
             {
+                deletion?.End();
                 // Whether the walk threw or an abort skipped the removals, a completion that waits on them has nothing
                 // to follow.
                 if (!removalsRan)
@@ -571,6 +570,55 @@ namespace Velvet
             }
         }
 
+        // An old leaf stays only where a new leaf patched it; one replaced goes with the rest.
+        private static void MarkPatchedOldLeaves(GeneralCommitState commit)
+        {
+            var patched = commit.UsedOldIndices;
+            patched.Clear();
+            for (var j = 0; j < commit.NewElements.Count; j++)
+            {
+                if (commit.NewElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
+            }
+        }
+
+        // After MarkPatchedOldLeaves. A leaf whose slot was empty when the walk read the old instances has none to
+        // remove.
+        private static bool IsRemoved(GeneralCommitState commit, int oldIndex)
+            => !commit.UsedOldIndices.Contains(oldIndex) && commit.OldOccupants.Occupant(oldIndex) != null;
+
+        // What the walk deletes — the fibers its old side reached and its new side did not, and the old leaves it
+        // removes — taken down in React's order ahead of the removals (DeletionCommit). A walk an abort stopped removes
+        // no leaf, and still takes down the orphans KeepFibersTheStoppedWalkLeft let go. Null where nothing is deleted.
+        private DeletionCommit? TakeDownTheDeletion(
+            GeneralCommitState commit, List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
+        {
+            var removes = !_ctx.IsAborted;
+            var oldLength = commit.OldNodes!.Length;
+            var deletes = false;
+            if (removes)
+            {
+                MarkPatchedOldLeaves(commit);
+                for (var i = 0; i < oldLength && !deletes; i++) deletes = IsRemoved(commit, i);
+            }
+            for (var i = 0; i < oldFibers.Count && !deletes; i++) deletes = !newFibers.Contains(oldFibers[i]);
+            if (!deletes) return null;
+            var deletion = _ctx.HostCommit.BeginDeletion(commit.Parent);
+            try
+            {
+                for (var i = 0; i < oldLength; i++)
+                {
+                    deletion.AddRow(commit.OldOccupants.Occupant(i), removes && IsRemoved(commit, i), commit.OldOwners[i]);
+                }
+                deletion.Run(oldFibers, newFibers);
+            }
+            catch
+            {
+                deletion.End();
+                throw;
+            }
+            return deletion;
+        }
+
         // Removes old leaves not reused by the walk, then re-places the committed elements into
         // [slotStart, slotStart + NewElements.Count) with the minimum number of DOM moves via
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
@@ -583,21 +631,13 @@ namespace Velvet
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            // An old leaf stays only where a new leaf patched it; one replaced goes with the rest.
-            var patched = commit.UsedOldIndices;
-            patched.Clear();
-            for (var j = 0; j < newElements.Count; j++)
-            {
-                if (newElements[j].isExisting) patched.Add(commit.Committed[j].OldIndex);
-            }
-            // Removal, from the last old leaf down. A leaf whose slot was empty when the walk read the old instances
-            // has none to remove.
+            MarkPatchedOldLeaves(commit);
+            // Removal, from the last old leaf down.
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
-                var old = commit.OldOccupants.Occupant(i);
-                if (!patched.Contains(i) && old != null)
+                if (IsRemoved(commit, i))
                 {
-                    _ctx.HostCommit.Remove(parent, old, commit.OldOccupants.PhysicalAtEntry(i));
+                    _ctx.HostCommit.Remove(parent, commit.OldOccupants.Occupant(i)!, commit.OldOccupants.PhysicalAtEntry(i));
                 }
             }
 

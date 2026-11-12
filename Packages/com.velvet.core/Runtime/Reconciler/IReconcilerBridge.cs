@@ -58,9 +58,11 @@ namespace Velvet
         // test driving the controller directly); then the scope is context-only and no stamping occurs. The
         // returned token must be passed back to End (carries the pre-scope child set for stamping; supports
         // nested VirtualLists).
-        // outsidePass is whether the range opened its bracket (BeginRangeForController).
+        // outsidePass is whether the range opened its bracket (BeginRangeForController). enclosingPortal is the Portal
+        // placeholder the list was created under, which the items are stamped with outside a pass.
         object? BeginDetachedItemScope(
-            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, bool outsidePass);
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VisualElement? enclosingPortal,
+            bool outsidePass);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
         // DescendantNodes is THIS item's rendered vnode — so an isolated re-render can rebuild not just the

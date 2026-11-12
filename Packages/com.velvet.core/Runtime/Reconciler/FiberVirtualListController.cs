@@ -23,6 +23,8 @@ namespace Velvet
         private readonly ComponentFiber? _hostFiber;
         private readonly ComponentContextStack? _contextStack;
         private List<KeyValuePair<object, object>>? _enclosingContext;
+        // The Portal the list was created in, which its elements stay in for their life.
+        private readonly VisualElement? _enclosingPortal;
 
         private VirtualListNode _node;
         private VNode[] _renderedNodes;
@@ -67,13 +69,15 @@ namespace Velvet
             VirtualListNode node,
             IReconcilerBridge reconciler,
             ComponentFiber? hostFiber = null,
-            ComponentContextStack? contextStack = null)
+            ComponentContextStack? contextStack = null,
+            VisualElement? enclosingPortal = null)
         {
             _scrollView = scrollView ?? throw new ArgumentNullException(nameof(scrollView));
             _node = node ?? throw new ArgumentNullException(nameof(node));
             _reconciler = reconciler ?? throw new ArgumentNullException(nameof(reconciler));
             _hostFiber = hostFiber;
             _contextStack = contextStack;
+            _enclosingPortal = enclosingPortal;
             // Capture the enclosing context now (the cursor is correct mid-reconcile, where CreateElement
             // constructs this controller). The list's items render later, when the cursor is empty.
             _enclosingContext = MotionContext.OutlivingPass(contextStack?.SnapshotTops());
@@ -412,7 +416,7 @@ namespace Velvet
             // Render the items under the context that enclosed the V.VirtualList: the scope parents new item
             // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
             // cursor for the item bodies, then stamps the new fibers for isolated-re-render reconstruction.
-            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, outsidePass);
+            var scopeToken = _reconciler.BeginDetachedItemScope(_hostFiber, _enclosingContext, _enclosingPortal, outsidePass);
             try
             {
                 for (var i = 0; i < newCount; i++)

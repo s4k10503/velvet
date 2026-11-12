@@ -121,6 +121,40 @@ namespace Velvet.Tests
             return V.Fragment(Array.Empty<VNode>());
         }
 
+        [Component]
+        private static VNode ChildRenderingAComponentThenAnElement()
+        {
+            EventLog.UseEffects("C1", Array.Empty<object>());
+            return V.Fragment(V.Component(Empty, new Named("E"), key: "e"), V.Div(refCallback: EventLog.UseRefCallback("D")));
+        }
+
+        [Component]
+        private static VNode PortalOfAChildWithAComponentThenAnElement(ParentProps props)
+            => V.Fragment(V.Portal(props.Target,
+                new VNode[] { V.Component(ChildRenderingAComponentThenAnElement, key: "c1") }, key: "portal"));
+
+        [Component]
+        private static VNode VirtualRow(Named props)
+        {
+            var (value, _) = EventLog.UseState(props.Name, 0);
+            EventLog.UseEffects(props.Name, new object[] { value });
+            return V.Div();
+        }
+
+        [Component]
+        private static VNode VirtualListInAPortalThenSibling(ParentProps props)
+            => V.Fragment(
+                V.Portal(props.Target, new VNode[]
+                {
+                    V.VirtualList(
+                        items: new[] { "R" },
+                        keySelector: item => item,
+                        itemHeight: 50f,
+                        renderer: item => V.Component(VirtualRow, new Named(item), key: item),
+                        overscan: 0),
+                }, key: "portal"),
+                V.Component(After, key: "after"));
+
         private static string MountAndLog(bool lastRendersNothing)
         {
             var log = new EventLog();
@@ -177,6 +211,46 @@ namespace Velvet.Tests
             Assert.That(log.ToString(), Is.EqualTo(
                 "ins-x:Leaf ins:Leaf lay-x:Leaf ins-x:After ins:After lay-x:After lay:Leaf lay:After"
                 + " eff-x:Leaf eff-x:After eff:Leaf eff:After"));
+        }
+
+        [Test]
+        public void Given_APortalChildRenderingAComponentAheadOfAnElementWithARef_When_Mounted_Then_TheRefAttachesBetweenTheirLayoutEffects()
+        {
+            // Arrange
+            var log = new EventLog();
+
+            // Act
+            using var mounted = V.Mount(new VisualElement(), log.Provide(
+                V.Component(PortalOfAChildWithAComponentThenAnElement, new ParentProps(new VisualElement(), false))));
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins:E ins:C1 lay:E ref:D lay:C1 eff:E eff:C1"));
+        }
+
+        [Test]
+        public void Given_AVirtualListRowInAPortalAndASiblingAfterThePortalUpdatedTogether_When_TheyCommit_Then_TheRowsEffectsRunFirst()
+        {
+            // Arrange — the row renders from a range update outside any pass, the way a scroll renders one
+            var log = new EventLog();
+            var target = new VisualElement();
+            using var mounted = V.Mount(new VisualElement(),
+                log.Provide(V.Component(VirtualListInAPortalThenSibling, new ParentProps(target, false))));
+            mounted.DrainForTest();
+            var list = mounted.Root.Reconciler!.Context.VirtualListControllers[target.Q<ScrollView>()];
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<int>("R").Invoke(1);
+            log.Setter<int>("After").Invoke(1);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo(
+                "ins-x:R ins:R lay-x:R ins-x:After ins:After lay-x:After lay:R lay:After"
+                + " eff-x:R eff-x:After eff:R eff:After"));
         }
 
         // GREEN_ON_BASE(characterization): the base never names a Portal for a component's own render to take back.

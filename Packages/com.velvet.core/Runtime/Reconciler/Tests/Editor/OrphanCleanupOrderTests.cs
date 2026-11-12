@@ -7,13 +7,11 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins bottom-up effect-cleanup order when a subtree of directly-nested inline components is
-    /// orphaned in one reconcile (a conditional unmount of a component that itself returns another
-    /// component, with no host element in between — the shape of a link wrapper or a functional
-    /// error boundary). The old-side expansion appended the parent fiber before recursing into its
-    /// body output, so the orphan sweep's forward walk ran the PARENT's cleanups while the child was
-    /// still fully mounted, inverting unmount order: a descendant's cleanups must complete before an
-    /// ancestor's, exactly as the commit-phase deletion path already guarantees.
+    /// Pins the layout-cleanup order when a subtree of directly-nested inline components is orphaned in one
+    /// reconcile (a conditional unmount of a component that itself returns another component, with no host
+    /// element in between — the shape of a link wrapper or a functional error boundary): parent first, as
+    /// react-reconciler 19.1's <c>commitDeletionEffectsOnFiber</c> runs a function component's layout destroys
+    /// before it recurses into the component's children.
     /// </summary>
     [TestFixture]
     internal sealed class OrphanCleanupOrderTests
@@ -66,7 +64,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_NestedInlineComponentsAreOrphanedTogether_When_CleanupsRun_Then_TheChildCleansUpBeforeTheParent()
+        public void Given_NestedInlineComponentsAreOrphanedTogether_When_CleanupsRun_Then_TheParentCleansUpBeforeTheChild()
         {
             // Arrange — a mounted parent→child inline chain with one layout-effect cleanup each.
             using var store = new ToggleStore();
@@ -80,8 +78,8 @@ namespace Velvet.Tests
             store.Set(false);
             scheduler.DrainImmediateForTest();
 
-            // Assert — bottom-up: the child's cleanup completes before the parent's.
-            Assert.That(s_log, Is.EqualTo(new[] { "cleanup:Inner", "cleanup:Outer" }));
+            // Assert
+            Assert.That(s_log, Is.EqualTo(new[] { "cleanup:Outer", "cleanup:Inner" }));
         }
     }
 }

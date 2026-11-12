@@ -219,24 +219,10 @@ namespace Velvet
         internal void FollowOwnRows(VisualElement target, int rowsBehindBefore)
             => FiberCommitWork.FollowOwnRows(_ctx, target, rowsBehindBefore);
 
-        // The fibers one container's old side reached and its new side did not: their effect cleanups run before
-        // the container's removals, and their disposal after.
-        internal void CleanUpOrphans(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
-        {
-            if (oldFibers.Count == 0) return;
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) fiber.MarkBeingDeleted();
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) fiber.RecordTheNearestAncestorOutsideTheDeletion();
-            }
-            foreach (var fiber in oldFibers)
-            {
-                if (!newFibers.Contains(fiber)) FiberEffects.RunOrphanFiberEffectCleanups(fiber);
-            }
-        }
+        // What one container's reconcile deletes, taken down before its removals (DeletionCommit): the fibers its
+        // old side reached and its new side did not, whose disposal comes after them (DisposeOrphans), and the rows
+        // it removes.
+        internal DeletionCommit BeginDeletion(VisualElement? container) => DeletionCommit.Begin(_ctx, _cleaner, container);
 
         internal void DisposeOrphans(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {

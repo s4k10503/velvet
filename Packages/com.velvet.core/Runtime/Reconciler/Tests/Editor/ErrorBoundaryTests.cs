@@ -949,6 +949,8 @@ namespace Velvet.Tests
             s_throwingFiber = null;
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the sibling, whose cleanup has not run when this reads it.
+        // The flush added reaches the passive phase, where the branch runs the cleanup of a component it disposes.
         [Test]
         public void Given_ASiblingBehindACatchingBoundary_When_ItCatchesInTheParentsRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
@@ -960,6 +962,7 @@ namespace Velvet.Tests
             s_unreachedShouldThrow = true;
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
             var cleanupsAfterCatch = s_unreachedCleanups;
             s_unreachedShouldThrow = false;
@@ -1019,8 +1022,8 @@ namespace Velvet.Tests
         private static int s_droppedCleanups;
         private static Action<int> s_droppedSetValue;
 
-        // GREEN_ON_BASE(characterization): the merge base sweeps the dropped child with the orphans of the walk it stops.
-        // The catch taken in the walk leaves that walk to complete, and the child going in its sweep is what this pins.
+        // GREEN_ON_BASE(characterization): the merge base sweeps the dropped child, cleanups run, in the walk the catch stops.
+        // The flush added after that render is the passive phase the branch runs the dropped child's cleanups in.
         [Test]
         public void Given_AChildThatDropsItsOwnChildAheadOfACatch_When_TheChildRendersItAgain_Then_ItMountsAfresh()
         {
@@ -1032,6 +1035,7 @@ namespace Velvet.Tests
             s_unreachedShouldThrow = true;
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
             var cleanupsAfterCatch = s_droppedCleanups;
             s_unreachedShouldThrow = false;
@@ -1051,6 +1055,8 @@ namespace Velvet.Tests
                 Is.EqualTo("fell back, cleanups 2, grandchild:0"));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the sibling, whose cleanup has not run when this reads it.
+        // The flush added reaches the passive phase, where the branch runs the cleanup of a component it disposes.
         [Test]
         public void Given_ASiblingBehindACatchInsideAChildThatReRendered_When_ItCatchesInThatRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
@@ -1063,6 +1069,7 @@ namespace Velvet.Tests
             s_unreachedShouldThrow = true;
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
             var cleanupsAfterCatch = s_unreachedCleanups;
             s_unreachedShouldThrow = false;
@@ -1078,8 +1085,8 @@ namespace Velvet.Tests
                 Is.EqualTo("fell back, cleanups 0, unreached-fallback,count:1"));
         }
 
-        // GREEN_ON_BASE(characterization): the merge base sweeps this component with the orphans of the walk it stops.
-        // The catch taken in the walk leaves that walk to complete, and its sweep is what this pins.
+        // GREEN_ON_BASE(characterization): the merge base sweeps this component, cleanups run, in the walk the catch stops.
+        // The flush added after that render is the passive phase the branch runs the dropped component's cleanups in.
         [Test]
         public void Given_AChildWhoseOwnElementDropsAComponentBehindACatch_When_ItCatchesInThatRender_Then_TheDroppedComponentIsCleanedUp()
         {
@@ -1092,6 +1099,7 @@ namespace Velvet.Tests
             // Act
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(
@@ -1129,6 +1137,8 @@ namespace Velvet.Tests
             });
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the dropped child's cleanup in the render the catch leaves to commit.
+        // The flush added after that render is the passive phase the branch runs the dropped child's cleanup in.
         [Test]
         public void Given_AParentWhoseRenderDropsAChildBesideACatch_When_ItRendersTheChildAgain_Then_TheChildMountsAfresh()
         {
@@ -1141,6 +1151,7 @@ namespace Velvet.Tests
             s_unreachedShouldThrow = true;
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
             var cleanupsAfterCatch = s_unreachedCleanups;
             s_unreachedShouldThrow = false;
@@ -1160,8 +1171,8 @@ namespace Velvet.Tests
         private static Action<int> s_shownFallbackSetValue;
         private static int s_shownFallbackCleanups;
 
-        // GREEN_ON_BASE(characterization): the merge base keeps this fallback by stopping the pass short of it.
-        // The catch taken in the walk keeps it by rendering the Suspense again, still pending, which this pins.
+        // GREEN_ON_BASE(characterization): the merge base keeps this fallback, whose cleanup has not run when this reads it.
+        // The flush added reaches the passive phase, where the branch runs the cleanup of a component it disposes.
         [Test]
         public void Given_ASuspenseShowingItsFallbackBehindACatch_When_ItCatchesInThatRender_Then_TheFallbackKeepsItsStateAndEffect()
         {
@@ -1176,6 +1187,7 @@ namespace Velvet.Tests
             s_unreachedShouldThrow = true;
             s_unreachedSetHostTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
             var fellBack = _root.FindLabelByText("unreached-fallback") != null;
             var cleanupsAfterCatch = s_shownFallbackCleanups;
             s_unreachedShouldThrow = false;

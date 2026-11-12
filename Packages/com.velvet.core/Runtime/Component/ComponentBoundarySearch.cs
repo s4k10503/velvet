@@ -56,6 +56,11 @@ namespace Velvet
         internal static void PropagateFromOwner(ComponentFiber? owner, Exception exception, bool isRenderError = false)
             => PropagateFrom(owner?.CaughtError == null ? owner : owner.Parent, owner, exception, isRenderError);
 
+        // A passive cleanup of a deleted fiber runs after the fiber is gone, so the search starts at the ancestor the
+        // deletion recorded, inclusive, as React's captureCommitPhaseError starts at the nearest mounted ancestor.
+        internal static void PropagateFromDeletion(ComponentFiber? ancestor, ComponentFiber deleted, Exception exception)
+            => PropagateFrom(ancestor, deleted, exception, isRenderError: false);
+
         // Where an error goes whose walk ends with neither a boundary nor the root V.Mount made taking it, and one Velvet
         // hands no boundary, as Framer Motion's completion callbacks run in a promise no boundary sees.
         internal static void ReportUncaught(Exception exception) => Debug.LogException(exception);

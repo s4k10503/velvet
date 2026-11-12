@@ -2059,6 +2059,8 @@ namespace Velvet.Tests
             Assert.That(Texts(), Is.EqualTo("fallback"));
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the removed child's cleanup inside the fallback swap, reported second.
+        // The flush added is the passive phase the branch runs that cleanup in, after the swap's commit.
         [Test]
         public void Given_ABoundaryWhoseCommittedChildsCleanupThrows_When_ASiblingsUpdateThrows_Then_TheBoundaryReportsTheCleanupErrorAfterTheRenderError()
         {
@@ -2067,9 +2069,10 @@ namespace Velvet.Tests
                 new MountOptions { OnCaughtError = (exception, _) => s_swapReports.Add(exception.Message) });
             mounted.FlushEffectsForTest();
 
-            // Act — the catch swaps the fallback in, which unmounts the child whose cleanup throws
+            // Act — the catch swaps the fallback in, which unmounts the child whose cleanup throws in the passive phase
             s_setSwapThrowerTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("Swap render throw,Swap cleanup throw"));
@@ -2077,6 +2080,8 @@ namespace Velvet.Tests
 
         // The list's row is mounted on an anchor of its own and is disposed before it unmounts what it rendered, so the
         // walk from the child whose cleanup throws starts at a fiber already torn down.
+        // GREEN_ON_BASE(characterization): the base runs the row child's cleanup in the render that removes the list.
+        // The flush added is the passive phase the branch runs that cleanup in, after the render's commit.
         [Test]
         public void Given_AListRowWhoseChildsCleanupThrows_When_TheListLeavesBelowABoundary_Then_TheBoundaryCatchesIt()
         {
@@ -2093,6 +2098,7 @@ namespace Velvet.Tests
             // Act
             s_setListTick.Invoke(2);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("List row child cleanup throw"));
@@ -2156,6 +2162,8 @@ namespace Velvet.Tests
 
         // React's commit-phase capture of a deletion's error starts at the nearest ancestor outside the deletion,
         // so a boundary removed with the component whose cleanup throws does not catch it.
+        // GREEN_ON_BASE(characterization): the base runs the removed child's cleanup in the render that removes it.
+        // The flush added is the passive phase the branch runs that cleanup in, after the render's commit.
         [Test]
         public void Given_ABoundaryRemovedWithAChildWhoseCleanupThrows_When_ARenderRemovesIt_Then_TheBoundaryAboveTheRemovalCatches()
         {
@@ -2167,6 +2175,7 @@ namespace Velvet.Tests
             // Act
             s_setDeletedPanelTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports), Is.EqualTo("BoundaryCatchScopeTests.DeletedPanelOuterRender"));
@@ -2174,6 +2183,8 @@ namespace Velvet.Tests
 
         // The element holding the boundary leaves with it, so the deletion disposes the fibers mounted under that
         // element together rather than through the orphan sweep of a component's rows.
+        // GREEN_ON_BASE(characterization): the base runs the removed child's cleanup in the render that removes it.
+        // The flush added is the passive phase the branch runs that cleanup in, after the render's commit.
         [Test]
         public void Given_ABoundaryRemovedWithTheElementHoldingIt_When_ItsChildsCleanupThrows_Then_TheBoundaryAboveTheRemovalCatches()
         {
@@ -2185,6 +2196,7 @@ namespace Velvet.Tests
             // Act
             s_setDeletedPanelTick.Invoke(1);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(",", s_swapReports),
@@ -2344,6 +2356,8 @@ namespace Velvet.Tests
         }
 
         // A component under the ghost's element stands with the leaves the abort left on screen.
+        // GREEN_ON_BASE(characterization): the base keeps that component, whose cleanup has not run when this reads it.
+        // The flush added reaches the passive phase, where the branch runs the cleanup of a component it disposes.
         [Test]
         public void Given_AGhostWhoseDropAnAbortedRenderSkipped_When_ThatRenderEnds_Then_AComponentUnderItIsNotDisposed()
         {
@@ -2355,9 +2369,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
 
-            // Act
+            // Act — the passive phase too, where a disposal's cleanup would run
             s_setAbortedExitTick.Invoke(2);
             mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(s_ghostCleanups, Is.EqualTo(0));

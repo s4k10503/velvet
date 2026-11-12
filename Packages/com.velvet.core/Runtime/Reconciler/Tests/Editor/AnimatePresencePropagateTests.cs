@@ -1018,8 +1018,8 @@ namespace Velvet.Tests
             Assert.That((heldWhileExiting, InnerItem == null), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base cleaned the effect up in the removing render.
-        // The flush and drain added are the passive flush the exit settles in and the render that drops the child.
+        // GREEN_ON_BASE(characterization): the base cleans the effect up in the render that drops the child.
+        // The flush added after that render is the passive phase the branch runs a deleted child's cleanup in.
         [Test]
         public void Given_AChildWhoseOnlyOutputIsAPresenceOfChildrenWithNoExit_When_TheKeyIsRemovedAndAddedAgain_Then_ItsEffectCleansUpOnceAndMountsAgain()
         {
@@ -1030,6 +1030,7 @@ namespace Velvet.Tests
             Drain(mounted);
             mounted.FlushEffectsForTest();
             Drain(mounted);
+            mounted.FlushEffectsForTest();
             var cleanupsAfterRemoval = s_cleanups;
 
             // Act

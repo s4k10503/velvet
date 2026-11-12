@@ -200,6 +200,8 @@ namespace Velvet
         // nested in it (a portal's children, a relocated element) names its own, so none inherits it.
         private void CleanupElement(VisualElement element, IPanel? panel, VisualElement? discardedRoot)
         {
+            // A row a container's deletion took down already has nothing of it left to reach.
+            if (!_ctx.RemovalsTakenDown.Remove(element)) DeletionCommit.TakeDownLeaving(_ctx, this, element);
             var enclosingRoot = _ctx.DiscardedSubtreeRoot;
             _ctx.DiscardedSubtreeRoot = discardedRoot;
             try
@@ -259,32 +261,37 @@ namespace Velvet
             _ctx.FiberMemoCache.Forget(element);
         }
 
-        // Refs, animation/layout scheduling, the event + component registries, and every
-        // manipulator-backed or pure side-table style binding (variants, gap/divide/grid/balance,
-        // arbitrary values).
-        private void CleanupEffectAndStyleBindingResources(VisualElement element)
+        // Reached ahead of the rest of the teardown where a deletion's walk reaches the element (DeletionCommit), which
+        // leaves nothing for the teardown's own call.
+        internal void DetachRef(VisualElement element)
         {
             // An element leaving inside the pass that created it — a row removed after being created, a
             // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
             // is what keeps the drain from installing a ref on an element no tree holds.
             _ctx.DropPendingRefAttach(element);
             _ctx.ForgetRefDetachedWhileHidden(element);
-            if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
+            if (!_ctx.RefCallbacks.TryGetValue(element, out var installedRef)) return;
+            _ctx.RefCallbacks.Remove(element);
+            // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
+            // escaping here skips the rest of this element's teardown — including the ring detach whose
+            // own note says skipping it strands a live band — and unwinds whichever removal loop called
+            // in, so the rows it had not reached yet stay in the tree.
+            try
             {
-                _ctx.RefCallbacks.Remove(element);
-                // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
-                // escaping here skips the rest of this element's teardown — including the ring detach whose
-                // own note says skipping it strands a live band — and unwinds whichever removal loop called
-                // in, so the rows it had not reached yet stay in the tree.
-                try
-                {
-                    installedRef.Cleanup?.Invoke();
-                }
-                catch (System.Exception exception)
-                {
-                    FiberLogger.LogException("FiberElementCleaner", exception);
-                }
+                installedRef.Cleanup?.Invoke();
             }
+            catch (System.Exception exception)
+            {
+                FiberLogger.LogException("FiberElementCleaner", exception);
+            }
+        }
+
+        // Refs, animation/layout scheduling, the event + component registries, and every
+        // manipulator-backed or pure side-table style binding (variants, gap/divide/grid/balance,
+        // arbitrary values).
+        private void CleanupEffectAndStyleBindingResources(VisualElement element)
+        {
+            DetachRef(element);
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             // Teardown-flavored: this element is being released for good (pool return / disposal), not merely
             // interrupted, so an ordinary CancelExit's reversal hand-off (which assumes the element keeps

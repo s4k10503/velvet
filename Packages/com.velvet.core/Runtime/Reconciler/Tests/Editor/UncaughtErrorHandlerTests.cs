@@ -9,8 +9,8 @@ namespace Velvet.Tests
     /// Specifies <see cref="MountOptions.OnUncaughtError"/>, over the components <see cref="UncaughtErrorRootTests"/>
     /// declares.
     /// <list type="bullet">
-    /// <item>It is called once the tree has unmounted, its effects cleaned up, with an empty boundary name and the
-    /// component stack starting at the component that threw.</item>
+    /// <item>It is called once the tree has unmounted, ahead of the unmounted components' passive cleanups, with an
+    /// empty boundary name and the component stack starting at the component that threw.</item>
     /// <item>An effect cleanup that throws during that unmount is reported after the error the unmount is for, and
     /// those that throw while the handle is disposed are reported once every cleanup has run, a boundary the
     /// disposal tears down catching none of them.</item>
@@ -69,7 +69,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_ASiblingsEffectHasBeenCleanedUpWhenItIsCalled()
+        public void Given_AnOnUncaughtErrorHandler_When_AChildsUpdateRenderThrows_Then_ASiblingsPassiveCleanupHasNotRunWhenItIsCalled()
         {
             // Arrange
             using var mounted = MountThrowerBesideProbe((_, _) => _reports.Add($"{UncaughtErrorRootTests.s_cleanups}"));
@@ -78,11 +78,14 @@ namespace Velvet.Tests
 
             // Act
             RenderAnUpdate(mounted);
+            mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That(string.Join(" / ", _reports), Is.EqualTo("1"));
+            // Assert — read when the handler was called; the passive phase after it is flushed too
+            Assert.That(string.Join(" / ", _reports), Is.EqualTo("0"));
         }
 
+        // GREEN_ON_BASE(characterization): the base runs the cleanup inside the unmount and reports it after the render error.
+        // The flush added is the passive phase the branch runs that cleanup in, after the unmount's commit.
         [Test]
         public void Given_ACleanupThatThrowsWhileTheTreeUnmounts_When_AChildsUpdateRenderThrows_Then_TheRenderErrorIsReportedFirst()
         {
@@ -93,8 +96,9 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
             UncaughtErrorRootTests.s_throws = true;
 
-            // Act
+            // Act — the cleanup throws in the passive phase after the unmount's commit
             RenderAnUpdate(mounted);
+            mounted.FlushEffectsForTest();
 
             // Assert
             Assert.That(string.Join(" / ", _reports),
