@@ -217,10 +217,8 @@ namespace Velvet.Tests
             Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
         }
 
-        [Test]
-        public void Given_APausedSequenceWhoseAwaitedTaskCompletes_When_ItResumes_Then_TheCallAfterTheAwaitFiresOnlyThen()
+        private void MountPausedOnAnAwait()
         {
-            // Arrange
             s_steps = new[]
             {
                 AnimationSequenceStep.Await(NextPending),
@@ -228,6 +226,29 @@ namespace Velvet.Tests
             };
             Mount(SequenceHost);
             s_controls.Pause();
+        }
+
+        // GREEN_ON_BASE(characterization): the base already holds a settled wait while the sequence is paused.
+        [Test]
+        public void Given_APausedSequenceWhoseAwaitedTaskCompletes_When_FiveTicksRun_Then_TheCallAfterTheAwaitHasNotFired()
+        {
+            // Arrange
+            MountPausedOnAnAwait();
+            s_sources[0].SetResult();
+
+            // Act
+            AdvanceTicks(5);
+
+            // Assert
+            Assert.That(s_callCount, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already releases a settled wait on the tick after the sequence resumes.
+        [Test]
+        public void Given_APausedSequenceWhoseAwaitedTaskCompletes_When_ItResumes_Then_TheCallAfterTheAwaitFires()
+        {
+            // Arrange
+            MountPausedOnAnAwait();
             s_sources[0].SetResult();
             AdvanceTicks(5);
             var callsWhilePaused = s_callCount;
@@ -237,7 +258,7 @@ namespace Velvet.Tests
             AdvanceTicks(1);
 
             // Assert
-            Assert.That((callsWhilePaused, s_callCount), Is.EqualTo((0, 1)));
+            Assert.That(callsWhilePaused == 0 ? s_callCount : -1, Is.EqualTo(1));
         }
 
         [Test]
