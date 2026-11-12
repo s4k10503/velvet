@@ -1223,8 +1223,8 @@ namespace Velvet
                 if (boundary.IsDisposed) return;
                 // Published only once the fallback has expanded: a catch on the aborting path during that
                 // expansion reconciles this boundary's rows from the tree they still hold, the failed one. The
-                // fallback is committed before the failed tree retires, as FiberErrorBoundary.TryShowFallback
-                // orders it.
+                // fallback is committed before the failed tree retires, so that the sweep's owner mark spares a node
+                // the two share.
                 var failedTree = boundary.PreviousTree;
                 boundary.PreviousTree = caught.FallbackTree;
                 FiberTreeReturn.ReturnRetiredTree(failedTree, boundary);
