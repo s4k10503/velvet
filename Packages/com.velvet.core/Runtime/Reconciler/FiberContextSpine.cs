@@ -66,8 +66,8 @@ namespace Velvet
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
 
-            // The array being walked where it is Ancestor's own output: its ReconcilingTree where it has one, else
-            // its PreviousTree. Null for a detached mount's captured DescendantNodes, which is
+            // The array being walked where it is Ancestor's own output, as FiberContextSpine.OwnOutput picks it for
+            // SpineChild. Null for a detached mount's captured DescendantNodes, which is
             // stamped onto a fiber only on the drain that created it — so after the declaring body renders again
             // that array still holds the nodes of the render that captured it, which ComponentFiber.SourceNode no
             // longer names.
@@ -194,7 +194,7 @@ namespace Velvet
                     continue;
                 }
 
-                var tree = ancestor.ReconcilingTree ?? ancestor.PreviousTree;
+                var tree = OwnOutput(ancestor, child);
                 if (tree == null || tree.Length == 0) continue;
 
                 var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
@@ -218,6 +218,17 @@ namespace Velvet
             }
 
             return new FiberContextSpine(stack, pushed, rawPushedKeys);
+        }
+
+        // The output of ancestor's that a keyed walk to child reads. Where child was last reached from the baseline of
+        // ancestor's parked pass, that pass has not reached child yet, and the Providers around child are still the
+        // baseline's; otherwise it is the output ancestor is reconciling, or else the one it kept last.
+        private static VNode?[]? OwnOutput(ComponentFiber ancestor, ComponentFiber child)
+        {
+            var parked = ancestor.PendingOldTree;
+            return parked != null && ReferenceEquals(child.SourceTree, parked)
+                ? parked
+                : ancestor.ReconcilingTree ?? ancestor.PreviousTree;
         }
 
         // Pops every Provider this handle pushed, restoring the cursor. Safe on a default handle.
