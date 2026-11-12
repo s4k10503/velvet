@@ -319,6 +319,81 @@ namespace Velvet.Tests
             Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already fits a scroll view's code-written radius, which the change leaves to a callback.
+        [Test]
+        public void Given_AScrollViewWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — the box above as an element type that carries no handler of its own for the fit.
+            _mounted = V.Mount(_window.rootVisualElement, V.ScrollView(className: WideBox, name: "box"));
+            Box.style.borderTopLeftRadius = 400f;
+            Box.style.borderTopRightRadius = 400f;
+            Box.style.borderBottomRightRadius = 400f;
+            Box.style.borderBottomLeftRadius = 400f;
+
+            // Act
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base fits a radius set inline on an element Velvet never created.
+        // Only the declaration watches such an element, since the factory never observed it.
+        [Test]
+        public void Given_AnElementVelvetDidNotCreateGivenAnInlineRadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange
+            var element = new VisualElement();
+            element.style.width = 330f;
+            element.style.height = 34f;
+            _window.rootVisualElement.Add(element);
+            CornerRadiusFit.SetInline(element, RadiusCorners.All, new Length(400f));
+
+            // Act
+            ForcePanelUpdate(element.panel);
+
+            // Assert
+            Assert.That(Radii(element), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already fits a label's code-written radius, through a callback.
+        // The change hands that size change to the label's own event handling instead.
+        [Test]
+        public void Given_ALabelWithNoRoundedClassWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — the label case of the box above.
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(className: WideBox, name: "box"));
+            Box.style.borderTopLeftRadius = 400f;
+            Box.style.borderTopRightRadius = 400f;
+            Box.style.borderBottomRightRadius = 400f;
+            Box.style.borderBottomLeftRadius = 400f;
+
+            // Act
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already fits a button's code-written radius, through a callback.
+        // The change hands that size change to the button's own event handling instead.
+        [Test]
+        public void Given_AButtonWithNoRoundedClassWhoseCodeWritesARadiusBeyondItsHeight_When_LaidOut_Then_EveryCornerTakesHalfTheHeight()
+        {
+            // Arrange — the button case of the box above.
+            _mounted = V.Mount(_window.rootVisualElement, V.Button(className: WideBox, name: "box"));
+            Box.style.borderTopLeftRadius = 400f;
+            Box.style.borderTopRightRadius = 400f;
+            Box.style.borderBottomRightRadius = 400f;
+            Box.style.borderBottomLeftRadius = 400f;
+
+            // Act
+            ForcePanelUpdate(Box.panel);
+
+            // Assert
+            Assert.That(Radii(Box), Is.EqualTo(new[] { 17f, 17f, 17f, 17f }).Within(1e-3f));
+        }
+
         [Test]
         public void Given_ABoxWhoseOwnStylesheetGivesItARadiusBeyondItsHeight_When_LaidOut_Then_ItsCornersAreScaledToFitIt()
         {

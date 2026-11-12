@@ -171,6 +171,12 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
+                // Same pass-over as StyleEaseCurve.NoteClasses, ahead of the strip as well: a border leaf is part of
+                // its class.
+                if (cls == null || cls.IndexOf("border", System.StringComparison.Ordinal) == -1)
+                {
+                    continue;
+                }
                 // Strip !important before peeling variants so the border is still recognized under the
                 // important modifier.
                 var leaf = StyleArbitraryValueResolver.StripImportant(cls, out _);

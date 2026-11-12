@@ -49,15 +49,26 @@ namespace Velvet
             => ((b.x - a.x) * (point.y - a.y)) - ((b.y - a.y) * (point.x - a.x));
     }
 
-    internal sealed class SkewPickElement : VisualElement, ISkewPickTarget
+    internal sealed class SkewPickElement : VisualElement, ISkewPickTarget, IRadiusFitHost
     {
         public SkewPickRegion? PickRegion { get; set; }
 
+        public bool RadiusFitWatches { get; set; }
+
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
+
+        [EventInterest(typeof(GeometryChangedEvent))]
+        protected override void HandleEventBubbleUp(EventBase evt)
+        {
+            if (evt.target == this && RadiusFitWatches && evt is GeometryChangedEvent geometry)
+            {
+                CornerRadiusFit.OnGeometryChanged(this, geometry);
+            }
+        }
     }
 
-    internal sealed class SkewPickButton : Button, ISkewPickTarget, ILineBoxed
+    internal sealed class SkewPickButton : Button, ISkewPickTarget, ILineBoxed, IRadiusFitHost
     {
         private TextLineBox? _lineBox;
         private TextLineBox.BaseMeasure? _baseMeasure;
@@ -65,6 +76,8 @@ namespace Velvet
         public TextLineBox LineBox => _lineBox ??= new TextLineBox(this, centred: true);
 
         public SkewPickRegion? PickRegion { get; set; }
+
+        public bool RadiusFitWatches { get; set; }
 
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
@@ -79,11 +92,15 @@ namespace Velvet
             if (evt.target == this)
             {
                 _lineBox?.Handle(evt);
+                if (RadiusFitWatches && evt is GeometryChangedEvent geometry)
+                {
+                    CornerRadiusFit.OnGeometryChanged(this, geometry);
+                }
             }
         }
     }
 
-    internal sealed class SkewPickLabel : Label, ISkewPickTarget, ILineBoxed
+    internal sealed class SkewPickLabel : Label, ISkewPickTarget, ILineBoxed, IRadiusFitHost
     {
         public SkewPickLabel(string text)
             : base(text)
@@ -96,6 +113,8 @@ namespace Velvet
         public TextLineBox LineBox => _lineBox ??= new TextLineBox(this, centred: false);
 
         public SkewPickRegion? PickRegion { get; set; }
+
+        public bool RadiusFitWatches { get; set; }
 
         public override bool ContainsPoint(Vector2 localPoint)
             => PickRegion != null ? PickRegion.Contains(this, localPoint) : base.ContainsPoint(localPoint);
@@ -111,6 +130,10 @@ namespace Velvet
             if (evt.target == this)
             {
                 _lineBox?.Handle(evt);
+                if (RadiusFitWatches && evt is GeometryChangedEvent geometry)
+                {
+                    CornerRadiusFit.OnGeometryChanged(this, geometry);
+                }
             }
         }
     }

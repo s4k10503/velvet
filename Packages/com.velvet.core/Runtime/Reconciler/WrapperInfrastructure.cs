@@ -11,6 +11,8 @@ namespace Velvet
     // reconciler depends on.
     internal sealed class WrapperInfrastructure
     {
+        private const string AnimateHuePrefix = "animate-hue";
+
         private readonly ReconcilerContext _ctx;
 
         public WrapperInfrastructure(ReconcilerContext ctx)
@@ -90,12 +92,9 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                var leaf = cls;
-                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
-                {
-                    leaf = payload;
-                }
-                if (leaf != null && leaf.StartsWith("animate-hue", StringComparison.Ordinal))
+                // Same pass-over as StyleEaseCurve.NoteClasses: a peel leaves a suffix of its class.
+                if (cls != null && cls.IndexOf(AnimateHuePrefix, StringComparison.Ordinal) != -1
+                    && StyleVariantClass.LeafOf(cls).StartsWith(AnimateHuePrefix, StringComparison.Ordinal))
                 {
                     return true;
                 }

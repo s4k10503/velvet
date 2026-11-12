@@ -34,6 +34,13 @@ namespace Velvet
         };
     }
 
+    // An element type that hands its own size changes to CornerRadiusFit.OnGeometryChanged while RadiusFitWatches is
+    // set, in place of the callback the fit registers on any other element it watches.
+    internal interface IRadiusFitHost
+    {
+        bool RadiusFitWatches { get; set; }
+    }
+
     /// <summary>
     /// Scales an element's declared corner radii the way CSS does once adjacent ones overlap on a side
     /// (Backgrounds 3 §5.5), and holds the result inline.
@@ -99,7 +106,20 @@ namespace Velvet
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<VisualElement, State> s_states = new();
 
         // Watches element for a radius its rules or its code give it, which no class or arbitrary value declared.
-        public static void Observe(VisualElement element) => element.RegisterCallback(s_onGeometryChanged);
+        public static void Observe(VisualElement element) => WatchGeometry(element);
+
+        // Watching a host sets its flag, and its type hands it its size changes, so watching one allocates nothing
+        // (CornerRadiusFitObserveAllocationTests). Neither kind is ever unwatched: nothing unregisters the callback, and
+        // a host's flag outlives the pool, so a pooled host is still watched when it is rented again.
+        private static void WatchGeometry(VisualElement element)
+        {
+            if (element is IRadiusFitHost host)
+            {
+                host.RadiusFitWatches = true;
+                return;
+            }
+            element.RegisterCallback(s_onGeometryChanged);
+        }
 
         public static void TrackClass(VisualElement element, string cls)
         {
@@ -204,7 +224,8 @@ namespace Velvet
         }
 
         private static readonly EventCallback<CustomStyleResolvedEvent> s_onStyleResolved = OnStyleResolved;
-        private static readonly EventCallback<GeometryChangedEvent> s_onGeometryChanged = OnGeometryChanged;
+        private static readonly EventCallback<GeometryChangedEvent> s_onGeometryChanged =
+            evt => OnGeometryChanged((VisualElement)evt.currentTarget, evt);
 
         private static State GetOrAttach(VisualElement element)
         {
@@ -214,7 +235,7 @@ namespace Velvet
             }
             state = new State();
             element.RegisterCallback(s_onStyleResolved);
-            element.RegisterCallback(s_onGeometryChanged);
+            WatchGeometry(element);
             s_states.Add(element, state);
             return state;
         }
@@ -267,13 +288,13 @@ namespace Velvet
             return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
         }
 
-        private static void OnGeometryChanged(GeometryChangedEvent evt)
+        // The callback's handler, and a watched host's.
+        internal static void OnGeometryChanged(VisualElement element, GeometryChangedEvent evt)
         {
             if (evt.oldRect.size == evt.newRect.size)
             {
                 return;
             }
-            var element = (VisualElement)evt.currentTarget;
             var state = s_states.TryGetValue(element, out var tracked) ? tracked : AttachWhereRadiusResolves(element);
             if (state == null)
             {
