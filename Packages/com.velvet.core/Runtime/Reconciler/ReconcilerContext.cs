@@ -2083,8 +2083,12 @@ namespace Velvet
         // drain (FiberEffects.CleanUpDeleted).
         internal readonly List<DeletedPassiveCleanup> PendingDeletedPassiveCleanups = new();
 
-        // The poolable elements removed while a destroy above was pending (FiberElementCleaner.ReturnToPool).
-        internal readonly List<VisualElement> ElementsHeldFromThePool = new();
+        // A pass, and a VirtualList range rendered outside one, decides where the poolable elements it removes go
+        // once it ends (FiberElementCleaner.EndPoolHold): how deep such holds are open, the elements removed in them,
+        // and the destroys queued in them.
+        internal int PoolHoldDepth;
+        internal readonly List<VisualElement> ElementsRemovedInTheHold = new();
+        internal DeletionBatch? OpenDeletionBatch;
 
         // The rows a container's deletion has taken down and whose removal has not reached FiberElementCleaner yet, each
         // with the fibers mounted under it (DeletionCommit.Run, ended by DeletionCommit.End).

@@ -617,6 +617,8 @@ namespace Velvet
             {
                 if (!newFibers.Contains(fiber)) return true;
             }
+            // MUTANT_SURVIVES(equivalent, literal): a deletion begun over nothing deleted takes nothing down.
+            // Its Run finds no orphan and no removed row, and FinalizeGeneralCommit reads no removed row from it.
             return false;
         }
 

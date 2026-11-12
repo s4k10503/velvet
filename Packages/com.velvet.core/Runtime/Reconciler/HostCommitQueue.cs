@@ -224,9 +224,6 @@ namespace Velvet
         // it removes.
         internal DeletionCommit BeginDeletion(VisualElement? container, int slotStart, OldSlotOccupants occupants)
             => DeletionCommit.Begin(_ctx, _cleaner, container, slotStart, occupants);
-
-        internal void ReturnHeldElementsToPool() => _cleaner.ReturnHeldElementsToPool();
-
         internal void DisposeOrphans(List<ComponentFiber> oldFibers, HashSet<ComponentFiber> newFibers)
         {
             if (oldFibers.Count == 0) return;

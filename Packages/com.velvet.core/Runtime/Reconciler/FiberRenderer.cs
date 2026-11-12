@@ -390,7 +390,10 @@ namespace Velvet
             var parkedTree = fiber.PendingOldTree;
             fiber.PendingOldTree = null;
             FiberTreeReturn.ReturnRetiredTreesForUnmount(fiber, retiredTree, parkedTree, slotRoots);
-            if (fiber.Reconciler is { OwnsContext: true } root) FiberEffects.RunDeletedPassiveCleanups(root.Context);
+            if (fiber.Reconciler is { OwnsContext: true } root)
+            {
+                FiberEffects.RunDeletedPassiveCleanups(root.Context, includeHeld: true);
+            }
             fiber.Reconciler?.Dispose();
             fiber.Reconciler = null;
 
@@ -413,7 +416,7 @@ namespace Velvet
             // commit's deletion runs its destroys, and an exit settling in that flush completes, before the tree goes.
             if (fiber.Reconciler is { OwnsContext: true } root)
             {
-                FiberEffects.RunDeletedPassiveCleanups(root.Context);
+                FiberEffects.RunDeletedPassiveCleanups(root.Context, includeHeld: false);
                 FiberEffects.RunPassiveCompletions(root.Context);
             }
 

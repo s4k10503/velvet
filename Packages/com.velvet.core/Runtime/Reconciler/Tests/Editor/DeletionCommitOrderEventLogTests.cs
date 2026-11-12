@@ -376,6 +376,11 @@ namespace Velvet.Tests
             s_slicedList = FiberAmbientStack.Current;
             var generation = s_slicedGeneration;
             EventLog.UseEffects("L", new object[] { generation });
+            return V.Fragment(children: SlicedRowsOf(generation));
+        }
+
+        private static VNode[] SlicedRowsOf(int generation)
+        {
             var rows = new VNode[SlicedRows];
             rows[0] = V.Div(key: "row0", children: new VNode[]
             {
@@ -385,7 +390,66 @@ namespace Velvet.Tests
             {
                 rows[i] = V.Div(key: "row" + i, children: new VNode[] { V.Label(text: "gen" + generation) });
             }
-            return V.Fragment(children: rows);
+            return rows;
+        }
+
+        // As SlicedList, with no effect of its own.
+        [Component(Compiler = false)]
+        private static VNode QuietSlicedList()
+        {
+            s_slicedList = FiberAmbientStack.Current;
+            return V.Fragment(children: SlicedRowsOf(s_slicedGeneration));
+        }
+
+        [Component]
+        private static VNode LayoutAndRefOnly(Named props)
+        {
+            var log = EventLog.UseLog();
+            Hooks.UseLayoutEffect(() => () => log.Add("lay-x:" + props.Name), Array.Empty<object>());
+            return V.Div(refCallback: EventLog.UseRefCallback(props.Name));
+        }
+
+        [Component]
+        private static VNode SlicedListBeforeASibling()
+            => V.Fragment(V.Component(QuietSlicedList, key: "list"), V.Component(LayoutAndRefOnly, new Named("Y"), key: "y"));
+
+        [Component(Compiler = false)]
+        private static VNode LayoutCleanupThrower()
+        {
+            Hooks.UseLayoutEffect(
+                () => () => throw new InvalidOperationException("Deletion commit order test throw"), Array.Empty<object>());
+            return V.Label(text: "thrower");
+        }
+
+        [Component]
+        private static VNode LabelThenChild(Named props)
+        {
+            EventLog.UseEffects(props.Name, Array.Empty<object>());
+            return V.Fragment(V.Label(text: props.Name), V.Component(Unreffed, new Named(props.Name + "c"), key: "c"));
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryOverAThrower(Shown props)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Div(children: new VNode[] { props.Value ? V.Component(LayoutCleanupThrower, key: "t") : null });
+        }
+
+        private sealed record Shown(bool Value);
+
+        // A component nesting another is dropped ahead of a boundary whose element deletes a component whose layout
+        // cleanup throws into the boundary.
+        [Component]
+        private static VNode DropsNestedAheadOfACatch(Shown props)
+            => V.Fragment(
+                props.Value ? V.Component(LabelThenChild, new Named("P"), key: "p") : null,
+                V.Component(BoundaryOverAThrower, props, key: "b"));
+
+        [Component]
+        private static VNode HostOfNestedAndACatch()
+        {
+            var (shown, _) = EventLog.UseState("Shown", true);
+            return V.Component(DropsNestedAheadOfACatch, new Shown(shown), key: "host");
         }
 
         // The first row swaps its element type, and the second row's element deletes its child.
@@ -1036,6 +1100,47 @@ namespace Velvet.Tests
             // Assert
             Assert.That(log.ToString(), Is.EqualTo(
                 "ref-x:O ins-x:P lay-x:P ref-x:P ins-x:R lay-x:R ins-x:Z lay-x:Z ref-x:Z eff-x:P eff-x:R eff-x:Z"));
+        }
+
+        [Test]
+        public void Given_ATransitionParkedAfterDeletingAChild_When_TheTreeIsDisposed_Then_TheChildsPassiveCleanupRunsAfterTheUnmountsLayoutCleanups()
+        {
+            // Arrange — React commits no deletion of a parked transition, so the unmount deletes the child
+            var log = new EventLog();
+            var mounted = Mount(log, V.Component(SlicedListBeforeASibling));
+            s_slicedGeneration = 1;
+            s_slicedList.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_slicedList.FlushStateWithTinyBudgetForTest();
+            mounted.FlushEffectsForTest();
+            var heldWhileParked = s_slicedList.HasPendingReconcileWorkForTest()
+                && log.ToString() == "ins-x:D lay-x:D ref-x:D";
+            log.Clear();
+
+            // Act
+            mounted.Dispose();
+
+            // Assert — a child deleted in no slice, or one whose cleanup ran while parked, reads otherwise, so that
+            // reading is a sentinel.
+            Assert.That(heldWhileParked ? log.ToString() : "the deletion was not held while parked",
+                Is.EqualTo("lay-x:Y ref-x:Y eff-x:D"));
+        }
+
+        [Test]
+        public void Given_ANestedComponentDroppedAheadOfABoundaryThatCatchesALayoutCleanup_When_TheRenderCommits_Then_TheOuterIsTakenDownFirst()
+        {
+            // Arrange
+            var log = new EventLog();
+            using var mounted = V.Mount(new VisualElement(), log.Provide(V.Component(HostOfNestedAndACatch)),
+                CaughtErrors.Unlogged);
+            mounted.DrainForTest();
+            log.Clear();
+
+            // Act
+            log.Setter<bool>("Shown").Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(log.ToString(), Is.EqualTo("ins-x:P lay-x:P ins-x:Pc lay-x:Pc eff-x:P eff-x:Pc"));
         }
     }
 }

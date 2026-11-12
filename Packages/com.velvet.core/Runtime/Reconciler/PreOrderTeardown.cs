@@ -185,8 +185,8 @@ namespace Velvet
             ClearAndTrim(lists);
         }
 
-        // An instance is pooled for the rest of the domain, so a walk far larger than the usual one gives back what
-        // it grew to rather than leaving the pool holding it.
+        // An instance is pooled for the rest of the domain, so a walk far larger than the usual one gives back the
+        // capacity of the sets and tables ClearAndTrim clears, and leaves at most this many spare lists.
         private const int SparesKept = 64;
 
         protected static void ClearAndTrim<T>(HashSet<T> set)

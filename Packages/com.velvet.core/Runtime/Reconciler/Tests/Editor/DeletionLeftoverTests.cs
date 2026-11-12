@@ -166,6 +166,92 @@ namespace Velvet.Tests
                 shown ? V.Component(NamedRow, "r", key: "r") : null);
         }
 
+        private sealed record Anchor(Ref<Button> Button);
+
+        // Its cleanup writes the button its setup took off a ref another component's element set.
+        [Component(Compiler = false)]
+        private static VNode Decorator(Anchor props)
+        {
+            Hooks.UseEffect(() =>
+            {
+                var captured = props.Button.Current;
+                return () => captured.text = CleanupText;
+            }, Array.Empty<object>());
+            return V.Label(text: "decorator");
+        }
+
+        // One render removes the anchor button from the first element, deletes the decorator from the second and
+        // mounts a new button in the third.
+        [Component(Compiler = false)]
+        private static VNode AnchorDecoratorAndANewButton()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setShown = setShown;
+            var anchor = Hooks.UseRef<Button>();
+            return V.Fragment(
+                V.Div(children: new VNode[] { shown ? V.Button(text: "anchor", refCallback: anchor.SetElement) : null }),
+                V.Div(children: new VNode[] { shown ? V.Component(Decorator, new Anchor(anchor), key: "d") : null }),
+                V.Div(children: new VNode[] { shown ? null : V.Button(text: "new", name: "new") }));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsBesideAPlainButton()
+            => V.Fragment(V.Component(SlicedRows, key: "rows"), V.Component(HiddenPlainButton, key: "button"));
+
+        [Component(Compiler = false)]
+        private static VNode PlainRow() => V.Label(text: "plain");
+
+        // The list's first row is the sliced rows, its second a plain one.
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsInAList()
+            => V.VirtualList(
+                items: new[] { "sliced", "plain" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => item == "sliced" ? V.Component(SlicedRows, key: item) : V.Component(PlainRow, key: item),
+                overscan: 0);
+
+        // What the scheduler runs for a drain it armed.
+        private static void RunTheArmedDrain(ReconcilerContext context)
+            => typeof(FiberEffects).GetMethod("DrainPassiveEffects", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, new object[] { context });
+
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsBesideAMovedButton()
+            => V.Fragment(V.Component(SlicedRows, key: "rows"), V.Component(MovedButton, key: "moved"));
+
+        [Component(Compiler = false)]
+        private static VNode SlicedRowsBesideACapturingButton()
+            => V.Fragment(V.Component(SlicedRows, key: "rows"), V.Component(HiddenCapturingButton, key: "button"));
+
+        // A transition of the sliced rows, run through its resumed slices to its commit and passive phase.
+        private static void ResumeATransitionToItsEnd(MountedTree mounted)
+        {
+            s_generation = 1;
+            s_slicedList.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_slicedList.FlushStateWithTinyBudgetForTest();
+            s_slicedList.DrainTimeSlicedReconcileForTest();
+            mounted.FlushEffectsForTest();
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CountedRowsBesideAMovedButton()
+            => V.Fragment(V.Component(CountedRows, key: "rows"), V.Component(MovedButton, key: "moved"));
+
+        [Component(Compiler = false)]
+        private static VNode CountedRowsBesideACapturingButton()
+            => V.Fragment(V.Component(CountedRows, key: "rows"), V.Component(HiddenCapturingButton, key: "button"));
+
+        // A range update outside any pass that drops a list row with a passive cleanup, run to its passive phase.
+        private static void DropAListRowOutsideAPass(MountedTree mounted, VisualElement root)
+        {
+            var list = mounted.Root.Reconciler!.Context.VirtualListControllers[root.Q<ScrollView>()];
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            mounted.DrainForTest();
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+            mounted.DrainForTest();
+        }
+
         private static int ButtonsPooled()
         {
             var pool = typeof(VNodePool).GetField("s_buttonPool", BindingFlags.NonPublic | BindingFlags.Static)!
@@ -419,6 +505,151 @@ namespace Velvet.Tests
             // Assert
             Assert.That(string.Join(",", new[] { "p", "q", "r" }.Where(name => root.Q(name) != null)),
                 Is.EqualTo("p,q"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the decorator's cleanup before the new button is mounted.
+        [Test]
+        public void Given_ARenderRemovingAButtonAheadOfDeletingAComponentThatCapturedIt_When_ItMountsANewButton_Then_TheNewButtonKeepsItsText()
+        {
+            // Arrange — with nothing pooled, the removed button is the one the new button would be rented
+            EmptyTheButtonPool();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(AnchorDecoratorAndANewButton));
+            mounted.DrainForTest();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(root.Q<Button>("new").text, Is.EqualTo("new"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pools a removed button as the commit removes it.
+        [Test]
+        public void Given_ADestroyAParkedTransitionHolds_When_ALaterRenderRemovesAButtonAndQueuesNoDestroy_Then_TheButtonIsRentedAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(SlicedRowsBesideAPlainButton));
+            mounted.DrainForTest();
+            EmptyTheButtonPool();
+            s_generation = 1;
+            s_slicedList.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_slicedList.FlushStateWithTinyBudgetForTest();
+            var parked = s_slicedList.HasPendingReconcileWorkForTest();
+            s_setShown.Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            var rented = VNodePool.RentButton();
+
+            // Assert — a transition that never parked holds nothing, so that reading is a sentinel.
+            Assert.That(parked ? Which(rented) : "the transition never parked", Is.EqualTo("the removed button"));
+        }
+
+        [Test]
+        public void Given_AListRowWhoseTransitionParkedHoldingADestroy_When_ARangeUpdateDropsTheRow_Then_APassiveDrainIsArmedForTheDestroy()
+        {
+            // Arrange — the drain armed for the deletion runs while the transition is parked, and finds it held
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(SlicedRowsInAList));
+            mounted.DrainForTest();
+            var context = mounted.Root.Reconciler!.Context;
+            var list = context.VirtualListControllers[root.Q<ScrollView>()];
+            list.UpdateVisibleRange(scrollY: 0f, viewportHeight: 100f);
+            mounted.DrainForTest();
+            s_generation = 1;
+            s_slicedList.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_slicedList.FlushStateWithTinyBudgetForTest();
+            RunTheArmedDrain(context);
+            var heldWithNoDrainArmed = s_slicedList.HasPendingReconcileWorkForTest()
+                && !context.PassiveEffectDrainScheduled && s_cleanups == 0;
+
+            // Act — the plain row stays, so the update places no new row
+            list.UpdateVisibleRange(scrollY: 50f, viewportHeight: 50f);
+
+            // Assert — a destroy that ran while parked, or a drain still armed, reads otherwise, so that reading is a
+            // sentinel.
+            Assert.That(heldWithNoDrainArmed ? context.PassiveEffectDrainScheduled : (bool?)null, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the removed component's cleanup before its button is pooled.
+        [Test]
+        public void Given_ATransitionResumedToItsEnd_When_ALaterRenderRemovesACapturedButtonAndMountsAnother_Then_TheNewButtonKeepsItsText()
+        {
+            // Arrange — with nothing pooled, the removed button is the one the later button would be rented
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(SlicedRowsBesideAMovedButton));
+            mounted.DrainForTest();
+            ResumeATransitionToItsEnd(mounted);
+            EmptyTheButtonPool();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(root.Q<Button>("later").text, Is.EqualTo("b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pools the button as the commit removes it, ahead of the drain.
+        [Test]
+        public void Given_ATransitionResumedToItsEnd_When_ALaterRemovedButtonsComponentHasRunItsCleanup_Then_TheButtonIsRentedAgain()
+        {
+            // Arrange
+            using var mounted = V.Mount(new VisualElement(), V.Component(SlicedRowsBesideACapturingButton));
+            mounted.DrainForTest();
+            ResumeATransitionToItsEnd(mounted);
+            EmptyTheButtonPool();
+            s_setShown.Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+            var rented = VNodePool.RentButton();
+
+            // Assert
+            Assert.That(Which(rented), Is.EqualTo("the removed button"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base runs the removed component's cleanup before its button is pooled.
+        [Test]
+        public void Given_ARangeUpdateOutsideAPassDroppedARow_When_ALaterRenderRemovesACapturedButtonAndMountsAnother_Then_TheNewButtonKeepsItsText()
+        {
+            // Arrange — with nothing pooled, the removed button is the one the later button would be rented
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(CountedRowsBesideAMovedButton));
+            mounted.DrainForTest();
+            DropAListRowOutsideAPass(mounted, root);
+            EmptyTheButtonPool();
+
+            // Act
+            s_setShown.Invoke(false);
+            mounted.DrainForTest();
+
+            // Assert
+            Assert.That(root.Q<Button>("later").text, Is.EqualTo("b"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base pools the button as the commit removes it, ahead of the drain.
+        [Test]
+        public void Given_ARangeUpdateOutsideAPassDroppedARow_When_ALaterRemovedButtonsComponentHasRunItsCleanup_Then_TheButtonIsRentedAgain()
+        {
+            // Arrange
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(CountedRowsBesideACapturingButton));
+            mounted.DrainForTest();
+            DropAListRowOutsideAPass(mounted, root);
+            EmptyTheButtonPool();
+            s_setShown.Invoke(false);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Act
+            mounted.FlushEffectsForTest();
+            var rented = VNodePool.RentButton();
+
+            // Assert
+            Assert.That(Which(rented), Is.EqualTo("the removed button"));
         }
     }
 }

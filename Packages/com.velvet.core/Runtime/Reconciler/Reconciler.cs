@@ -255,6 +255,7 @@ namespace Velvet
                 // (a boundary fallback swap, a mid-pass unmount) can be re-rented by a later factory
                 // call in the SAME pass — see VNodePool's staging region.
                 VNodePool.BeginReleaseScope();
+                ElementCleaner.BeginPoolHold();
             }
 
             // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
@@ -294,6 +295,7 @@ namespace Velvet
                             // staging mode for the process lifetime — every later return staged, never
                             // flushed, pools starving — with no recovery outside the editor's domain reload.
                             VNodePool.EndReleaseScope();
+                            ElementCleaner.EndPoolHold();
                             // MUTANT_SURVIVES(equivalent): AutoScope.Dispose ends the profiler sample its
                             // Auto() opened and writes nothing else, so no tree, element or pool this pass
                             // touched reads differently without it.
@@ -528,6 +530,7 @@ namespace Velvet
             // A resume slice rents and returns pooled objects like the original pass, so it gets the
             // same release staging bracket (nested entries are depth-counted inside VNodePool).
             VNodePool.BeginReleaseScope();
+            ElementCleaner.BeginPoolHold();
             var resumed = false;
             try
             {
@@ -566,6 +569,7 @@ namespace Velvet
                 finally
                 {
                     VNodePool.EndReleaseScope();
+                    ElementCleaner.EndPoolHold();
                     _ctx.CurrentPass = enclosingPass;
                 }
             }
@@ -656,6 +660,7 @@ namespace Velvet
             if (_ctx.SharedReconcileDepth > 0) return false;
             _ctx.SharedReconcileDepth++;
             _ctx.RangeBracketDepth = _ctx.SharedReconcileDepth;
+            ElementCleaner.BeginPoolHold();
             return true;
         }
 
@@ -666,9 +671,16 @@ namespace Velvet
             if (!opened) return;
             _ctx.SharedReconcileDepth--;
             _ctx.RangeBracketDepth = 0;
-            // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange is the only catch of what this
-            // throws, and it hands either signal to the list's host alike.
-            FinishPass(container, walked: true);
+            try
+            {
+                // MUTANT_SURVIVES(equivalent, literal): FiberVirtualListController.PlaceRange alone catches this throw.
+                // It hands either signal to the list's host alike.
+                FinishPass(container, walked: true);
+            }
+            finally
+            {
+                ElementCleaner.EndPoolHold();
+            }
         }
 
         // What a detached item scope hands from Begin to Stamp and End: the host's children before the scope, which tells
@@ -795,6 +807,8 @@ namespace Velvet
             // on the shared pool's rented list until they go back (ReconcilerBufferPool.RentedOldSlotOccupants).
             _childReconciler?.DiscardPendingIndexedState();
             _childReconciler?.DiscardPendingKeyedState();
+            // A destroy the discarded pass held is due, and no commit of that pass is left to arm a drain for it.
+            FiberEffects.ArmDrainForReleasedDestroys(_ctx);
 
             // Owner-only teardown: ctx-level state is the root's responsibility. Disposing it from
             // a child Reconciler would invalidate sibling fibers that still share the same ctx.

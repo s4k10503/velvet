@@ -300,14 +300,17 @@ namespace Velvet
     internal sealed class DeletedPassiveCleanup
     {
         internal DeletedPassiveCleanup(ComponentFiber fiber, ComponentFiber? catchFrom, List<Action> cleanups,
-            DeletionAnchor anchor, Reconciler? pass)
+            DeletionAnchor anchor, Reconciler? pass, DeletionBatch? batch = null)
         {
             Fiber = fiber;
             CatchFrom = catchFrom;
             Cleanups = cleanups;
             Anchor = anchor;
             Pass = pass;
+            _batch = batch;
         }
+
+        private readonly DeletionBatch? _batch;
 
         internal ComponentFiber Fiber { get; }
 
@@ -322,17 +325,57 @@ namespace Velvet
 
         internal void Run()
         {
-            foreach (var cleanup in Cleanups)
+            try
             {
-                try
+                foreach (var cleanup in Cleanups)
                 {
-                    cleanup();
-                }
-                catch (Exception exception)
-                {
-                    ComponentBoundarySearch.PropagateFromDeletion(CatchFrom, Fiber, exception);
+                    try
+                    {
+                        cleanup();
+                    }
+                    catch (Exception exception)
+                    {
+                        ComponentBoundarySearch.PropagateFromDeletion(CatchFrom, Fiber, exception);
+                    }
                 }
             }
+            finally
+            {
+                _batch?.Ran();
+            }
+        }
+    }
+
+    // The destroys one pool hold queued (FiberElementCleaner.EndPoolHold) and the poolable elements it removed, which
+    // go to the pool once the hold has ended and those destroys have all run.
+    internal sealed class DeletionBatch
+    {
+        private readonly List<VisualElement> _elements = new();
+        private int _pending;
+        private bool _closed;
+
+        internal void Queued() => _pending++;
+
+        internal void Hold(VisualElement element) => _elements.Add(element);
+
+        internal void Ran()
+        {
+            _pending--;
+            ReleaseIfDone();
+        }
+
+        internal void Close()
+        {
+            _closed = true;
+            ReleaseIfDone();
+        }
+
+        private void ReleaseIfDone()
+        {
+            if (!_closed || _pending > 0) return;
+            foreach (var element in _elements) FiberElementCleaner.Pool(element);
+            // MUTANT_SURVIVES(equivalent): a batch releases once, at whichever of its close and last destroy comes later.
+            _elements.Clear();
         }
     }
 
