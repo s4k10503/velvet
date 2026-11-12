@@ -29,6 +29,9 @@ namespace Velvet
         // A root of the walk is visited as one, so where it is also the child of another root it is passed over there.
         protected abstract bool IsRoot(VisualElement element);
 
+        // Whether the walk goes on past what starts at the element it is visiting, into the element and below it.
+        protected virtual bool WalksOn() => true;
+
         protected List<VisualElement> RenderedChildrenOf(VisualElement container) => _rendered.Of(container);
 
         protected void Place(ComponentFiber fiber)
@@ -120,6 +123,7 @@ namespace Velvet
             // for a fiber or an element it has taken down already.
             if (!_visited.Add(element)) return;
             TakeDownStartingAt(element);
+            if (!WalksOn()) return;
             TakeDown(element);
             if (_depth == _childrenAtDepth.Count) _childrenAtDepth.Add(new List<VisualElement>());
             var children = _childrenAtDepth[_depth++];

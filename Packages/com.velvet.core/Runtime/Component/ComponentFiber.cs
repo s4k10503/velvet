@@ -872,8 +872,8 @@ namespace Velvet
         /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
         /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
         /// that render's output was committed AND reached this fiber, which is what
-        /// <see cref="FiberContextSpine"/> tests before comparing nodes, against <see cref="ReconcilingTree"/>
-        /// instead where the fiber above has one: a render whose output was discarded
+        /// <see cref="FiberContextSpine"/> tests before comparing nodes, against the array its OwnOutput picks
+        /// for this fiber: a render whose output was discarded
         /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
         /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
         /// </summary>

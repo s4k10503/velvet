@@ -19,6 +19,7 @@ namespace Velvet
         private readonly List<ComponentFiber> _hiddenFibers = new();
         private readonly HashSet<ComponentFiber> _hiding = new();
         private readonly List<(ComponentFiber Fiber, bool Hidden)> _afterTheWalk = new();
+        private VisualElement? _root;
 
         internal static void Apply(ReconcilerContext ctx,
             List<(int Row, VisualElement Element, bool Hidden)>? displayChanges,
@@ -109,6 +110,7 @@ namespace Velvet
             foreach (var fiber in _hiddenFibers) Place(fiber);
             foreach (var root in _hidden)
             {
+                _root = root;
                 // Not a root that a commit nested in a cleanup above revealed, hid or returned to the pool, which drops
                 // its hold: that commit decided later.
                 if (SuspenseHiddenElements.IsHeldForHide(root)) Visit(root);
@@ -123,6 +125,11 @@ namespace Velvet
 
         protected override bool IsRoot(VisualElement element) => _hiddenSet.Contains(element);
 
+        // Where a commit nested in a cleanup the walk ran took the root's hold, the rest of the root is left to it, as
+        // Disappear leaves a root whose hold such a commit took before the walk got there: what the walk has still to
+        // reach can be back in the pool, or rented again for an element that commit mounted.
+        protected override bool WalksOn() => SuspenseHiddenElements.IsHeldForHide(_root!);
+
         protected override void Clear()
         {
             base.Clear();
@@ -132,6 +139,8 @@ namespace Velvet
             _hiddenFibers.Clear();
             _hiding.Clear();
             _afterTheWalk.Clear();
+            // MUTANT_SURVIVES(equivalent): Disappear writes the root ahead of every Visit that reads it.
+            _root = null;
         }
     }
 }

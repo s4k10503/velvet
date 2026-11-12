@@ -10,8 +10,8 @@ namespace Velvet
     // [Component(IsErrorBoundary = true)] ancestor; TryCatch renders that boundary's UseFallback UI in
     // place of the throwing subtree. A render error below a boundary whose output the walk is expanding, or
     // whose own render is reconciling its output, is taken in there (GeneralPathReconciler.ExpandBoundaryInline,
-    // Reconciler.ReconcileCatching); otherwise TryCatch reconciles the fallback over the boundary's rows
-    // and aborts the in-flight reconcile. The fiber-stack and VNode-pool
+    // Reconciler.ReconcileCatching); otherwise TryCatch replaces the boundary's rows with the fallback
+    // (ShowFallbackTree) and aborts the in-flight reconcile. The fiber-stack and VNode-pool
     // plumbing it relies on stays on FiberRenderer (the render core) and is called back into here.
     internal static class FiberErrorBoundary
     {
@@ -111,14 +111,14 @@ namespace Velvet
             }
         }
 
-        // Reconciles fallbackTree over the boundary's own rows and commits it as the boundary's tree; false where
-        // the fallback's own content failed or an ancestor's fallback replaced the boundary meanwhile.
+        // Unmounts the boundary's own rows, mounts fallbackTree in their place and commits it as the boundary's tree;
+        // false where the fallback's own content failed or an ancestor's fallback replaced the boundary meanwhile.
         private static bool ShowFallbackTree(ComponentFiber fiber, VNode?[] fallbackTree)
         {
             try
             {
-                FiberCommitWork.ReconcileOwnRows(
-                    fiber, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree, frameBudgetMs: 0);
+                UnmountShownRows(fiber, fallbackTree);
+                FiberCommitWork.ReconcileOwnRows(fiber, Array.Empty<VNode>(), fallbackTree, frameBudgetMs: 0);
             }
             catch (FiberSuspendSignal)
             {
@@ -145,13 +145,8 @@ namespace Velvet
                 // call above was in progress — nothing here to track bookkeeping for anymore.
                 return false;
             }
-            // Commit the fallback as the new baseline BEFORE retiring the failed tree, so the recycle
-            // sweep's owner mark protects any node the two share (a memoized subtree that survived the
-            // failure and re-appears inside the fallback).
-            var failedTree = fiber.PreviousTree;
             fiber.PreviousTree = fallbackTree;
             fiber.FallbackReplacedPreviousTree = true;
-            FiberTreeReturn.ReturnRetiredTree(failedTree, fiber);
             // FallbackContentFailed is set when a re-entrant TryCatch above declined because THIS
             // fiber's own fallback content threw (logged, or shown by a farther ancestor instead) — the
             // Reconcile call still returns normally either way, so this is the only place that can tell
@@ -159,6 +154,24 @@ namespace Velvet
             // exception this attempt was responding to was never actually shown anything — report failure
             // so the caller keeps propagating instead of falsely claiming success.
             return !fiber.FallbackContentFailed;
+        }
+
+        // React reconciles a boundary's fallback against none of the children it replaces
+        // (forceUnmountCurrentAndReconcile), so a component of the fallback with the type and key of one the boundary
+        // showed mounts afresh rather than keeping that one's state. PreviousTree is emptied with the rows, so that it
+        // describes what the boundary holds while the fallback mounts, and the shown tree retires beside the fallback,
+        // which the factory may have built from nodes the two share.
+        private static void UnmountShownRows(ComponentFiber fiber, VNode?[] fallbackTree)
+        {
+            var shown = fiber.PreviousTree ?? Array.Empty<VNode>();
+            FiberCommitWork.ReconcileOwnRows(fiber, shown, Array.Empty<VNode>(), frameBudgetMs: 0);
+            fiber.PreviousTree = Array.Empty<VNode>();
+            // What the shown rows recorded against the boundary itself, for a Suspense or an AnimatePresence it
+            // rendered directly, and the primaries the reconcile above reproduced for a new side to read. Inside an
+            // enclosing pass, the retirement at that pass's end (ReconcilerContext.RetireBoundaryStatesNotReRendered)
+            // would come after the fallback had read them.
+            fiber.Reconciler!.Context.ForgetRecordsOf(fiber);
+            FiberTreeReturn.ReturnRetiredTree(shown, fiber, alsoLive: fallbackTree);
         }
 
         // A render error below a boundary whose own render is the pass, caught inside that render's reconcile

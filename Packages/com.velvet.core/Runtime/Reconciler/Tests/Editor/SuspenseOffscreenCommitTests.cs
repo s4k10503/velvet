@@ -9,8 +9,8 @@ namespace Velvet.Tests
     /// Pins what applying the hides and reveals of a walk's <c>V.Suspense</c> boundaries ends with: an element an
     /// inner boundary reveals while the boundary enclosing it hides it stays hidden, a <c>V.Portal</c>'s element
     /// that a <c>z-*</c> class relocates is hidden with the rest whenever the portal mounts, and a Label that a layout
-    /// cleanup of the hide returns to the pool, through an error boundary's fallback swap, keeps no hide there. A Label
-    /// that swap keeps in place and reveals stays displayed with its ref set.
+    /// cleanup of the hide returns to the pool, through an error boundary's fallback swap, keeps no hide there. The
+    /// Label that swap mounts where the boundary showed one is displayed with its ref set.
     /// </summary>
     [TestFixture]
     internal sealed class SuspenseOffscreenCommitTests
@@ -239,45 +239,45 @@ namespace Velvet.Tests
                 Is.EqualTo(DisplayStyle.Flex));
         }
 
-        // GREEN_ON_BASE(characterization): the base hides each element before the layout cleanups of what it hides.
-        // So the reveal the fallback swap's own commit makes is the last write x takes.
+        // GREEN_ON_BASE(characterization): the base keeps x in place, and the swap's own commit reveals it.
+        // The swap now mounts x afresh, and this pins that the hide around the swap leaves the x it mounts displayed.
         [Test]
-        public void Given_ABoundaryWhoseFallbackIsTheSameSuspense_When_ALayoutCleanupOfItsHideSwapsTheFallbackIn_Then_TheLabelItKeepsIsDisplayed()
+        public void Given_ABoundaryWhoseFallbackIsTheSameSuspense_When_ALayoutCleanupOfItsHideSwapsTheFallbackIn_Then_TheLabelItMountsIsDisplayed()
         {
             // Arrange
             var root = new VisualElement();
             var page = new Page();
             using var mounted = MountSwap(root, page, throwerFirst: false);
-            var x = root.Q<Label>("x");
 
             // Act
             GoTo(mounted, page, 1);
 
-            // Assert — a boundary that did not catch once, or a Label the swap did not keep in place, reads as no
-            // display at all
-            var after = root.Q<Label>("x");
-            Assert.That(s_swaps == 1 && ReferenceEquals(after, x) ? after.style.display.value : (DisplayStyle?)null,
+            // Assert — a boundary that did not catch once, or a fallback that mounted no x, reads as no display
+            var x = root.Q<Label>("x");
+            Assert.That(s_swaps == 1 && x != null ? x.style.display.value : (DisplayStyle?)null,
                 Is.EqualTo(DisplayStyle.Flex));
         }
 
-        // GREEN_ON_BASE(characterization): the base detaches x's ref at the hide and the swap's reveal attaches it again.
-        // The hide comes before every layout cleanup of what it hides, so the reveal is the last to reach the ref.
+        // GREEN_ON_BASE(characterization): the base keeps x in place, so the ref x attached on mount stays set.
+        // The swap now mounts x afresh, and this pins that the hide around the swap leaves the ref of the x it mounts
+        // set.
         [Test]
-        public void Given_ABoundaryWhoseFallbackIsTheSameSuspenseAndALayoutCleanupAheadOfALabel_When_TheCleanupSwapsTheFallbackIn_Then_TheLabelKeepsItsRef()
+        public void Given_ABoundaryWhoseFallbackIsTheSameSuspenseAndALayoutCleanupAheadOfALabel_When_TheCleanupSwapsTheFallbackIn_Then_TheLabelItMountsHoldsItsRef()
         {
-            // Arrange
+            // Arrange — a full Label pool would keep none of the Labels the swap returns for x to be mounted in
+            VNodePoolTestAccess.ClearLabelPoolForTest();
             s_xRef = null;
             var root = new VisualElement();
             var page = new Page();
             using var mounted = MountSwap(root, page, throwerFirst: true);
-            var x = root.Q<Label>("x");
 
             // Act
             GoTo(mounted, page, 1);
 
-            // Assert — a boundary that did not catch once, or a Label the swap did not keep in place, reads as no ref
-            // at all
-            Assert.That(s_swaps == 1 && ReferenceEquals(root.Q<Label>("x"), x) ? s_xRef : null, Is.SameAs(x));
+            // Assert — a boundary that did not catch once, or a fallback that mounted no x, reads as a Label no ref
+            // holds
+            var x = root.Q<Label>("x");
+            Assert.That(s_xRef, Is.SameAs(s_swaps == 1 && x != null ? x : new Label()));
         }
     }
 }

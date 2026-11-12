@@ -472,26 +472,25 @@ namespace Velvet
         // suffix (blur-foo) fails the precise parse and falls through to the class list, same as any unknown
         // utility. Only consulted for non-bracket tokens (the bracket form blur-[6px] is claimed by the
         // dispatch's '[' check).
-        internal static bool IsFilterPreset(string cls)
+        internal static bool IsFilterPreset(string cls) => cls != null && IsFilterPreset(cls.AsSpan());
+
+        private static bool IsFilterPreset(ReadOnlySpan<char> cls)
         {
-            if (string.IsNullOrEmpty(cls))
-            {
-                return false;
-            }
-            if (cls == "blur" || cls == "grayscale" || cls == "invert" || cls == "sepia")
+            if (cls.SequenceEqual("blur".AsSpan()) || cls.SequenceEqual("grayscale".AsSpan())
+                || cls.SequenceEqual("invert".AsSpan()) || cls.SequenceEqual("sepia".AsSpan()))
             {
                 return true;
             }
-            return cls.StartsWith("drop-shadow", StringComparison.Ordinal)
-                || cls.StartsWith("blur-", StringComparison.Ordinal)
-                || cls.StartsWith("contrast-", StringComparison.Ordinal)
-                || cls.StartsWith("hue-rotate-", StringComparison.Ordinal)
-                || cls.StartsWith("-hue-rotate-", StringComparison.Ordinal)
-                || cls.StartsWith("grayscale-", StringComparison.Ordinal)
-                || cls.StartsWith("invert-", StringComparison.Ordinal)
-                || cls.StartsWith("sepia-", StringComparison.Ordinal)
-                || cls.StartsWith("brightness-", StringComparison.Ordinal)
-                || cls.StartsWith("saturate-", StringComparison.Ordinal);
+            return cls.StartsWith("drop-shadow".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("blur-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("contrast-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("hue-rotate-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("-hue-rotate-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("grayscale-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("invert-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("sepia-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("brightness-".AsSpan(), StringComparison.Ordinal)
+                || cls.StartsWith("saturate-".AsSpan(), StringComparison.Ordinal);
         }
 
         // True when the leaf token is a filter utility — a named preset (blur-sm, -hue-rotate-90, bare
@@ -499,8 +498,23 @@ namespace Velvet
         // IsFilterPreset already matches every bracket form (each is "<family>-[..]" and its
         // StartsWith("<family>-") check fires on the "<family>-" prefix), so the only case it misses is the
         // custom filter-[..] token.
-        internal static bool IsFilterLeaf(string? leaf)
-            => leaf != null && (IsFilterPreset(leaf) || leaf.StartsWith("filter-[", StringComparison.Ordinal));
+        internal static bool IsFilterLeaf(string? leaf) => leaf != null && IsFilterLeaf(leaf.AsSpan());
+
+        private static bool IsFilterLeaf(ReadOnlySpan<char> leaf)
+            => IsFilterPreset(leaf) || leaf.StartsWith("filter-[".AsSpan(), StringComparison.Ordinal);
+
+        // Whether cls, or what follows one of its colons, is a filter leaf. A variant's payload is what follows a
+        // colon of its token, so a class this declines cannot peel to a filter and is passed over before the peel
+        // allocates (ClassReadAllocationTests). No filter leaf opens with a colon, so a run of them is skipped whole.
+        private static bool MayPeelToFilterLeaf(ReadOnlySpan<char> cls)
+        {
+            if (IsFilterLeaf(cls))
+            {
+                return true;
+            }
+            var colon = cls.IndexOf(':');
+            return colon != -1 && MayPeelToFilterLeaf(cls.Slice(colon).TrimStart(':'));
+        }
 
         // True when ANY class resolves to a filter utility, INCLUDING one carried by a state variant
         // (hover:blur-sm, dark:hue-rotate-90, sm:blur-md, group-hover:filter-[…], and stacked forms). A variant
@@ -518,12 +532,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                var leaf = cls;
-                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
-                {
-                    leaf = payload;
-                }
-                if (IsFilterLeaf(leaf))
+                if (cls != null && MayPeelToFilterLeaf(cls.AsSpan()) && IsFilterLeaf(StyleVariantClass.LeafOf(cls)))
                 {
                     return true;
                 }

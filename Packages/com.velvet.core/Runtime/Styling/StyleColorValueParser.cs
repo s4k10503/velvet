@@ -26,8 +26,8 @@ namespace Velvet
             {
                 return null;
             }
-            var root = prefix.Substring(0, prefix.Length - 1);
-            if (HintSelectsNonColour(root, hint))
+            // The root is cut out only for a hint, the one case HintSelectsNonColour reads it.
+            if (hint != null && HintSelectsNonColour(prefix.Substring(0, prefix.Length - 1), hint))
             {
                 return prefix == "bg-" ? false : null;
             }
