@@ -26,8 +26,9 @@ namespace Velvet.Tests
     /// reads the context's default after a scroll has mounted rows under that Provider.</item>
     /// <item>A row that renders again on its own reads the value its enclosing Provider holds then, whether a render of
     /// the host gave the Provider that value or a memoized host has not rendered since, and so does a Portal's child a
-    /// row holds under such a memoized host. A row reads its own row's Provider where every row's Provider holds one
-    /// shared body node.</item>
+    /// row holds under such a memoized host, the Portal behind a memo in a Provider of the row's own as well. After a
+    /// render of the host that patched the list and that a boundary then aborted, such a child reads the value the host
+    /// kept. A row reads its own row's Provider where every row's Provider holds one shared body node.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -64,6 +65,7 @@ namespace Velvet.Tests
             s_rowB = BoundaryRow;
             (s_fallbackShown, s_rowProvided, s_hostMemoized) = (false, false, true);
             (s_hostFiber, s_setFlipped, s_setTheme, s_renderOutside) = (null, default, default, default);
+            s_portalRowsRow = PortalRow;
         }
 
         [Component(Compiler = false, IsErrorBoundary = true)]
@@ -259,13 +261,21 @@ namespace Velvet.Tests
             return V.Provider(s_theme, theme, children: new VNode[] { V.Component(ProvidingListHost, key: "host") });
         }
 
+        private static Func<string, VNode> s_portalRowsRow;
+        private static readonly ComponentContext<string> s_rowLabel = ComponentContext<string>.Create("no-row");
+
+        // FiberContextSpine's walk to the Portal goes through this Provider and the memo under it; the Portal's child
+        // reads none of the Provider's value.
+        private static VNode MemoizedPortalInAProviderRow(string item)
+            => V.Provider(s_rowLabel, "row-" + item, children: new VNode[] { V.Memoized(() => PortalRow(item), item) });
+
         [Component(Memoize = true, Compiler = false)]
         private static VNode MemoizedPortalRowsHost()
             => V.VirtualList(
                 items: new[] { "a", "b", "c" },
                 keySelector: item => item,
                 itemHeight: 10f,
-                renderer: PortalRow,
+                renderer: item => s_portalRowsRow(item),
                 overscan: 0);
 
         [Component(Compiler = false)]
@@ -298,6 +308,41 @@ namespace Velvet.Tests
                     V.Component(RefBoundary, !flipped, key: "boundary"),
                 }),
             });
+        }
+
+        // The boundary after the list takes the ref away from its label in the render that gives the value "aborting".
+        [Component(Compiler = false)]
+        private static VNode AbortablePortalRowsHost()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            var (value, setValue) = Hooks.UseState("first");
+            s_setListValue = setValue;
+            return V.Provider(s_theme, value, children: new VNode[]
+            {
+                V.Div(children: new VNode[]
+                {
+                    V.VirtualList(
+                        items: new[] { "a" },
+                        keySelector: item => item,
+                        itemHeight: 10f,
+                        renderer: _ => V.Portal(s_portalTarget, children: new VNode[] { V.Component(SharedBody) }),
+                        overscan: 0,
+                        key: "list"),
+                    V.Component(RefBoundary, value != "aborting", key: "boundary"),
+                }),
+            });
+        }
+
+        // Whether the host's boundary caught, and the output the host kept holds a node of its list other than the one
+        // the list holds now.
+        private bool KeptAListNodeTheListReplaced(MountedTree mounted)
+        {
+            var keptProvider = s_hostFiber?.PreviousTree?[0] as ContextProviderNode;
+            var keptList = (keptProvider?.Children?[0] as BaseElementNode)?.Children?[0];
+            var listNode = typeof(FiberVirtualListController)
+                .GetField("_node", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(Controller(mounted));
+            return s_fallbackShown && keptList != null && !ReferenceEquals(keptList, listNode);
         }
 
         private static readonly System.Collections.Generic.Dictionary<string, StateUpdater<int>> s_sharedBodyBumps = new();
@@ -660,6 +705,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMemoizedListHostUnderAProviderWhoseValueChanged_When_APortalsChildBehindAMemoInTheRowsProviderRendersAgain_Then_ItReadsTheCurrentValue()
+        {
+            // Arrange — "a" mounted into the Portal's target by a scroll.
+            s_portalRowsRow = MemoizedPortalInAProviderRow;
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(ThemeRootAroundAPortalRowsHost, key: "root"));
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+
+            // Act
+            s_setTheme.Invoke("dark");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_portalTarget.Q<Label>("a")?.text, Is.EqualTo("dark"));
+        }
+
+        [Test]
+        public void Given_AListPatchedInAHostRenderItsBoundaryAborted_When_APortalsChildARowHoldsRendersAgainAlone_Then_ItReadsTheValueTheHostKept()
+        {
+            // Arrange — "a" mounted into the Portal's target by a scroll; a committed render changes the value around the
+            // list, the next changes it again and patches the list, and the boundary after the list then aborts that
+            // render, so the host keeps the output of the committed one.
+            s_sharedBodyBumps.Clear();
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(AbortablePortalRowsHost, key: "host"), CaughtErrors.Unlogged);
+            Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
+            s_setListValue.Invoke("second");
+            mounted.FlushStateForTest();
+            s_setListValue.Invoke("aborting");
+            mounted.FlushStateForTest();
+            var arranged = KeptAListNodeTheListReplaced(mounted);
+
+            // Act — through the setter the body registered under the value it read as the scroll mounted it.
+            s_sharedBodyBumps["first"].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — null where the boundary caught nothing or the list's node was still the one the host kept, which
+            // the body's text never equals.
+            Assert.That(arranged ? s_portalTarget.Q<Label>()?.text : null, Is.EqualTo("second#1"));
+        }
+
+        [Test]
         public void Given_AHostProvidingAroundItsList_When_ItsRenderChangesTheValueAndARowRendersAgainAlone_Then_TheRowReadsTheNewValue()
         {
             // Arrange — "a" mounted by a scroll.
@@ -684,12 +771,7 @@ namespace Velvet.Tests
                 _root, V.Component(ProvidingListBesideABoundaryHost, key: "host"), CaughtErrors.Unlogged);
             s_setFlipped.Invoke(true);
             mounted.FlushStateForTest();
-            var keptProvider = s_hostFiber?.PreviousTree?[0] as ContextProviderNode;
-            var keptList = (keptProvider?.Children?[0] as BaseElementNode)?.Children?[0];
-            var listNode = typeof(FiberVirtualListController)
-                .GetField("_node", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .GetValue(Controller(mounted));
-            var arranged = s_fallbackShown && keptList != null && !ReferenceEquals(keptList, listNode);
+            var arranged = KeptAListNodeTheListReplaced(mounted);
 
             // Act
             Controller(mounted).UpdateVisibleRange(scrollY: 0f, viewportHeight: 10f);
