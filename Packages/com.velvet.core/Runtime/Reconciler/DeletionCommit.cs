@@ -77,9 +77,6 @@ namespace Velvet
             }
             for (; next < _orphanRows.Count; next++) TakeDownStartingAt(_orphanRows[next].Start);
             TakeDownTheRest();
-            // MUTANT_SURVIVES(equivalent): without the entries the removals walk these rows again
-            // (FiberElementCleaner.CleanupElement), find no ref installed and no effect left to run on them, and
-            // collect the same fibers to dispose.
             foreach (var (root, mounted) in _roots) Ctx.RemovalsTakenDown[root] = mounted;
         }
 
